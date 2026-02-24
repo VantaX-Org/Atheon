@@ -118,7 +118,7 @@ export function Header() {
   return (
     <header
       className="fixed top-0 right-0 z-30 h-16 flex items-center justify-between px-4 sm:px-6"
-      style={{ left: '0px', background: 'rgba(10, 10, 26, 0.6)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+      style={{ left: '0px', background: 'rgba(15, 17, 41, 0.7)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       {/* Left: hamburger (mobile) + spacer (desktop) */}
       <div className="flex items-center gap-3 flex-1">

@@ -59,7 +59,7 @@ export function AppLayout() {
     <div className="min-h-screen relative">
       {/* Global 3D Crystal Background — visible on all pages */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden flex items-start justify-center" style={{ paddingTop: '4vh' }}>
-        <div className="opacity-35">
+        <div className="opacity-30">
           <Hero3D size="lg" />
         </div>
       </div>

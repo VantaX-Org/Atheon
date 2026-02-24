@@ -242,8 +242,8 @@ export function LoginPage() {
 
             {/* Forgot Password Modal */}
             {showForgotPw && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div className="rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4" style={{ background: 'rgba(18,18,42,0.95)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                <div className="rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4 max-h-[90vh] overflow-y-auto" style={{ background: 'rgba(18,18,42,0.95)', border: '1px solid rgba(255,255,255,0.1)' }}>
                   <h3 className="text-lg font-semibold text-white">Reset Password</h3>
                   {forgotSent ? (
                     <div className="space-y-3">
