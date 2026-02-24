@@ -30,8 +30,8 @@ export function SettingsPage() {
           </h3>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-2xl font-bold text-gray-900">
-                {user?.name?.charAt(0) || 'A'}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center              text-2xl font-bold text-white">
+                              {user?.name?.charAt(0) || 'A'}
               </div>
               <div>
                 <p className="text-lg font-semibold text-gray-900">{user?.name || 'Admin'}</p>
@@ -80,12 +80,12 @@ export function SettingsPage() {
             <div>
               <span className="text-sm text-gray-600">Theme</span>
               <div className="flex gap-3 mt-2">
-                <div className="w-20 h-14 rounded-lg bg-gray-50 border-2 border-indigo-500 flex items-center justify-center text-xs text-gray-600 cursor-pointer">
-                  Dark
-                </div>
-                <div className="w-20 h-14 rounded-lg bg-gray-100 border border-gray-300 flex items-center justify-center text-xs text-gray-500 cursor-pointer opacity-50">
-                  Light
-                </div>
+                                <div className="w-20 h-14 rounded-lg bg-gray-800 border border-gray-300 flex items-center justify-center text-xs text-gray-300 cursor-pointer opacity-50">
+                                  Dark
+                                </div>
+                                <div className="w-20 h-14 rounded-lg bg-white border-2 border-indigo-500 flex items-center justify-center text-xs text-gray-600 cursor-pointer">
+                                  Light
+                                </div>
               </div>
             </div>
             <div>
@@ -102,7 +102,7 @@ export function SettingsPage() {
         {/* Platform Info */}
         <Card>
           <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-cyan-400" /> Platform
+            <Cpu className="w-4 h-4 text-cyan-600" /> Platform
           </h3>
           <div className="space-y-3">
             {[
