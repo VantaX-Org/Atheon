@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const apex = new Hono<{ Bindings: Env }>();
+const apex = new Hono<AppBindings>();
 
 // GET /api/apex/health?tenant_id=
 apex.get('/health', async (c) => {

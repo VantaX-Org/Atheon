@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 import { generateToken, verifyToken, hashPassword, verifyPassword } from '../middleware/auth';
 
-const auth = new Hono<{ Bindings: Env }>();
+const auth = new Hono<AppBindings>();
 
 // POST /api/auth/register
 auth.post('/register', async (c) => {

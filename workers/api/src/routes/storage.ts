@@ -3,13 +3,15 @@
  */
 
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
+import type { AuthContext } from '../types';
 
-const storage = new Hono<{ Bindings: Env }>();
+const storage = new Hono<AppBindings>();
 
 // GET /api/storage/documents?tenant_id=&type=
 storage.get('/documents', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
   const docType = c.req.query('type');
   const limit = parseInt(c.req.query('limit') || '50');
 
@@ -272,7 +274,8 @@ storage.post('/reports/generate', async (c) => {
 
 // GET /api/storage/stats?tenant_id=
 storage.get('/stats', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
 
   const [totalDocs, totalSize, byType] = await Promise.all([
     c.env.DB.prepare('SELECT COUNT(*) as count FROM documents WHERE tenant_id = ?').bind(tenantId).first<{ count: number }>(),

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const audit = new Hono<{ Bindings: Env }>();
+const audit = new Hono<AppBindings>();
 
 // GET /api/audit/log?tenant_id=&layer=&action=&limit=
 audit.get('/log', async (c) => {

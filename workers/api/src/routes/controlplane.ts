@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const controlplane = new Hono<{ Bindings: Env }>();
+const controlplane = new Hono<AppBindings>();
 
 // GET /api/controlplane/deployments?tenant_id=
 controlplane.get('/deployments', async (c) => {

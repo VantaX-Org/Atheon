@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const mind = new Hono<{ Bindings: Env }>();
+const mind = new Hono<AppBindings>();
 
 // Model tier configurations — maps to real Workers AI models
 const MODEL_TIERS: Record<string, { name: string; model: string; maxTokens: number; description: string }> = {

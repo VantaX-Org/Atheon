@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
+import type { AuthContext } from '../types';
+import { semanticSearch, indexGraphEntities } from '../services/vectorize';
 
-const memory = new Hono<{ Bindings: Env }>();
+const memory = new Hono<AppBindings>();
 
 // GET /api/memory/entities?tenant_id=&type=
 memory.get('/entities', async (c) => {
@@ -168,13 +170,24 @@ memory.get('/graph', async (c) => {
   });
 });
 
-// POST /api/memory/query (GraphRAG query with AI-powered semantic search)
+// POST /api/memory/query (GraphRAG query with semantic + keyword search)
 memory.post('/query', async (c) => {
   const body = await c.req.json<{ tenant_id?: string; query: string; depth?: number }>();
-  const tenantId = body.tenant_id || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || body.tenant_id || 'vantax';
   const query = body.query.toLowerCase();
 
-  // First: keyword-based graph traversal
+  // Try Vectorize semantic search first (if available)
+  let vectorResults: { id: string; score: number; metadata: Record<string, unknown> }[] = [];
+  if (c.env.VECTORIZE) {
+    try {
+      vectorResults = await semanticSearch(c.env.VECTORIZE, c.env.AI, body.query, tenantId, { topK: 10 });
+    } catch (err) {
+      console.error('Vectorize search failed, falling back to keyword:', err);
+    }
+  }
+
+  // Keyword-based graph traversal (always run as fallback/supplement)
   const matchingEntities = await c.env.DB.prepare(
     'SELECT * FROM graph_entities WHERE tenant_id = ? AND (LOWER(name) LIKE ? OR LOWER(type) LIKE ?) LIMIT 10'
   ).bind(tenantId, `%${query}%`, `%${query}%`).all();
@@ -195,25 +208,30 @@ memory.post('/query', async (c) => {
     }
   }
 
-  // Build context from matched entities
+  // Build context from both vector and keyword matches
   const context = matchingEntities.results.map((e: Record<string, unknown>) =>
     `${e.type}: ${e.name} (${e.properties})`
   ).join('; ');
 
+  const vectorContext = vectorResults.map(r =>
+    `[${(r.score * 100).toFixed(0)}%] ${r.metadata.type || 'entity'}: ${r.metadata.name || r.id}`
+  ).join('; ');
+
   // Use Workers AI to generate a contextual answer from the graph data
-  let answer = `Found ${matchingEntities.results.length} entities matching "${body.query}" with ${relatedEntities.length} related entities in the knowledge graph.`;
+  let answer = `Found ${matchingEntities.results.length} keyword matches and ${vectorResults.length} semantic matches for "${body.query}".`;
 
   try {
-    if (matchingEntities.results.length > 0) {
+    const combinedContext = [context, vectorContext].filter(Boolean).join('\n\nSemantic matches: ');
+    if (matchingEntities.results.length > 0 || vectorResults.length > 0) {
       const aiResult = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
         messages: [
           {
             role: 'system',
-            content: 'You are a knowledge graph query engine. Given entity data from a business knowledge graph, provide a concise, insightful answer to the user\'s query. Be specific and reference the entities by name.'
+            content: 'You are a knowledge graph query engine. Given entity data from a business knowledge graph (keyword and semantic search results), provide a concise, insightful answer to the user\'s query. Be specific and reference the entities by name.'
           },
           {
             role: 'user',
-            content: `Query: ${body.query}\n\nGraph context:\n${context}\n\nRelated entities: ${relatedEntities.slice(0, 5).map((e: Record<string, unknown>) => `${e.type}: ${e.name}`).join(', ')}`
+            content: `Query: ${body.query}\n\nGraph context:\n${combinedContext}\n\nRelated entities: ${relatedEntities.slice(0, 5).map((e: Record<string, unknown>) => `${e.type}: ${e.name}`).join(', ')}`
           },
         ],
         max_tokens: 512,
@@ -226,17 +244,23 @@ memory.post('/query', async (c) => {
     }
   } catch (err) {
     console.error('AI query augmentation failed:', err);
-    // Keep the default answer
   }
 
   return c.json({
     query: body.query,
+    searchMode: vectorResults.length > 0 ? 'semantic+keyword' : 'keyword',
     directMatches: matchingEntities.results.map((e: Record<string, unknown>) => ({
       id: e.id,
       type: e.type,
       name: e.name,
       properties: JSON.parse(e.properties as string || '{}'),
       confidence: e.confidence,
+    })),
+    semanticMatches: vectorResults.map(r => ({
+      id: r.id,
+      score: r.score,
+      type: r.metadata.type,
+      name: r.metadata.name,
     })),
     relatedEntities: relatedEntities.slice(0, 10).map((e: Record<string, unknown>) => ({
       id: e.id,
@@ -247,6 +271,20 @@ memory.post('/query', async (c) => {
     context,
     answer,
   });
+});
+
+// POST /api/memory/index - Index graph entities into Vectorize for semantic search
+memory.post('/index', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const body = await c.req.json<{ tenant_id?: string }>().catch(() => ({ tenant_id: undefined }));
+  const tenantId = auth?.tenantId || body.tenant_id || 'vantax';
+
+  if (!c.env.VECTORIZE) {
+    return c.json({ error: 'Vectorize not configured', message: 'Vector index not available' }, 503);
+  }
+
+  const result = await indexGraphEntities(c.env.VECTORIZE, c.env.AI, c.env.DB, tenantId);
+  return c.json({ ...result, tenantId });
 });
 
 // GET /api/memory/stats?tenant_id=

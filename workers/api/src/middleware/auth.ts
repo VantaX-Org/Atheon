@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
 // ── Helpers using Web Crypto API (edge-compatible) ──
 
@@ -102,8 +102,10 @@ export async function verifyToken(token: string, secret: string): Promise<Record
 }
 
 // ── Auth Middleware ──
+// NOTE: tenantIsolation() middleware in middleware/tenant.ts is now the preferred
+// auth+tenant middleware. This is kept for backward compatibility.
 
-export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
+export async function authMiddleware(c: Context<AppBindings>, next: Next) {
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -118,8 +120,15 @@ export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) 
       return c.json({ error: 'Unauthorized', message: 'Invalid or expired token' }, 401);
     }
 
-    c.req.raw.headers.set('X-Auth-User', JSON.stringify(payload));
-    c.req.raw.headers.set('X-Auth-Tenant-ID', payload.tenant_id as string);
+    // Store auth context in Hono variables (Cloudflare Workers request headers are immutable)
+    c.set('auth', {
+      userId: payload.sub as string,
+      email: payload.email as string,
+      name: payload.name as string,
+      role: payload.role as string,
+      tenantId: payload.tenant_id as string,
+      permissions: (payload.permissions as string[]) || [],
+    });
 
     await next();
   } catch {

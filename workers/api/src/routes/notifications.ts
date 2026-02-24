@@ -3,14 +3,18 @@
  */
 
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
+import type { AuthContext } from '../types';
 import { dispatchNotification, getUnreadCount, markAsRead } from '../services/notifications';
+import { sendOrQueueEmail, getAlertEmailTemplate, getApprovalEmailTemplate, getEscalationEmailTemplate } from '../services/email';
+import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 
-const notifications = new Hono<{ Bindings: Env }>();
+const notifications = new Hono<AppBindings>();
 
 // GET /api/notifications?tenant_id=&type=&unread=
 notifications.get('/', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
   const type = c.req.query('type');
   const unreadOnly = c.req.query('unread') === 'true';
   const limit = parseInt(c.req.query('limit') || '50');
@@ -54,15 +58,51 @@ notifications.post('/', async (c) => {
     return c.json({ error: 'tenant_id, title, and message are required' }, 400);
   }
 
+  const notifType = (body.type || 'system') as 'alert' | 'approval' | 'escalation' | 'system' | 'catalyst_notification' | 'webhook';
+  const severity = (body.severity || 'info') as 'critical' | 'high' | 'medium' | 'low' | 'info';
+
   const results = await dispatchNotification(c.env.DB, c.env.CACHE, {
     tenantId: body.tenant_id,
-    type: (body.type || 'system') as 'alert' | 'approval' | 'escalation' | 'system' | 'catalyst_notification' | 'webhook',
+    type: notifType,
     title: body.title,
     message: body.message,
-    severity: (body.severity || 'info') as 'critical' | 'high' | 'medium' | 'low' | 'info',
+    severity,
     actionUrl: body.action_url,
     metadata: body.metadata,
   });
+
+  // Also send email for critical/high severity alerts and approvals
+  if (['critical', 'high'].includes(severity) || notifType === 'approval' || notifType === 'escalation') {
+    try {
+      // Get tenant admin emails
+      const admins = await c.env.DB.prepare(
+        'SELECT email FROM users WHERE tenant_id = ? AND role IN (?, ?) AND status = ?'
+      ).bind(body.tenant_id, 'admin', 'manager', 'active').all();
+
+      const recipients = admins.results.map((u: Record<string, unknown>) => u.email as string);
+      if (recipients.length > 0) {
+        let template: { html: string; text: string };
+        if (notifType === 'approval') {
+          template = getApprovalEmailTemplate(body.title, body.message, 0.5, body.message, body.action_url || 'https://atheon.vantax.co.za/catalysts');
+        } else if (notifType === 'escalation') {
+          template = getEscalationEmailTemplate(body.title, body.message, 'manager', body.message, body.action_url || 'https://atheon.vantax.co.za/catalysts');
+        } else {
+          template = getAlertEmailTemplate(body.title, body.message, severity, body.action_url);
+        }
+
+        const emailResult = await sendOrQueueEmail(c.env.DB, {
+          to: recipients,
+          subject: `[Atheon ${severity.toUpperCase()}] ${body.title}`,
+          htmlBody: template.html,
+          textBody: template.text,
+          tenantId: body.tenant_id,
+        });
+        results.push({ id: emailResult.id, delivered: emailResult.sent, channel: emailResult.channel });
+      }
+    } catch (err) {
+      console.error('Email dispatch error:', err);
+    }
+  }
 
   return c.json({ results }, 201);
 });
@@ -79,7 +119,8 @@ notifications.put('/read', async (c) => {
 
 // GET /api/notifications/unread-count?tenant_id=
 notifications.get('/unread-count', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
   const count = await getUnreadCount(c.env.DB, tenantId);
   return c.json({ unreadCount: count });
 });
@@ -88,7 +129,8 @@ notifications.get('/unread-count', async (c) => {
 
 // GET /api/notifications/webhooks?tenant_id=
 notifications.get('/webhooks', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
   const results = await c.env.DB.prepare(
     'SELECT * FROM webhooks WHERE tenant_id = ? ORDER BY created_at DESC'
   ).bind(tenantId).all();
@@ -127,9 +169,12 @@ notifications.post('/webhooks', async (c) => {
   const secretBytes = crypto.getRandomValues(new Uint8Array(32));
   const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
+  // Encrypt the secret before storing in D1
+  const encryptedSecret = await encrypt(secret, c.env.JWT_SECRET);
+
   await c.env.DB.prepare(
     'INSERT INTO webhooks (id, tenant_id, url, secret, events, active, retry_count, created_at) VALUES (?, ?, ?, ?, ?, 1, 0, datetime(\'now\'))'
-  ).bind(id, body.tenant_id, body.url, secret, JSON.stringify(body.events || ['*'])).run();
+  ).bind(id, body.tenant_id, body.url, encryptedSecret, JSON.stringify(body.events || ['*'])).run();
 
   return c.json({ id, secret, message: 'Webhook created. Store the secret — it will not be shown again.' }, 201);
 });
@@ -166,13 +211,19 @@ notifications.post('/webhooks/:id/test', async (c) => {
   const webhook = await c.env.DB.prepare('SELECT * FROM webhooks WHERE id = ?').bind(id).first();
   if (!webhook) return c.json({ error: 'Webhook not found' }, 404);
 
+  // Decrypt the webhook secret for signing
+  const storedSecret = webhook.secret as string;
+  const decryptedSecret = isEncrypted(storedSecret)
+    ? await decrypt(storedSecret, c.env.JWT_SECRET) || storedSecret
+    : storedSecret;
+
   const { dispatchWebhook } = await import('../services/notifications');
   const result = await dispatchWebhook(
     {
       id: webhook.id as string,
       tenantId: webhook.tenant_id as string,
       url: webhook.url as string,
-      secret: webhook.secret as string,
+      secret: decryptedSecret,
       events: JSON.parse(webhook.events as string || '[]'),
       active: true,
       retryCount: 0,

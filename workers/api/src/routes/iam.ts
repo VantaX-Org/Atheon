@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const iam = new Hono<{ Bindings: Env }>();
+const iam = new Hono<AppBindings>();
 
 // GET /api/iam/policies?tenant_id=
 iam.get('/policies', async (c) => {

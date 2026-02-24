@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const tenants = new Hono<{ Bindings: Env }>();
+const tenants = new Hono<AppBindings>();
 
 // GET /api/tenants - List all tenants (admin only)
 tenants.get('/', async (c) => {

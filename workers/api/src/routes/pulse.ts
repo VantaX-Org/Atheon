@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 
-const pulse = new Hono<{ Bindings: Env }>();
+const pulse = new Hono<AppBindings>();
 
 // GET /api/pulse/metrics?tenant_id=
 pulse.get('/metrics', async (c) => {
