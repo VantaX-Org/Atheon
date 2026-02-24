@@ -124,55 +124,61 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-5xl flex rounded-3xl overflow-hidden bg-glass-strong glow-cyan shadow-2xl shadow-cyan-500/10">
-        {/* Left - Branding with 3D Logo */}
+        {/* Left - Branding with 3D Capsule Hero */}
         <div className="hidden lg:flex lg:w-1/2 flex-col justify-center items-center p-12 relative overflow-hidden">
-          {/* Gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-cyan-100/60 via-sky-100/40 to-blue-100/60" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(14,165,233,0.12),transparent_70%)]" />
+          {/* Soft radial gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-sky-100/80 via-cyan-50/60 to-blue-100/70" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_center,rgba(56,189,248,0.2),transparent_60%)]" />
 
           <div className="relative z-10 text-center">
-            {/* 3D Crystalline Logo */}
-            <div className="animate-float mb-8">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" className="w-40 h-40 mx-auto drop-shadow-2xl">
+            {/* Large 3D Glossy Capsule Shape */}
+            <div className="animate-float mb-10">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 260" fill="none" className="w-56 h-48 mx-auto" style={{ filter: 'drop-shadow(0 25px 50px rgba(14,165,233,0.3))' }}>
                 <defs>
-                  <linearGradient id="logo3d-1" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#67e8f9" />
-                    <stop offset="50%" stopColor="#22d3ee" />
+                  <linearGradient id="login-pill-1" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#7dd3fc" />
+                    <stop offset="40%" stopColor="#38bdf8" />
                     <stop offset="100%" stopColor="#0ea5e9" />
                   </linearGradient>
-                  <linearGradient id="logo3d-2" x1="0%" y1="0%" x2="50%" y2="100%">
-                    <stop offset="0%" stopColor="white" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="white" stopOpacity="0.1" />
+                  <linearGradient id="login-pill-2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#67e8f9" />
+                    <stop offset="50%" stopColor="#22d3ee" />
+                    <stop offset="100%" stopColor="#06b6d4" />
                   </linearGradient>
-                  <linearGradient id="logo3d-3" x1="100%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#0284c7" />
-                    <stop offset="100%" stopColor="#0369a1" />
+                  <linearGradient id="login-shine" x1="20%" y1="0%" x2="50%" y2="100%">
+                    <stop offset="0%" stopColor="white" stopOpacity="0.95" />
+                    <stop offset="40%" stopColor="white" stopOpacity="0.4" />
+                    <stop offset="100%" stopColor="white" stopOpacity="0" />
                   </linearGradient>
-                  <filter id="glow">
-                    <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                    <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  <filter id="login-glow">
+                    <feGaussianBlur stdDeviation="4" result="blur" />
+                    <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
                   </filter>
                 </defs>
-                {/* Main body — left facet */}
-                <path d="M100 20L40 160h30l10-24h40l10 24h30L100 20z" fill="url(#logo3d-1)" filter="url(#glow)" />
-                {/* Right facet — darker for 3D depth */}
-                <path d="M100 20L160 160h-30l-10-24H100L100 20z" fill="url(#logo3d-3)" opacity="0.7" />
-                {/* Shine highlight */}
-                <path d="M100 20L70 100h30L100 20z" fill="url(#logo3d-2)" opacity="0.6" />
-                {/* Inner cutout */}
-                <path d="M85 128L100 60l15 68H85z" fill="url(#logo3d-1)" opacity="0.5" />
-                {/* Apex highlight */}
-                <circle cx="100" cy="30" r="5" fill="white" opacity="0.9" />
-                <circle cx="100" cy="30" r="8" fill="white" opacity="0.2" />
-                {/* Glass reflection */}
-                <ellipse cx="90" cy="80" rx="12" ry="20" fill="white" opacity="0.1" transform="rotate(-10 90 80)" />
+                {/* Left capsule — larger */}
+                <ellipse cx="110" cy="150" rx="52" ry="95" fill="url(#login-pill-1)" transform="rotate(-35 110 150)" filter="url(#login-glow)" />
+                {/* Right capsule */}
+                <ellipse cx="195" cy="140" rx="46" ry="88" fill="url(#login-pill-2)" transform="rotate(25 195 140)" filter="url(#login-glow)" />
+                {/* Glass shine on left */}
+                <ellipse cx="92" cy="118" rx="22" ry="48" fill="url(#login-shine)" transform="rotate(-35 92 118)" opacity="0.75" />
+                {/* Glass shine on right */}
+                <ellipse cx="180" cy="108" rx="18" ry="42" fill="url(#login-shine)" transform="rotate(25 180 108)" opacity="0.65" />
+                {/* Bright highlights */}
+                <circle cx="85" cy="92" r="8" fill="white" opacity="0.9" />
+                <circle cx="85" cy="92" r="13" fill="white" opacity="0.2" />
+                <circle cx="175" cy="85" r="6" fill="white" opacity="0.8" />
+                <circle cx="175" cy="85" r="10" fill="white" opacity="0.15" />
+                {/* Depth dots */}
+                <circle cx="150" cy="190" r="4" fill="#7dd3fc" opacity="0.5" />
+                <circle cx="165" cy="80" r="2.5" fill="white" opacity="0.6" />
+                <circle cx="130" cy="100" r="3" fill="white" opacity="0.35" />
               </svg>
             </div>
 
             <h1 className="text-4xl font-bold text-gradient mb-3">Atheon</h1>
             <p className="text-lg text-gray-600 mb-2">Enterprise Intelligence Platform</p>
-            <p className="text-sm text-gray-400 max-w-sm mx-auto">
-              AI-powered platform for executive intelligence, process monitoring,
+            <p className="text-sm text-gray-400/80 max-w-xs mx-auto leading-relaxed">
+              AI-powered executive intelligence, process monitoring,
               and autonomous execution.
             </p>
           </div>

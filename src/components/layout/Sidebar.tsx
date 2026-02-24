@@ -58,14 +58,14 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar — icon-only narrow glass bar */}
-      <aside className="fixed left-0 top-0 h-full z-40 w-16 hidden lg:flex flex-col items-center py-4 bg-glass-subtle">
+      <aside className="fixed left-0 top-0 h-full z-40 w-16 hidden lg:flex flex-col items-center py-5 bg-glass-subtle">
         {/* Logo */}
-        <div className="mb-6">
+        <div className="mb-8">
           <AtheonLogo />
         </div>
 
         {/* Nav icons */}
-        <nav className="flex-1 flex flex-col items-center gap-1 overflow-y-auto scrollbar-thin w-full px-2">
+        <nav className="flex-1 flex flex-col items-center gap-0.5 overflow-y-auto scrollbar-thin w-full px-2">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -75,20 +75,20 @@ export function Sidebar() {
 
             return (
               <div key={item.path} className="w-full flex flex-col items-center">
-                {showDivider && <div className="w-6 h-px bg-white/30 my-1.5" />}
+                {showDivider && <div className="w-6 h-px bg-gray-300/30 my-2" />}
                 <Link
                   to={item.path}
                   title={item.label}
                   className={cn(
                     'w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 group relative',
                     isActive
-                      ? 'bg-white/70 shadow-md shadow-cyan-500/10 text-cyan-600'
-                      : 'text-gray-500 hover:bg-white/40 hover:text-gray-700'
+                      ? 'bg-white/60 shadow-sm text-gray-800'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-white/30'
                   )}
                 >
-                  <Icon size={20} className={cn(isActive ? 'text-cyan-600' : 'text-gray-500 group-hover:text-gray-700')} />
+                  <Icon size={19} className={cn(isActive ? 'text-gray-800' : 'text-gray-400 group-hover:text-gray-600')} />
                   {/* Tooltip */}
-                  <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900/90 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 backdrop-blur-sm">
+                  <div className="absolute left-full ml-3 px-3 py-1.5 bg-gray-800/90 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 backdrop-blur-sm shadow-lg">
                     {item.label}
                   </div>
                 </Link>
