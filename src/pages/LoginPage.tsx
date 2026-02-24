@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppStore } from "@/stores/appStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sparkles, ArrowRight, Shield, Globe, Loader2, UserPlus } from "lucide-react";
-import { api, setToken } from "@/lib/api";
+import { api, setToken, getToken } from "@/lib/api";
 
 type AuthMode = 'login' | 'register' | 'demo';
 
@@ -16,7 +16,9 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setUser = useAppStore((s) => s.setUser);
+  const existingUser = useAppStore((s) => s.user);
 
   const handleAuthResult = (res: { token: string; user: { id: string; email: string; name: string; role: string; tenantId: string; permissions: string[] } }) => {
     setToken(res.token);
@@ -30,6 +32,32 @@ export function LoginPage() {
     });
     navigate('/');
   };
+
+  // Handle SSO callback (Azure AD redirects back with ?code=...&state=...)
+  useEffect(() => {
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    if (code && state) {
+      setLoading(true);
+      setError(null);
+      api.auth.ssoCallback(code, state)
+        .then((res) => handleAuthResult(res))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : 'SSO authentication failed');
+          // Clean up URL params
+          window.history.replaceState({}, '', '/login');
+        })
+        .finally(() => setLoading(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (existingUser && getToken()) {
+      navigate('/', { replace: true });
+    }
+  }, [existingUser, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,17 +86,8 @@ export function LoginPage() {
     try {
       const res = await api.auth.demoLogin('vantax', 'admin');
       handleAuthResult(res);
-    } catch {
-      // Fallback to local login if API is unavailable
-      setUser({
-        id: '1',
-        email: 'admin@vantax.co.za',
-        name: 'Reshigan',
-        role: 'admin',
-        tenantId: 'vantax',
-        permissions: ['*'],
-      });
-      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -82,17 +101,16 @@ export function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      // SSO providers configured in IAM → SSO tab per tenant
-      const ssoRes = await api.auth.ssoLogin(provider);
-      handleAuthResult(ssoRes);
-    } catch {
-      // Fallback: SSO not configured, use demo login
-      try {
-        const res = await api.auth.demoLogin('vantax', 'admin');
-        handleAuthResult(res);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'SSO login failed. Ensure SSO is configured in IAM settings.');
+      // Request the Azure AD authorize URL from backend
+      const res = await api.auth.ssoAuthorize(provider === 'azure' ? 'azure_ad' : provider);
+      if (res.redirect_url) {
+        // Redirect to Azure AD login page
+        window.location.href = res.redirect_url;
+        return;
       }
+      setError('SSO configuration not available');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SSO login failed. Ensure SSO is configured in IAM settings.');
     } finally {
       setLoading(false);
     }

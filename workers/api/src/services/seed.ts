@@ -37,6 +37,8 @@ export async function seedDatabase(db: D1Database) {
   const users = [
     { id: 'user-1', tenant_id: 'vantax', email: 'admin@vantax.co.za', name: 'Reshigan', role: 'admin', permissions: '["*"]' },
     { id: 'user-2', tenant_id: 'vantax', email: 'exec@vantax.co.za', name: 'Sarah Chen', role: 'executive', permissions: '["apex.*","pulse.read","catalysts.approve"]' },
+    { id: 'user-essen', tenant_id: 'vantax', email: 'essen@vantax.co.za', name: 'Essen', role: 'admin', permissions: '["*"]' },
+    { id: 'user-system', tenant_id: 'vantax', email: 'atheon@vantax.co.za', name: 'Atheon System', role: 'admin', permissions: '["*"]' },
     { id: 'user-3', tenant_id: 'freshco', email: 'admin@freshco.co.za', name: 'James Mthembu', role: 'admin', permissions: '["*"]' },
     { id: 'user-4', tenant_id: 'deepmine', email: 'admin@deepmine.co.za', name: 'Pieter van der Berg', role: 'admin', permissions: '["*"]' },
     { id: 'user-5', tenant_id: 'medilife', email: 'admin@medilife.co.za', name: 'Dr. Aisha Patel', role: 'admin', permissions: '["*"]' },
@@ -243,7 +245,7 @@ export async function seedDatabase(db: D1Database) {
 
   // Seed SSO Configs
   const ssoConfigs = [
-    { id: 'sso-1', tenant_id: 'vantax', provider: 'azure_ad', client_id: 'vantax-atheon-prod-001', issuer_url: 'https://login.microsoftonline.com/vantax-tenant-id/v2.0', enabled: 1, auto_provision: 1, default_role: 'analyst', domain_hint: 'vantax.co.za' },
+    { id: 'sso-1', tenant_id: 'vantax', provider: 'azure_ad', client_id: '0a0bcbd9-afcb-44b9-b0ad-16e1da612f98', issuer_url: 'https://login.microsoftonline.com/998b123c-e559-479d-bbb9-cf3330469a73/v2.0', enabled: 1, auto_provision: 1, default_role: 'admin', domain_hint: 'vantax.co.za' },
     { id: 'sso-2', tenant_id: 'freshco', provider: 'okta', client_id: 'freshco-atheon-001', issuer_url: 'https://freshco.okta.com/oauth2/default', enabled: 1, auto_provision: 0, default_role: 'analyst', domain_hint: 'freshco.co.za' },
     { id: 'sso-3', tenant_id: 'deepmine', provider: 'azure_ad', client_id: 'deepmine-atheon-001', issuer_url: 'https://login.microsoftonline.com/deepmine-tenant-id/v2.0', enabled: 1, auto_provision: 1, default_role: 'operator', domain_hint: 'deepmine.co.za' },
   ];

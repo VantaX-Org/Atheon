@@ -6,6 +6,7 @@ export interface Env {
   STORAGE: R2Bucket;
   DASHBOARD_ROOM: DurableObjectNamespace;
   JWT_SECRET: string;
+  AZURE_AD_CLIENT_SECRET: string;
   ENVIRONMENT: string;
 }
 
