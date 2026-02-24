@@ -31,10 +31,12 @@ export function ApexPage() {
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingScenario, setCreatingScenario] = useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
 
   const handleNewScenario = async () => {
     if (creatingScenario) return;
     setCreatingScenario(true);
+    setScenarioError(null);
     try {
       const result = await api.apex.createScenario({
         title: `Scenario ${scenarios.length + 1}`,
@@ -46,7 +48,9 @@ export function ApexPage() {
         const s = await api.apex.scenarios();
         setScenarios(s.scenarios);
       }
-    } catch { /* silent */ }
+    } catch (err) {
+      setScenarioError(err instanceof Error ? err.message : 'Failed to create scenario');
+    }
     setCreatingScenario(false);
   };
 
@@ -295,8 +299,15 @@ export function ApexPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Scenario Analysis</h3>
-              <Button variant="primary" size="sm" onClick={handleNewScenario}><Play size={14} /> New Scenario</Button>
+              <Button variant="primary" size="sm" onClick={handleNewScenario} disabled={creatingScenario}>
+                {creatingScenario ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} New Scenario
+              </Button>
             </div>
+            {scenarioError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                {scenarioError}
+              </div>
+            )}
             {scenarios.map((scenario) => (
               <Card key={scenario.id}>
                 <div className="flex items-start justify-between">
