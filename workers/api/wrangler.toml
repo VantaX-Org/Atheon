@@ -20,3 +20,16 @@ id = "ea7decf85cc142099038ad593b7140ae"
 [[r2_buckets]]
 binding = "STORAGE"
 bucket_name = "atheon-storage"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "atheon-vectors"
+
+[durable_objects]
+bindings = [
+  { name = "DASHBOARD_ROOM", class_name = "DashboardRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["DashboardRoom"]

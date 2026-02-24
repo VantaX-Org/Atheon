@@ -4,8 +4,23 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   CACHE: KVNamespace;
   STORAGE: R2Bucket;
+  DASHBOARD_ROOM: DurableObjectNamespace;
   JWT_SECRET: string;
   ENVIRONMENT: string;
+}
+
+export interface AuthContext {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  tenantId: string;
+  permissions: string[];
+}
+
+export interface AppBindings {
+  Bindings: Env;
+  Variables: { auth: AuthContext };
 }
 
 export interface JWTPayload {

@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { Env } from './types';
+import type { Env, AppBindings } from './types';
 import { seedDatabase } from './services/seed';
 import { apiRateLimiter, authRateLimiter, aiRateLimiter } from './middleware/ratelimit';
 import { auditEnrichment, requestSizeLimiter } from './middleware/validation';
+import { tenantIsolation } from './middleware/tenant';
+import { DashboardRoom } from './services/realtime';
 import auth from './routes/auth';
 import tenants from './routes/tenants';
 import iam from './routes/iam';
@@ -18,8 +20,12 @@ import audit from './routes/audit';
 import connectivity from './routes/connectivity';
 import notifications from './routes/notifications';
 import storage from './routes/storage';
+import realtime from './routes/realtime';
 
-const app = new Hono<{ Bindings: Env }>();
+// Export Durable Object class for Cloudflare runtime
+export { DashboardRoom };
+
+const app = new Hono<AppBindings>();
 
 // CORS - restricted to production and preview domains
 const ALLOWED_ORIGINS = [
@@ -86,6 +92,7 @@ app.use('*', async (c, next) => {
         CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), type TEXT NOT NULL DEFAULT 'system', title TEXT NOT NULL, message TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', action_url TEXT, metadata TEXT, read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
         CREATE TABLE IF NOT EXISTS webhooks (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), url TEXT NOT NULL, secret TEXT NOT NULL, events TEXT NOT NULL DEFAULT '["*"]', active INTEGER NOT NULL DEFAULT 1, retry_count INTEGER NOT NULL DEFAULT 0, last_triggered TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
         CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'document', mime_type TEXT NOT NULL DEFAULT 'application/octet-stream', size INTEGER NOT NULL DEFAULT 0, r2_key TEXT, uploaded_by TEXT, stored_in_r2 INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+        CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), recipients TEXT NOT NULL, subject TEXT NOT NULL, html_body TEXT NOT NULL, text_body TEXT, status TEXT NOT NULL DEFAULT 'pending', sent_at TEXT, error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
       `;
 
       // Execute each CREATE TABLE separately
@@ -116,6 +123,8 @@ app.use('*', async (c, next) => {
         'CREATE INDEX IF NOT EXISTS idx_webhooks_tenant ON webhooks(tenant_id)',
         'CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id)',
         'CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(tenant_id, type)',
+        'CREATE INDEX IF NOT EXISTS idx_email_queue_tenant ON email_queue(tenant_id)',
+        'CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status)',
       ];
 
       for (const idx of indexes) {
@@ -139,7 +148,7 @@ app.use('*', async (c, next) => {
 app.get('/', (c) => {
   return c.json({
     name: 'Atheon™ Enterprise Intelligence Platform API',
-    version: '2.0.0',
+    version: '3.0.0',
     status: 'operational',
     endpoints: {
       auth: '/api/auth',
@@ -156,10 +165,12 @@ app.get('/', (c) => {
       connectivity: '/api/connectivity',
       notifications: '/api/notifications',
       storage: '/api/storage',
+      realtime: '/api/realtime',
     },
     protocols: {
       mcp: '/api/connectivity/mcp',
       a2a: '/api/connectivity/a2a',
+      websocket: '/api/realtime/ws',
     },
     documentation: 'https://atheon.vantax.co.za',
   });
@@ -169,6 +180,22 @@ app.get('/', (c) => {
 app.get('/healthz', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Tenant isolation middleware for protected routes
+// Auth routes are excluded (login/register don't have JWT yet)
+app.use('/api/tenants/*', tenantIsolation());
+app.use('/api/iam/*', tenantIsolation());
+app.use('/api/apex/*', tenantIsolation());
+app.use('/api/pulse/*', tenantIsolation());
+app.use('/api/catalysts/*', tenantIsolation());
+app.use('/api/memory/*', tenantIsolation());
+app.use('/api/mind/*', tenantIsolation());
+app.use('/api/erp/*', tenantIsolation());
+app.use('/api/controlplane/*', tenantIsolation());
+app.use('/api/audit/*', tenantIsolation());
+app.use('/api/connectivity/*', tenantIsolation());
+app.use('/api/notifications/*', tenantIsolation());
+app.use('/api/storage/*', tenantIsolation());
 
 // Mount route modules
 app.route('/api/auth', auth);
@@ -185,6 +212,7 @@ app.route('/api/audit', audit);
 app.route('/api/connectivity', connectivity);
 app.route('/api/notifications', notifications);
 app.route('/api/storage', storage);
+app.route('/api/realtime', realtime);
 
 // 404 handler
 app.notFound((c) => {

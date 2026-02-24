@@ -1,0 +1,179 @@
+/**
+ * Email Notification Service
+ * Sends transactional emails via MailChannels (free for Cloudflare Workers)
+ * or falls back to storing email records for external pickup.
+ */
+
+export interface EmailPayload {
+  to: string[];
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  from?: string;
+  replyTo?: string;
+  tenantId: string;
+}
+
+export interface EmailResult {
+  id: string;
+  sent: boolean;
+  channel: 'mailchannels' | 'queued';
+  error?: string;
+}
+
+// ── Email Templates ──
+
+export function getAlertEmailTemplate(title: string, message: string, severity: string, actionUrl?: string): { html: string; text: string } {
+  const severityColor: Record<string, string> = {
+    critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#2563EB', info: '#6B7280',
+  };
+  const color = severityColor[severity] || '#6B7280';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 24px">
+    <div style="background:#1F2937;border-radius:12px;padding:32px;border-left:4px solid ${color}">
+      <div style="display:flex;align-items:center;margin-bottom:16px">
+        <span style="background:${color};color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;text-transform:uppercase">${severity}</span>
+      </div>
+      <h1 style="color:#F9FAFB;font-size:20px;margin:0 0 12px">${title}</h1>
+      <p style="color:#D1D5DB;font-size:14px;line-height:1.6;margin:0 0 24px">${message}</p>
+      ${actionUrl ? `<a href="${actionUrl}" style="display:inline-block;background:#3B82F6;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500">View Details</a>` : ''}
+    </div>
+    <p style="color:#6B7280;font-size:12px;text-align:center;margin-top:24px">Atheon\u2122 Enterprise Intelligence Platform</p>
+  </div>
+</body>
+</html>`;
+
+  const text = `[${severity.toUpperCase()}] ${title}\n\n${message}${actionUrl ? `\n\nView details: ${actionUrl}` : ''}\n\n-- Atheon Enterprise Intelligence Platform`;
+
+  return { html, text };
+}
+
+export function getApprovalEmailTemplate(catalystName: string, action: string, confidence: number, reasoning: string, approvalUrl: string): { html: string; text: string } {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 24px">
+    <div style="background:#1F2937;border-radius:12px;padding:32px;border-left:4px solid #F59E0B">
+      <span style="background:#F59E0B;color:#000;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600">APPROVAL REQUIRED</span>
+      <h1 style="color:#F9FAFB;font-size:20px;margin:16px 0 12px">${catalystName}: ${action}</h1>
+      <div style="background:#111827;border-radius:8px;padding:16px;margin:16px 0">
+        <p style="color:#9CA3AF;font-size:12px;margin:0 0 4px">Confidence Score</p>
+        <p style="color:#F9FAFB;font-size:24px;font-weight:700;margin:0">${(confidence * 100).toFixed(0)}%</p>
+      </div>
+      <p style="color:#D1D5DB;font-size:14px;line-height:1.6;margin:0 0 24px">${reasoning}</p>
+      <div>
+        <a href="${approvalUrl}?action=approve" style="display:inline-block;background:#10B981;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;margin-right:12px">Approve</a>
+        <a href="${approvalUrl}?action=reject" style="display:inline-block;background:#EF4444;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500">Reject</a>
+      </div>
+    </div>
+    <p style="color:#6B7280;font-size:12px;text-align:center;margin-top:24px">Atheon\u2122 Enterprise Intelligence Platform</p>
+  </div>
+</body>
+</html>`;
+
+  const text = `[APPROVAL REQUIRED] ${catalystName}: ${action}\n\nConfidence: ${(confidence * 100).toFixed(0)}%\n\n${reasoning}\n\nApprove: ${approvalUrl}?action=approve\nReject: ${approvalUrl}?action=reject\n\n-- Atheon Enterprise Intelligence Platform`;
+
+  return { html, text };
+}
+
+export function getEscalationEmailTemplate(catalystName: string, action: string, escalationLevel: string, reason: string, actionUrl: string): { html: string; text: string } {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 24px">
+    <div style="background:#1F2937;border-radius:12px;padding:32px;border-left:4px solid #DC2626">
+      <span style="background:#DC2626;color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600">ESCALATION: ${escalationLevel.toUpperCase()}</span>
+      <h1 style="color:#F9FAFB;font-size:20px;margin:16px 0 12px">${catalystName}: ${action}</h1>
+      <p style="color:#D1D5DB;font-size:14px;line-height:1.6;margin:0 0 24px">${reason}</p>
+      <a href="${actionUrl}" style="display:inline-block;background:#3B82F6;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500">Review Action</a>
+    </div>
+    <p style="color:#6B7280;font-size:12px;text-align:center;margin-top:24px">Atheon\u2122 Enterprise Intelligence Platform</p>
+  </div>
+</body>
+</html>`;
+
+  const text = `[ESCALATION: ${escalationLevel.toUpperCase()}] ${catalystName}: ${action}\n\n${reason}\n\nReview: ${actionUrl}\n\n-- Atheon Enterprise Intelligence Platform`;
+
+  return { html, text };
+}
+
+// ── Send Email via MailChannels (Cloudflare Workers native) ──
+
+export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
+  const id = crypto.randomUUID();
+
+  try {
+    // MailChannels API — free for Cloudflare Workers
+    // https://blog.cloudflare.com/sending-email-from-workers-with-mailchannels/
+    const resp = await fetch('https://api.mailchannels.net/tx/v1/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        personalizations: payload.to.map(email => ({
+          to: [{ email }],
+        })),
+        from: {
+          email: payload.from || 'notifications@atheon.vantax.co.za',
+          name: 'Atheon Platform',
+        },
+        reply_to: payload.replyTo ? { email: payload.replyTo } : undefined,
+        subject: payload.subject,
+        content: [
+          ...(payload.textBody ? [{ type: 'text/plain', value: payload.textBody }] : []),
+          { type: 'text/html', value: payload.htmlBody },
+        ],
+      }),
+    });
+
+    if (resp.ok || resp.status === 202) {
+      return { id, sent: true, channel: 'mailchannels' };
+    }
+
+    // MailChannels may not be enabled — queue for external pickup
+    const errorText = await resp.text().catch(() => '');
+    console.error(`MailChannels error (${resp.status}):`, errorText);
+    return { id, sent: false, channel: 'queued', error: `MailChannels HTTP ${resp.status}` };
+  } catch (err) {
+    console.error('Email send error:', err);
+    return { id, sent: false, channel: 'queued', error: (err as Error).message };
+  }
+}
+
+// ── Queue email in D1 for external pickup (fallback) ──
+
+export async function queueEmail(db: D1Database, payload: EmailPayload): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.prepare(
+    'INSERT INTO email_queue (id, tenant_id, recipients, subject, html_body, text_body, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+  ).bind(id, payload.tenantId, JSON.stringify(payload.to), payload.subject, payload.htmlBody, payload.textBody || '', 'pending').run();
+  return id;
+}
+
+// ── Send or queue email ──
+
+export async function sendOrQueueEmail(db: D1Database, payload: EmailPayload): Promise<EmailResult> {
+  // Try to send directly
+  const result = await sendEmail(payload);
+
+  if (!result.sent) {
+    // Queue for later delivery
+    const queueId = await queueEmail(db, payload);
+    return { id: queueId, sent: false, channel: 'queued', error: result.error };
+  }
+
+  // Log successful send
+  await db.prepare(
+    'INSERT INTO email_queue (id, tenant_id, recipients, subject, html_body, text_body, status, sent_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))'
+  ).bind(result.id, payload.tenantId, JSON.stringify(payload.to), payload.subject, payload.htmlBody, payload.textBody || '', 'sent').run().catch(() => {});
+
+  return result;
+}

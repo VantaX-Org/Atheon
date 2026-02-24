@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
+import type { AuthContext } from '../types';
 import { getERPAdapter, listERPAdapters } from '../services/erp-connector';
 import type { ERPCredentials } from '../services/erp-connector';
+import { encrypt, decrypt, isEncrypted, encryptFields, decryptFields } from '../services/encryption';
 
-const erp = new Hono<{ Bindings: Env }>();
+const erp = new Hono<AppBindings>();
 
 // GET /api/erp/adapters
 erp.get('/adapters', async (c) => {
@@ -58,7 +60,8 @@ erp.get('/adapters/:id', async (c) => {
 
 // GET /api/erp/connections?tenant_id=
 erp.get('/connections', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
 
   const results = await c.env.DB.prepare(
     'SELECT ec.*, ea.name as adapter_name, ea.system as adapter_system, ea.protocol as adapter_protocol FROM erp_connections ec JOIN erp_adapters ea ON ec.adapter_id = ea.id WHERE ec.tenant_id = ? ORDER BY ec.name ASC'
@@ -162,14 +165,22 @@ erp.post('/sync/:connection_id', async (c) => {
   const adapter = getERPAdapter(conn.adapter_system as string);
 
   if (adapter && config.access_token) {
+    // Decrypt tokens for use
+    const decryptedToken = isEncrypted(config.access_token)
+      ? await decrypt(config.access_token, c.env.JWT_SECRET)
+      : config.access_token;
+    const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
+      ? await decrypt(config.client_secret, c.env.JWT_SECRET)
+      : config.client_secret || '';
+
     // Real sync via ERP adapter
     const credentials: ERPCredentials = {
       clientId: config.client_id || '',
-      clientSecret: config.client_secret || '',
+      clientSecret: decryptedSecret,
       baseUrl: config.base_url || '',
     };
     const entities = config.sync_entities || ['accounts', 'contacts'];
-    const result = await adapter.syncData(credentials, config.access_token, entities);
+    const result = await adapter.syncData(credentials, decryptedToken, entities);
 
     await c.env.DB.prepare(
       'UPDATE erp_connections SET last_sync = datetime(\'now\'), records_synced = records_synced + ?, status = ? WHERE id = ?'
@@ -222,13 +233,21 @@ erp.post('/connections/:id/test', async (c) => {
     return c.json({ connected: false, message: 'No access token configured. Complete OAuth flow first.' });
   }
 
+  // Decrypt tokens for use
+  const decryptedToken = isEncrypted(config.access_token)
+    ? await decrypt(config.access_token, c.env.JWT_SECRET)
+    : config.access_token;
+  const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
+    ? await decrypt(config.client_secret, c.env.JWT_SECRET)
+    : config.client_secret || '';
+
   const credentials: ERPCredentials = {
     clientId: config.client_id || '',
-    clientSecret: config.client_secret || '',
+    clientSecret: decryptedSecret,
     baseUrl: config.base_url || '',
   };
 
-  const result = await adapter.testConnection(credentials, config.access_token);
+  const result = await adapter.testConnection(credentials, decryptedToken);
 
   // Update connection status
   await c.env.DB.prepare(
@@ -272,17 +291,18 @@ erp.post('/oauth/authorize', async (c) => {
     system: conn.adapter_system,
   }), { expirationTtl: 600 });
 
-  // Store credentials in connection config
-  await c.env.DB.prepare(
-    'UPDATE erp_connections SET config = ?, status = ? WHERE id = ?'
-  ).bind(JSON.stringify({
+  // Store credentials in connection config (encrypted)
+  const encryptedConfig = {
     ...JSON.parse(conn.config as string || '{}'),
     client_id: body.client_id,
-    client_secret: body.client_secret,
+    client_secret: await encrypt(body.client_secret, c.env.JWT_SECRET),
     base_url: body.base_url,
     auth_url: body.auth_url,
     token_url: body.token_url,
-  }), 'authorizing', body.connection_id).run();
+  };
+  await c.env.DB.prepare(
+    'UPDATE erp_connections SET config = ?, status = ? WHERE id = ?'
+  ).bind(JSON.stringify(encryptedConfig), 'authorizing', body.connection_id).run();
 
   return c.json({ authUrl, state });
 });
@@ -308,15 +328,18 @@ erp.post('/oauth/callback', async (c) => {
     const conn = await c.env.DB.prepare('SELECT config FROM erp_connections WHERE id = ?').bind(connectionId).first();
     const existingConfig = JSON.parse(conn?.config as string || '{}');
 
-    await c.env.DB.prepare(
-      'UPDATE erp_connections SET config = ?, status = ?, connected_at = datetime(\'now\') WHERE id = ?'
-    ).bind(JSON.stringify({
+    // Encrypt tokens before storing
+    const encryptedTokenConfig = {
       ...existingConfig,
-      access_token: tokenResponse.access_token,
-      refresh_token: tokenResponse.refresh_token,
+      access_token: await encrypt(tokenResponse.access_token, c.env.JWT_SECRET),
+      refresh_token: tokenResponse.refresh_token ? await encrypt(tokenResponse.refresh_token, c.env.JWT_SECRET) : undefined,
       token_type: tokenResponse.token_type,
       token_expires_at: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
-    }), 'connected', connectionId).run();
+    };
+
+    await c.env.DB.prepare(
+      'UPDATE erp_connections SET config = ?, status = ?, connected_at = datetime(\'now\') WHERE id = ?'
+    ).bind(JSON.stringify(encryptedTokenConfig), 'connected', connectionId).run();
 
     // Clean up state
     await c.env.CACHE.delete(`oauth_state:${body.state}`);

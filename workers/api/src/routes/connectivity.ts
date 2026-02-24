@@ -3,7 +3,8 @@
  */
 
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
+import type { AuthContext } from '../types';
 import {
   handleMCPListTools,
   handleMCPListResources,
@@ -14,7 +15,7 @@ import {
 } from '../services/mcp-server';
 import type { MCPContext, A2AMessage } from '../services/mcp-server';
 
-const connectivity = new Hono<{ Bindings: Env }>();
+const connectivity = new Hono<AppBindings>();
 
 // ── MCP Protocol Endpoints ──
 
@@ -25,7 +26,8 @@ connectivity.get('/mcp/tools', (c) => {
 
 // GET /api/connectivity/mcp/resources - List available MCP resources
 connectivity.get('/mcp/resources', (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
   return c.json(handleMCPListResources(tenantId));
 });
 
@@ -35,8 +37,9 @@ connectivity.post('/mcp/tools/call', async (c) => {
 
   if (!body.tool) return c.json({ error: 'Tool name is required' }, 400);
 
+  const auth = c.get('auth') as AuthContext | undefined;
   const context: MCPContext = {
-    tenantId: body.tenant_id || 'vantax',
+    tenantId: auth?.tenantId || body.tenant_id || 'vantax',
     db: c.env.DB,
     ai: c.env.AI,
   };
@@ -51,8 +54,9 @@ connectivity.post('/mcp/resources/read', async (c) => {
 
   if (!body.uri) return c.json({ error: 'Resource URI is required' }, 400);
 
+  const auth = c.get('auth') as AuthContext | undefined;
   const context: MCPContext = {
-    tenantId: body.tenant_id || 'vantax',
+    tenantId: auth?.tenantId || body.tenant_id || 'vantax',
     db: c.env.DB,
     ai: c.env.AI,
   };
@@ -101,8 +105,9 @@ connectivity.post('/a2a/messages', async (c) => {
     timestamp: new Date().toISOString(),
   };
 
+  const auth = c.get('auth') as AuthContext | undefined;
   const context: MCPContext = {
-    tenantId: body.tenant_id || 'vantax',
+    tenantId: auth?.tenantId || body.tenant_id || 'vantax',
     db: c.env.DB,
     ai: c.env.AI,
   };
@@ -124,7 +129,8 @@ connectivity.post('/a2a/messages', async (c) => {
 // ── Connection Status (synthesized from ERP + agents) ──
 
 connectivity.get('/status', async (c) => {
-  const tenantId = c.req.query('tenant_id') || 'vantax';
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || c.req.query('tenant_id') || 'vantax';
 
   const [erpConnections, agentDeployments, recentA2A] = await Promise.all([
     c.env.DB.prepare(

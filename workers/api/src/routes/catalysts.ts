@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { AppBindings } from '../types';
 import { executeTask, approveAction, rejectAction } from '../services/catalyst-engine';
 
-const catalysts = new Hono<{ Bindings: Env }>();
+const catalysts = new Hono<AppBindings>();
 
 // GET /api/catalysts/clusters?tenant_id=
 catalysts.get('/clusters', async (c) => {
