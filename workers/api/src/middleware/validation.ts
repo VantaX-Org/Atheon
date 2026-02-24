@@ -126,13 +126,7 @@ export function auditEnrichment() {
     const country = c.req.header('CF-IPCountry') || 'unknown';
     const requestId = crypto.randomUUID();
 
-    // Set headers for downstream use
-    c.req.raw.headers.set('X-Request-ID', requestId);
-    c.req.raw.headers.set('X-Client-IP', ipAddress);
-    c.req.raw.headers.set('X-Client-UA', userAgent);
-    c.req.raw.headers.set('X-Client-Country', country);
-
-    // Add response headers
+    // Add response headers (don't modify immutable request headers in Workers)
     c.header('X-Request-ID', requestId);
 
     const start = Date.now();
@@ -142,12 +136,8 @@ export function auditEnrichment() {
     // Log to audit for mutation operations
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {
       try {
-        const authUser = c.req.header('X-Auth-User');
-        const tenantId = c.req.header('X-Auth-Tenant-ID') || c.req.query('tenant_id') || 'system';
-        let userId: string | null = null;
-        if (authUser) {
-          try { userId = JSON.parse(authUser).sub; } catch { /* ignore */ }
-        }
+        const tenantId = c.req.query('tenant_id') || 'system';
+        const userId: string | null = null;
 
         await c.env.DB.prepare(
           'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
