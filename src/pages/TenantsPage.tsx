@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { Tenant } from "@/lib/api";
+import type { Tenant, IAMUser } from "@/lib/api";
 import {
   Building2, Cloud, Server, GitBranch, Users, Bot, Shield,
   ChevronDown, ChevronUp, CheckCircle, XCircle, Plus, Layers, Loader2, X
@@ -38,6 +38,28 @@ export function TenantsPage() {
   const [onboardForm, setOnboardForm] = useState({ name: '', slug: '', industry: 'general', plan: 'starter', deploymentModel: 'saas', region: 'af-south-1' });
   const [onboarding, setOnboarding] = useState(false);
 
+  // Manage Users modal state
+  const [showManageUsers, setShowManageUsers] = useState<string | null>(null);
+  const [tenantUsers, setTenantUsers] = useState<IAMUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [addUserForm, setAddUserForm] = useState({ email: '', name: '', role: 'analyst' });
+  const [addingUser, setAddingUser] = useState(false);
+
+  // Deploy Catalyst modal state
+  const [showDeployCatalyst, setShowDeployCatalyst] = useState<string | null>(null);
+  const [catalystForm, setCatalystForm] = useState({ name: '', domain: 'finance', autonomy_tier: 'assisted' });
+  const [deployingCatalyst, setDeployingCatalyst] = useState(false);
+
+  // Edit Entitlements modal state
+  const [showEditEntitlements, setShowEditEntitlements] = useState<string | null>(null);
+  const [entitlementForm, setEntitlementForm] = useState({
+    maxUsers: 10, maxAgents: 5, ssoEnabled: false, apiAccess: false, customBranding: false,
+    dataRetentionDays: 90, autonomyTiers: ['read-only'] as string[], llmTiers: ['tier-1'] as string[],
+    features: [] as string[],
+  });
+  const [savingEntitlements, setSavingEntitlements] = useState(false);
+
   const handleOnboard = async () => {
     if (!onboardForm.name.trim() || !onboardForm.slug.trim()) return;
     setOnboarding(true);
@@ -49,6 +71,83 @@ export function TenantsPage() {
       setOnboardForm({ name: '', slug: '', industry: 'general', plan: 'starter', deploymentModel: 'saas', region: 'af-south-1' });
     } catch { /* silent */ }
     setOnboarding(false);
+  };
+
+  // Manage Users handlers
+  const openManageUsers = async (tenantId: string) => {
+    setShowManageUsers(tenantId);
+    setLoadingUsers(true);
+    try {
+      const res = await api.iam.users(tenantId);
+      setTenantUsers(res.users);
+    } catch { setTenantUsers([]); }
+    setLoadingUsers(false);
+  };
+
+  const handleAddUser = async () => {
+    if (!addUserForm.email.trim() || !addUserForm.name.trim() || addingUser || !showManageUsers) return;
+    setAddingUser(true);
+    try {
+      await api.iam.createUser({
+        tenant_id: showManageUsers,
+        email: addUserForm.email.trim(),
+        name: addUserForm.name.trim(),
+        role: addUserForm.role,
+      });
+      const res = await api.iam.users(showManageUsers);
+      setTenantUsers(res.users);
+      setAddUserForm({ email: '', name: '', role: 'analyst' });
+      setShowAddUser(false);
+    } catch { /* silent */ }
+    setAddingUser(false);
+  };
+
+  // Deploy Catalyst handler
+  const handleDeployCatalyst = async () => {
+    if (!catalystForm.name.trim() || deployingCatalyst || !showDeployCatalyst) return;
+    setDeployingCatalyst(true);
+    try {
+      await api.catalysts.createCluster({
+        tenant_id: showDeployCatalyst,
+        name: catalystForm.name.trim(),
+        domain: catalystForm.domain,
+        autonomy_tier: catalystForm.autonomy_tier,
+      });
+      setShowDeployCatalyst(null);
+      setCatalystForm({ name: '', domain: 'finance', autonomy_tier: 'assisted' });
+      // Refresh tenants to reflect new cluster
+      const res = await api.tenants.list();
+      setTenants(res.tenants);
+    } catch { /* silent */ }
+    setDeployingCatalyst(false);
+  };
+
+  // Edit Entitlements handler
+  const openEditEntitlements = (tenant: Tenant) => {
+    setShowEditEntitlements(tenant.id);
+    setEntitlementForm({
+      maxUsers: tenant.entitlements.maxUsers,
+      maxAgents: tenant.entitlements.maxAgents,
+      ssoEnabled: tenant.entitlements.ssoEnabled,
+      apiAccess: tenant.entitlements.apiAccess,
+      customBranding: tenant.entitlements.customBranding,
+      dataRetentionDays: tenant.entitlements.dataRetentionDays,
+      autonomyTiers: [...tenant.entitlements.autonomyTiers],
+      llmTiers: [...tenant.entitlements.llmTiers],
+      features: [...tenant.entitlements.features],
+    });
+  };
+
+  const handleSaveEntitlements = async () => {
+    if (savingEntitlements || !showEditEntitlements) return;
+    setSavingEntitlements(true);
+    try {
+      await api.tenants.updateEntitlements(showEditEntitlements, entitlementForm);
+      const res = await api.tenants.list();
+      setTenants(res.tenants);
+      setShowEditEntitlements(null);
+    } catch { /* silent */ }
+    setSavingEntitlements(false);
   };
 
   useEffect(() => {
@@ -270,9 +369,9 @@ export function TenantsPage() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button variant="secondary" size="sm"><Users size={12} /> Manage Users</Button>
-                      <Button variant="secondary" size="sm"><Bot size={12} /> Deploy Catalyst</Button>
-                      <Button variant="secondary" size="sm"><Layers size={12} /> Edit Entitlements</Button>
+                      <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openManageUsers(tenant.id); }}><Users size={12} /> Manage Users</Button>
+                      <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowDeployCatalyst(tenant.id); }}><Bot size={12} /> Deploy Catalyst</Button>
+                      <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openEditEntitlements(tenant); }}><Layers size={12} /> Edit Entitlements</Button>
                     </div>
                   </div>
                 )}
@@ -362,6 +461,161 @@ export function TenantsPage() {
             })}
           </div>
         </TabPanel>
+      )}
+
+      {/* Manage Users Modal */}
+      {showManageUsers && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Manage Users</h3>
+              <button onClick={() => { setShowManageUsers(null); setShowAddUser(false); }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            {loadingUsers ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-cyan-500 animate-spin" /></div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {tenantUsers.length === 0 && <p className="text-sm text-gray-400 py-4 text-center">No users found for this tenant.</p>}
+                  {tenantUsers.map((u) => (
+                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{u.name}</p>
+                        <p className="text-xs text-gray-500">{u.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={u.status === 'active' ? 'success' : 'default'} size="sm">{u.status}</Badge>
+                        <Badge variant="outline" size="sm">{u.role}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {showAddUser ? (
+                  <div className="space-y-3 p-4 rounded-lg bg-gray-50 border border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-900">Add New User</h4>
+                    <div><label className="text-xs text-gray-500">Email</label><input className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={addUserForm.email} onChange={e => setAddUserForm(p => ({ ...p, email: e.target.value }))} placeholder="user@company.com" /></div>
+                    <div><label className="text-xs text-gray-500">Full Name</label><input className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={addUserForm.name} onChange={e => setAddUserForm(p => ({ ...p, name: e.target.value }))} placeholder="John Smith" /></div>
+                    <div><label className="text-xs text-gray-500">Role</label><select className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={addUserForm.role} onChange={e => setAddUserForm(p => ({ ...p, role: e.target.value }))}><option value="admin">Admin</option><option value="executive">Executive</option><option value="manager">Manager</option><option value="analyst">Analyst</option><option value="operator">Operator</option></select></div>
+                    <div className="flex gap-3">
+                      <Button variant="secondary" size="sm" onClick={() => setShowAddUser(false)}>Cancel</Button>
+                      <Button variant="primary" size="sm" onClick={handleAddUser} disabled={!addUserForm.email.trim() || !addUserForm.name.trim() || addingUser}>
+                        {addingUser ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add User
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="primary" size="sm" onClick={() => setShowAddUser(true)}><Plus size={14} /> Add User</Button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Deploy Catalyst Modal */}
+      {showDeployCatalyst && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Deploy Catalyst Cluster</h3>
+              <button onClick={() => setShowDeployCatalyst(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div><label className="text-xs text-gray-500">Cluster Name</label><input className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={catalystForm.name} onChange={e => setCatalystForm(p => ({ ...p, name: e.target.value }))} placeholder="finance-catalyst-01" /></div>
+              <div><label className="text-xs text-gray-500">Domain</label><select className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={catalystForm.domain} onChange={e => setCatalystForm(p => ({ ...p, domain: e.target.value }))}><option value="finance">Finance</option><option value="procurement">Procurement</option><option value="supply-chain">Supply Chain</option><option value="hr">Human Resources</option><option value="sales">Sales</option><option value="operations">Operations</option></select></div>
+              <div><label className="text-xs text-gray-500">Autonomy Tier</label><select className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={catalystForm.autonomy_tier} onChange={e => setCatalystForm(p => ({ ...p, autonomy_tier: e.target.value }))}><option value="read-only">Read-Only (Monitor)</option><option value="assisted">Assisted (Suggest)</option><option value="supervised">Supervised (Act with approval)</option><option value="autonomous">Autonomous (Full execution)</option></select></div>
+            </div>
+            <p className="text-[10px] text-gray-400">The Catalyst cluster will be provisioned and deployed according to the tenant&apos;s deployment model.</p>
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeployCatalyst(null)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleDeployCatalyst} disabled={!catalystForm.name.trim() || deployingCatalyst}>
+                {deployingCatalyst ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />} Deploy
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Entitlements Modal */}
+      {showEditEntitlements && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Entitlements</h3>
+              <button onClick={() => setShowEditEntitlements(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="text-xs text-gray-500">Max Users</label><input type="number" min={1} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={String(entitlementForm.maxUsers)} onChange={e => setEntitlementForm(p => ({ ...p, maxUsers: Math.max(1, parseInt(e.target.value || '1', 10) || 1) }))} /></div>
+              <div><label className="text-xs text-gray-500">Max Agents</label><input type="number" min={1} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={String(entitlementForm.maxAgents)} onChange={e => setEntitlementForm(p => ({ ...p, maxAgents: Math.max(1, parseInt(e.target.value || '1', 10) || 1) }))} /></div>
+              <div><label className="text-xs text-gray-500">Data Retention (days)</label><input type="number" min={30} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm" value={String(entitlementForm.dataRetentionDays)} onChange={e => setEntitlementForm(p => ({ ...p, dataRetentionDays: Math.max(30, parseInt(e.target.value || '90', 10) || 90) }))} /></div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-gray-700">Feature Flags</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { key: 'ssoEnabled' as const, label: 'SSO Enabled' },
+                  { key: 'apiAccess' as const, label: 'API Access' },
+                  { key: 'customBranding' as const, label: 'Custom Branding' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200 cursor-pointer">
+                    <input type="checkbox" checked={entitlementForm[key]} onChange={() => setEntitlementForm(p => ({ ...p, [key]: !p[key] }))} className="rounded border-gray-300" />
+                    <span className="text-xs text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-700">Autonomy Tiers</h4>
+              <div className="flex flex-wrap gap-2">
+                {['read-only', 'assisted', 'supervised', 'autonomous'].map(tier => (
+                  <button
+                    key={tier}
+                    onClick={() => setEntitlementForm(p => ({
+                      ...p,
+                      autonomyTiers: p.autonomyTiers.includes(tier)
+                        ? p.autonomyTiers.filter(t => t !== tier)
+                        : [...p.autonomyTiers, tier],
+                    }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${entitlementForm.autonomyTiers.includes(tier) ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+                  >
+                    {tier}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-700">LLM Tiers</h4>
+              <div className="flex flex-wrap gap-2">
+                {['tier-1', 'tier-2', 'tier-3', 'custom-lora'].map(tier => (
+                  <button
+                    key={tier}
+                    onClick={() => setEntitlementForm(p => ({
+                      ...p,
+                      llmTiers: p.llmTiers.includes(tier)
+                        ? p.llmTiers.filter(t => t !== tier)
+                        : [...p.llmTiers, tier],
+                    }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${entitlementForm.llmTiers.includes(tier) ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+                  >
+                    {tier}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowEditEntitlements(null)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleSaveEntitlements} disabled={savingEntitlements}>
+                {savingEntitlements ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} Save Entitlements
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
