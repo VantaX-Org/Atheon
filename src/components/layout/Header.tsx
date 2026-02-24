@@ -1,5 +1,5 @@
 import { useAppStore } from "@/stores/appStore";
-import { Bell, ChevronDown, Menu, LogOut, MessageCircle, Settings, X, Check, Sun, Moon } from "lucide-react";
+import { Bell, ChevronDown, Menu, LogOut, MessageCircle, Settings, X, Check, Sun, Moon, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, setToken } from "@/lib/api";
 import type { NotificationItem } from "@/lib/api";
@@ -120,7 +120,7 @@ export function Header() {
       className="fixed top-0 right-0 z-30 h-16 flex items-center justify-between px-4 sm:px-6"
       style={{ left: '0px', background: 'rgba(26, 26, 46, 0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
     >
-      {/* Left: hamburger (mobile) + spacer (desktop) */}
+      {/* Left: hamburger (mobile) + company name */}
       <div className="flex items-center gap-3 flex-1">
         {/* Mobile hamburger */}
         <button
@@ -132,6 +132,14 @@ export function Header() {
 
         {/* Spacer for desktop sidebar (always 16 = w-16 sidebar) */}
         <div className="hidden lg:block flex-shrink-0 w-10" />
+
+        {/* Company / Tenant name */}
+        {user?.tenantName && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm">
+            <Building2 size={14} className="text-amber-400 flex-shrink-0" />
+            <span className="text-xs font-medium text-gray-300 truncate max-w-[180px]">{user.tenantName}</span>
+          </div>
+        )}
       </div>
 
       {/* Right: action icons + user — compact like reference */}

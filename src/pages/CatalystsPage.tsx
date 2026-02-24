@@ -12,6 +12,7 @@ import {
   Play, X, FileText, Plus
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
+import { useAppStore } from "@/stores/appStore";
 
 const tierConfig: Record<AutonomyTier, { label: string; icon: typeof Eye; color: string }> = {
   'read-only': { label: 'Read-Only', icon: Eye, color: 'text-amber-400' },
@@ -37,6 +38,8 @@ const statusBadgeVariant = (status: string): 'success' | 'warning' | 'danger' | 
 };
 
 export function CatalystsPage() {
+  const user = useAppStore((s) => s.user);
+  const isAdmin = user?.role === 'admin' || user?.role === 'executive';
   const { activeTab, setActiveTab } = useTabState('clusters');
   const [expandedAction, setExpandedAction] = useState<string | null>(null);
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
@@ -156,7 +159,7 @@ export function CatalystsPage() {
     { id: 'clusters', label: 'Catalyst Clusters', icon: <Bot size={14} /> },
     { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
     { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
-    { id: 'governance', label: 'Governance', icon: <Shield size={14} /> },
+    ...(isAdmin ? [{ id: 'governance', label: 'Governance', icon: <Shield size={14} /> }] : []),
   ];
 
   if (loading) {
@@ -247,7 +250,7 @@ export function CatalystsPage() {
               </div>
             )}
 
-            {(action.status === 'pending' || action.status === 'exception') && (
+            {isAdmin && (action.status === 'pending' || action.status === 'exception') && (
               <div className="flex gap-2">
                 <Button variant="success" size="sm" onClick={(e) => { e.stopPropagation(); handleApprove(action.id); }} disabled={updatingAction === action.id}>
                   {updatingAction === action.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Approve
@@ -275,14 +278,16 @@ export function CatalystsPage() {
             <p className="text-sm text-gray-500">Autonomous Execution - Intelligent Workers</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowManualExec(true)}>
-            <Upload size={14} /> Manual Execute
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => setShowDeployCatalyst(true)}>
-            <Plus size={14} /> Deploy Catalyst
-          </Button>
-        </div>
+        {isAdmin && (
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowManualExec(true)}>
+              <Upload size={14} /> Manual Execute
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setShowDeployCatalyst(true)}>
+              <Plus size={14} /> Deploy Catalyst
+            </Button>
+          </div>
+        )}
       </div>
 
       {exceptionCount > 0 && (

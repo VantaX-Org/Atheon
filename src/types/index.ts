@@ -13,6 +13,7 @@ export interface User {
   name: string;
   role: UserRole;
   tenantId: string;
+  tenantName?: string;
   avatarUrl?: string;
   permissions: string[];
 }

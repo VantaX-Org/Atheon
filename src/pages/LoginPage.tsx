@@ -21,7 +21,7 @@ export function LoginPage() {
   const setUser = useAppStore((s) => s.setUser);
   const existingUser = useAppStore((s) => s.user);
 
-  const handleAuthResult = (res: { token: string; user: { id: string; email: string; name: string; role: string; tenantId: string; permissions: string[] } }) => {
+  const handleAuthResult = (res: { token: string; user: { id: string; email: string; name: string; role: string; tenantId: string; tenantName?: string; permissions: string[] } }) => {
     setToken(res.token);
     setUser({
       id: res.user.id,
@@ -29,6 +29,7 @@ export function LoginPage() {
       name: res.user.name,
       role: res.user.role as 'admin' | 'executive' | 'manager' | 'analyst' | 'operator',
       tenantId: res.user.tenantId,
+      tenantName: res.user.tenantName,
       permissions: res.user.permissions,
     });
     navigate('/');

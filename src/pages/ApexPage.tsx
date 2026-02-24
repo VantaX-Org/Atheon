@@ -65,7 +65,7 @@ export function ApexPage() {
     load();
   }, []);
 
-  const overallScore = health?.overall ?? 78;
+  const overallScore = health?.overall ?? 0;
   const dimensions = health?.dimensions
     ? Object.entries(health.dimensions).map(([key, val]) => ({
         key, name: key.charAt(0).toUpperCase() + key.slice(1),

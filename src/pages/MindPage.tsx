@@ -5,8 +5,11 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import type { MindModels, MindStats } from "@/lib/api";
 import { Brain, Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2 } from "lucide-react";
+import { useAppStore } from "@/stores/appStore";
 
 export function MindPage() {
+  const user = useAppStore((s) => s.user);
+  const isAdmin = user?.role === 'admin' || user?.role === 'executive';
   const [models, setModels] = useState<MindModels | null>(null);
   const [stats, setStats] = useState<MindStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,10 +72,10 @@ export function MindPage() {
         </div>
       </div>
 
-      {/* Model Tiers */}
+      {/* Model Tiers — admin sees full detail, users see summary */}
       <div>
         <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Layers className="w-4 h-4 text-amber-400" /> Inference Tiers
+          <Layers className="w-4 h-4 text-amber-400" /> {isAdmin ? 'Inference Tiers' : 'AI Models'}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {modelTiers.map((tier) => (
@@ -82,14 +85,18 @@ export function MindPage() {
                 <Badge variant="outline">{Math.round((tier.usage / totalUsage) * 100)}% traffic</Badge>
               </div>
               <div className="space-y-2 mb-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Model</span>
-                  <span className="text-xs text-gray-400 font-mono">{tier.model}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Context</span>
-                  <span className="text-xs text-gray-400">{tier.context}</span>
-                </div>
+                {isAdmin && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Model</span>
+                    <span className="text-xs text-gray-400 font-mono">{tier.model}</span>
+                  </div>
+                )}
+                {isAdmin && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Context</span>
+                    <span className="text-xs text-gray-400">{tier.context}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-400">Latency</span>
                   <span className="text-xs text-gray-400">{tier.latency}</span>
@@ -106,8 +113,8 @@ export function MindPage() {
         </div>
       </div>
 
-      {/* Training Pipeline */}
-      <div>
+      {/* Training Pipeline — admin only */}
+      {isAdmin && <div>
         <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
           <Cpu className="w-4 h-4 text-amber-400" /> Training Pipeline
         </h2>
@@ -139,7 +146,7 @@ export function MindPage() {
             ))}
           </div>
         </Card>
-      </div>
+      </div>}
 
       {/* Evaluation Metrics */}
       <div>
@@ -173,8 +180,8 @@ export function MindPage() {
         </div>
       </div>
 
-      {/* Architecture Note */}
-      <Card className="border-amber-500/20">
+      {/* Architecture Note — admin only */}
+      {isAdmin && <Card className="border-amber-500/20">
         <div className="flex items-start gap-3">
           <Database className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
           <div>
@@ -187,7 +194,7 @@ export function MindPage() {
             </p>
           </div>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
