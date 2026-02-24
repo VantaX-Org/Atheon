@@ -15,14 +15,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  user: {
-    id: '1',
-    email: 'admin@vantax.co.za',
-    name: 'Reshigan',
-    role: 'admin',
-    tenantId: 'vantax',
-    permissions: ['*'],
-  },
+  user: null,
   currentLayer: 'apex',
   sidebarOpen: true,
   industry: 'general',

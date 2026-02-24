@@ -1,5 +1,7 @@
 import { useAppStore } from "@/stores/appStore";
-import { Search, Bell, ChevronDown, Menu } from "lucide-react";
+import { Search, Bell, ChevronDown, Menu, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { setToken } from "@/lib/api";
 import type { IndustryVertical } from "@/types";
 
 const industries: { value: IndustryVertical; label: string }[] = [
@@ -10,7 +12,14 @@ const industries: { value: IndustryVertical; label: string }[] = [
 ];
 
 export function Header() {
-  const { sidebarOpen, user, industry, setIndustry, setMobileSidebarOpen } = useAppStore();
+  const { sidebarOpen, user, industry, setIndustry, setMobileSidebarOpen, setUser } = useAppStore();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    setToken(null);
+    setUser(null);
+    navigate('/login', { replace: true });
+  };
 
   return (
     <header
@@ -78,6 +87,13 @@ export function Header() {
             <p className="text-sm font-medium text-gray-800">{user?.name || 'Admin'}</p>
             <p className="text-[10px] text-gray-500">{user?.role || 'admin'}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </header>

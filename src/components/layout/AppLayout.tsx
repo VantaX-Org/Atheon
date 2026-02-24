@@ -1,11 +1,56 @@
-import { Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
+import { api, getToken, setToken } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 export function AppLayout() {
-  const { sidebarOpen } = useAppStore();
+  const { sidebarOpen, user, setUser } = useAppStore();
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setChecking(false);
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (user) {
+      setChecking(false);
+      return;
+    }
+    // Validate token and restore session
+    api.auth.me()
+      .then((me) => {
+        setUser({
+          id: me.id,
+          email: me.email,
+          name: me.name,
+          role: me.role as 'admin' | 'executive' | 'manager' | 'analyst' | 'operator',
+          tenantId: me.tenantId,
+          permissions: me.permissions,
+        });
+      })
+      .catch(() => {
+        setToken(null);
+        navigate('/login', { replace: true });
+      })
+      .finally(() => setChecking(false));
+  }, [user, navigate, setUser]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -14,7 +59,6 @@ export function AppLayout() {
       <main
         className={cn(
           'pt-16 min-h-screen transition-all duration-300',
-          // No left padding on mobile (sidebar is overlay), padding on desktop
           'pl-0 lg:pl-64',
           !sidebarOpen && 'lg:pl-16'
         )}

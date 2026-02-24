@@ -67,6 +67,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ provider }),
       }),
+    ssoAuthorize: (provider: string, tenantSlug?: string) =>
+      request<{ redirect_url: string }>('/api/auth/sso', {
+        method: 'POST',
+        body: JSON.stringify({ provider, tenant_slug: tenantSlug || 'vantax' }),
+      }),
+    ssoCallback: (code: string, state: string) =>
+      request<{ token: string; user: AuthUser }>('/api/auth/sso/callback', {
+        method: 'POST',
+        body: JSON.stringify({ code, state }),
+      }),
   },
 
   tenants: {
