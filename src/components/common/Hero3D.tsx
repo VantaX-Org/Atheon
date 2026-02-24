@@ -1,7 +1,7 @@
 /**
- * Hero3D — Atheon-branded 3D "A" visualization
- * A stylized letter "A" built from crystalline geometric facets
- * with orbital rings, energy particles, and depth layers.
+ * Hero3D — Atheon Neural Nexus visualization
+ * A futuristic singularity/nexus core with converging energy arcs,
+ * holographic rings, neural pathways, and particle halos.
  * Pure SVG + CSS animations, no external dependencies.
  */
 
@@ -23,8 +23,8 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
       <div
         className="absolute inset-0 animate-pulse-glow"
         style={{
-          background: 'radial-gradient(circle at 50% 45%, rgba(14,165,233,0.25) 0%, rgba(6,182,212,0.1) 40%, transparent 70%)',
-          filter: 'blur(20px)',
+          background: 'radial-gradient(circle at 50% 50%, rgba(34,211,238,0.3) 0%, rgba(129,140,248,0.12) 35%, transparent 65%)',
+          filter: 'blur(30px)',
         }}
       />
 
@@ -36,227 +36,210 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
           fill="none"
           width={dimensions.w}
           height={dimensions.h}
-          style={{ filter: 'drop-shadow(0 20px 60px rgba(14,165,233,0.25))' }}
+          style={{ filter: 'drop-shadow(0 20px 60px rgba(34,211,238,0.3))' }}
         >
           <defs>
-            {/* Crystal face gradients — left side lighter */}
-            <linearGradient id="h3d-a-left" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#a5f3fc" stopOpacity="0.95" />
-              <stop offset="50%" stopColor="#22d3ee" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.7" />
-            </linearGradient>
-            {/* Right side deeper */}
-            <linearGradient id="h3d-a-right" x1="100%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#0284c7" stopOpacity="0.6" />
-            </linearGradient>
-            {/* Center / crossbar face */}
-            <linearGradient id="h3d-a-center" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.9" />
-              <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.95" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.9" />
-            </linearGradient>
-            {/* Inner triangle cutout (negative space) */}
-            <linearGradient id="h3d-a-inner" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stopColor="#0e7490" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#164e63" stopOpacity="0.2" />
-            </linearGradient>
-            {/* Dark side faces */}
-            <linearGradient id="h3d-a-dark" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stopColor="#0e7490" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#164e63" stopOpacity="0.3" />
-            </linearGradient>
-            {/* Bright highlight face */}
-            <linearGradient id="h3d-a-bright" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#cffafe" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.7" />
-            </linearGradient>
-            {/* Shine / specular highlight */}
-            <linearGradient id="h3d-shine" x1="30%" y1="0%" x2="70%" y2="100%">
-              <stop offset="0%" stopColor="white" stopOpacity="0.95" />
-              <stop offset="30%" stopColor="white" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            {/* Orbital ring gradients */}
-            <linearGradient id="h3d-ring" x1="0%" y1="0%" x2="100%" y2="0%">
+            {/* Core radial gradient */}
+            <radialGradient id="nx-core" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="white" stopOpacity="1" />
+              <stop offset="15%" stopColor="#a5f3fc" stopOpacity="0.9" />
+              <stop offset="40%" stopColor="#22d3ee" stopOpacity="0.5" />
+              <stop offset="70%" stopColor="#0891b2" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+            <radialGradient id="nx-inner-glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#e0f2fe" stopOpacity="0.8" />
+              <stop offset="30%" stopColor="#67e8f9" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+            <radialGradient id="nx-ambient" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.2" />
+              <stop offset="50%" stopColor="#818cf8" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+            {/* Energy arc gradients */}
+            <linearGradient id="nx-arc-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#22d3ee" stopOpacity="0" />
-              <stop offset="25%" stopColor="#22d3ee" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.8" />
-              <stop offset="75%" stopColor="#22d3ee" stopOpacity="0.6" />
+              <stop offset="30%" stopColor="#22d3ee" stopOpacity="0.7" />
+              <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.9" />
+              <stop offset="70%" stopColor="#22d3ee" stopOpacity="0.7" />
               <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
             </linearGradient>
-            <linearGradient id="h3d-ring2" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0" />
-              <stop offset="30%" stopColor="#38bdf8" stopOpacity="0.4" />
-              <stop offset="50%" stopColor="#7dd3fc" stopOpacity="0.6" />
-              <stop offset="70%" stopColor="#38bdf8" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
+            <linearGradient id="nx-arc-indigo" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#818cf8" stopOpacity="0" />
+              <stop offset="30%" stopColor="#818cf8" stopOpacity="0.6" />
+              <stop offset="50%" stopColor="#a78bfa" stopOpacity="0.8" />
+              <stop offset="70%" stopColor="#818cf8" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="nx-arc-teal" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0" />
+              <stop offset="30%" stopColor="#2dd4bf" stopOpacity="0.5" />
+              <stop offset="50%" stopColor="#5eead4" stopOpacity="0.7" />
+              <stop offset="70%" stopColor="#2dd4bf" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0" />
+            </linearGradient>
+            {/* Ring gradients */}
+            <linearGradient id="nx-ring1" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0" />
+              <stop offset="25%" stopColor="#22d3ee" stopOpacity="0.5" />
+              <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.8" />
+              <stop offset="75%" stopColor="#22d3ee" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="nx-ring2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#818cf8" stopOpacity="0" />
+              <stop offset="25%" stopColor="#818cf8" stopOpacity="0.4" />
+              <stop offset="50%" stopColor="#a78bfa" stopOpacity="0.6" />
+              <stop offset="75%" stopColor="#818cf8" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="nx-ring3" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0" />
+              <stop offset="30%" stopColor="#2dd4bf" stopOpacity="0.3" />
+              <stop offset="50%" stopColor="#5eead4" stopOpacity="0.5" />
+              <stop offset="70%" stopColor="#2dd4bf" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0" />
             </linearGradient>
             {/* Particle glow */}
-            <radialGradient id="h3d-particle" cx="50%" cy="50%" r="50%">
+            <radialGradient id="nx-particle" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="white" stopOpacity="1" />
               <stop offset="40%" stopColor="#67e8f9" stopOpacity="0.8" />
               <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
             </radialGradient>
-            <radialGradient id="h3d-core-glow" cx="50%" cy="45%" r="40%">
-              <stop offset="0%" stopColor="#a5f3fc" stopOpacity="0.4" />
-              <stop offset="60%" stopColor="#22d3ee" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="transparent" />
+            <radialGradient id="nx-particle-indigo" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="white" stopOpacity="0.9" />
+              <stop offset="40%" stopColor="#a78bfa" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
             </radialGradient>
+            {/* Hexagonal shield gradient */}
+            <linearGradient id="nx-hex" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#818cf8" stopOpacity="0.08" />
+            </linearGradient>
             {/* Filters */}
-            <filter id="h3d-blur-sm">
-              <feGaussianBlur stdDeviation="2" />
-            </filter>
-            <filter id="h3d-blur-md">
-              <feGaussianBlur stdDeviation="4" />
-            </filter>
-            <filter id="h3d-glow">
+            <filter id="nx-blur-sm"><feGaussianBlur stdDeviation="2" /></filter>
+            <filter id="nx-blur-md"><feGaussianBlur stdDeviation="4" /></filter>
+            <filter id="nx-glow">
               <feGaussianBlur stdDeviation="3" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
-            <filter id="h3d-glow-strong">
+            <filter id="nx-glow-strong">
               <feGaussianBlur stdDeviation="6" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           </defs>
 
-          {/* ── Background energy field ── */}
-          <circle cx="200" cy="200" r="140" fill="url(#h3d-core-glow)" className="animate-pulse-glow" />
+          {/* ── Ambient background field ── */}
+          <circle cx="200" cy="200" r="180" fill="url(#nx-ambient)" className="animate-pulse-glow" />
 
-          {/* ── Outer orbital ring ── */}
+          {/* ── Outer hexagonal shield ── */}
+          <polygon points="200,40 340,110 340,290 200,360 60,290 60,110" fill="none" stroke="#22d3ee" strokeWidth="0.5" opacity="0.12" strokeDasharray="6 8" />
+          <polygon points="200,60 320,120 320,280 200,340 80,280 80,120" fill="url(#nx-hex)" stroke="#818cf8" strokeWidth="0.3" opacity="0.08" />
+
+          {/* ── Outer orbital ring 1 (cyan) ── */}
           <g className="animate-orbit" style={{ transformOrigin: '200px 200px' }}>
-            <ellipse cx="200" cy="200" rx="165" ry="48" fill="none" stroke="url(#h3d-ring2)" strokeWidth="1" opacity="0.5" transform="rotate(-18 200 200)" />
-            <circle cx="365" cy="200" r="3.5" fill="white" opacity="0.9" filter="url(#h3d-glow)" transform="rotate(-18 200 200)">
-              <animateTransform attributeName="transform" type="rotate" from="-18 200 200" to="342 200 200" dur="20s" repeatCount="indefinite" additive="replace" />
+            <ellipse cx="200" cy="200" rx="170" ry="50" fill="none" stroke="url(#nx-ring1)" strokeWidth="1.2" transform="rotate(-20 200 200)" />
+            <circle cx="370" cy="200" r="4" fill="white" opacity="0.95" filter="url(#nx-glow)" transform="rotate(-20 200 200)">
+              <animateTransform attributeName="transform" type="rotate" from="-20 200 200" to="340 200 200" dur="18s" repeatCount="indefinite" additive="replace" />
             </circle>
           </g>
 
-          {/* ── Inner orbital ring ── */}
+          {/* ── Outer orbital ring 2 (indigo) ── */}
           <g className="animate-orbit-reverse" style={{ transformOrigin: '200px 200px' }}>
-            <ellipse cx="200" cy="200" rx="130" ry="36" fill="none" stroke="url(#h3d-ring)" strokeWidth="1.5" opacity="0.6" transform="rotate(12 200 200)" />
-            <circle cx="330" cy="200" r="3" fill="#67e8f9" opacity="0.95" filter="url(#h3d-glow)" transform="rotate(12 200 200)">
-              <animateTransform attributeName="transform" type="rotate" from="372 200 200" to="12 200 200" dur="25s" repeatCount="indefinite" additive="replace" />
+            <ellipse cx="200" cy="200" rx="145" ry="42" fill="none" stroke="url(#nx-ring2)" strokeWidth="1" transform="rotate(35 200 200)" />
+            <circle cx="345" cy="200" r="3.5" fill="#a78bfa" opacity="0.9" filter="url(#nx-glow)" transform="rotate(35 200 200)">
+              <animateTransform attributeName="transform" type="rotate" from="395 200 200" to="35 200 200" dur="22s" repeatCount="indefinite" additive="replace" />
             </circle>
           </g>
 
-          {/* ── Third subtle ring ── */}
-          <ellipse cx="200" cy="200" rx="180" ry="26" fill="none" stroke="#38bdf8" strokeWidth="0.5" opacity="0.2" transform="rotate(38 200 200)" strokeDasharray="8 12" className="animate-orbit" style={{ transformOrigin: '200px 200px' }} />
-
-          {/* ═══════════════════════════════════════════
-              The Atheon "A" — built from crystal facets
-              Points: apex(200,75), footL(120,310), footR(280,310)
-              Crossbar at y≈230, inner triangle above crossbar
-              3D depth via left/right lighting difference
-          ═══════════════════════════════════════════ */}
-
-          <g filter="url(#h3d-glow)">
-            {/* ── Left leg outer face (bright, lit side) ── */}
-            <polygon points="200,75 120,310 155,310" fill="url(#h3d-a-left)" stroke="#22d3ee" strokeWidth="0.8" strokeOpacity="0.6" />
-            {/* Left leg inner face */}
-            <polygon points="200,75 155,310 175,230" fill="url(#h3d-a-bright)" stroke="#67e8f9" strokeWidth="0.6" strokeOpacity="0.4" />
-
-            {/* ── Right leg outer face (darker, shadow side) ── */}
-            <polygon points="200,75 280,310 245,310" fill="url(#h3d-a-right)" stroke="#22d3ee" strokeWidth="0.8" strokeOpacity="0.6" />
-            {/* Right leg inner face */}
-            <polygon points="200,75 245,310 225,230" fill="url(#h3d-a-dark)" stroke="#38bdf8" strokeWidth="0.6" strokeOpacity="0.4" />
-
-            {/* ── Crossbar — the horizontal bar of the A ── */}
-            <polygon points="155,230 175,230 225,230 245,230 238,250 162,250" fill="url(#h3d-a-center)" stroke="#67e8f9" strokeWidth="0.7" strokeOpacity="0.5" />
-
-            {/* ── Inner triangle (negative space above crossbar) ── */}
-            <polygon points="200,130 175,230 225,230" fill="url(#h3d-a-inner)" stroke="#22d3ee" strokeWidth="0.5" strokeOpacity="0.3" />
-
-            {/* ── Left foot base (3D thickness) ── */}
-            <polygon points="120,310 155,310 162,250 128,250" fill="url(#h3d-a-dark)" stroke="#0e7490" strokeWidth="0.4" opacity="0.6" />
-            {/* ── Right foot base (3D thickness) ── */}
-            <polygon points="280,310 245,310 238,250 272,250" fill="url(#h3d-a-dark)" stroke="#0e7490" strokeWidth="0.4" opacity="0.5" />
-
-            {/* ── Left 3D depth face (side bevel) ── */}
-            <polygon points="120,310 128,250 135,280" fill="url(#h3d-a-left)" stroke="#22d3ee" strokeWidth="0.3" opacity="0.4" />
-            {/* ── Right 3D depth face (side bevel) ── */}
-            <polygon points="280,310 272,250 265,280" fill="url(#h3d-a-right)" stroke="#22d3ee" strokeWidth="0.3" opacity="0.35" />
-
-            {/* ── Apex crown facet (top bevel) ── */}
-            <polygon points="190,82 200,75 210,82 200,95" fill="url(#h3d-a-bright)" stroke="#67e8f9" strokeWidth="0.5" opacity="0.85" />
+          {/* ── Inner orbital ring 3 (teal) ── */}
+          <g className="animate-orbit" style={{ transformOrigin: '200px 200px', animationDuration: '30s' }}>
+            <ellipse cx="200" cy="200" rx="110" ry="32" fill="none" stroke="url(#nx-ring3)" strokeWidth="0.8" transform="rotate(-55 200 200)" />
           </g>
 
-          {/* ── Specular highlights on the A ── */}
-          <polygon points="200,78 170,160 190,150" fill="url(#h3d-shine)" opacity="0.5" />
-          <polygon points="200,80 195,120 182,175 175,230 180,225" fill="url(#h3d-shine)" opacity="0.25" />
-          <polygon points="155,232 245,232 238,248 162,248" fill="white" opacity="0.08" />
+          {/* ── Dashed tech ring ── */}
+          <ellipse cx="200" cy="200" rx="85" ry="85" fill="none" stroke="#22d3ee" strokeWidth="0.4" opacity="0.15" strokeDasharray="4 6" className="animate-orbit-reverse" style={{ transformOrigin: '200px 200px', animationDuration: '40s' }} />
 
-          {/* ── Wireframe edge glow ── */}
-          <g stroke="#a5f3fc" strokeWidth="0.8" opacity="0.35" fill="none">
-            {/* Outer edges */}
-            <line x1="200" y1="75" x2="120" y2="310" />
-            <line x1="200" y1="75" x2="280" y2="310" />
-            <line x1="120" y1="310" x2="155" y2="310" />
-            <line x1="280" y1="310" x2="245" y2="310" />
-            {/* Inner edges */}
-            <line x1="200" y1="75" x2="175" y2="230" />
-            <line x1="200" y1="75" x2="225" y2="230" />
-            {/* Crossbar */}
-            <line x1="155" y1="230" x2="245" y2="230" />
-            <line x1="162" y1="250" x2="238" y2="250" />
-            {/* Inner triangle */}
-            <line x1="175" y1="230" x2="225" y2="230" />
-            <line x1="200" y1="130" x2="175" y2="230" />
-            <line x1="200" y1="130" x2="225" y2="230" />
-            {/* Foot connections */}
-            <line x1="155" y1="310" x2="162" y2="250" />
-            <line x1="245" y1="310" x2="238" y2="250" />
+          {/* ── Neural pathways converging to center ── */}
+          <g opacity="0.4" className="animate-shimmer">
+            <path d="M 200 60 Q 180 130 200 200" stroke="url(#nx-arc-cyan)" strokeWidth="1.5" fill="none" />
+            <path d="M 200 340 Q 220 270 200 200" stroke="url(#nx-arc-cyan)" strokeWidth="1.5" fill="none" />
+            <path d="M 60 200 Q 130 180 200 200" stroke="url(#nx-arc-cyan)" strokeWidth="1.5" fill="none" />
+            <path d="M 340 200 Q 270 220 200 200" stroke="url(#nx-arc-cyan)" strokeWidth="1.5" fill="none" />
+            <path d="M 90 90 Q 150 140 200 200" stroke="url(#nx-arc-indigo)" strokeWidth="1.2" fill="none" />
+            <path d="M 310 310 Q 250 260 200 200" stroke="url(#nx-arc-indigo)" strokeWidth="1.2" fill="none" />
+            <path d="M 310 90 Q 260 140 200 200" stroke="url(#nx-arc-teal)" strokeWidth="1.2" fill="none" />
+            <path d="M 90 310 Q 140 260 200 200" stroke="url(#nx-arc-teal)" strokeWidth="1.2" fill="none" />
           </g>
 
-          {/* ── Vertex glow points ── */}
-          {/* Apex — brightest */}
-          <circle cx="200" cy="75" r="5" fill="white" opacity="0.95" filter="url(#h3d-glow)" />
-          <circle cx="200" cy="75" r="10" fill="white" opacity="0.15" />
-          {/* Feet */}
-          <circle cx="120" cy="310" r="3" fill="#a5f3fc" opacity="0.7" filter="url(#h3d-glow)" />
-          <circle cx="280" cy="310" r="3" fill="#a5f3fc" opacity="0.7" filter="url(#h3d-glow)" />
-          <circle cx="155" cy="310" r="2" fill="#67e8f9" opacity="0.5" />
-          <circle cx="245" cy="310" r="2" fill="#67e8f9" opacity="0.5" />
-          {/* Crossbar corners */}
-          <circle cx="155" cy="230" r="2.5" fill="#67e8f9" opacity="0.6" filter="url(#h3d-glow)" />
-          <circle cx="245" cy="230" r="2.5" fill="#67e8f9" opacity="0.6" filter="url(#h3d-glow)" />
-          {/* Inner apex */}
-          <circle cx="200" cy="130" r="2" fill="white" opacity="0.6" />
+          {/* ── Secondary neural pathways ── */}
+          <g opacity="0.2" className="animate-shimmer" style={{ animationDelay: '-1.5s' }}>
+            <path d="M 130 65 Q 100 150 200 200" stroke="#67e8f9" strokeWidth="0.8" fill="none" />
+            <path d="M 270 65 Q 300 150 200 200" stroke="#a78bfa" strokeWidth="0.8" fill="none" />
+            <path d="M 340 135 Q 280 100 200 200" stroke="#5eead4" strokeWidth="0.8" fill="none" />
+            <path d="M 60 265 Q 120 300 200 200" stroke="#67e8f9" strokeWidth="0.8" fill="none" />
+            <path d="M 340 265 Q 280 300 200 200" stroke="#a78bfa" strokeWidth="0.8" fill="none" />
+            <path d="M 60 135 Q 120 100 200 200" stroke="#5eead4" strokeWidth="0.8" fill="none" />
+          </g>
+
+          {/* ── Pulsing concentric circles ── */}
+          <circle cx="200" cy="200" r="60" fill="none" stroke="#22d3ee" strokeWidth="0.6" opacity="0.15" className="animate-pulse-glow" />
+          <circle cx="200" cy="200" r="90" fill="none" stroke="#818cf8" strokeWidth="0.4" opacity="0.1" className="animate-pulse-glow" style={{ animationDelay: '-1s' }} />
+          <circle cx="200" cy="200" r="120" fill="none" stroke="#22d3ee" strokeWidth="0.3" opacity="0.08" className="animate-pulse-glow" style={{ animationDelay: '-2s' }} />
+
+          {/* ── Core layers ── */}
+          <circle cx="200" cy="200" r="45" fill="url(#nx-core)" opacity="0.6" filter="url(#nx-blur-md)" className="animate-pulse-glow" />
+          <circle cx="200" cy="200" r="28" fill="url(#nx-inner-glow)" opacity="0.8" filter="url(#nx-blur-sm)" />
+          <circle cx="200" cy="200" r="14" fill="white" opacity="0.9" filter="url(#nx-glow-strong)" />
+          <circle cx="200" cy="200" r="8" fill="white" opacity="1" />
+          <ellipse cx="196" cy="194" rx="6" ry="4" fill="white" opacity="0.7" transform="rotate(-30 196 194)" />
+
+          {/* ── Endpoint nodes ── */}
+          <g filter="url(#nx-glow)">
+            <circle cx="200" cy="60" r="4" fill="#67e8f9" opacity="0.8" />
+            <circle cx="200" cy="340" r="4" fill="#67e8f9" opacity="0.8" />
+            <circle cx="60" cy="200" r="4" fill="#67e8f9" opacity="0.8" />
+            <circle cx="340" cy="200" r="4" fill="#67e8f9" opacity="0.8" />
+            <circle cx="90" cy="90" r="3.5" fill="#a78bfa" opacity="0.7" />
+            <circle cx="310" cy="310" r="3.5" fill="#a78bfa" opacity="0.7" />
+            <circle cx="310" cy="90" r="3.5" fill="#5eead4" opacity="0.7" />
+            <circle cx="90" cy="310" r="3.5" fill="#5eead4" opacity="0.7" />
+          </g>
 
           {/* ── Floating energy particles ── */}
           <g className="animate-particle-drift">
-            <circle cx="110" cy="150" r="2" fill="url(#h3d-particle)" />
-            <circle cx="300" cy="140" r="1.5" fill="url(#h3d-particle)" />
-            <circle cx="90" cy="260" r="1.8" fill="url(#h3d-particle)" />
-            <circle cx="320" cy="270" r="2.2" fill="url(#h3d-particle)" />
-            <circle cx="145" cy="330" r="1.5" fill="url(#h3d-particle)" />
-            <circle cx="260" cy="90" r="1.8" fill="url(#h3d-particle)" />
+            <circle cx="115" cy="140" r="2.5" fill="url(#nx-particle)" />
+            <circle cx="295" cy="130" r="2" fill="url(#nx-particle-indigo)" />
+            <circle cx="85" cy="255" r="2.2" fill="url(#nx-particle)" />
+            <circle cx="325" cy="265" r="2.8" fill="url(#nx-particle)" />
+            <circle cx="155" cy="335" r="1.8" fill="url(#nx-particle-indigo)" />
+            <circle cx="255" cy="80" r="2" fill="url(#nx-particle)" />
           </g>
           <g className="animate-particle-drift" style={{ animationDelay: '-2s' }}>
-            <circle cx="75" cy="190" r="1.5" fill="url(#h3d-particle)" />
-            <circle cx="335" cy="200" r="1.8" fill="url(#h3d-particle)" />
-            <circle cx="160" cy="75" r="1.3" fill="url(#h3d-particle)" />
-            <circle cx="250" cy="330" r="2" fill="url(#h3d-particle)" />
-            <circle cx="340" cy="160" r="1.2" fill="url(#h3d-particle)" />
+            <circle cx="70" cy="185" r="1.8" fill="url(#nx-particle)" />
+            <circle cx="340" cy="195" r="2.2" fill="url(#nx-particle-indigo)" />
+            <circle cx="165" cy="70" r="1.5" fill="url(#nx-particle)" />
+            <circle cx="245" cy="335" r="2.5" fill="url(#nx-particle)" />
+            <circle cx="345" cy="155" r="1.5" fill="url(#nx-particle-indigo)" />
           </g>
           <g className="animate-particle-drift" style={{ animationDelay: '-4s' }}>
-            <circle cx="65" cy="240" r="1.2" fill="url(#h3d-particle)" />
-            <circle cx="350" cy="230" r="1.6" fill="url(#h3d-particle)" />
-            <circle cx="135" cy="85" r="1" fill="url(#h3d-particle)" />
-            <circle cx="270" cy="325" r="1.5" fill="url(#h3d-particle)" />
+            <circle cx="60" cy="235" r="1.5" fill="url(#nx-particle)" />
+            <circle cx="355" cy="225" r="1.8" fill="url(#nx-particle-indigo)" />
+            <circle cx="140" cy="80" r="1.2" fill="url(#nx-particle)" />
+            <circle cx="275" cy="330" r="1.8" fill="url(#nx-particle)" />
           </g>
 
-          {/* ── Inner core energy (centered on A) ── */}
-          <circle cx="200" cy="200" r="20" fill="#a5f3fc" opacity="0.1" filter="url(#h3d-blur-md)" className="animate-pulse-glow" />
-          <circle cx="200" cy="180" r="8" fill="white" opacity="0.12" filter="url(#h3d-blur-sm)" className="animate-pulse-glow" />
-
-          {/* ── Energy beam lines from apex ── */}
-          <g opacity="0.15" stroke="#67e8f9" strokeWidth="0.5" className="animate-shimmer">
-            <line x1="200" y1="75" x2="110" y2="150" />
-            <line x1="200" y1="75" x2="300" y2="140" />
-            <line x1="200" y1="75" x2="90" y2="260" />
-            <line x1="200" y1="75" x2="320" y2="270" />
-            <line x1="200" y1="75" x2="75" y2="190" />
-            <line x1="200" y1="75" x2="335" y2="200" />
+          {/* ── Energy beam lines from core ── */}
+          <g opacity="0.1" stroke="#67e8f9" strokeWidth="0.4" className="animate-shimmer" style={{ animationDelay: '-1s' }}>
+            <line x1="200" y1="200" x2="200" y2="60" />
+            <line x1="200" y1="200" x2="200" y2="340" />
+            <line x1="200" y1="200" x2="60" y2="200" />
+            <line x1="200" y1="200" x2="340" y2="200" />
+            <line x1="200" y1="200" x2="90" y2="90" />
+            <line x1="200" y1="200" x2="310" y2="310" />
+            <line x1="200" y1="200" x2="310" y2="90" />
+            <line x1="200" y1="200" x2="90" y2="310" />
           </g>
         </svg>
       </div>
@@ -265,37 +248,32 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
 }
 
 /**
- * AtheonLogo — Compact "A" icon for sidebar, header, and favicon.
- * Crystalline letter "A" with faceted faces and orbital ring accent.
+ * AtheonCrystalIcon — Compact nexus icon for sidebar, header, and favicon.
+ * Neural nexus core with converging arcs and orbital ring accent.
  */
 export function AtheonCrystalIcon({ size = 32, className = '' }: { size?: number; className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" width={size} height={size} className={className}>
       <defs>
-        <linearGradient id="ci-al" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a5f3fc" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.8" />
+        <radialGradient id="ci-core" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="white" stopOpacity="1" />
+          <stop offset="20%" stopColor="#a5f3fc" stopOpacity="0.9" />
+          <stop offset="50%" stopColor="#22d3ee" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="transparent" />
+        </radialGradient>
+        <radialGradient id="ci-glow2" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="transparent" />
+        </radialGradient>
+        <linearGradient id="ci-ring" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0" />
+          <stop offset="50%" stopColor="#67e8f9" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
         </linearGradient>
-        <linearGradient id="ci-ar" x1="100%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#0284c7" stopOpacity="0.65" />
-        </linearGradient>
-        <linearGradient id="ci-ac" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.9" />
-          <stop offset="50%" stopColor="#67e8f9" />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.9" />
-        </linearGradient>
-        <linearGradient id="ci-ad" x1="50%" y1="0%" x2="50%" y2="100%">
-          <stop offset="0%" stopColor="#0e7490" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#164e63" stopOpacity="0.2" />
-        </linearGradient>
-        <linearGradient id="ci-ab" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#cffafe" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.7" />
-        </linearGradient>
-        <linearGradient id="ci-sh" x1="30%" y1="0%" x2="70%" y2="100%">
-          <stop offset="0%" stopColor="white" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
+        <linearGradient id="ci-ring2" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#818cf8" stopOpacity="0" />
+          <stop offset="50%" stopColor="#a78bfa" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
         </linearGradient>
         <filter id="ci-glow">
           <feGaussianBlur stdDeviation="1" result="blur" />
@@ -303,47 +281,51 @@ export function AtheonCrystalIcon({ size = 32, className = '' }: { size?: number
         </filter>
       </defs>
 
-      {/* Left leg outer */}
-      <polygon points="32,6 12,54 18,54" fill="url(#ci-al)" stroke="#22d3ee" strokeWidth="0.5" opacity="0.9" />
-      {/* Left leg inner */}
-      <polygon points="32,6 18,54 24,38" fill="url(#ci-ab)" stroke="#67e8f9" strokeWidth="0.4" opacity="0.8" />
+      {/* Ambient glow */}
+      <circle cx="32" cy="32" r="28" fill="url(#ci-glow2)" opacity="0.5" />
 
-      {/* Right leg outer */}
-      <polygon points="32,6 52,54 46,54" fill="url(#ci-ar)" stroke="#22d3ee" strokeWidth="0.5" opacity="0.85" />
-      {/* Right leg inner */}
-      <polygon points="32,6 46,54 40,38" fill="url(#ci-ad)" stroke="#38bdf8" strokeWidth="0.4" opacity="0.7" />
+      {/* Hexagonal frame */}
+      <polygon points="32,6 54,17 54,47 32,58 10,47 10,17" fill="none" stroke="#22d3ee" strokeWidth="0.4" opacity="0.15" />
 
-      {/* Crossbar */}
-      <polygon points="21,38 24,38 40,38 43,38 41,42 23,42" fill="url(#ci-ac)" stroke="#67e8f9" strokeWidth="0.4" strokeOpacity="0.5" />
+      {/* Orbital rings */}
+      <ellipse cx="32" cy="32" rx="26" ry="8" fill="none" stroke="url(#ci-ring)" strokeWidth="0.7" transform="rotate(-18 32 32)" />
+      <ellipse cx="32" cy="32" rx="22" ry="6.5" fill="none" stroke="url(#ci-ring2)" strokeWidth="0.5" transform="rotate(30 32 32)" />
 
-      {/* Inner triangle */}
-      <polygon points="32,18 24,38 40,38" fill="url(#ci-ad)" stroke="#22d3ee" strokeWidth="0.3" opacity="0.5" />
+      {/* Neural pathways */}
+      <g opacity="0.35" stroke="#22d3ee" strokeWidth="0.6" fill="none">
+        <path d="M 32 8 Q 28 20 32 32" />
+        <path d="M 32 56 Q 36 44 32 32" />
+        <path d="M 8 32 Q 20 28 32 32" />
+        <path d="M 56 32 Q 44 36 32 32" />
+      </g>
+      <g opacity="0.25" stroke="#818cf8" strokeWidth="0.5" fill="none">
+        <path d="M 14 14 Q 22 20 32 32" />
+        <path d="M 50 50 Q 42 44 32 32" />
+        <path d="M 50 14 Q 42 20 32 32" />
+        <path d="M 14 50 Q 22 44 32 32" />
+      </g>
 
-      {/* Foot bases */}
-      <polygon points="12,54 18,54 23,42 16,42" fill="url(#ci-ad)" stroke="#0e7490" strokeWidth="0.3" opacity="0.5" />
-      <polygon points="52,54 46,54 41,42 48,42" fill="url(#ci-ad)" stroke="#0e7490" strokeWidth="0.3" opacity="0.45" />
+      {/* Endpoint nodes */}
+      <circle cx="32" cy="8" r="1.8" fill="#67e8f9" opacity="0.7" filter="url(#ci-glow)" />
+      <circle cx="32" cy="56" r="1.8" fill="#67e8f9" opacity="0.7" filter="url(#ci-glow)" />
+      <circle cx="8" cy="32" r="1.8" fill="#67e8f9" opacity="0.7" filter="url(#ci-glow)" />
+      <circle cx="56" cy="32" r="1.8" fill="#67e8f9" opacity="0.7" filter="url(#ci-glow)" />
+      <circle cx="14" cy="14" r="1.5" fill="#a78bfa" opacity="0.6" />
+      <circle cx="50" cy="50" r="1.5" fill="#a78bfa" opacity="0.6" />
+      <circle cx="50" cy="14" r="1.5" fill="#5eead4" opacity="0.6" />
+      <circle cx="14" cy="50" r="1.5" fill="#5eead4" opacity="0.6" />
 
-      {/* Specular highlight */}
-      <polygon points="32,8 25,28 30,25" fill="url(#ci-sh)" opacity="0.45" />
-
-      {/* Apex crown */}
-      <polygon points="29,9 32,6 35,9 32,14" fill="url(#ci-ab)" stroke="#67e8f9" strokeWidth="0.3" opacity="0.8" />
-
-      {/* Vertex glows */}
-      <circle cx="32" cy="6" r="2.5" fill="white" opacity="0.95" filter="url(#ci-glow)" />
-      <circle cx="12" cy="54" r="1.5" fill="#a5f3fc" opacity="0.7" />
-      <circle cx="52" cy="54" r="1.5" fill="#a5f3fc" opacity="0.7" />
-      <circle cx="24" cy="38" r="1.2" fill="#67e8f9" opacity="0.6" />
-      <circle cx="40" cy="38" r="1.2" fill="#67e8f9" opacity="0.6" />
-
-      {/* Orbital ring */}
-      <ellipse cx="32" cy="34" rx="28" ry="8" fill="none" stroke="#22d3ee" strokeWidth="0.6" opacity="0.3" transform="rotate(-12 32 34)" />
+      {/* Core layers */}
+      <circle cx="32" cy="32" r="8" fill="url(#ci-core)" opacity="0.7" />
+      <circle cx="32" cy="32" r="4.5" fill="white" opacity="0.85" filter="url(#ci-glow)" />
+      <circle cx="32" cy="32" r="2.5" fill="white" opacity="1" />
+      <ellipse cx="30.5" cy="30.5" rx="1.5" ry="1" fill="white" opacity="0.6" transform="rotate(-30 30.5 30.5)" />
 
       {/* Particles */}
-      <circle cx="8" cy="24" r="0.9" fill="#67e8f9" opacity="0.5" />
-      <circle cx="56" cy="22" r="0.7" fill="#67e8f9" opacity="0.4" />
-      <circle cx="10" cy="46" r="0.6" fill="#a5f3fc" opacity="0.35" />
-      <circle cx="54" cy="48" r="0.8" fill="#a5f3fc" opacity="0.4" />
+      <circle cx="10" cy="22" r="0.8" fill="#67e8f9" opacity="0.5" />
+      <circle cx="54" cy="20" r="0.7" fill="#a78bfa" opacity="0.4" />
+      <circle cx="12" cy="46" r="0.6" fill="#67e8f9" opacity="0.35" />
+      <circle cx="52" cy="48" r="0.8" fill="#5eead4" opacity="0.4" />
     </svg>
   );
 }

@@ -56,7 +56,7 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar — icon-only narrow glass bar */}
-      <aside className="fixed left-0 top-0 h-full z-40 w-16 hidden lg:flex flex-col items-center py-5" style={{ background: 'rgba(10, 10, 26, 0.8)', borderRight: '1px solid rgba(255,255,255,0.04)' }}>
+      <aside className="fixed left-0 top-0 h-full z-40 w-16 hidden lg:flex flex-col items-center py-5" style={{ background: 'rgba(15, 17, 41, 0.85)', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
         {/* Logo */}
         <div className="mb-8">
           <AtheonLogo />
@@ -100,7 +100,7 @@ export function Sidebar() {
       <aside className={cn(
         'fixed left-0 top-0 h-full z-50 flex flex-col transition-transform duration-300 w-72 lg:hidden',
         mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
-      )} style={{ background: 'rgba(10, 10, 26, 0.95)', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+      )} style={{ background: 'rgba(15, 17, 41, 0.97)', borderRight: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between px-4 h-16 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
             <AtheonLogo size="lg" />
