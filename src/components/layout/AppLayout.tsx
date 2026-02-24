@@ -35,6 +35,7 @@ export function AppLayout() {
           name: me.name,
           role: me.role as 'admin' | 'executive' | 'manager' | 'analyst' | 'operator',
           tenantId: me.tenantId,
+          tenantName: me.tenantName,
           permissions: me.permissions,
         });
       })

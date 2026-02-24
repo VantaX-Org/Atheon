@@ -8,22 +8,37 @@ import {
   IconERPAdapters, IconConnectivity, IconAudit, IconSettings,
 } from "@/components/icons/AtheonIcons";
 import { AtheonCrystalIcon } from "@/components/common/Hero3D";
+import type { UserRole } from "@/types";
 
-const navItems = [
+/** Roles that can see each menu item. If omitted, all roles can see it. */
+type NavItem = {
+  path: string;
+  label: string;
+  icon: typeof IconDashboard;
+  section: string;
+  sublabel?: string;
+  /** Roles allowed to see this item. undefined = visible to everyone */
+  roles?: UserRole[];
+};
+
+const ADMIN_ROLES: UserRole[] = ['admin', 'executive'];
+const POWER_ROLES: UserRole[] = ['admin', 'executive', 'manager'];
+
+const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: IconDashboard, section: 'intelligence' },
-  { path: '/apex', label: 'Apex', icon: IconApex, section: 'intelligence', sublabel: 'Executive Intelligence' },
+  { path: '/apex', label: 'Apex', icon: IconApex, section: 'intelligence', sublabel: 'Executive Intelligence', roles: POWER_ROLES },
   { path: '/pulse', label: 'Pulse', icon: IconPulse, section: 'intelligence', sublabel: 'Process Intelligence' },
   { path: '/catalysts', label: 'Catalysts', icon: IconCatalysts, section: 'intelligence', sublabel: 'Autonomous Execution' },
   { path: '/mind', label: 'Mind', icon: IconMind, section: 'intelligence', sublabel: 'Domain LLM' },
   { path: '/memory', label: 'Memory', icon: IconMemory, section: 'intelligence', sublabel: 'GraphRAG' },
   { path: '/chat', label: 'Chat', icon: IconChat, section: 'intelligence', sublabel: 'Conversational AI' },
-  { path: '/tenants', label: 'Clients', icon: IconClients, section: 'platform', sublabel: 'Tenant Management' },
-  { path: '/iam', label: 'IAM', icon: IconIAM, section: 'platform', sublabel: 'Identity & Access' },
-  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform', sublabel: 'Agent Management' },
-  { path: '/canonical-api', label: 'Canonical API', icon: IconCanonicalApi, section: 'platform', sublabel: 'Unified API' },
-  { path: '/erp-adapters', label: 'ERP Adapters', icon: IconERPAdapters, section: 'platform', sublabel: 'System Connectors' },
-  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'system', sublabel: 'MCP + A2A' },
-  { path: '/audit', label: 'Audit', icon: IconAudit, section: 'system', sublabel: 'Governance' },
+  { path: '/tenants', label: 'Clients', icon: IconClients, section: 'platform', sublabel: 'Tenant Management', roles: ADMIN_ROLES },
+  { path: '/iam', label: 'IAM', icon: IconIAM, section: 'platform', sublabel: 'Identity & Access', roles: ADMIN_ROLES },
+  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform', sublabel: 'Agent Management', roles: ADMIN_ROLES },
+  { path: '/canonical-api', label: 'Canonical API', icon: IconCanonicalApi, section: 'platform', sublabel: 'Unified API', roles: ADMIN_ROLES },
+  { path: '/erp-adapters', label: 'ERP Adapters', icon: IconERPAdapters, section: 'platform', sublabel: 'System Connectors', roles: ADMIN_ROLES },
+  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'system', sublabel: 'MCP + A2A', roles: ADMIN_ROLES },
+  { path: '/audit', label: 'Audit', icon: IconAudit, section: 'system', sublabel: 'Governance', roles: ADMIN_ROLES },
   { path: '/settings', label: 'Settings', icon: IconSettings, section: 'system' },
 ];
 
@@ -39,9 +54,17 @@ function AtheonLogo({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
 }
 
 export function Sidebar() {
-  const { mobileSidebarOpen, setMobileSidebarOpen } = useAppStore();
+  const { mobileSidebarOpen, setMobileSidebarOpen, user } = useAppStore();
   const location = useLocation();
   const closeMobile = () => setMobileSidebarOpen(false);
+  const userRole = user?.role as UserRole | undefined;
+
+  // Filter nav items based on user role
+  const visibleItems = navItems.filter((item) => {
+    if (!item.roles) return true; // visible to everyone
+    if (!userRole) return false;  // hide restricted items if no user
+    return item.roles.includes(userRole);
+  });
 
   let lastSection = '';
 
@@ -64,7 +87,7 @@ export function Sidebar() {
 
         {/* Nav icons */}
         <nav className="flex-1 flex flex-col items-center gap-0.5 overflow-y-auto scrollbar-thin w-full px-2">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
             const Icon = item.icon;
@@ -120,7 +143,7 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-3">
           {(() => {
             let prevSection = '';
-            return navItems.map((item) => {
+            return visibleItems.map((item) => {
               const isActive = location.pathname === item.path ||
                 (item.path !== '/' && location.pathname.startsWith(item.path));
               const Icon = item.icon;
