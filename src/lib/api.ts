@@ -162,6 +162,8 @@ export const api = {
       request<{ success: boolean }>(`/api/catalysts/actions/${id}/reject`, { method: 'PUT', body: JSON.stringify({ approved_by: rejectedBy || 'ui', reason: reason || '' }) }),
     governance: (tenantId?: string) =>
       request<GovernanceData>(`/api/catalysts/governance?tenant_id=${tenantId || 'vantax'}`),
+    createCluster: (data: Record<string, unknown>) =>
+      request<{ id: string; name: string; domain: string }>('/api/catalysts/clusters', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   memory: {
