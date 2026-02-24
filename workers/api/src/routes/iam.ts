@@ -157,7 +157,7 @@ iam.post('/users', async (c) => {
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(crypto.randomUUID(), tenantId, 'user_created', 'iam', 'user', JSON.stringify({ email: body.email, role }), 'success').run().catch(() => {});
 
-  return c.json({ id, email: body.email, name: body.name, role, tempPassword: shouldSendEmail ? tempPassword : undefined }, 201);
+  return c.json({ id, email: body.email, name: body.name, role, tempPassword }, 201);
 });
 
 // GET /api/iam/sso

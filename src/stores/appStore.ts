@@ -24,6 +24,11 @@ interface AppState {
 const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('atheon-theme') : null) as Theme | null;
 const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('atheon-onboarding-dismissed') === 'true' : false;
 
+// Apply saved theme to body on initial load
+if (typeof document !== 'undefined' && savedTheme === 'light') {
+  document.body.classList.add('atheon-light');
+}
+
 export const useAppStore = create<AppState>((set) => ({
   user: null,
   currentLayer: 'apex',
@@ -39,11 +44,17 @@ export const useAppStore = create<AppState>((set) => ({
   setIndustry: (industry) => set({ industry }),
   setTheme: (theme) => {
     localStorage.setItem('atheon-theme', theme);
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('atheon-light', theme === 'light');
+    }
     set({ theme });
   },
   toggleTheme: () => set((s) => {
     const next = s.theme === 'dark' ? 'light' : 'dark';
     localStorage.setItem('atheon-theme', next);
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('atheon-light', next === 'light');
+    }
     return { theme: next };
   }),
   dismissOnboarding: () => {

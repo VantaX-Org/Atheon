@@ -352,7 +352,7 @@ catalysts.post('/manual-execute', async (c) => {
   }
 
   // Verify cluster exists
-  const cluster = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ?').bind(clusterId).first();
+  const cluster = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, tenantId).first();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
   // Create the manual action
