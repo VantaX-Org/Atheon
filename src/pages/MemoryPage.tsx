@@ -7,15 +7,16 @@ import type { GraphStats, GraphEntity } from "@/lib/api";
 import { Database, Network, Search, BookOpen, ArrowRight, Loader2 } from "lucide-react";
 
 const entityColors: Record<string, string> = {
-    Organisation: 'bg-[#1a5c68]',
-    Department: 'bg-accent',
-    Person: 'bg-accent',
-  Process: 'bg-emerald-500/100',
+  Organisation: 'bg-accent',
+  Department: 'bg-accent',
+  Person: 'bg-accent',
+  Process: 'bg-emerald-500',
   System: 'bg-accent',
   KPI: 'bg-sky-500',
   Document: 'bg-accent',
-  Risk: 'bg-red-500/100',
-  Asset: 'bg-orange-500'};
+  Risk: 'bg-red-500',
+  Asset: 'bg-orange-500',
+};
 
 const industryTemplates = [
   { name: 'FMCG Graph Template', entities: 'SKU, Retailer, Distributor, Promotion, Route, Shelf', status: 'active' },

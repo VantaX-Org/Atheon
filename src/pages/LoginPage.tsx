@@ -87,15 +87,15 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)', backgroundImage: 'var(--bg-pattern)', backgroundAttachment: 'fixed' }}>
       <div className="hidden lg:flex lg:w-[45%] flex-col justify-center items-center p-12 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0c1222 0%, #1a2340 50%, #0c1222 100%)' }}>
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(78, 124, 246, 0.12), transparent 70%), radial-gradient(ellipse at 30% 70%, rgba(139, 92, 246, 0.06), transparent 60%)' }} />
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgb(var(--accent-rgb) / 0.12), transparent 70%), radial-gradient(ellipse at 30% 70%, rgba(139, 92, 246, 0.06), transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-sm">
           <div className="mb-8 flex justify-center"><Hero3D size="md" /></div>
-          <h1 className="text-4xl font-bold tracking-tight mb-3" style={{ background: 'linear-gradient(135deg, #ffffff, #c7d9ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Atheon</h1>
+          <h1 className="text-4xl font-bold tracking-tight mb-3" style={{ background: 'linear-gradient(135deg, #ffffff, rgb(var(--accent-rgb) / 0.6))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Atheon</h1>
           <p className="text-sm mb-2" style={{ color: 'rgba(255,255,255,0.6)' }}>Enterprise Intelligence Platform</p>
           <p className="text-xs leading-relaxed max-w-xs mx-auto" style={{ color: 'rgba(255,255,255,0.35)' }}>AI-powered executive intelligence, autonomous process monitoring, and intelligent execution across your entire enterprise.</p>
           <div className="mt-10 space-y-2.5 text-left max-w-xs mx-auto">
             {['Real-time executive health scoring', 'Autonomous catalyst execution', 'Multi-tenant SaaS architecture', 'Universal ERP integration layer'].map((f) => (
-              <div key={f} className="flex items-center gap-2.5 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}><div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6b93ff, #4e7cf6)' }} />{f}</div>
+              <div key={f} className="flex items-center gap-2.5 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}><div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.7))' }} />{f}</div>
             ))}
           </div>
         </div>

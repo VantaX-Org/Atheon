@@ -20,13 +20,13 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
     <div className={`relative ${className}`} style={{ width: dimensions.w, height: dimensions.h }}>
       {/* Outer ambient glow */}
       <div className="absolute inset-0 animate-pulse-glow" style={{
-        background: 'radial-gradient(ellipse at 50% 45%, rgba(78, 124, 246, 0.25) 0%, rgba(139, 92, 246, 0.08) 40%, transparent 70%)',
+        background: 'radial-gradient(ellipse at 50% 45%, rgb(var(--accent-rgb) / 0.25) 0%, rgba(139, 92, 246, 0.08) 40%, transparent 70%)',
         filter: 'blur(50px)',
       }} />
 
       {/* Secondary prismatic glow */}
       <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse at 35% 55%, rgba(59, 130, 246, 0.12) 0%, transparent 50%), radial-gradient(ellipse at 65% 40%, rgba(139, 92, 246, 0.10) 0%, transparent 50%)',
+        background: 'radial-gradient(ellipse at 35% 55%, rgb(var(--accent-rgb) / 0.12) 0%, transparent 50%), radial-gradient(ellipse at 65% 40%, rgba(139, 92, 246, 0.10) 0%, transparent 50%)',
         filter: 'blur(30px)',
         animation: 'shimmer 4s ease-in-out infinite',
       }} />
@@ -36,9 +36,9 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
           <defs>
             {/* Primary glass gradient */}
             <linearGradient id="h-glass1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#6b93ff" stopOpacity="0.95" />
-              <stop offset="40%" stopColor="#4e7cf6" stopOpacity="0.75" />
-              <stop offset="100%" stopColor="#3d6ce6" stopOpacity="0.50" />
+              <stop offset="0%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.95" />
+              <stop offset="40%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.75" />
+              <stop offset="100%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.50" />
             </linearGradient>
             {/* Reflection highlight gradient */}
             <linearGradient id="h-reflect" x1="30%" y1="0%" x2="70%" y2="100%">
@@ -48,15 +48,15 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
             </linearGradient>
             {/* Orbital ring gradient */}
             <linearGradient id="h-ring" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#6b93ff" stopOpacity="0" />
-              <stop offset="30%" stopColor="#6b93ff" stopOpacity="0.5" />
-              <stop offset="70%" stopColor="#4e7cf6" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#4e7cf6" stopOpacity="0" />
+              <stop offset="0%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0" />
+              <stop offset="30%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.5" />
+              <stop offset="70%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0" />
             </linearGradient>
             {/* Radial glass fill */}
             <radialGradient id="h-radial" cx="50%" cy="40%" r="50%">
-              <stop offset="0%" stopColor="#8bb5ff" stopOpacity="0.20" />
-              <stop offset="100%" stopColor="#4e7cf6" stopOpacity="0.02" />
+              <stop offset="0%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.20" />
+              <stop offset="100%" stopColor="rgb(var(--accent-rgb))" stopOpacity="0.02" />
             </radialGradient>
             {/* Glass blur filter */}
             <filter id="h-glow">
@@ -68,7 +68,7 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
             </filter>
             {/* Glass drop shadow */}
             <filter id="h-shadow">
-              <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#4e7cf6" floodOpacity="0.25" />
+              <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="rgb(var(--accent-rgb))" floodOpacity="0.25" />
             </filter>
           </defs>
 
@@ -90,7 +90,7 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
 
           {/* Glass hexagonal frame */}
           <g filter="url(#h-shadow)">
-            <path d="M200 55 L310 110 L310 285 L200 340 L90 285 L90 110 Z" fill="url(#h-glass1)" opacity="0.12" stroke="rgba(107, 147, 255, 0.25)" strokeWidth="1" />
+            <path d="M200 55 L310 110 L310 285 L200 340 L90 285 L90 110 Z" fill="url(#h-glass1)" opacity="0.12" stroke="rgb(var(--accent-rgb) / 0.25)" strokeWidth="1" />
           </g>
 
           {/* Glass A letter */}
@@ -100,7 +100,7 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
           {/* Reflection overlay */}
           <path d="M200 85 L125 305 h32 l18-42 h50 l18 42 h32 L200 85z M200 145 l30 80 h-60 l30-80z" fill="url(#h-reflect)" />
           {/* Inner A glow stroke */}
-          <path d="M200 85 L125 305 h32 l18-42 h50 l18 42 h32 L200 85z" fill="none" stroke="rgba(139, 185, 255, 0.35)" strokeWidth="1.5" />
+          <path d="M200 85 L125 305 h32 l18-42 h50 l18 42 h32 L200 85z" fill="none" stroke="rgb(var(--accent-rgb) / 0.35)" strokeWidth="1.5" />
 
           {/* Prismatic light streak */}
           <rect x="130" y="195" width="140" height="2" rx="1" fill="white" opacity="0.15">
@@ -109,19 +109,19 @@ export function Hero3D({ size = 'lg', className = '' }: Hero3DProps) {
           </rect>
 
           {/* Floating orbital particles */}
-          <circle r="3" fill="#6b93ff" opacity="0.7">
+          <circle r="3" fill="rgb(var(--accent-rgb))" opacity="0.7">
             <animateMotion dur="18s" repeatCount="indefinite" path="M200,30 A170,170 0 1,1 199,30 Z" />
             <animate attributeName="opacity" values="0.3;0.8;0.3" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="2.5" fill="#8bb5ff" opacity="0.6">
+          <circle r="2.5" fill="rgb(var(--accent-rgb))" opacity="0.6">
             <animateMotion dur="22s" repeatCount="indefinite" path="M370,200 A170,170 0 1,1 369,200 Z" />
             <animate attributeName="opacity" values="0.2;0.7;0.2" dur="4s" repeatCount="indefinite" />
           </circle>
-          <circle r="2" fill="#a5c4ff" opacity="0.5">
+          <circle r="2" fill="rgb(var(--accent-rgb))" opacity="0.5">
             <animateMotion dur="15s" repeatCount="indefinite" path="M200,370 A170,170 0 1,0 201,370 Z" />
             <animate attributeName="opacity" values="0.3;0.6;0.3" dur="2.5s" repeatCount="indefinite" />
           </circle>
-          <circle r="1.5" fill="#4e7cf6" opacity="0.5">
+          <circle r="1.5" fill="rgb(var(--accent-rgb))" opacity="0.5">
             <animateMotion dur="28s" repeatCount="indefinite" path="M30,200 A170,170 0 1,0 31,200 Z" />
           </circle>
 
@@ -154,7 +154,7 @@ export function AtheonTextMark({ className = '' }: { className?: string }) {
     <span
       className={`font-bold tracking-tight ${className}`}
       style={{
-        background: 'linear-gradient(135deg, #6b93ff, #4e7cf6)',
+        background: 'linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.7))',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
@@ -171,7 +171,7 @@ export function AtheonLogoInline({ className = '' }: { className?: string }) {
     <span
       className={`font-bold tracking-tight ${className}`}
       style={{
-        background: 'linear-gradient(135deg, #6b93ff, #4e7cf6)',
+        background: 'linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.7))',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
