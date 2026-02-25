@@ -38,7 +38,6 @@ const navItems: NavItem[] = [
   { path: '/erp-adapters', label: 'ERP Adapters', icon: IconERPAdapters, section: 'platform', sublabel: 'System Connectors', roles: ADMIN_ROLES },
   { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'system', sublabel: 'MCP + A2A', roles: ADMIN_ROLES },
   { path: '/audit', label: 'Audit', icon: IconAudit, section: 'system', sublabel: 'Governance', roles: ADMIN_ROLES },
-  { path: '/settings', label: 'Settings', icon: IconSettings, section: 'system' },
 ];
 
 /** Atheon infinity-loop logo mark for sidebar */

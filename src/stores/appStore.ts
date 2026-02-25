@@ -54,7 +54,10 @@ interface AppState {
 }
 
 const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('atheon-theme') : null) as Theme | null;
-const savedAccent = (typeof window !== 'undefined' ? localStorage.getItem('atheon-accent') : null) as AccentColor | null;
+// Migrate legacy 'amber' accent to 'teal'
+const rawAccent = typeof window !== 'undefined' ? localStorage.getItem('atheon-accent') : null;
+if (rawAccent === 'amber' && typeof window !== 'undefined') { localStorage.setItem('atheon-accent', 'teal'); }
+const savedAccent = (rawAccent === 'amber' ? 'teal' : rawAccent) as AccentColor | null;
 const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('atheon-onboarding-dismissed') === 'true' : false;
 
 // Apply saved theme to body on initial load

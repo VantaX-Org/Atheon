@@ -68,7 +68,7 @@ export function PulsePage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs t-secondary truncate">{metric.name}</span>
                   <span className={`w-2.5 h-2.5 rounded-full ${
-                    metric.status === 'green' ? 'bg-emerald-500/100' : metric.status === 'amber' ? 'bg-[#2a7c8c]/100' : 'bg-red-500/100'
+                    metric.status === 'green' ? 'bg-emerald-500/100' : metric.status === 'amber' ? 'bg-amber-500/100' : 'bg-red-500/100'
                   }`} />
                 </div>
                 <div className="flex items-end justify-between">
