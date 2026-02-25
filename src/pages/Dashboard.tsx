@@ -554,7 +554,7 @@ export function Dashboard() {
               style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-card)' }}
             >
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${item.color}12` }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${item.color}1F` }}>
                   <Icon size={18} style={{ color: item.color }} />
                 </div>
                 <div>
