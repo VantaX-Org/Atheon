@@ -217,7 +217,7 @@ export function CatalystsPage() {
  {outputData.exception_type && (
  <Badge variant="danger" size="sm" className="mb-2">{outputData.exception_type.replace(/_/g, ' ')}</Badge>
  )}
- <p className="text-xs text-red-300/80 mt-1">{outputData.exception_detail || ''}</p>
+ <p className="text-xs text-red-500/80 mt-1">{outputData.exception_detail || ''}</p>
  {outputData.suggested_action && (
  <div className="mt-2 p-2 rounded bg-amber-500/[0.06] border border-accent/20">
  <p className="text-xs text-amber-300"><strong>Suggested Action:</strong> {outputData.suggested_action}</p>
@@ -233,7 +233,7 @@ export function CatalystsPage() {
  {Object.entries(inputData).filter(([k]) => k !== 'manual' && k !== 'file_preview').map(([key, val]) => (
  <div key={key}>
  <span className="text-[10px] text-gray-500">{key.replace(/_/g, ' ')}</span>
- <p className="text-xs text-gray-300">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</p>
+ <p className="text-xs t-secondary">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</p>
  </div>
  ))}
  </div>
@@ -286,7 +286,7 @@ export function CatalystsPage() {
  <div className="flex items-center gap-3 p-3 bg-red-500/[0.08] border border-red-500/20 rounded-xl">
  <AlertTriangle size={18} className="text-red-400 flex-shrink-0" />
  <div className="flex-1">
- <p className="text-sm font-medium text-red-300">{exceptionCount} exception{exceptionCount > 1 ? 's' : ''} require{exceptionCount === 1 ? 's' : ''} attention</p>
+ <p className="text-sm font-medium text-red-500">{exceptionCount} exception{exceptionCount > 1 ? 's' : ''} require{exceptionCount === 1 ? 's' : ''} attention</p>
  <p className="text-xs text-red-400/70">Review and resolve catalyst exceptions before running new jobs</p>
  </div>
  <Button variant="danger" size="sm" onClick={() => setActiveTab('exceptions')}>View Exceptions</Button>
@@ -332,7 +332,7 @@ export function CatalystsPage() {
  {manualFile ? (
  <div className="flex items-center justify-center gap-2">
  <FileText size={16} className="text-accent" />
- <span className="text-sm text-gray-300">{manualFile.name}</span>
+ <span className="text-sm t-secondary">{manualFile.name}</span>
  <button onClick={(e) => { e.stopPropagation(); setManualFile(null); }} className="text-gray-500 hover:text-red-400"><X size={14} /></button>
  </div>
  ) : (

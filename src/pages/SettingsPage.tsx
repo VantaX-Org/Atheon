@@ -101,7 +101,7 @@ export function SettingsPage() {
  </h3>
  <div className="space-y-4">
  <div className="flex items-center gap-4">
- <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-2xl font-bold t-primary">
+ <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-2xl font-bold text-white">
  {displayName?.charAt(0) || 'A'}
  </div>
  <div>

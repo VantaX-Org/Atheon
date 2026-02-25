@@ -548,7 +548,7 @@ export function TenantsPage() {
  </div>
 
  <div className="space-y-3">
- <h4 className="text-sm font-medium text-gray-300">Feature Flags</h4>
+ <h4 className="text-sm font-medium t-primary">Feature Flags</h4>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
  {[
  { key: 'ssoEnabled' as const, label: 'SSO Enabled' },
@@ -556,15 +556,15 @@ export function TenantsPage() {
  { key: 'customBranding' as const, label: 'Custom Branding' },
  ].map(({ key, label }) => (
  <label key={key} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] cursor-pointer">
- <input type="checkbox" checked={entitlementForm[key]} onChange={() => setEntitlementForm(p => ({ ...p, [key]: !p[key] }))} className="rounded border-white/[0.08]" />
- <span className="text-xs text-gray-300">{label}</span>
+ <input type="checkbox" checked={entitlementForm[key]} onChange={() => setEntitlementForm(p => ({ ...p, [key]: !p[key] }))} className="rounded border-[var(--border-card)]" />
+ <span className="text-xs t-primary">{label}</span>
  </label>
  ))}
  </div>
  </div>
 
  <div className="space-y-2">
- <h4 className="text-sm font-medium text-gray-300">Autonomy Tiers</h4>
+ <h4 className="text-sm font-medium t-primary">Autonomy Tiers</h4>
  <div className="flex flex-wrap gap-2">
  {['read-only', 'assisted', 'supervised', 'autonomous'].map(tier => (
  <button
@@ -583,7 +583,7 @@ export function TenantsPage() {
  </div>
 
  <div className="space-y-2">
- <h4 className="text-sm font-medium text-gray-300">LLM Tiers</h4>
+ <h4 className="text-sm font-medium t-primary">LLM Tiers</h4>
  <div className="flex flex-wrap gap-2">
  {['tier-1', 'tier-2', 'tier-3', 'custom-lora'].map(tier => (
  <button

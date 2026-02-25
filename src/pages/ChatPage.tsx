@@ -173,7 +173,7 @@ export function ChatPage() {
  <button
  key={i}
  onClick={() => setInput(q.text)}
- className="px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-xs text-gray-400 hover:bg-[var(--bg-secondary)] hover:border-white/[0.08] transition-all"
+ className="px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-xs text-gray-400 hover:bg-[var(--bg-secondary)] hover:border-[var(--border-card)] transition-all"
  >
  {q.text}
  </button>
