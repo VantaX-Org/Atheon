@@ -220,7 +220,7 @@ export function CatalystsPage() {
  <p className="text-xs text-red-500/80 mt-1">{outputData.exception_detail || ''}</p>
  {outputData.suggested_action && (
  <div className="mt-2 p-2 rounded bg-amber-500/[0.06] border border-accent/20">
- <p className="text-xs text-amber-300"><strong>Suggested Action:</strong> {outputData.suggested_action}</p>
+ <p className="text-xs text-amber-700"><strong>Suggested Action:</strong> {outputData.suggested_action}</p>
  </div>
  )}
  </div>
@@ -243,7 +243,7 @@ export function CatalystsPage() {
  {action.status === 'completed' && outputData && !isException && (
  <div className="p-3 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/20">
  <h4 className="text-xs font-semibold text-emerald-400 mb-1">Result</h4>
- <p className="text-xs text-emerald-300/80">{outputData.detail || JSON.stringify(outputData)}</p>
+ <p className="text-xs text-emerald-700">{outputData.detail || JSON.stringify(outputData)}</p>
  </div>
  )}
 
@@ -328,7 +328,7 @@ export function CatalystsPage() {
  </div>
  <div>
  <label className="text-xs t-muted">Upload File (optional)</label>
- <div className="mt-1 p-4 border-2 border-dashed border-white/[0.1] rounded-lg text-center cursor-pointer hover:border-amber-500/30 transition-colors" onClick={() => fileInputRef.current?.click()}>
+ <div className="mt-1 p-4 border-2 border-dashed border-[var(--border-card)] rounded-lg text-center cursor-pointer hover:border-amber-500/30 transition-colors" onClick={() => fileInputRef.current?.click()}>
  {manualFile ? (
  <div className="flex items-center justify-center gap-2">
  <FileText size={16} className="text-accent" />
