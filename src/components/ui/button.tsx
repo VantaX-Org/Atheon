@@ -11,8 +11,8 @@ const variants: Record<string, string> = {
   primary: 'text-white',
   secondary: 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-input-focus)] t-primary border border-[var(--border-card)]',
   ghost: 'bg-transparent hover:bg-[var(--bg-secondary)] t-secondary hover:t-primary',
-  danger: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200',
-  success: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200',
+  danger: 'bg-red-500/10 hover:bg-red-500/15 text-red-500 border border-red-500/20',
+  success: 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-500 border border-emerald-500/20',
 };
 
 const sizes: Record<string, string> = {

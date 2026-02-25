@@ -266,7 +266,7 @@ export function Header() {
           <button
             onClick={handleLogout}
             title="Sign out"
-            className="p-1 rounded-md t-muted hover:text-red-500 hover:bg-red-50 transition-all"
+            className="p-1 rounded-md t-muted hover:text-red-500 hover:bg-red-500/10 transition-all"
           >
             <LogOut size={13} />
           </button>
