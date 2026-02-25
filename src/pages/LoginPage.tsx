@@ -105,7 +105,7 @@ export function LoginPage() {
           <div className="lg:hidden mb-8"><h1 className="text-2xl font-bold t-primary tracking-tight">Atheon</h1><p className="text-xs t-muted">Enterprise Intelligence Platform</p></div>
           <h2 className="text-xl font-semibold t-primary mb-1">{mode === 'register' ? 'Create your account' : 'Welcome back'}</h2>
           <p className="text-xs t-muted mb-6">{mode === 'register' ? 'Register for your Atheon workspace' : 'Sign in to your Atheon workspace'}</p>
-          {error && <div className="mb-4 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">{error}</div>}
+          {error && <div className="mb-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">{error}</div>}
           {mode === 'login' && (
             <div className="space-y-2 mb-5">
               <button onClick={() => handleSSO('azure')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium t-secondary transition-all hover:bg-[var(--bg-secondary)]" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
