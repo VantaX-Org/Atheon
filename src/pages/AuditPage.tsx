@@ -78,7 +78,7 @@ export function AuditPage() {
  <div className="flex flex-wrap gap-4 p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <div>
  <label className="text-xs t-muted block mb-1">Layer</label>
- <select className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] text-gray-200" value={filterLayer} onChange={e => setFilterLayer(e.target.value)}>
+ <select className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={filterLayer} onChange={e => setFilterLayer(e.target.value)}>
  <option value="">All Layers</option>
  <option value="apex">Apex</option>
  <option value="pulse">Pulse</option>
@@ -92,7 +92,7 @@ export function AuditPage() {
  </div>
  <div>
  <label className="text-xs t-muted block mb-1">Outcome</label>
- <select className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] text-gray-200" value={filterOutcome} onChange={e => setFilterOutcome(e.target.value)}>
+ <select className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={filterOutcome} onChange={e => setFilterOutcome(e.target.value)}>
  <option value="">All Outcomes</option>
  <option value="success">Success</option>
  <option value="pending">Pending</option>
@@ -144,7 +144,7 @@ export function AuditPage() {
  <td className="py-3 px-4 text-xs text-gray-500 font-mono whitespace-nowrap">
  {new Date(entry.createdAt).toLocaleString()}
  </td>
- <td className="py-3 px-4 text-sm text-white">{entry.action}</td>
+ <td className="py-3 px-4 text-sm t-primary">{entry.action}</td>
  <td className="py-3 px-4">
  <LayerBadge layer={entry.layer} />
  </td>

@@ -119,13 +119,13 @@ export function ChatPage() {
  ? 'bg-accent/10 border border-accent/20'
  : 'bg-[var(--bg-secondary)] border border-[var(--border-card)]'
  }`}>
- <div className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+ <div className="text-sm t-primary whitespace-pre-wrap leading-relaxed">
  {msg.content.split('\n').map((line, i) => {
  if (line.startsWith('**') && line.endsWith('**')) {
  return <p key={i} className="font-semibold t-primary mt-2 mb-1">{line.replace(/\*\*/g, '')}</p>;
  }
  if (line.startsWith('- ')) {
- return <p key={i} className="ml-3 text-gray-400">{line}</p>;
+ return <p key={i} className="ml-3 t-secondary">{line}</p>;
  }
  return <p key={i} className={line === '' ? 'h-2' : ''}>{line}</p>;
  })}
@@ -190,7 +190,7 @@ export function ChatPage() {
  onChange={(e) => setInput(e.target.value)}
  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
  placeholder="Ask Atheon anything across your enterprise..."
- className="w-full px-4 py-3 rounded-xl bg-[var(--bg-secondary)] border border-white/[0.08] text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/30 transition-all"
+ className="w-full px-4 py-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/30 transition-all"
  />
  </div>
  <Button variant="primary" size="md" className="px-4" onClick={handleSend} disabled={sending}>

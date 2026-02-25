@@ -157,7 +157,7 @@ export function ConnectivityPage() {
  <h3 className="text-sm font-semibold t-primary">Agent-to-Agent (A2A) Protocol</h3>
  <p className="text-xs t-muted mt-2 leading-relaxed">
  The A2A protocol enables Atheon Catalysts to discover and communicate with each other across clusters.
- Each Catalyst publishes an <strong className="text-white">Agent Card</strong> (JSON-LD) describing its capabilities,
+ Each Catalyst publishes an <strong className="t-primary">Agent Card</strong> (JSON-LD) describing its capabilities,
  skills, and communication endpoints.
  </p>
  <div className="flex flex-wrap items-center gap-2 mt-4 text-xs text-gray-400">

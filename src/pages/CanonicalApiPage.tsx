@@ -212,7 +212,7 @@ export function CanonicalApiPage() {
  <div>
  <h3 className="text-sm font-semibold t-primary">Canonical API Architecture</h3>
  <p className="text-xs t-muted mt-2 leading-relaxed">
- The Atheon Canonical API provides a <strong className="text-white">single, unified interface</strong> to interact with any connected ERP system.
+ The Atheon Canonical API provides a <strong className="t-primary">single, unified interface</strong> to interact with any connected ERP system.
  Instead of calling SAP BAPIs, Salesforce REST, or Workday SOAP directly, Catalysts and user queries go through the Canonical API layer.
  </p>
  <div className="flex flex-wrap items-center gap-2 mt-4 text-xs text-gray-400">
@@ -225,11 +225,11 @@ export function CanonicalApiPage() {
  <span className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">SAP / SF / WD / ...</span>
  </div>
  <p className="text-xs t-muted mt-4 leading-relaxed">
- <strong className="text-white">Key benefits:</strong> ERP-agnostic Catalysts, hot-swap ERP backends without agent changes,
+ <strong className="t-primary">Key benefits:</strong> ERP-agnostic Catalysts, hot-swap ERP backends without agent changes,
  consistent data models, automatic field mapping, and centralised audit logging.
  </p>
  <p className="text-xs t-muted mt-2 leading-relaxed">
- <strong className="text-white">Versioning:</strong> All endpoints are versioned (v1). Breaking changes get a new version.
+ <strong className="t-primary">Versioning:</strong> All endpoints are versioned (v1). Breaking changes get a new version.
  Adapters implement the canonical schema and handle ERP-specific transformations internally.
  </p>
  </div>

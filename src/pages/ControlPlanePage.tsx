@@ -427,11 +427,11 @@ export function ControlPlanePage() {
  <Settings size={14} className="text-accent" /> Configuration
  </h4>
  <div className="space-y-2 text-xs">
- <div className="flex justify-between"><span className="text-gray-400">Replicas</span><span className="text-white">{replicas}</span></div>
- <div className="flex justify-between"><span className="text-gray-400">Max Concurrent Tasks</span><span className="text-white">{cfg.maxConcurrentTasks ?? 'N/A'}</span></div>
- <div className="flex justify-between"><span className="text-gray-400">Confidence Threshold</span><span className="text-white">{typeof cfg.confidenceThreshold === 'number' ? `${Math.round(cfg.confidenceThreshold * 100)}%` : 'N/A'}</span></div>
+ <div className="flex justify-between"><span className="text-gray-400">Replicas</span><span className="t-primary">{replicas}</span></div>
+ <div className="flex justify-between"><span className="text-gray-400">Max Concurrent Tasks</span><span className="t-primary">{cfg.maxConcurrentTasks ?? 'N/A'}</span></div>
+ <div className="flex justify-between"><span className="text-gray-400">Confidence Threshold</span><span className="t-primary">{typeof cfg.confidenceThreshold === 'number' ? `${Math.round(cfg.confidenceThreshold * 100)}%` : 'N/A'}</span></div>
  <div className="flex justify-between"><span className="text-gray-400">Escalation Policy</span><Badge variant="outline" size="sm">{cfg.escalationPolicy ?? 'N/A'}</Badge></div>
- <div className="flex justify-between"><span className="text-gray-400">CPU / Memory</span><span className="text-white">{cfg.resourceLimits?.cpuMillicores ?? '?'}m / {cfg.resourceLimits?.memoryMb ?? '?'}MB</span></div>
+ <div className="flex justify-between"><span className="text-gray-400">CPU / Memory</span><span className="t-primary">{cfg.resourceLimits?.cpuMillicores ?? '?'}m / {cfg.resourceLimits?.memoryMb ?? '?'}MB</span></div>
  </div>
  </div>
 
