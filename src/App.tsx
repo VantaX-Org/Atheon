@@ -48,10 +48,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/marketing" element={<MarketingPage />} />
+        <Route path="/" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/apex" element={<ApexPage />} />
           <Route path="/pulse" element={<PulsePage />} />
           <Route path="/catalysts" element={<ProtectedRoute allowedRoles={ALL_ROLES}><CatalystsPage /></ProtectedRoute>} />

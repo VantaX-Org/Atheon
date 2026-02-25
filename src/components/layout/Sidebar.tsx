@@ -25,7 +25,7 @@ const ADMIN_ROLES: UserRole[] = ['admin', 'executive'];
 const POWER_ROLES: UserRole[] = ['admin', 'executive', 'manager'];
 
 const navItems: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: IconDashboard, section: 'intelligence' },
+  { path: '/dashboard', label: 'Dashboard', icon: IconDashboard, section: 'intelligence' },
   { path: '/apex', label: 'Apex', icon: IconApex, section: 'intelligence', sublabel: 'Executive Intelligence', roles: POWER_ROLES },
   { path: '/pulse', label: 'Pulse', icon: IconPulse, section: 'intelligence', sublabel: 'Process Intelligence' },
   { path: '/catalysts', label: 'Catalysts', icon: IconCatalysts, section: 'intelligence', sublabel: 'Autonomous Execution' },
@@ -88,7 +88,7 @@ export function Sidebar() {
         <nav className="flex-1 flex flex-col items-center gap-0.5 overflow-y-auto scrollbar-thin w-full px-2">
           {visibleItems.map((item) => {
             const isActive = location.pathname === item.path ||
-              (item.path !== '/' && location.pathname.startsWith(item.path));
+              (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
             const Icon = item.icon;
             const showDivider = lastSection !== '' && lastSection !== item.section;
             lastSection = item.section;
@@ -149,7 +149,7 @@ export function Sidebar() {
             let prevSection = '';
             return visibleItems.map((item) => {
               const isActive = location.pathname === item.path ||
-                (item.path !== '/' && location.pathname.startsWith(item.path));
+                (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
               const Icon = item.icon;
               const showSectionHeader = prevSection !== item.section;
               prevSection = item.section;
