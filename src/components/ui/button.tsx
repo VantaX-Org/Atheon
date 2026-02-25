@@ -8,7 +8,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<string, string> = {
-  primary: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-lg shadow-amber-500/15',
+  primary: 'text-white shadow-lg',
   secondary: 'bg-[var(--bg-input)] hover:bg-[var(--bg-input-focus)] t-secondary border border-[var(--border-card)] backdrop-blur-sm',
   ghost: 'bg-transparent hover:bg-[var(--accent-subtle)] t-muted hover:t-primary',
   danger: 'bg-red-500/10 hover:bg-red-500/15 text-red-400 border border-red-500/20 backdrop-blur-sm',
@@ -21,15 +21,19 @@ const sizes: Record<string, string> = {
   lg: 'px-6 py-3 text-base',
 };
 
-export function Button({ children, variant = 'primary', size = 'md', className, ...props }: ButtonProps) {
+export function Button({ children, variant = 'primary', size = 'md', className, style, ...props }: ButtonProps) {
+  const mergedStyle = variant === 'primary'
+    ? { background: 'var(--accent)', boxShadow: '0 4px 14px var(--accent-glow)', ...style }
+    : style;
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--ring-focus)] disabled:opacity-50 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--ring-focus)] disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90',
         variants[variant],
         sizes[size],
         className
       )}
+      style={mergedStyle}
       {...props}
     >
       {children}

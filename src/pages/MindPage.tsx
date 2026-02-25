@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import type { MindModels, MindStats } from "@/lib/api";
-import { Brain, Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2 } from "lucide-react";
+import { Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 
 export function MindPage() {
@@ -62,19 +62,14 @@ export function MindPage() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-          <Brain className="w-5 h-5 text-amber-400" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold t-primary">Atheon Mind</h1>
-          <p className="text-sm t-muted">Proprietary Domain LLM - Enterprise Intelligence Engine</p>
-        </div>
+      <div>
+        <h1 className="text-3xl sm:text-4xl font-bold t-primary" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>Atheon Mind</h1>
+        <p className="text-sm t-muted mt-1">Proprietary Domain LLM — Enterprise Intelligence Engine</p>
       </div>
 
       {/* Model Tiers — admin sees full detail, users see summary */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
           <Layers className="w-4 h-4 text-amber-400" /> {isAdmin ? 'Inference Tiers' : 'AI Models'}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -115,7 +110,7 @@ export function MindPage() {
 
       {/* Training Pipeline — admin only */}
       {isAdmin && <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
           <Cpu className="w-4 h-4 text-amber-400" /> Training Pipeline
         </h2>
         <Card>
@@ -150,7 +145,7 @@ export function MindPage() {
 
       {/* Evaluation Metrics */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-amber-400" /> Evaluation Metrics
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -181,7 +176,7 @@ export function MindPage() {
       </div>
 
       {/* Architecture Note — admin only */}
-      {isAdmin && <Card className="border-amber-500/20">
+      {isAdmin && <Card variant="black">
         <div className="flex items-start gap-3">
           <Database className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
           <div>

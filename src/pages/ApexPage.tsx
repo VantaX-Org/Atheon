@@ -93,15 +93,8 @@ export function ApexPage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <div>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-            <Crown className="w-5 h-5 text-amber-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold t-primary">Atheon Apex</h1>
-            <p className="text-sm t-muted">Executive Intelligence - C-Suite Command Centre</p>
-          </div>
-        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold t-primary" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>Atheon Apex</h1>
+        <p className="text-sm t-muted mt-1">Executive Intelligence — C-Suite Command Centre</p>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -110,7 +103,7 @@ export function ApexPage() {
       {activeTab === 'health' && (
         <TabPanel>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-1 flex flex-col items-center justify-center" glow>
+            <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
               <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
               <div className="flex items-center gap-2 mt-4">
                 {trendIcon('up')}
@@ -119,7 +112,7 @@ export function ApexPage() {
             </Card>
 
             <Card className="lg:col-span-2">
-              <h3 className="text-lg font-semibold text-white mb-4">Dimension Breakdown</h3>
+              <h3 className="text-lg font-semibold t-primary mb-4">Dimension Breakdown</h3>
               <div className="space-y-4">
                 {dimensions.map((dim) => (
                   <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -155,19 +148,19 @@ export function ApexPage() {
         <TabPanel>
           <div className="space-y-6">
             {/* Narrative */}
-            <Card glow>
+            <Card variant="black">
               <div className="flex items-center gap-2 mb-3">
                 <FileText className="w-4 h-4 text-amber-400" />
-                <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
+                <h3 className="text-lg font-semibold">Daily Executive Briefing</h3>
                 <Badge variant="info">Today</Badge>
               </div>
-              <p className="text-sm t-secondary leading-relaxed">{briefing?.summary || 'No briefing available'}</p>
+              <p className="text-sm leading-relaxed" style={{ color: '#a0a0b0' }}>{briefing?.summary || 'No briefing available'}</p>
             </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* KPI Movements */}
               <Card>
-                <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-amber-400" /> KPI Movements
                 </h3>
                 <div className="space-y-3">
@@ -185,7 +178,7 @@ export function ApexPage() {
 
               {/* Top Risks */}
               <Card>
-                <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-red-400" /> Top Risks
                 </h3>
                 <div className="space-y-3">
@@ -201,8 +194,8 @@ export function ApexPage() {
               </Card>
 
               {/* Top Opportunities */}
-              <Card>
-                <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+              <Card variant="mint">
+                <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
                   <Lightbulb className="w-4 h-4 text-emerald-400" /> Opportunities
                 </h3>
                 <div className="space-y-3">
@@ -220,8 +213,8 @@ export function ApexPage() {
 
             {/* Required Decisions */}
             {(briefing?.decisionsNeeded || []).length > 0 && (
-              <Card className="border-amber-500/20">
-                <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+              <Card variant="black">
+                <h3 className="text-base font-semibold flex items-center gap-2">
                   <Shield className="w-4 h-4 text-amber-400" /> Decisions Required
                 </h3>
                 {(briefing?.decisionsNeeded || []).map((dec, i) => (

@@ -6,15 +6,23 @@ export interface CardProps {
   className?: string;
   hover?: boolean;
   glow?: boolean;
+  variant?: 'default' | 'black' | 'mint';
   onClick?: () => void;
   style?: React.CSSProperties;
 }
 
-export function Card({ children, className, hover, glow, onClick, style }: CardProps) {
+const variantClass: Record<string, string> = {
+  default: 'card-dark',
+  black: 'card-black',
+  mint: 'card-mint',
+};
+
+export function Card({ children, className, hover, glow, variant = 'default', onClick, style }: CardProps) {
   return (
     <div
       className={cn(
-        'card-dark p-5',
+        variantClass[variant] || 'card-dark',
+        'p-5',
         hover && 'cursor-pointer',
         glow && 'animate-glow-pulse',
         className
