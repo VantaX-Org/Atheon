@@ -32,7 +32,7 @@ export function LoginPage() {
       tenantName: res.user.tenantName,
       permissions: res.user.permissions,
     });
-    navigate('/');
+    navigate('/dashboard');
   };
 
   // Handle SSO callback
@@ -56,7 +56,7 @@ export function LoginPage() {
   // If already authenticated, redirect to dashboard
   useEffect(() => {
     if (existingUser && getToken()) {
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     }
   }, [existingUser, navigate]);
 
