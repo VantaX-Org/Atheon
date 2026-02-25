@@ -269,14 +269,9 @@ export function CatalystsPage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-amber-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold t-primary">Atheon Catalysts</h1>
-            <p className="text-sm t-muted">Autonomous Execution - Intelligent Workers</p>
-          </div>
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-bold t-primary" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>Atheon Catalysts</h1>
+          <p className="text-sm t-muted mt-1">Autonomous Execution — Intelligent Workers</p>
         </div>
         {isAdmin && (
           <div className="flex gap-2">

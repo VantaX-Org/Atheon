@@ -141,8 +141,8 @@ export function LoginPage() {
               <Hero3D size="md" />
             </div>
             <div className="flex items-baseline justify-center gap-1 mb-3">
-              <AtheonLogoInline className="text-5xl" />
-              <span className="text-4xl font-bold t-primary" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>theon</span>
+              <AtheonLogoInline className="text-5xl text-white" />
+              <span className="text-4xl font-bold text-white" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>theon</span>
             </div>
             <p className="text-lg text-gray-400 mb-2">Enterprise Intelligence Platform</p>
             <p className="text-sm text-gray-500 max-w-xs mx-auto leading-relaxed">
