@@ -16,6 +16,7 @@ import { ControlPlanePage } from "@/pages/ControlPlanePage";
 import { CanonicalApiPage } from "@/pages/CanonicalApiPage";
 import { ERPAdaptersPage } from "@/pages/ERPAdaptersPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { MarketingPage } from "@/pages/MarketingPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -47,6 +48,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/marketing" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
