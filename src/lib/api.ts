@@ -369,7 +369,7 @@ export interface SSOConfig {
 export interface HealthScore {
   id: string;
   overall: number;
-  dimensions: Record<string, { score: number; trend: string; delta: number }>;
+  dimensions: Record<string, { score: number; trend: string; delta?: number }>;
   calculatedAt: string;
 }
 
