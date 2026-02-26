@@ -108,7 +108,7 @@ export function Dashboard() {
         key,
         name: key.charAt(0).toUpperCase() + key.slice(1),
         score: val.score,
-        trend: val.trend as "up" | "down" | "stable",
+        trend: val.trend as string,
         change: val.delta ?? 0,
       }))
     : [];

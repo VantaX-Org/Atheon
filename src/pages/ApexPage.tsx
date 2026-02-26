@@ -68,7 +68,7 @@ export function ApexPage() {
  const dimensions = health?.dimensions
  ? Object.entries(health.dimensions).map(([key, val]) => ({
  key, name: key.charAt(0).toUpperCase() + key.slice(1),
- score: val.score, trend: val.trend as 'up' | 'down' | 'stable',
+ score: val.score, trend: val.trend as string,
  change: val.delta ?? 0, weight: 0.2,
  sparkline: [val.score - 6, val.score - 4, val.score - 3, val.score - 2, val.score - 1, val.score]}))
  : [];
@@ -131,7 +131,7 @@ export function ApexPage() {
  {dim.change > 0 ? '+' : ''}{dim.change}
  </span>
  </div>
- <Sparkline data={dim.sparkline} width={60} height={20} color={(dim.trend === 'up' || dim.trend === 'improving') ? '#10b981' : (dim.trend === 'down' || dim.trend === 'declining') ? '#ef4444' : '#6b7280'} />
+ <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'up' || dim.trend === 'improving' ? '#10b981' : dim.trend === 'down' || dim.trend === 'declining' ? '#ef4444' : '#6b7280'} />
  </div>
  </div>
  ))}
