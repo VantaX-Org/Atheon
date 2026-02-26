@@ -60,6 +60,10 @@ export function tenantIsolation() {
         }, 403);
       }
 
+      // Industry param is passed through to route handlers for filtering,
+      // but does NOT override the tenant context. Tenant isolation is preserved.
+      // Route handlers can read c.req.query('industry') to filter data within the tenant.
+
       await next();
     } catch {
       return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
