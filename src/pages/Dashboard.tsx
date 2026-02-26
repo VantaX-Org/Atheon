@@ -18,8 +18,8 @@ const ACCENT = "#4e7cf6";
 const CHART_BLUE_LIGHT = "#dbeafe";
 
 const trendIcon = (trend: string) => {
-  if (trend === "up") return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
-  if (trend === "down") return <TrendingDown className="w-3.5 h-3.5 text-red-500" />;
+  if (trend === "up" || trend === "improving") return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
+  if (trend === "down" || trend === "declining") return <TrendingDown className="w-3.5 h-3.5 text-red-500" />;
   return <Minus className="w-3.5 h-3.5 text-gray-400" />;
 };
 
@@ -98,10 +98,10 @@ export function Dashboard() {
 
   const overallScore = health?.overall ?? 0;
   const dimEntries = health?.dimensions ? Object.values(health.dimensions) : [];
-  const upCount = dimEntries.filter((d) => d.trend === "up").length;
-  const downCount = dimEntries.filter((d) => d.trend === "down").length;
+  const upCount = dimEntries.filter((d) => d.trend === "up" || d.trend === "improving").length;
+  const downCount = dimEntries.filter((d) => d.trend === "down" || d.trend === "declining").length;
   const healthTrend = upCount > downCount ? "up" : downCount > upCount ? "down" : "stable";
-  const avgDelta = dimEntries.length > 0 ? dimEntries.reduce((s, d) => s + d.delta, 0) / dimEntries.length : 0;
+  const avgDelta = dimEntries.length > 0 ? dimEntries.reduce((s, d) => s + (d.delta ?? 0), 0) / dimEntries.length : 0;
 
   const dimensions = health?.dimensions
     ? Object.entries(health.dimensions).map(([key, val]) => ({
@@ -109,7 +109,7 @@ export function Dashboard() {
         name: key.charAt(0).toUpperCase() + key.slice(1),
         score: val.score,
         trend: val.trend as "up" | "down" | "stable",
-        change: val.delta,
+        change: val.delta ?? 0,
       }))
     : [];
 
