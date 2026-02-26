@@ -8,7 +8,11 @@
  * 3. MediBridge Clinics - Sage Business Cloud - Healthcare
  * 4. BluePeak Logistics - Sage Pastel - Logistics/Transport
  * 5. NovaTech Solutions - Oracle Fusion - Technology/SaaS
+ *
+ * Default password for all test users: Atheon@Test2026
  */
+
+import { hashPassword } from '../middleware/auth';
 
 export async function seedTestCompanies(db: D1Database) {
   const existing = await db.prepare(
@@ -16,7 +20,8 @@ export async function seedTestCompanies(db: D1Database) {
   ).bind('highveld', 'greenleaf', 'medibridge', 'bluepeak', 'novatech').first<{ count: number }>();
   if (existing && existing.count > 0) return;
 
-  const pwHash = 'pbkdf2:100000:c2VlZC1zYWx0LXRlc3Q:placeholder';
+  // Generate a real PBKDF2 hash for the default test password
+  const pwHash = await hashPassword('Atheon@Test2026');
 
   // ═══════════════════════════════════════════════════════════════════════════
   // COMPANY 1: HIGHVELD STEEL WORKS — SAP S/4HANA — MINING / STEEL
