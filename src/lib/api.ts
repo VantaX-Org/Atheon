@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
 
 let authToken: string | null = localStorage.getItem('atheon_token');
 
