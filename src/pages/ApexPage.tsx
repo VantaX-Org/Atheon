@@ -15,8 +15,8 @@ import {
 
 
 const trendIcon = (trend: string, size = 14) => {
- if (trend === 'up') return <TrendingUp size={size} className="text-emerald-400" />;
- if (trend === 'down') return <TrendingDown size={size} className="text-red-400" />;
+ if (trend === 'up' || trend === 'improving') return <TrendingUp size={size} className="text-emerald-400" />;
+ if (trend === 'down' || trend === 'declining') return <TrendingDown size={size} className="text-red-400" />;
  return <Minus size={size} className="text-gray-400" />;
 };
 
