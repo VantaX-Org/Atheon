@@ -369,7 +369,7 @@ export interface SSOConfig {
 export interface HealthScore {
   id: string;
   overall: number;
-  dimensions: Record<string, { score: number; trend: string; delta: number }>;
+  dimensions: Record<string, { score: number; trend: string; delta?: number }>;
   calculatedAt: string;
 }
 
@@ -574,7 +574,7 @@ export interface MindQueryResult {
 }
 
 export interface MindModels {
-  tiers: { id: string; name: string; model: string; maxTokens: number; avgLatency: number; description: string }[];
+  tiers: { id: string; name: string; model: string; maxTokens: number; avgLatency?: number; description: string }[];
   industryAdapters: { id: string; name: string; metrics: string[]; status: string }[];
   trainingPipeline: {
     preTraining: { status: string; progress: number; dataset: string };
