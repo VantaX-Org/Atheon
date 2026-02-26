@@ -37,7 +37,7 @@ export function MindPage() {
 
  const modelTiers = (models?.tiers || []).map(t => ({
  name: t.name, model: t.model, context: `${t.maxTokens} tokens`,
- latency: t.avgLatency != null ? `${t.avgLatency}ms` : (t.id === 'tier-1' ? '<50ms' : t.id === 'tier-2' ? '<500ms' : '<2000ms'), cost: (t.avgLatency ?? (t.id === 'tier-1' ? 50 : 500)) < 100 ? 'Low' : (t.avgLatency ?? 500) < 500 ? 'Medium' : 'High',
+ latency: t.avgLatency != null ? `${t.avgLatency}ms` : (t.id === 'tier-1' ? '<50ms' : t.id === 'tier-2' ? '<500ms' : '<2000ms'), cost: (t.avgLatency ?? (t.id === 'tier-1' ? 50 : t.id === 'tier-2' ? 200 : 500)) < 100 ? 'Low' : (t.avgLatency ?? (t.id === 'tier-1' ? 50 : t.id === 'tier-2' ? 200 : 500)) < 500 ? 'Medium' : 'High',
  usage: stats?.tierBreakdown?.find(b => b.tier === t.id)?.count || 0,
  description: t.description}));
  const totalUsage = modelTiers.reduce((s, t) => s + t.usage, 0) || 1;
