@@ -307,7 +307,7 @@ app.post('/api/contact', async (c) => {
             headers: { Authorization: `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message: {
-                subject: `Atheon Contact: ${safeName} from ${body.company ? escapeHtml(body.company) : 'Unknown'}`,
+                subject: `Atheon Contact: ${body.name} from ${body.company || 'Unknown'}`,
                 body: { contentType: 'HTML', content: `<h3>New Contact Form Submission</h3><p><strong>Name:</strong> ${safeName}</p><p><strong>Email:</strong> ${safeEmail}</p><p><strong>Company:</strong> ${safeCompany}</p><p><strong>Message:</strong></p><p>${safeMessage}</p>` },
                 toRecipients: [{ emailAddress: { address: 'atheon@vantax.co.za' } }],
                 replyTo: [{ emailAddress: { address: body.email, name: body.name } }],
