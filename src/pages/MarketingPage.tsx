@@ -222,8 +222,7 @@ function ParticleCanvas() {
 }
 
 /* ---- SCROLL REVEAL HOOK ---- */
-function useScrollReveal() {
-  const ref = useRef<HTMLDivElement>(null);
+function useScrollReveal(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -233,8 +232,7 @@ function useScrollReveal() {
     );
     el.querySelectorAll(".mk-reveal").forEach(child => observer.observe(child));
     return () => observer.disconnect();
-  }, []);
-  return ref;
+  }, [ref]);
 }
 
 /* ---- ANIMATED COUNTER ---- */
@@ -270,8 +268,7 @@ function AnimatedCounter({ value, prefix = "", suffix = "" }: { value: string; p
 }
 
 /* ---- MOUSE SPOTLIGHT ---- */
-function useMouseSpotlight() {
-  const ref = useRef<HTMLDivElement>(null);
+function useMouseSpotlight(ref: React.RefObject<HTMLDivElement | null>) {
   const handleMove = useCallback((e: MouseEvent) => {
     const el = ref.current;
     if (!el) return;
@@ -280,14 +277,13 @@ function useMouseSpotlight() {
     const y = e.clientY - rect.top;
     el.style.setProperty("--mx", `${x}px`);
     el.style.setProperty("--my", `${y}px`);
-  }, []);
+  }, [ref]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.addEventListener("mousemove", handleMove);
     return () => el.removeEventListener("mousemove", handleMove);
-  }, [handleMove]);
-  return ref;
+  }, [ref, handleMove]);
 }
 
 /* ============================================================
@@ -295,8 +291,9 @@ function useMouseSpotlight() {
    ============================================================ */
 export function MarketingPage() {
   const navigate = useNavigate();
-  const scrollRef = useScrollReveal();
-  const spotlightRef = useMouseSpotlight();
+  const mainRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(mainRef);
+  useMouseSpotlight(mainRef);
 
   // Inject CSS once
   useEffect(() => {
@@ -307,16 +304,6 @@ export function MarketingPage() {
       document.head.appendChild(s);
     }
   }, []);
-
-  // Merge refs
-  const mainRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (mainRef.current) {
-      // Assign both refs
-      if (scrollRef) (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = mainRef.current;
-      if (spotlightRef) (spotlightRef as React.MutableRefObject<HTMLDivElement | null>).current = mainRef.current;
-    }
-  });
 
   return (
     <div
