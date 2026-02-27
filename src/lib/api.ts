@@ -15,6 +15,12 @@ export function getToken(): string | null {
   return authToken;
 }
 
+/** Build query string from params, omitting undefined/null values */
+function qs(params: Record<string, string | undefined>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null) as [string, string][];
+  return entries.length ? '?' + entries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&') : '';
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -104,13 +110,13 @@ export const api = {
 
   iam: {
     policies: (tenantId?: string) =>
-      request<{ policies: IAMPolicy[]; total: number }>(`/api/iam/policies?tenant_id=${tenantId || 'vantax'}`),
+      request<{ policies: IAMPolicy[]; total: number }>(`/api/iam/policies${qs({ tenant_id: tenantId })}`),
     roles: (tenantId?: string) =>
-      request<{ roles: IAMRole[] }>(`/api/iam/roles?tenant_id=${tenantId || 'vantax'}`),
+      request<{ roles: IAMRole[] }>(`/api/iam/roles${qs({ tenant_id: tenantId })}`),
     users: (tenantId?: string) =>
-      request<{ users: IAMUser[]; total: number }>(`/api/iam/users?tenant_id=${tenantId || 'vantax'}`),
+      request<{ users: IAMUser[]; total: number }>(`/api/iam/users${qs({ tenant_id: tenantId })}`),
     sso: (tenantId?: string) =>
-      request<{ configs: SSOConfig[] }>(`/api/iam/sso?tenant_id=${tenantId || 'vantax'}`),
+      request<{ configs: SSOConfig[] }>(`/api/iam/sso${qs({ tenant_id: tenantId })}`),
     createUser: (data: Record<string, unknown>) =>
       request<{ id: string }>('/api/iam/users', { method: 'POST', body: JSON.stringify(data) }),
     createPolicy: (data: Record<string, unknown>) =>
@@ -121,42 +127,38 @@ export const api = {
 
   apex: {
     health: (tenantId?: string, industry?: string) =>
-      request<HealthScore>(`/api/apex/health?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<HealthScore>(`/api/apex/health${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     briefing: (tenantId?: string, industry?: string) =>
-      request<Briefing>(`/api/apex/briefing?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<Briefing>(`/api/apex/briefing${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     risks: (tenantId?: string, industry?: string) =>
-      request<{ risks: Risk[]; total: number }>(`/api/apex/risks?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ risks: Risk[]; total: number }>(`/api/apex/risks${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     scenarios: (tenantId?: string, industry?: string) =>
-      request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     createScenario: (data: Record<string, unknown>) =>
       request<{ id: string; results: Record<string, unknown> }>('/api/apex/scenarios', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   pulse: {
     metrics: (tenantId?: string, industry?: string) =>
-      request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     anomalies: (tenantId?: string, industry?: string) =>
-      request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     processes: (tenantId?: string, industry?: string) =>
-      request<{ processes: ProcessItem[]; total: number }>(`/api/pulse/processes?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ processes: ProcessItem[]; total: number }>(`/api/pulse/processes${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     correlations: (tenantId?: string, industry?: string) =>
-      request<{ correlations: CorrelationItem[]; total: number }>(`/api/pulse/correlations?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ correlations: CorrelationItem[]; total: number }>(`/api/pulse/correlations${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     summary: (tenantId?: string, industry?: string) =>
-      request<PulseSummary>(`/api/pulse/summary?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<PulseSummary>(`/api/pulse/summary${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
   },
 
   catalysts: {
     clusters: (tenantId?: string, industry?: string) =>
-      request<{ clusters: ClusterItem[]; total: number }>(`/api/catalysts/clusters?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ clusters: ClusterItem[]; total: number }>(`/api/catalysts/clusters${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     toggleSubCatalyst: (clusterId: string, subName: string) =>
       request<{ success: boolean; subCatalyst: { name: string; enabled: boolean } }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/toggle`, { method: 'PUT' }),
     cluster: (id: string) => request<ClusterDetail>(`/api/catalysts/clusters/${id}`),
-    actions: (tenantId?: string, clusterId?: string, industry?: string) => {
-      let url = `/api/catalysts/actions?tenant_id=${tenantId || 'vantax'}`;
-      if (clusterId) url += `&cluster_id=${clusterId}`;
-      if (industry && industry !== 'general') url += `&industry=${industry}`;
-      return request<{ actions: ActionItem[]; total: number }>(url);
-    },
+    actions: (tenantId?: string, clusterId?: string, industry?: string) =>
+      request<{ actions: ActionItem[]; total: number }>(`/api/catalysts/actions${qs({ tenant_id: tenantId, cluster_id: clusterId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     createAction: (data: Record<string, unknown>) =>
       request<{ id: string }>('/api/catalysts/actions', { method: 'POST', body: JSON.stringify(data) }),
     approveAction: (id: string, approvedBy?: string) =>
@@ -164,7 +166,7 @@ export const api = {
     rejectAction: (id: string, rejectedBy?: string, reason?: string) =>
       request<{ success: boolean }>(`/api/catalysts/actions/${id}/reject`, { method: 'PUT', body: JSON.stringify({ approved_by: rejectedBy || 'ui', reason: reason || '' }) }),
     governance: (tenantId?: string, industry?: string) =>
-      request<GovernanceData>(`/api/catalysts/governance?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<GovernanceData>(`/api/catalysts/governance${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     createCluster: (data: Record<string, unknown>) =>
       request<{ id: string; name: string; domain: string }>('/api/catalysts/clusters', { method: 'POST', body: JSON.stringify(data) }),
     manualExecute: async (data: FormData): Promise<ManualExecuteResult> => {
@@ -182,44 +184,40 @@ export const api = {
   },
 
   memory: {
-    entities: (tenantId?: string, type?: string, industry?: string) => {
-      let url = `/api/memory/entities?tenant_id=${tenantId || 'vantax'}`;
-      if (type) url += `&type=${type}`;
-      if (industry && industry !== 'general') url += `&industry=${industry}`;
-      return request<{ entities: GraphEntity[]; total: number }>(url);
-    },
+    entities: (tenantId?: string, type?: string, industry?: string) =>
+      request<{ entities: GraphEntity[]; total: number }>(`/api/memory/entities${qs({ tenant_id: tenantId, type, industry: industry && industry !== 'general' ? industry : undefined })}`),
     entity: (id: string) => request<GraphEntityDetail>(`/api/memory/entities/${id}`),
     relationships: (tenantId?: string, industry?: string) =>
-      request<{ relationships: GraphRelationship[]; total: number }>(`/api/memory/relationships?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ relationships: GraphRelationship[]; total: number }>(`/api/memory/relationships${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     graph: (tenantId?: string, industry?: string) =>
-      request<GraphData>(`/api/memory/graph?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<GraphData>(`/api/memory/graph${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     query: (queryText: string, tenantId?: string) =>
       request<GraphQueryResult>('/api/memory/query', {
         method: 'POST',
-        body: JSON.stringify({ query: queryText, tenant_id: tenantId || 'vantax' }),
+        body: JSON.stringify({ query: queryText, tenant_id: tenantId }),
       }),
     stats: (tenantId?: string, industry?: string) =>
-      request<GraphStats>(`/api/memory/stats?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<GraphStats>(`/api/memory/stats${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
   },
 
   mind: {
     query: (queryText: string, tier?: string, tenantId?: string, industry?: string) =>
       request<MindQueryResult>('/api/mind/query', {
         method: 'POST',
-        body: JSON.stringify({ query: queryText, tier: tier || 'tier-1', tenant_id: tenantId || 'vantax', industry: industry || undefined }),
+        body: JSON.stringify({ query: queryText, tier: tier || 'tier-1', tenant_id: tenantId, industry: industry || undefined }),
       }),
     models: () => request<MindModels>('/api/mind/models'),
     history: (tenantId?: string, industry?: string) =>
-      request<{ queries: MindHistoryItem[]; total: number }>(`/api/mind/history?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<{ queries: MindHistoryItem[]; total: number }>(`/api/mind/history${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     stats: (tenantId?: string, industry?: string) =>
-      request<MindStats>(`/api/mind/stats?tenant_id=${tenantId || 'vantax'}${industry && industry !== 'general' ? `&industry=${industry}` : ''}`),
+      request<MindStats>(`/api/mind/stats${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
   },
 
   erp: {
     adapters: () => request<{ adapters: ERPAdapter[]; total: number }>('/api/erp/adapters'),
     adapter: (id: string) => request<ERPAdapterDetail>(`/api/erp/adapters/${id}`),
     connections: (tenantId?: string) =>
-      request<{ connections: ERPConnection[]; total: number }>(`/api/erp/connections?tenant_id=${tenantId || 'vantax'}`),
+      request<{ connections: ERPConnection[]; total: number }>(`/api/erp/connections${qs({ tenant_id: tenantId })}`),
     createConnection: (data: Record<string, unknown>) =>
       request<{ id: string; status: string }>('/api/erp/connections', { method: 'POST', body: JSON.stringify(data) }),
     testConnection: (id: string) =>
@@ -256,13 +254,10 @@ export const api = {
   },
 
   audit: {
-    log: (tenantId?: string, layer?: string) => {
-      let url = `/api/audit/log?tenant_id=${tenantId || 'vantax'}`;
-      if (layer) url += `&layer=${layer}`;
-      return request<{ entries: AuditEntry[]; total: number }>(url);
-    },
+    log: (tenantId?: string, layer?: string) =>
+      request<{ entries: AuditEntry[]; total: number }>(`/api/audit/log${qs({ tenant_id: tenantId, layer })}`),
     stats: (tenantId?: string) =>
-      request<AuditStats>(`/api/audit/stats?tenant_id=${tenantId || 'vantax'}`),
+      request<AuditStats>(`/api/audit/stats${qs({ tenant_id: tenantId })}`),
   },
 
   notifications: {
