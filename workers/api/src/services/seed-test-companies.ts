@@ -15,10 +15,8 @@
 import { hashPassword } from '../middleware/auth';
 
 export async function seedTestCompanies(db: D1Database) {
-  const existing = await db.prepare(
-    'SELECT COUNT(*) as count FROM tenants WHERE id IN (?, ?, ?, ?, ?)'
-  ).bind('highveld', 'greenleaf', 'medibridge', 'bluepeak', 'novatech').first<{ count: number }>();
-  if (existing && existing.count > 0) return;
+  // No early-return guard — INSERT OR IGNORE handles duplicates so partial
+  // seeds from a previous failed run are filled in automatically.
 
   // Generate a real PBKDF2 hash for the default test password
   const pwHash = await hashPassword('Atheon@Test2026');
