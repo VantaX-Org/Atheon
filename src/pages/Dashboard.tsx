@@ -296,7 +296,7 @@ export function Dashboard() {
                   <span className="w-2 h-2 rounded-full" style={{ background: ACCENT }} /> Health Score
                 </span>
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium t-muted">
-                  <span className="w-2 h-2 rounded-full" style={{ background: CHART_BLUE_LIGHT }} /> Revenue
+                  <span className="w-2 h-2 rounded-full" style={{ background: CHART_LIGHT }} /> Revenue
                 </span>
               </div>
             </div>
