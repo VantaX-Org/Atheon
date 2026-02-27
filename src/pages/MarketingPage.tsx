@@ -1,6 +1,4 @@
-import { useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
-import { API_URL } from "@/lib/api";
+import { useEffect, useRef } from "react";
 
 /* ============================================================
    ATHEON MARKETING PAGE - Exact match to reference design
@@ -440,30 +438,6 @@ const marketingCSS = `
   max-width: 480px; margin: 0 auto 3.5rem;
 }
 
-/* CONTACT */
-.mk5-contact { padding: 8rem 3.5rem; border-top: 1px solid var(--line); }
-.mk5-contact-inner { max-width: 600px; margin: 0 auto; text-align: center; }
-.mk5-contact h2 {
-  font-family: 'Instrument Serif', serif; font-size: 2.5rem; font-weight: 400;
-  margin-bottom: 1rem;
-}
-.mk5-contact p { font-size: .9rem; font-weight: 300; color: var(--chalk); margin-bottom: 3rem; line-height: 1.8; }
-.mk5-contact input, .mk5-contact textarea {
-  width: 100%; padding: 1rem 1.2rem; background: var(--abyss); border: 1px solid var(--line);
-  color: var(--cream); font-family: 'Outfit', sans-serif; font-size: .85rem; font-weight: 300;
-  outline: none; transition: border-color .3s; margin-bottom: 1rem; box-sizing: border-box;
-}
-.mk5-contact input:focus, .mk5-contact textarea:focus { border-color: var(--sage); }
-.mk5-contact input::placeholder, .mk5-contact textarea::placeholder { color: var(--slate); }
-.mk5-contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.mk5-contact-btn {
-  width: 100%; padding: 1rem; background: var(--sage); color: var(--void);
-  font-family: 'IBM Plex Mono', monospace; font-size: .65rem; letter-spacing: .15em;
-  text-transform: uppercase; font-weight: 500; border: none; cursor: none;
-  transition: background .3s; margin-top: .5rem;
-}
-.mk5-contact-btn:hover { background: var(--sage-b); }
-
 /* FOOTER */
 .mk5-footer {
   padding: 3rem 3.5rem; border-top: 1px solid var(--line);
@@ -503,7 +477,7 @@ const marketingCSS = `
   .mk5-nav-links { display: none; }
   .mk5-hero { padding: 0 2rem 4rem; }
   .mk5-manifesto { padding: 8rem 2rem; }
-  .mk5-layers, .mk5-comp, .mk5-int, .mk5-brand, .mk5-contact { padding-left: 2rem; padding-right: 2rem; }
+  .mk5-layers, .mk5-comp, .mk5-int, .mk5-brand { padding-left: 2rem; padding-right: 2rem; }
   .mk5-layer-block { grid-template-columns: 1fr; }
   .mk5-layer-num { font-size: 4rem; }
   .mk5-stats { grid-template-columns: 1fr 1fr; }
@@ -514,7 +488,6 @@ const marketingCSS = `
   .mk5-cg { min-width: 700px; }
   .mk5-comp { overflow-x: auto; }
   .mk5-logo-grid { grid-template-columns: 1fr 1fr; }
-  .mk5-contact-grid { grid-template-columns: 1fr; }
   .mk5-body { cursor: auto; }
   .mk5-cur, .mk5-cur-dot { display: none; }
 }
@@ -757,9 +730,7 @@ function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
    ============================================================ */
 
 export function MarketingPage() {
-  const navigate = useNavigate();
   const mainRef = useRef<HTMLDivElement>(null);
-  const [contactSent, setContactSent] = useState(false);
   useReveal(mainRef);
 
   useEffect(() => {
@@ -801,9 +772,9 @@ export function MarketingPage() {
           <a href="#layers">Architecture</a>
           <a href="#compare">Compare</a>
           <a href="#brand">Identity</a>
-          <button className="mk5-nav-cta" onClick={() => navigate("/login")}>
+          <a href="#cta-s" className="mk5-nav-cta" onClick={(e) => { e.preventDefault(); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
             <span>Early Access</span>
-          </button>
+          </a>
         </div>
       </nav>
 
@@ -826,7 +797,7 @@ export function MarketingPage() {
               intelligence. One living truth.
             </p>
             <div className="mk5-hero-actions">
-              <button className="mk5-btn-main" onClick={() => document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" })}>
+              <button className="mk5-btn-main" onClick={() => document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" })}>
                 Request Access
               </button>
               <button className="mk5-btn-line" onClick={() => document.getElementById("layers")?.scrollIntoView({ behavior: "smooth" })}>
@@ -1163,56 +1134,9 @@ export function MarketingPage() {
             and copilots. Three layers of intelligence. One platform. We&rsquo;re onboarding founding
             partners now.
           </p>
-          <button className="mk5-btn-main mk5-reveal" onClick={() => document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" })}>
+          <a href="#" className="mk5-btn-main mk5-reveal" onClick={(e) => e.preventDefault()}>
             Request Access
-          </button>
-        </div>
-      </section>
-
-      {/* CONTACT */}
-      <section className="mk5-contact" id="contact">
-        <div className="mk5-contact-inner">
-          <h2 className="mk5-reveal">Get in touch</h2>
-          <p className="mk5-reveal">
-            Ready to transform your enterprise intelligence? Fill in the form and our team
-            will be in touch within 24 hours.
-          </p>
-          <form
-            className="mk5-reveal"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const data = Object.fromEntries(fd.entries());
-              fetch(API_URL + "/api/contact", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
-              })
-                .then((res) => {
-                  if (!res.ok) throw new Error("Failed");
-                  (e.target as HTMLFormElement).reset();
-                  setContactSent(true);
-                  setTimeout(() => setContactSent(false), 5000);
-                })
-                .catch(() => {});
-            }}
-            style={{ textAlign: "left" }}
-          >
-            <div className="mk5-contact-grid">
-              <input name="name" required placeholder="Full Name *" />
-              <input name="email" type="email" required placeholder="Email *" />
-            </div>
-            <input name="company" placeholder="Company" />
-            <textarea name="message" required rows={4} placeholder="Tell us about your enterprise intelligence needs..." />
-            <button type="submit" className="mk5-contact-btn">Send Message</button>
-            {contactSent && (
-              <div style={{ textAlign: "center", padding: "1rem", marginTop: "1rem", background: "rgba(74,107,90,.1)", border: "1px solid rgba(74,107,90,.2)" }}>
-                <p style={{ fontSize: ".85rem", color: "#5d8a6f", fontWeight: 500 }}>
-                  Message sent successfully! We will be in touch shortly.
-                </p>
-              </div>
-            )}
-          </form>
+          </a>
         </div>
       </section>
 
