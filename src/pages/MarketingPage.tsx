@@ -415,8 +415,6 @@ function HeroCanvas() {
     }> = [];
 
     function resize() {
-      const oldW = w || window.innerWidth;
-      const oldH = h || window.innerHeight;
       w = canvas!.width = window.innerWidth;
       h = canvas!.height = window.innerHeight;
       if (particles.length > 0) {
