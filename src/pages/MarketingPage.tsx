@@ -3,10 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api";
 
 /* ============================================================
-   ATHEON MARKETING PAGE v5
-   Dark void theme, Instrument Serif typography, particle pyramid,
-   ticker, manifesto, evolution strip, three-layer architecture,
-   comparison grid, integrations, brand identity, CTA.
+   ATHEON MARKETING PAGE - Exact match to reference design
    ============================================================ */
 
 const marketingCSS = `
@@ -31,133 +28,209 @@ const marketingCSS = `
   color: var(--cream);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  cursor: none;
 }
+.mk5-body ::selection { background: var(--sage); color: var(--void); }
+.mk5-body a { color: inherit; text-decoration: none; }
 
+/* GRAIN */
 .mk5-grain {
-  position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: .03;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none; opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='6' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px;
 }
 
+/* CURSOR */
+.mk5-cur {
+  width: 20px; height: 20px; border: 1.5px solid var(--sage); border-radius: 50%;
+  position: fixed; pointer-events: none; z-index: 99999;
+  transition: width .3s, height .3s, border-color .3s;
+  transform: translate(-50%, -50%); mix-blend-mode: difference;
+}
+.mk5-cur.active { width: 50px; height: 50px; border-color: var(--bronze); }
+.mk5-cur-dot {
+  width: 4px; height: 4px; background: var(--cream); border-radius: 50%;
+  position: fixed; pointer-events: none; z-index: 99999; transform: translate(-50%, -50%);
+}
+
+/* NAV */
 .mk5-nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  padding: 1.5rem 3.5rem; display: flex; align-items: center; justify-content: space-between;
-  background: rgba(6,9,13,.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--line);
+  position: fixed; top: 0; width: 100%; z-index: 100;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2rem 3.5rem; mix-blend-mode: difference;
 }
 .mk5-nav-logo {
-  display: flex; align-items: center; gap: .75rem; text-decoration: none; color: var(--cream);
-  font-family: 'Instrument Serif', serif; font-size: 1.3rem; letter-spacing: .08em;
+  display: flex; align-items: center; gap: .6rem;
+  font-family: 'Instrument Serif', serif; font-size: 1.4rem; letter-spacing: .15em;
+  text-decoration: none; color: var(--cream);
 }
-.mk5-nav-links { display: flex; align-items: center; gap: 2.5rem; }
+.mk5-nav-links { display: flex; gap: 3rem; align-items: center; }
 .mk5-nav-links a {
-  font-family: 'IBM Plex Mono', monospace; font-size: .65rem; letter-spacing: .15em;
-  text-transform: uppercase; color: var(--slate); text-decoration: none; transition: color .3s;
+  font-size: .72rem; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--chalk); opacity: .6; transition: opacity .3s; text-decoration: none;
 }
-.mk5-nav-links a:hover { color: var(--cream); }
+.mk5-nav-links a:hover { opacity: 1; }
 .mk5-nav-cta {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .15em;
-  text-transform: uppercase; padding: .6rem 1.5rem; border: 1px solid var(--sage);
-  color: var(--sage); text-decoration: none; transition: all .3s; cursor: pointer;
-  background: transparent;
+  font-size: .68rem !important; font-weight: 600 !important; letter-spacing: .25em !important;
+  padding: .7rem 2rem; border: 1px solid var(--sage); color: var(--sage) !important;
+  opacity: 1 !important; position: relative; overflow: hidden;
+  transition: all .4s cubic-bezier(.16,1,.3,1) !important;
+  background: transparent; cursor: none; text-transform: uppercase;
 }
-.mk5-nav-cta:hover { background: var(--sage); color: var(--void); }
+.mk5-nav-cta::before {
+  content: ''; position: absolute; inset: 0; background: var(--sage);
+  transform: translateY(100%); transition: transform .4s cubic-bezier(.16,1,.3,1);
+}
+.mk5-nav-cta:hover { color: var(--void) !important; }
+.mk5-nav-cta:hover::before { transform: translateY(0); }
+.mk5-nav-cta span { position: relative; z-index: 1; }
 
+/* HERO */
 .mk5-hero {
-  min-height: 100vh; display: flex; align-items: flex-end; padding: 0 3.5rem 6rem;
-  position: relative; overflow: hidden;
+  height: 100vh; min-height: 700px; display: flex; align-items: flex-end;
+  padding: 0 3.5rem 6rem; position: relative; overflow: hidden;
 }
-.mk5-hero canvas {
-  position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5;
+.mk5-hero canvas { position: absolute; inset: 0; z-index: 0; }
+.mk5-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: 1;
+  background:
+    radial-gradient(ellipse 60% 50% at 65% 40%, rgba(74,107,90,.06) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 30% 70%, rgba(201,160,89,.03) 0%, transparent 60%),
+    linear-gradient(180deg, transparent 50%, var(--void) 100%);
 }
 .mk5-hero-content {
-  position: relative; z-index: 2; display: grid; grid-template-columns: 1.2fr 1fr;
+  position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 1fr;
   gap: 4rem; width: 100%; align-items: end;
 }
+.mk5-hero-left { max-width: 680px; }
 .mk5-hero-eyebrow {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .35em;
-  text-transform: uppercase; color: var(--sage); margin-bottom: 1.5rem;
+  display: inline-flex; align-items: center; gap: 1rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .62rem; letter-spacing: .35em;
+  text-transform: uppercase; color: var(--sage); margin-bottom: 2.5rem;
+  opacity: 0; animation: mk5revUp 1s cubic-bezier(.16,1,.3,1) .5s forwards;
+}
+.mk5-hero-eyebrow::before {
+  content: ''; width: 50px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sage));
 }
 .mk5-hero h1 {
-  font-family: 'Instrument Serif', serif; font-size: clamp(3.5rem, 7vw, 7rem);
+  font-family: 'Instrument Serif', serif; font-size: clamp(3.5rem, 7.5vw, 7rem);
   font-weight: 400; line-height: .95; letter-spacing: -.02em; margin: 0;
+  opacity: 0; animation: mk5revUp 1.2s cubic-bezier(.16,1,.3,1) .7s forwards;
 }
-.mk5-hero h1 .thin { font-weight: 300; color: var(--chalk); }
 .mk5-hero h1 i {
   font-style: italic;
-  background: linear-gradient(135deg, var(--sage-b), var(--bronze));
+  background: linear-gradient(135deg, var(--sage-b), var(--sky));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
+.mk5-hero h1 .thin {
+  font-family: 'Outfit', sans-serif; font-weight: 200; font-size: .7em;
+  -webkit-text-fill-color: var(--chalk); letter-spacing: .02em;
+}
+.mk5-hero-right { display: flex; flex-direction: column; gap: 2.5rem; padding-bottom: .5rem; }
 .mk5-hero-desc {
-  font-size: 1rem; font-weight: 300; line-height: 1.9; color: var(--chalk); margin-bottom: 2.5rem;
+  font-size: 1.05rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  max-width: 420px; opacity: 0; animation: mk5revUp 1s cubic-bezier(.16,1,.3,1) 1s forwards;
 }
-.mk5-hero-actions { display: flex; gap: 1.5rem; align-items: center; }
+.mk5-hero-actions {
+  display: flex; gap: 2rem; align-items: center;
+  opacity: 0; animation: mk5revUp 1s cubic-bezier(.16,1,.3,1) 1.2s forwards;
+}
 .mk5-btn-main {
-  font-family: 'IBM Plex Mono', monospace; font-size: .65rem; letter-spacing: .15em;
-  text-transform: uppercase; padding: .8rem 2rem; background: var(--sage);
-  color: var(--void); text-decoration: none; transition: all .4s; font-weight: 500;
-  border: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 1rem;
+  padding: 1.1rem 2.8rem; background: var(--sage); color: var(--void);
+  font-weight: 600; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase;
+  overflow: hidden; transition: all .5s cubic-bezier(.16,1,.3,1);
+  border: none; cursor: none;
 }
-.mk5-btn-main:hover { background: var(--sage-b); }
+.mk5-btn-main::after {
+  content: '\\2192'; font-size: 1.2rem;
+  transition: transform .4s cubic-bezier(.16,1,.3,1);
+}
+.mk5-btn-main:hover::after { transform: translateX(6px); }
+.mk5-btn-main:hover { letter-spacing: .3em; }
 .mk5-btn-line {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .15em;
-  text-transform: uppercase; color: var(--slate); text-decoration: none;
-  border-bottom: 1px solid var(--line); padding-bottom: 2px; transition: color .3s;
-  background: transparent; border-top: none; border-left: none; border-right: none;
-  cursor: pointer;
+  font-size: .75rem; font-weight: 400; letter-spacing: .15em; text-transform: uppercase;
+  color: var(--chalk); padding-bottom: .3rem; border: none; background: transparent;
+  border-bottom: 1px solid var(--line-b); transition: all .3s; cursor: none;
 }
-.mk5-btn-line:hover { color: var(--cream); }
+.mk5-btn-line:hover { color: var(--cream); border-bottom-color: var(--cream); }
 .mk5-hero-scroll {
-  position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: .5rem;
-}
-.mk5-hero-scroll span {
-  font-family: 'IBM Plex Mono', monospace; font-size: .5rem; letter-spacing: .3em;
-  text-transform: uppercase; color: var(--slate);
+  position: absolute; bottom: 2.5rem; left: 50%; transform: translateX(-50%);
+  z-index: 3; display: flex; flex-direction: column; align-items: center; gap: .5rem;
+  opacity: 0; animation: mk5revUp 1s ease 2s forwards;
 }
 .mk5-scroll-line {
-  width: 1px; height: 40px; background: var(--line); position: relative; overflow: hidden;
+  width: 1px; height: 50px; position: relative; overflow: hidden; background: var(--line);
 }
 .mk5-scroll-line::after {
-  content: ''; position: absolute; top: -100%; left: 0; width: 100%; height: 40%;
-  background: linear-gradient(to bottom, transparent, var(--sage));
-  animation: mk5scrollP 2s linear infinite;
+  content: ''; position: absolute; top: -100%; left: 0; width: 1px; height: 100%;
+  background: var(--sage); animation: mk5scrollP 2s ease-in-out infinite;
+}
+.mk5-hero-scroll span {
+  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--slate);
 }
 
+/* TICKER */
 .mk5-ticker {
+  padding: 3rem 0; overflow: hidden;
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-  padding: 1.2rem 0; overflow: hidden;
 }
 .mk5-ticker-track {
-  display: flex; gap: 0; white-space: nowrap;
-  animation: mk5tickScroll 20s linear infinite;
+  display: flex; white-space: nowrap; animation: mk5tickScroll 40s linear infinite;
 }
 .mk5-ticker-item {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .25em;
-  text-transform: uppercase; color: var(--slate); padding: 0 2.5rem;
-  display: inline-flex; align-items: center; gap: 2.5rem;
+  font-family: 'Instrument Serif', serif; font-size: clamp(3rem, 6vw, 5rem);
+  padding: 0 2rem; flex-shrink: 0; display: flex; align-items: center; gap: 2rem;
+  -webkit-text-fill-color: transparent; -webkit-text-stroke: 1px rgba(74,107,90,.15);
 }
 .mk5-ticker-dot {
-  width: 3px; height: 3px; border-radius: 50%; background: var(--sage); opacity: .4;
-  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--sage);
+  opacity: .3; flex-shrink: 0; display: inline-block;
 }
 
-.mk5-manifesto { padding: 10rem 3.5rem; max-width: 900px; }
+/* MANIFESTO */
+.mk5-manifesto {
+  padding: 14rem 3.5rem; display: flex; justify-content: center; position: relative;
+}
+.mk5-manifesto::before {
+  content: '01'; position: absolute; top: 6rem; left: 3.5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
+  color: var(--sage); opacity: .4;
+}
 .mk5-manifesto-text {
-  font-family: 'Instrument Serif', serif; font-size: clamp(1.8rem, 3vw, 2.8rem);
-  font-weight: 400; line-height: 1.4; color: var(--chalk);
+  font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 4.5vw, 3.8rem);
+  font-weight: 400; line-height: 1.4; text-align: center; max-width: 1000px;
+  color: var(--chalk);
 }
 .mk5-manifesto-text em {
   font-style: italic;
-  background: linear-gradient(135deg, var(--sage-b), var(--bronze));
+  background: linear-gradient(135deg, var(--sage-b), var(--sky));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.mk5-manifesto-text strong { color: var(--cream); font-weight: 400; }
+.mk5-manifesto-text strong {
+  color: var(--cream); font-weight: 400; -webkit-text-fill-color: var(--cream);
+}
 
-.mk5-evo { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
-.mk5-evo-item { padding: 4rem 3rem; border-right: 1px solid var(--line); position: relative; }
-.mk5-evo-item:last-child { border-right: none; }
+/* EVOLUTION STRIP */
+.mk5-evo {
+  padding: 0 3.5rem; display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 1px; background: var(--line); margin-bottom: 0;
+}
+.mk5-evo-item {
+  background: var(--abyss); padding: 4rem 3rem; position: relative; transition: all .5s;
+}
+.mk5-evo-item:hover { background: var(--deep); }
+.mk5-evo-item::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+  transition: background .4s;
+}
+.mk5-evo-item.past::before { background: var(--slate); }
+.mk5-evo-item.present::before { background: var(--sky); }
+.mk5-evo-item.future::before { background: var(--sage); height: 3px; }
 .mk5-evo-era {
-  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .3em;
+  font-family: 'IBM Plex Mono', monospace; font-size: .5rem; letter-spacing: .35em;
   text-transform: uppercase; margin-bottom: 1.5rem;
 }
 .mk5-evo-era.past { color: var(--slate); }
@@ -165,53 +238,76 @@ const marketingCSS = `
 .mk5-evo-era.future { color: var(--sage); }
 .mk5-evo-name {
   font-family: 'Instrument Serif', serif; font-size: 2.5rem; font-weight: 400;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
-.mk5-evo-desc { font-size: .85rem; font-weight: 300; line-height: 1.8; color: var(--chalk); }
+.mk5-evo-item.future .mk5-evo-name {
+  background: linear-gradient(135deg, var(--sage-b), var(--bronze));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.mk5-evo-desc { font-size: .9rem; font-weight: 300; line-height: 1.8; color: var(--chalk); }
 .mk5-evo-arrow {
-  position: absolute; right: -1rem; top: 50%; font-size: 1.5rem; color: var(--line-b);
-  transform: translateY(-50%);
+  font-family: 'Instrument Serif', serif; font-size: 1.5rem; color: var(--slate);
+  margin-top: 1.5rem; opacity: .3;
 }
 
-.mk5-layers { padding: 10rem 3.5rem; }
-.mk5-layers-intro { display: grid; grid-template-columns: 200px 1fr; gap: 4rem; margin-bottom: 6rem; }
+/* LAYERS SECTION */
+.mk5-layers { padding: 0 3.5rem 10rem; }
+.mk5-layers-intro {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+  margin-bottom: 10rem; padding-top: 4rem; border-top: 1px solid var(--line);
+}
 .mk5-layers-intro-left {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
-  text-transform: uppercase; color: var(--sage); padding-top: .5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .35em;
+  text-transform: uppercase; color: var(--sage); padding-top: .3rem;
 }
 .mk5-layers-intro-right h2 {
-  font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 4vw, 4rem);
-  font-weight: 400; line-height: 1.1; margin-bottom: 1.5rem;
+  font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-weight: 400; line-height: 1.1; margin-bottom: 2rem;
 }
 .mk5-layers-intro-right p {
-  font-size: 1rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  font-size: 1.05rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  max-width: 500px;
 }
 .mk5-layer-block {
-  display: grid; grid-template-columns: 60px 1fr 400px; gap: 3rem;
+  display: grid; grid-template-columns: 120px 1fr 1.2fr; gap: 4rem;
   padding: 5rem 0; border-top: 1px solid var(--line);
+  opacity: 0; transform: translateY(40px);
+  transition: all .8s cubic-bezier(.16,1,.3,1);
 }
+.mk5-layer-block.visible { opacity: 1; transform: translateY(0); }
 .mk5-layer-num {
-  font-family: 'IBM Plex Mono', monospace; font-size: 5rem; font-weight: 300;
-  color: var(--line-b); line-height: 1;
+  font-family: 'Instrument Serif', serif; font-size: 8rem; font-weight: 400;
+  line-height: .8; -webkit-text-stroke: 1px var(--line-b);
+  -webkit-text-fill-color: transparent; user-select: none;
 }
 .mk5-layer-name {
-  font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; margin-bottom: .5rem;
+  font-family: 'Instrument Serif', serif; font-size: 2.2rem; font-weight: 400;
+  line-height: 1.2; margin-bottom: .5rem;
 }
 .mk5-layer-role {
-  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .2em;
-  text-transform: uppercase; margin-bottom: 1.5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
+  text-transform: uppercase; margin-bottom: 2rem;
 }
 .mk5-layer-role.bronze { color: var(--bronze); }
 .mk5-layer-role.sky { color: var(--sky); }
 .mk5-layer-role.sage { color: var(--sage); }
-.mk5-layer-desc { font-size: .9rem; font-weight: 300; line-height: 1.8; color: var(--chalk); margin-bottom: 2rem; }
+.mk5-layer-desc {
+  font-size: 1rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  margin-bottom: 2.5rem;
+}
 .mk5-layer-tags { display: flex; flex-wrap: wrap; gap: .5rem; }
 .mk5-layer-tag {
-  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .1em;
-  padding: .4rem 1rem; border: 1px solid var(--line); color: var(--slate); transition: all .3s;
+  padding: .4rem 1rem; font-size: .7rem; font-weight: 500; letter-spacing: .05em;
+  border: 1px solid var(--line); color: var(--chalk); transition: all .3s;
 }
 .mk5-layer-tag:hover { border-color: var(--sage); color: var(--sage); background: var(--sage-d); }
+.mk5-layer-visual {
+  display: flex; align-items: center; justify-content: center; position: relative;
+  min-height: 300px;
+}
+.mk5-layer-visual canvas { width: 100%; height: 100%; }
 
+/* BIG STATEMENT */
 .mk5-big-stmt { padding: 16rem 3.5rem; text-align: center; }
 .mk5-big-stmt h2 {
   font-family: 'Instrument Serif', serif; font-size: clamp(3rem, 8vw, 8rem);
@@ -225,6 +321,7 @@ const marketingCSS = `
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 
+/* STATS */
 .mk5-stats {
   display: grid; grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
@@ -244,7 +341,13 @@ const marketingCSS = `
   text-transform: uppercase; color: var(--slate); margin-top: 1rem;
 }
 
+/* COMPARISON */
 .mk5-comp { padding: 10rem 3.5rem; position: relative; }
+.mk5-comp::before {
+  content: '02'; position: absolute; top: 4rem; left: 3.5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
+  color: var(--sage); opacity: .4;
+}
 .mk5-comp-header { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; margin-bottom: 5rem; }
 .mk5-comp-header h2 {
   font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 4vw, 4rem);
@@ -272,6 +375,7 @@ const marketingCSS = `
 .mk5-cc.cn { color: var(--slate); opacity: .3; }
 .mk5-cc.cp { color: var(--slate); font-style: italic; }
 
+/* INTEGRATIONS */
 .mk5-int { padding: 10rem 3.5rem; }
 .mk5-int-header { margin-bottom: 5rem; padding-bottom: 3rem; border-bottom: 1px solid var(--line); }
 .mk5-int-header h2 {
@@ -294,6 +398,21 @@ const marketingCSS = `
   text-transform: uppercase; color: var(--slate);
 }
 
+/* BRAND */
+.mk5-brand { padding: 8rem 3.5rem; border-top: 1px solid var(--line); }
+.mk5-logo-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--line); margin-top: 4rem;
+}
+.mk5-lb {
+  aspect-ratio: 3/2; display: flex; align-items: center; justify-content: center;
+}
+.mk5-lb.dark { background: var(--abyss); }
+.mk5-lb.light { background: #e8e4dc; }
+.mk5-lb.sg { background: var(--sage); }
+.mk5-lb.mid { background: #14202E; flex-direction: row; gap: 2.5rem; }
+
+/* CTA */
 .mk5-cta {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   flex-direction: column; text-align: center; position: relative; padding: 4rem;
@@ -321,6 +440,7 @@ const marketingCSS = `
   max-width: 480px; margin: 0 auto 3.5rem;
 }
 
+/* CONTACT */
 .mk5-contact { padding: 8rem 3.5rem; border-top: 1px solid var(--line); }
 .mk5-contact-inner { max-width: 600px; margin: 0 auto; text-align: center; }
 .mk5-contact h2 {
@@ -339,11 +459,12 @@ const marketingCSS = `
 .mk5-contact-btn {
   width: 100%; padding: 1rem; background: var(--sage); color: var(--void);
   font-family: 'IBM Plex Mono', monospace; font-size: .65rem; letter-spacing: .15em;
-  text-transform: uppercase; font-weight: 500; border: none; cursor: pointer;
+  text-transform: uppercase; font-weight: 500; border: none; cursor: none;
   transition: background .3s; margin-top: .5rem;
 }
 .mk5-contact-btn:hover { background: var(--sage-b); }
 
+/* FOOTER */
 .mk5-footer {
   padding: 3rem 3.5rem; border-top: 1px solid var(--line);
   display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center;
@@ -355,12 +476,18 @@ const marketingCSS = `
   letter-spacing: .2em; text-transform: uppercase; color: var(--slate);
 }
 
+/* ANIMATIONS */
+@keyframes mk5revUp { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes mk5scrollP { 0% { top: -100%; } 100% { top: 200%; } }
 @keyframes mk5tickScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 .mk5-reveal { opacity: 0; transform: translateY(50px); transition: all 1s cubic-bezier(.16,1,.3,1); }
 .mk5-reveal.visible { opacity: 1; transform: translateY(0); }
+.mk5-rd1 { transition-delay: .1s; }
+.mk5-rd2 { transition-delay: .2s; }
+.mk5-rd3 { transition-delay: .3s; }
 
-@media(max-width:1024px) {
+/* RESPONSIVE */
+@media(max-width: 1024px) {
   .mk5-hero-content { grid-template-columns: 1fr; }
   .mk5-layers-intro { grid-template-columns: 1fr; gap: 2rem; }
   .mk5-layer-block { grid-template-columns: 60px 1fr; gap: 2rem; }
@@ -369,14 +496,14 @@ const marketingCSS = `
   .mk5-evo { grid-template-columns: 1fr; }
   .mk5-int-grid { grid-template-columns: repeat(3, 1fr); }
   .mk5-comp-header { grid-template-columns: 1fr; }
-  .mk5-evo-arrow { display: none; }
+  .mk5-logo-grid { grid-template-columns: repeat(2, 1fr); }
 }
-@media(max-width:768px) {
+@media(max-width: 768px) {
   .mk5-nav { padding: 1.5rem 2rem; }
   .mk5-nav-links { display: none; }
   .mk5-hero { padding: 0 2rem 4rem; }
   .mk5-manifesto { padding: 8rem 2rem; }
-  .mk5-layers, .mk5-comp, .mk5-int, .mk5-contact { padding-left: 2rem; padding-right: 2rem; }
+  .mk5-layers, .mk5-comp, .mk5-int, .mk5-brand, .mk5-contact { padding-left: 2rem; padding-right: 2rem; }
   .mk5-layer-block { grid-template-columns: 1fr; }
   .mk5-layer-num { font-size: 4rem; }
   .mk5-stats { grid-template-columns: 1fr 1fr; }
@@ -386,9 +513,14 @@ const marketingCSS = `
   .mk5-big-stmt { padding: 8rem 2rem; }
   .mk5-cg { min-width: 700px; }
   .mk5-comp { overflow-x: auto; }
+  .mk5-logo-grid { grid-template-columns: 1fr 1fr; }
   .mk5-contact-grid { grid-template-columns: 1fr; }
+  .mk5-body { cursor: auto; }
+  .mk5-cur, .mk5-cur-dot { display: none; }
 }
 `;
+
+/* ---- SVG Components ---- */
 
 const AtheonLogo = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -398,6 +530,8 @@ const AtheonLogo = ({ size = 28 }: { size?: number }) => (
     <circle cx="16" cy="9" r="1.5" fill="#c9a059" />
   </svg>
 );
+
+/* ---- Canvas: Particle Pyramid (Hero) ---- */
 
 function HeroCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -417,11 +551,9 @@ function HeroCanvas() {
     function resize() {
       w = canvas!.width = window.innerWidth;
       h = canvas!.height = window.innerHeight;
-      if (particles.length > 0) {
-        for (const p of particles) {
-          p.tx = w * p.fx;
-          p.ty = h * p.fy;
-        }
+      for (const p of particles) {
+        p.tx = w * p.fx;
+        p.ty = h * p.fy;
       }
     }
     resize();
@@ -488,6 +620,125 @@ function HeroCanvas() {
   return <canvas ref={canvasRef} />;
 }
 
+/* ---- Canvas: Layer Viz (Architecture section) ---- */
+
+function LayerViz({ color }: { color: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const x = c.getContext("2d");
+    if (!x) return;
+    c.width = 400;
+    c.height = 300;
+
+    const pts: Array<{ x: number; y: number; vx: number; vy: number; r: number }> = [];
+    for (let i = 0; i < 40; i++) {
+      pts.push({
+        x: Math.random() * 400,
+        y: Math.random() * 300,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        r: Math.random() * 2 + 0.5,
+      });
+    }
+
+    let raf = 0;
+    function draw() {
+      x!.clearRect(0, 0, 400, 300);
+      for (const p of pts) {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > 400) p.vx *= -1;
+        if (p.y < 0 || p.y > 300) p.vy *= -1;
+        x!.beginPath();
+        x!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        x!.fillStyle = color + "40)";
+        x!.fill();
+      }
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dd = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+          if (dd < 80) {
+            x!.beginPath();
+            x!.moveTo(pts[i].x, pts[i].y);
+            x!.lineTo(pts[j].x, pts[j].y);
+            x!.strokeStyle = color + (0.1 * (1 - dd / 80)).toFixed(2) + ")";
+            x!.lineWidth = 0.5;
+            x!.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    }
+    raf = requestAnimationFrame(draw);
+
+    return () => cancelAnimationFrame(raf);
+  }, [color]);
+
+  return <canvas ref={canvasRef} width={400} height={300} />;
+}
+
+/* ---- Custom Cursor ---- */
+
+function CustomCursor() {
+  const curRef = useRef<HTMLDivElement>(null);
+  const dotRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const cur = curRef.current;
+    const dot = dotRef.current;
+    if (!cur || !dot) return;
+
+    let mx = 0, my = 0, cx = 0, cy = 0;
+    let raf = 0;
+
+    function onMove(e: MouseEvent) {
+      mx = e.clientX;
+      my = e.clientY;
+      dot!.style.left = mx + "px";
+      dot!.style.top = my + "px";
+    }
+    document.addEventListener("mousemove", onMove);
+
+    function ac() {
+      cx += (mx - cx) * 0.15;
+      cy += (my - cy) * 0.15;
+      cur!.style.left = cx + "px";
+      cur!.style.top = cy + "px";
+      raf = requestAnimationFrame(ac);
+    }
+    raf = requestAnimationFrame(ac);
+
+    const interactives = document.querySelectorAll("a, button, .mk5-layer-tag, .mk5-int-item, .mk5-stat-item");
+    const enter = () => cur!.classList.add("active");
+    const leave = () => cur!.classList.remove("active");
+    interactives.forEach((el) => {
+      el.addEventListener("mouseenter", enter);
+      el.addEventListener("mouseleave", leave);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("mousemove", onMove);
+      interactives.forEach((el) => {
+        el.removeEventListener("mouseenter", enter);
+        el.removeEventListener("mouseleave", leave);
+      });
+    };
+  }, []);
+
+  return (
+    <>
+      <div ref={curRef} className="mk5-cur" />
+      <div ref={dotRef} className="mk5-cur-dot" />
+    </>
+  );
+}
+
+/* ---- Scroll Reveal Hook ---- */
+
 function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = ref.current;
@@ -496,10 +747,14 @@ function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
       (entries) => entries.forEach((en) => { if (en.isIntersecting) en.target.classList.add("visible"); }),
       { threshold: 0.1, rootMargin: "0px 0px -80px 0px" }
     );
-    el.querySelectorAll(".mk5-reveal").forEach((child) => obs.observe(child));
+    el.querySelectorAll(".mk5-reveal, .mk5-layer-block").forEach((child) => obs.observe(child));
     return () => obs.disconnect();
   }, [ref]);
 }
+
+/* ============================================================
+   MARKETING PAGE COMPONENT
+   ============================================================ */
 
 export function MarketingPage() {
   const navigate = useNavigate();
@@ -534,7 +789,9 @@ export function MarketingPage() {
   return (
     <div ref={mainRef} className="mk5-body">
       <div className="mk5-grain" />
+      <CustomCursor />
 
+      {/* NAV */}
       <nav className="mk5-nav">
         <a href="#" className="mk5-nav-logo" onClick={(e) => e.preventDefault()}>
           <AtheonLogo size={28} />
@@ -543,24 +800,25 @@ export function MarketingPage() {
         <div className="mk5-nav-links">
           <a href="#layers">Architecture</a>
           <a href="#compare">Compare</a>
-          <a href="#contact">Contact</a>
+          <a href="#brand">Identity</a>
           <button className="mk5-nav-cta" onClick={() => navigate("/login")}>
-            <span>Sign In</span>
+            <span>Early Access</span>
           </button>
         </div>
       </nav>
 
+      {/* HERO */}
       <section className="mk5-hero">
         <HeroCanvas />
         <div className="mk5-hero-content">
-          <div>
+          <div className="mk5-hero-left">
             <div className="mk5-hero-eyebrow">Introducing the Catalyst</div>
             <h1>
               <span className="thin">Agents evolve.</span><br />
               <i>Catalysts</i> <span className="thin">emerge.</span>
             </h1>
           </div>
-          <div>
+          <div className="mk5-hero-right">
             <p className="mk5-hero-desc">
               Agents automate tasks. Copilots assist individuals. A Catalyst does what neither
               can&nbsp;&mdash; it governs, correlates, and synthesises across your entire
@@ -583,6 +841,7 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* TICKER */}
       <div className="mk5-ticker">
         <div className="mk5-ticker-track">
           {[0, 1].map((rep) => (
@@ -597,6 +856,7 @@ export function MarketingPage() {
         </div>
       </div>
 
+      {/* MANIFESTO */}
       <section className="mk5-manifesto">
         <p className="mk5-manifesto-text mk5-reveal">
           An agent automates a task. A copilot assists a person. A <em>Catalyst</em> governs
@@ -606,8 +866,9 @@ export function MarketingPage() {
         </p>
       </section>
 
+      {/* EVOLUTION DEFINITION */}
       <div className="mk5-evo">
-        <div className="mk5-evo-item mk5-reveal">
+        <div className="mk5-evo-item past mk5-reveal">
           <div className="mk5-evo-era past">Yesterday</div>
           <div className="mk5-evo-name">Agent</div>
           <div className="mk5-evo-desc">
@@ -616,7 +877,7 @@ export function MarketingPage() {
           </div>
           <div className="mk5-evo-arrow">&rarr;</div>
         </div>
-        <div className="mk5-evo-item mk5-reveal">
+        <div className="mk5-evo-item present mk5-reveal mk5-rd1">
           <div className="mk5-evo-era present">Today</div>
           <div className="mk5-evo-name">Copilot</div>
           <div className="mk5-evo-desc">
@@ -625,7 +886,7 @@ export function MarketingPage() {
           </div>
           <div className="mk5-evo-arrow">&rarr;</div>
         </div>
-        <div className="mk5-evo-item mk5-reveal">
+        <div className="mk5-evo-item future mk5-reveal mk5-rd2">
           <div className="mk5-evo-era future">The Evolution</div>
           <div className="mk5-evo-name">Catalyst</div>
           <div className="mk5-evo-desc">
@@ -636,6 +897,7 @@ export function MarketingPage() {
         </div>
       </div>
 
+      {/* THREE LAYERS */}
       <section className="mk5-layers" id="layers">
         <div className="mk5-layers-intro">
           <div className="mk5-layers-intro-left">The Architecture</div>
@@ -666,7 +928,9 @@ export function MarketingPage() {
               ))}
             </div>
           </div>
-          <div className="mk5-layer-visual" />
+          <div className="mk5-layer-visual">
+            <LayerViz color="rgba(201,160,89," />
+          </div>
         </div>
 
         <div className="mk5-layer-block">
@@ -686,7 +950,9 @@ export function MarketingPage() {
               ))}
             </div>
           </div>
-          <div className="mk5-layer-visual" />
+          <div className="mk5-layer-visual">
+            <LayerViz color="rgba(122,172,181," />
+          </div>
         </div>
 
         <div className="mk5-layer-block">
@@ -706,10 +972,13 @@ export function MarketingPage() {
               ))}
             </div>
           </div>
-          <div className="mk5-layer-visual" />
+          <div className="mk5-layer-visual">
+            <LayerViz color="rgba(74,107,90," />
+          </div>
         </div>
       </section>
 
+      {/* BIG STATEMENT */}
       <section className="mk5-big-stmt mk5-reveal">
         <h2>
           <span className="stroke">Agent. Copilot.</span><br />
@@ -717,25 +986,27 @@ export function MarketingPage() {
         </h2>
       </section>
 
+      {/* STATS */}
       <div className="mk5-stats">
         <div className="mk5-stat-item mk5-reveal">
           <div className="mk5-stat-num"><span className="accent">3</span></div>
           <div className="mk5-stat-label">Intelligence Layers</div>
         </div>
-        <div className="mk5-stat-item mk5-reveal">
+        <div className="mk5-stat-item mk5-reveal mk5-rd1">
           <div className="mk5-stat-num">12<span className="accent">+</span></div>
           <div className="mk5-stat-label">Pre-Built Agents</div>
         </div>
-        <div className="mk5-stat-item mk5-reveal">
+        <div className="mk5-stat-item mk5-reveal mk5-rd2">
           <div className="mk5-stat-num"><span className="accent">6</span></div>
           <div className="mk5-stat-label">ERP Connectors</div>
         </div>
-        <div className="mk5-stat-item mk5-reveal">
+        <div className="mk5-stat-item mk5-reveal mk5-rd3">
           <div className="mk5-stat-num"><span className="accent">1</span></div>
           <div className="mk5-stat-label">Unified Platform</div>
         </div>
       </div>
 
+      {/* COMPARISON */}
       <section className="mk5-comp" id="compare">
         <div className="mk5-comp-header">
           <h2 className="mk5-reveal">Agents and copilots<br />were chapter one.</h2>
@@ -752,28 +1023,28 @@ export function MarketingPage() {
           <div className="mk5-ch ath">Atheon</div>
 
           <div className="mk5-cc rl">Agent Execution</div>
-          <div className="mk5-cc cy">&check;</div>
-          <div className="mk5-cc cy">&check;</div>
-          <div className="mk5-cc cy">&check;</div>
-          <div className="mk5-cc ca">&check;</div>
+          <div className="mk5-cc cy">&#10003;</div>
+          <div className="mk5-cc cy">&#10003;</div>
+          <div className="mk5-cc cy">&#10003;</div>
+          <div className="mk5-cc ca">&#10003;</div>
 
           <div className="mk5-cc rl">Operational Intelligence</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&check;</div>
+          <div className="mk5-cc ca">&#10003;</div>
 
           <div className="mk5-cc rl">Executive Insight Layer</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&check;</div>
+          <div className="mk5-cc ca">&#10003;</div>
 
           <div className="mk5-cc rl">Cross-Dept Correlation</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&check;</div>
+          <div className="mk5-cc ca">&#10003;</div>
 
           <div className="mk5-cc rl">Agent Governance</div>
           <div className="mk5-cc cp">Partial</div>
@@ -791,7 +1062,7 @@ export function MarketingPage() {
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
           <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&check;</div>
+          <div className="mk5-cc ca">&#10003;</div>
 
           <div className="mk5-cc rl">Purpose-Trained LLM</div>
           <div className="mk5-cc cp">Generic</div>
@@ -801,6 +1072,7 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* INTEGRATIONS */}
       <section className="mk5-int">
         <div className="mk5-int-header">
           <h2 className="mk5-reveal">Connects to everything<br />that matters.</h2>
@@ -816,6 +1088,72 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* BRAND / LOGO */}
+      <section className="mk5-brand" id="brand">
+        <div className="mk5-layers-intro">
+          <div className="mk5-layers-intro-left">Brand Identity</div>
+          <div className="mk5-layers-intro-right mk5-reveal">
+            <h2>The mark.</h2>
+            <p>
+              A pyramid encoding three intelligence layers. The bronze apex is executive insight.
+              The sky line is operational intelligence. The sage outline is the agent foundation.
+            </p>
+          </div>
+        </div>
+        <div className="mk5-logo-grid">
+          <div className="mk5-lb dark">
+            <svg width="160" height="55" viewBox="0 0 300 80" fill="none">
+              <path d="M40 6L72 70H8L40 6Z" stroke="#4A6B5A" strokeWidth="1.8" fill="none" />
+              <line x1="17" y1="55" x2="63" y2="55" stroke="#4A6B5A" strokeWidth=".8" opacity=".5" />
+              <line x1="24" y1="38" x2="56" y2="38" stroke="#7AACB5" strokeWidth=".8" opacity=".4" />
+              <circle cx="40" cy="19" r="2.5" fill="#c9a059" />
+              <text x="95" y="50" fontFamily="serif" fontSize="30" fill="#e8e4dc" letterSpacing="5">ATHEON</text>
+            </svg>
+          </div>
+          <div className="mk5-lb light">
+            <svg width="160" height="55" viewBox="0 0 300 80" fill="none">
+              <path d="M40 6L72 70H8L40 6Z" stroke="#14202E" strokeWidth="1.8" fill="none" />
+              <line x1="17" y1="55" x2="63" y2="55" stroke="#14202E" strokeWidth=".8" opacity=".3" />
+              <line x1="24" y1="38" x2="56" y2="38" stroke="#4A6B5A" strokeWidth=".8" opacity=".4" />
+              <circle cx="40" cy="19" r="2.5" fill="#A67C52" />
+              <text x="95" y="50" fontFamily="serif" fontSize="30" fill="#14202E" letterSpacing="5">ATHEON</text>
+            </svg>
+          </div>
+          <div className="mk5-lb sg">
+            <svg width="160" height="55" viewBox="0 0 300 80" fill="none">
+              <path d="M40 6L72 70H8L40 6Z" stroke="#e8e4dc" strokeWidth="1.8" fill="none" />
+              <line x1="17" y1="55" x2="63" y2="55" stroke="#e8e4dc" strokeWidth=".8" opacity=".4" />
+              <line x1="24" y1="38" x2="56" y2="38" stroke="#e8e4dc" strokeWidth=".8" opacity=".3" />
+              <circle cx="40" cy="19" r="2.5" fill="#e8e4dc" />
+              <text x="95" y="50" fontFamily="serif" fontSize="30" fill="#e8e4dc" letterSpacing="5">ATHEON</text>
+            </svg>
+          </div>
+          <div className="mk5-lb mid">
+            <div style={{ textAlign: "center" }}>
+              <svg width="48" height="48" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="6" fill="#0a0f14" stroke="#4A6B5A" strokeWidth=".5" />
+                <path d="M16 5L27 27H5L16 5Z" fill="none" stroke="#4A6B5A" strokeWidth="1.5" />
+                <line x1="9" y1="20" x2="23" y2="20" stroke="#4A6B5A" strokeWidth=".8" opacity=".6" />
+                <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="#7AACB5" strokeWidth=".8" opacity=".5" />
+                <circle cx="16" cy="9" r="1.8" fill="#c9a059" />
+              </svg>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: ".5rem", letterSpacing: ".2em", color: "#586573", marginTop: ".8rem" }}>FAVICON</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <rect width="64" height="64" rx="14" fill="#0a0f14" stroke="#4A6B5A" strokeWidth=".5" />
+                <path d="M32 12L54 52H10L32 12Z" fill="none" stroke="#4A6B5A" strokeWidth="1.5" />
+                <line x1="18" y1="40" x2="46" y2="40" stroke="#4A6B5A" strokeWidth="1" opacity=".5" />
+                <line x1="23" y1="30" x2="41" y2="30" stroke="#7AACB5" strokeWidth="1" opacity=".4" />
+                <circle cx="32" cy="20" r="2.5" fill="#c9a059" />
+              </svg>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: ".5rem", letterSpacing: ".2em", color: "#586573", marginTop: ".8rem" }}>APP ICON</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
       <section className="mk5-cta" id="cta-s">
         <div className="mk5-cta-content">
           <div className="mk5-cta-ey mk5-reveal">The Next Evolution in Enterprise AI</div>
@@ -831,6 +1169,7 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* CONTACT */}
       <section className="mk5-contact" id="contact">
         <div className="mk5-contact-inner">
           <h2 className="mk5-reveal">Get in touch</h2>
@@ -877,6 +1216,7 @@ export function MarketingPage() {
         </div>
       </section>
 
+      {/* FOOTER */}
       <footer className="mk5-footer">
         <div className="mk5-fl">Atheon</div>
         <div className="mk5-fc">The World&rsquo;s First Catalyst Platform&nbsp;&mdash; A Vanta X Platform</div>
