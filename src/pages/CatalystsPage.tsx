@@ -704,10 +704,10 @@ export function CatalystsPage() {
  <label className="text-xs t-muted block mb-1.5">Data Source Type</label>
  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
  {([
- { type: 'erp' as const, label: 'ERP', icon: Database, color: 'blue' },
- { type: 'email' as const, label: 'Email', icon: Mail, color: 'purple' },
- { type: 'cloud_storage' as const, label: 'Cloud', icon: Cloud, color: 'cyan' },
- { type: 'upload' as const, label: 'Upload', icon: HardDrive, color: 'amber' },
+ { type: 'erp' as const, label: 'ERP', icon: Database, selectedBg: 'bg-blue-500/10 border-blue-500/40 ring-1 ring-blue-500/30', selectedText: 'text-blue-400' },
+ { type: 'email' as const, label: 'Email', icon: Mail, selectedBg: 'bg-purple-500/10 border-purple-500/40 ring-1 ring-purple-500/30', selectedText: 'text-purple-400' },
+ { type: 'cloud_storage' as const, label: 'Cloud', icon: Cloud, selectedBg: 'bg-cyan-500/10 border-cyan-500/40 ring-1 ring-cyan-500/30', selectedText: 'text-cyan-400' },
+ { type: 'upload' as const, label: 'Upload', icon: HardDrive, selectedBg: 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/30', selectedText: 'text-amber-400' },
  ]).map((opt) => {
  const Icon = opt.icon;
  const selected = dsType === opt.type;
@@ -717,12 +717,12 @@ export function CatalystsPage() {
  onClick={() => { setDsType(opt.type); setDsConfig({}); }}
  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all ${
  selected
- ? `bg-${opt.color}-500/10 border-${opt.color}-500/40 ring-1 ring-${opt.color}-500/30`
+ ? opt.selectedBg
  : 'bg-[var(--bg-secondary)] border-[var(--border-card)] hover:border-gray-400'
  }`}
  >
- <Icon size={18} className={selected ? `text-${opt.color}-400` : 'text-gray-400'} />
- <span className={`text-xs font-medium ${selected ? `text-${opt.color}-400` : 't-secondary'}`}>{opt.label}</span>
+ <Icon size={18} className={selected ? opt.selectedText : 'text-gray-400'} />
+ <span className={`text-xs font-medium ${selected ? opt.selectedText : 't-secondary'}`}>{opt.label}</span>
  </button>
  );
  })}
