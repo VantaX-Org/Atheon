@@ -39,7 +39,7 @@ export async function handleScheduled(
       await recalculateHealthScore(db, tenantId);
 
       // 3.7: Executive briefing generation
-      await generateBriefing(db, env.AI, tenantId);
+      await generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY);
 
       // 3.8: Memory auto-population from ERP data
       await autoPopulateMemory(db, tenantId);
@@ -117,7 +117,7 @@ async function recalculateHealthScore(db: D1Database, tenantId: string): Promise
  * 3.7: Executive Briefing Generation
  * Creates daily briefing from latest health, risks, and catalyst data
  */
-async function generateBriefing(db: D1Database, ai: Ai, tenantId: string): Promise<void> {
+async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollamaApiKey?: string): Promise<void> {
   // Check if we already generated a briefing today
   const existing = await db.prepare(
     "SELECT id FROM executive_briefings WHERE tenant_id = ? AND generated_at >= datetime('now', '-1 day')"
@@ -166,7 +166,7 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string): Promi
   // Try AI-enhanced summary via Ollama Cloud (Reshigan/atheon) with Workers AI fallback
   try {
     const aiResult = await chatWithFallback(
-      undefined, // API key not available in scheduled context — uses Workers AI fallback
+      ollamaApiKey,
       ai,
       {
         model: 'Reshigan/atheon',
@@ -428,7 +428,7 @@ export async function handleQueueMessage(
           await recalculateHealthScore(env.DB, msg.tenantId);
           break;
         case 'briefing_gen':
-          await generateBriefing(env.DB, env.AI, msg.tenantId);
+          await generateBriefing(env.DB, env.AI, msg.tenantId, env.OLLAMA_API_KEY);
           break;
         case 'erp_sync':
           // Trigger ERP sync — handled by the ERP route sync endpoint
