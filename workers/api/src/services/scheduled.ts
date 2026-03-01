@@ -4,6 +4,7 @@
  */
 
 import type { Env } from '../types';
+import { chatWithFallback } from './ollama';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -38,7 +39,7 @@ export async function handleScheduled(
       await recalculateHealthScore(db, tenantId);
 
       // 3.7: Executive briefing generation
-      await generateBriefing(db, env.AI, tenantId);
+      await generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY);
 
       // 3.8: Memory auto-population from ERP data
       await autoPopulateMemory(db, tenantId);
@@ -116,7 +117,7 @@ async function recalculateHealthScore(db: D1Database, tenantId: string): Promise
  * 3.7: Executive Briefing Generation
  * Creates daily briefing from latest health, risks, and catalyst data
  */
-async function generateBriefing(db: D1Database, ai: Ai, tenantId: string): Promise<void> {
+async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollamaApiKey?: string): Promise<void> {
   // Check if we already generated a briefing today
   const existing = await db.prepare(
     "SELECT id FROM executive_briefings WHERE tenant_id = ? AND generated_at >= datetime('now', '-1 day')"
@@ -162,18 +163,23 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string): Promi
 
   let summary = `Overall health: ${overallScore}/100. ${activeRisks.results.length} active risk(s). ${pendingApprovals?.count || 0} pending approval(s).`;
 
-  // Try AI-enhanced summary
+  // Try AI-enhanced summary via Ollama Cloud (Reshigan/atheon) with Workers AI fallback
   try {
-    const aiResult = await ai.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
-      messages: [
-        { role: 'system', content: 'You are a concise executive briefing writer for an enterprise intelligence platform. Write a 2-3 sentence executive summary. Be specific with numbers.' },
-        { role: 'user', content: `Health: ${overallScore}/100. Risks: ${risks.join('; ')}. KPIs: ${kpiMovements.join(', ')}. Pending: ${pendingApprovals?.count || 0} approvals.` },
-      ],
-      max_tokens: 256,
-      temperature: 0.3,
-    });
-    const result = aiResult as { response?: string };
-    if (result.response) summary = result.response;
+    const aiResult = await chatWithFallback(
+      ollamaApiKey,
+      ai,
+      {
+        model: 'Reshigan/atheon',
+        messages: [
+          { role: 'system', content: 'You are a concise executive briefing writer for an enterprise intelligence platform. Write a 2-3 sentence executive summary. Be specific with numbers.' },
+          { role: 'user', content: `Health: ${overallScore}/100. Risks: ${risks.join('; ')}. KPIs: ${kpiMovements.join(', ')}. Pending: ${pendingApprovals?.count || 0} approvals.` },
+        ],
+        maxTokens: 256,
+        temperature: 0.3,
+        workersAiModel: '@cf/meta/llama-3.1-8b-instruct',
+      },
+    );
+    if (aiResult.response) summary = aiResult.response;
   } catch {
     // Use fallback summary
   }
@@ -415,14 +421,14 @@ export async function handleQueueMessage(
             riskLevel: (payload.riskLevel || 'medium') as 'high' | 'medium' | 'low',
             autonomyTier: payload.autonomyTier || 'read-only',
             trustScore: payload.trustScore || 50,
-          }, env.DB, env.CACHE, env.AI);
+          }, env.DB, env.CACHE, env.AI, env.OLLAMA_API_KEY);
           break;
         }
         case 'health_recalc':
           await recalculateHealthScore(env.DB, msg.tenantId);
           break;
         case 'briefing_gen':
-          await generateBriefing(env.DB, env.AI, msg.tenantId);
+          await generateBriefing(env.DB, env.AI, msg.tenantId, env.OLLAMA_API_KEY);
           break;
         case 'erp_sync':
           // Trigger ERP sync — handled by the ERP route sync endpoint
