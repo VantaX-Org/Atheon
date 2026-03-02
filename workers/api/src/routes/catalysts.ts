@@ -24,7 +24,9 @@ function getTenantId(c: { get: (key: string) => unknown }): string {
 
 // GET /api/catalysts/clusters
 catalysts.get('/clusters', async (c) => {
-  const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
+  const defaultTenantId = auth?.tenantId || 'vantax';
+  const tenantId = (auth?.role === 'admin' || auth?.role === 'system_admin') ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
   const results = await c.env.DB.prepare(
     'SELECT * FROM catalyst_clusters WHERE tenant_id = ? ORDER BY domain ASC'
   ).bind(tenantId).all();
@@ -115,7 +117,11 @@ catalysts.post('/clusters', async (c) => {
   const targetTenant = (auth?.role === 'admin' || auth?.role === 'system_admin') && raw.tenant_id ? raw.tenant_id : tenantId;
 
   if (!raw.name || raw.name.length < 1) return c.json({ error: 'name is required' }, 400);
+  if (raw.name.length > 100) return c.json({ error: 'name must be 100 characters or less' }, 400);
   if (!raw.domain || raw.domain.length < 1) return c.json({ error: 'domain is required' }, 400);
+  if (raw.domain.length > 64) return c.json({ error: 'domain must be 64 characters or less' }, 400);
+  if (raw.description && raw.description.length > 500) return c.json({ error: 'description must be 500 characters or less' }, 400);
+  if (raw.autonomy_tier && raw.autonomy_tier.length > 32) return c.json({ error: 'autonomy_tier must be 32 characters or less' }, 400);
 
   const id = crypto.randomUUID();
   const subCatalysts = raw.sub_catalysts ? JSON.stringify(raw.sub_catalysts) : '[]';
