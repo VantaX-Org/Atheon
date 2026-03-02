@@ -62,10 +62,10 @@ export function Dashboard() {
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [, setAnomalies] = useState<AnomalyItem[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalyItem[]>([]);
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
-  const [, setCpHealth] = useState<ControlPlaneHealth | null>(null);
+  const [cpHealth, setCpHealth] = useState<ControlPlaneHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "health" | "risks">("overview");
   const pieId = useId();
@@ -443,6 +443,63 @@ export function Dashboard() {
             </div>
           </DashCard>
         </div>
+      </div>
+
+      {/* ANOMALIES & CONTROL PLANE HEALTH — Bug #7 fix: render previously discarded data */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <DashCard>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold t-primary">Recent Anomalies</p>
+            <Link to="/pulse" className="text-[10px] font-medium flex items-center gap-0.5" style={{ color: ACCENT }}>
+              View all <ChevronRight size={10} />
+            </Link>
+          </div>
+          {anomalies.length === 0 ? (
+            <p className="text-xs t-muted">No anomalies detected</p>
+          ) : (
+            <div className="space-y-2.5">
+              {anomalies.slice(0, 4).map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium t-primary truncate">{a.metric}</p>
+                    <p className="text-[10px] t-muted">Deviation: {typeof a.deviation === 'number' ? `${a.deviation > 0 ? '+' : ''}${a.deviation.toFixed(1)}%` : '--'}</p>
+                  </div>
+                  <Badge variant={a.severity === 'critical' ? 'danger' : a.severity === 'high' ? 'warning' : 'info'}>
+                    {a.severity}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </DashCard>
+
+        <DashCard>
+          <p className="text-sm font-semibold t-primary mb-3">Control Plane</p>
+          {!cpHealth ? (
+            <p className="text-xs t-muted">No data available</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs t-secondary">Overall Health</span>
+                <Badge variant={cpHealth.overallHealth >= 90 ? 'success' : cpHealth.overallHealth >= 70 ? 'warning' : 'danger'}>
+                  {cpHealth.overallHealth}%
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs t-secondary">Uptime</span>
+                <span className="text-xs font-semibold t-primary">{cpHealth.overallUptime?.toFixed(1) ?? '--'}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs t-secondary">Deployments</span>
+                <span className="text-xs font-semibold t-primary">{cpHealth.deploymentStatus ? Object.values(cpHealth.deploymentStatus).reduce((a, b) => a + b, 0) : '--'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs t-secondary">Last Checked</span>
+                <span className="text-xs font-semibold t-primary">{cpHealth.lastChecked ? new Date(cpHealth.lastChecked).toLocaleTimeString() : '--'}</span>
+              </div>
+            </div>
+          )}
+        </DashCard>
       </div>
 
       {/* QUICK LINKS */}

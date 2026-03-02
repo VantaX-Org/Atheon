@@ -32,8 +32,10 @@ export function tenantIsolation() {
         return c.json({ error: 'Unauthorized', message: 'Invalid or expired token' }, 401);
       }
 
-      // Check if token has been blacklisted (logout)
-      const blacklisted = await c.env.CACHE.get(`token:blacklist:${token}`);
+      // Bug #13 fix: Hash token before using as KV key to avoid storing raw JWT in KV
+      const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+      const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const blacklisted = await c.env.CACHE.get(`token:blacklist:${tokenHash}`);
       if (blacklisted) {
         return c.json({ error: 'Unauthorized', message: 'Token has been revoked' }, 401);
       }
@@ -78,5 +80,27 @@ export function tenantIsolation() {
 export function getEffectiveTenantId(c: Context<AppBindings>): string {
   const auth = c.get('auth');
   if (auth) return auth.tenantId;
-  return c.req.query('tenant_id') || 'vantax';
+  const queryTenantId = c.req.query('tenant_id');
+  if (!queryTenantId) {
+    throw new Error('No tenant context available — authentication required');
+  }
+  return queryTenantId;
+}
+
+/**
+ * Bug #3 fix: Server-side role enforcement middleware.
+ * Ensures the authenticated user has one of the allowed roles.
+ * Must be applied AFTER tenantIsolation (which sets c.get('auth')).
+ */
+export function requireRole(...allowedRoles: string[]) {
+  return async (c: Context<AppBindings>, next: Next) => {
+    const auth = c.get('auth');
+    if (!auth) {
+      return c.json({ error: 'Unauthorized', message: 'Authentication required' }, 401);
+    }
+    if (!allowedRoles.includes(auth.role)) {
+      return c.json({ error: 'Forbidden', message: `Requires one of: ${allowedRoles.join(', ')}` }, 403);
+    }
+    await next();
+  };
 }
