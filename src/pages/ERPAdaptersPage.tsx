@@ -44,6 +44,10 @@ export function ERPAdaptersPage() {
 
  const handleConnect = async () => {
  if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
+ if (!user?.tenantId) {
+ setConnectError('Unable to determine tenant. Please log in again.');
+ return;
+ }
  setConnecting(true);
  setConnectError(null);
  try {
@@ -51,7 +55,7 @@ export function ERPAdaptersPage() {
  adapter_id: connectForm.adapterId,
  name: connectForm.name.trim(),
  sync_frequency: connectForm.syncFrequency,
- tenant_id: user?.tenantId || ''});
+ tenant_id: user.tenantId});
  const c = await api.erp.connections();
  setConnections(c.connections);
  setShowConnect(false);
