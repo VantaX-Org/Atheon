@@ -6,6 +6,7 @@ export interface Env {
   STORAGE: R2Bucket;
   DASHBOARD_ROOM: DurableObjectNamespace;
   JWT_SECRET: string;
+  ENCRYPTION_KEY: string; // Bug #12: Separate encryption key from JWT_SECRET
   AZURE_AD_CLIENT_SECRET: string;
   AZURE_AD_TENANT_ID: string;
   AZURE_AD_CLIENT_ID: string;
@@ -42,4 +43,4 @@ export type DeploymentModel = 'saas' | 'on-premise' | 'hybrid';
 export type AutonomyTier = 'read-only' | 'assisted' | 'transactional';
 export type AtheonLayer = 'apex' | 'pulse' | 'catalysts' | 'mind' | 'memory';
 export type RiskSeverity = 'critical' | 'high' | 'medium' | 'low';
-export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general';
+export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing';

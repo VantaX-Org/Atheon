@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LayerBadge } from "@/components/ui/layer-badge";
 import { api } from "@/lib/api";
 import type { MindQueryResult } from "@/lib/api";
-import { MessageSquare, Send, Plus, User, Sparkles, Loader2 } from "lucide-react";
+import { MessageSquare, Send, Plus, User, Sparkles, Loader2, Trash2 } from "lucide-react";
 import { IconAttachment } from "@/components/icons/AtheonIcons";
 import type { AtheonLayer } from "@/types";
 
@@ -17,13 +17,31 @@ interface ChatMessage {
  citations?: { id: string; source: string; confidence: number }[];
 }
 
+interface ChatThread {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+}
+
 export function ChatPage() {
  const [input, setInput] = useState('');
- const [messages, setMessages] = useState<ChatMessage[]>([]);
+ const [threads, setThreads] = useState<ChatThread[]>([]);
+ const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
  const [sending, setSending] = useState(false);
  const [loadingHistory, setLoadingHistory] = useState(true);
 
- // 3.11: Load chat conversation history from mind_queries on mount
+ const activeThread = threads.find((t) => t.id === activeThreadId);
+ const messages = activeThread?.messages ?? [];
+
+ const createNewThread = useCallback(() => {
+   const id = `thread-${Date.now()}`;
+   const newThread: ChatThread = { id, title: 'New conversation', messages: [], createdAt: new Date().toISOString() };
+   setThreads((prev) => [newThread, ...prev]);
+   setActiveThreadId(id);
+ }, []);
+
+ // Bug #8 fix: Load chat conversation history and group into the active thread
  useEffect(() => {
  api.mind.history()
  .then((data) => {
@@ -36,9 +54,26 @@ export function ChatPage() {
  content: item.response,
  citations: item.citations.map((c: string, i: number) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))});
  }
- setMessages(restored);
+ if (restored.length > 0) {
+   const historyThread: ChatThread = {
+     id: 'history',
+     title: restored[0]?.content?.slice(0, 40) || 'Previous conversation',
+     messages: restored,
+     createdAt: new Date().toISOString(),
+   };
+   setThreads([historyThread]);
+   setActiveThreadId('history');
+ } else {
+   const id = `thread-${Date.now()}`;
+   setThreads([{ id, title: 'New conversation', messages: [], createdAt: new Date().toISOString() }]);
+   setActiveThreadId(id);
+ }
  })
- .catch(() => { /* no history available */ })
+ .catch(() => {
+   const id = `thread-${Date.now()}`;
+   setThreads([{ id, title: 'New conversation', messages: [], createdAt: new Date().toISOString() }]);
+   setActiveThreadId(id);
+ })
  .finally(() => setLoadingHistory(false));
  }, []);
 
@@ -51,10 +86,36 @@ export function ChatPage() {
  { text: 'Deploy a new finance catalyst', layer: 'catalysts' as AtheonLayer },
  ];
 
+ const addMessageToThread = useCallback((threadId: string, msg: ChatMessage) => {
+   setThreads((prev) => prev.map((t) => {
+     if (t.id !== threadId) return t;
+     const updated = { ...t, messages: [...t.messages, msg] };
+     // Auto-title thread from first user message
+     if (t.title === 'New conversation' && msg.role === 'user') {
+       updated.title = msg.content.slice(0, 40) + (msg.content.length > 40 ? '...' : '');
+     }
+     return updated;
+   }));
+ }, []);
+
+ const deleteThread = useCallback((threadId: string) => {
+   setThreads((prev) => {
+     const remaining = prev.filter((t) => t.id !== threadId);
+     if (remaining.length === 0) {
+       const id = `thread-${Date.now()}`;
+       const fresh: ChatThread = { id, title: 'New conversation', messages: [], createdAt: new Date().toISOString() };
+       setActiveThreadId(id);
+       return [fresh];
+     }
+     if (activeThreadId === threadId) setActiveThreadId(remaining[0].id);
+     return remaining;
+   });
+ }, [activeThreadId]);
+
  const handleSend = async () => {
- if (!input.trim() || sending) return;
+ if (!input.trim() || sending || !activeThreadId) return;
  const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: input };
- setMessages(prev => [...prev, userMsg]);
+ addMessageToThread(activeThreadId, userMsg);
  setInput('');
  setSending(true);
  try {
@@ -64,9 +125,9 @@ export function ChatPage() {
  role: 'assistant',
  content: result.response,
  citations: result.citations.map((c, i) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))};
- setMessages(prev => [...prev, assistantMsg]);
+ addMessageToThread(activeThreadId, assistantMsg);
  } catch {
- setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' }]);
+ addMessageToThread(activeThreadId, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' });
  }
  setSending(false);
  };
@@ -84,17 +145,32 @@ export function ChatPage() {
  </div>
 
  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
- {/* Sidebar - Thread List */}
+ {/* Sidebar - Thread List (Bug #8: multi-thread support) */}
  <div className="space-y-3">
- <Button variant="primary" size="sm" className="w-full" onClick={() => { setMessages([]); setLoadingHistory(false); }}><Plus size={14} /> New Thread</Button>
- <Card hover className="border-accent/20">
- <div className="flex items-start justify-between">
- <div>
- <h3 className="text-sm font-medium t-primary">Current Thread</h3>
- <span className="text-[10px] text-gray-400">{messages.length} messages</span>
+ <Button variant="primary" size="sm" className="w-full" onClick={createNewThread}><Plus size={14} /> New Thread</Button>
+ {threads.map((thread) => (
+ <Card
+   key={thread.id}
+   hover
+   className={`cursor-pointer ${thread.id === activeThreadId ? 'border-accent/30' : ''}`}
+   onClick={() => setActiveThreadId(thread.id)}
+ >
+ <div className="flex items-start justify-between gap-2">
+ <div className="flex-1 min-w-0">
+ <h3 className="text-sm font-medium t-primary truncate">{thread.title}</h3>
+ <span className="text-[10px] text-gray-400">{thread.messages.length} messages</span>
  </div>
+ {threads.length > 1 && (
+   <button
+     onClick={(e) => { e.stopPropagation(); deleteThread(thread.id); }}
+     className="p-1 rounded hover:bg-red-500/10 transition-colors"
+   >
+     <Trash2 size={12} className="text-gray-400 hover:text-red-400" />
+   </button>
+ )}
  </div>
  </Card>
+ ))}
  </div>
 
  {/* Chat Area */}

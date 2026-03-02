@@ -8,15 +8,28 @@ const iam = new Hono<AppBindings>();
 
 function getTenantId(c: { get: (key: string) => unknown }): string {
   const auth = c.get('auth') as AuthContext | undefined;
-  return auth?.tenantId || 'vantax';
+  if (!auth?.tenantId) throw new Error('No tenant context available');
+  return auth.tenantId;
 }
 
-// GET /api/iam/policies
+// M12: Pagination helper
+function parsePagination(c: { req: { query: (key: string) => string | undefined } }): { page: number; limit: number; offset: number } {
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)));
+  return { page, limit, offset: (page - 1) * limit };
+}
+
+// GET /api/iam/policies (M12: paginated)
 iam.get('/policies', async (c) => {
   const tenantId = getTenantId(c);
+  const { page, limit, offset } = parsePagination(c);
+
+  const countResult = await c.env.DB.prepare('SELECT COUNT(*) as total FROM iam_policies WHERE tenant_id = ?').bind(tenantId).first<{ total: number }>();
+  const total = countResult?.total || 0;
+
   const results = await c.env.DB.prepare(
-    'SELECT * FROM iam_policies WHERE tenant_id = ? ORDER BY created_at DESC'
-  ).bind(tenantId).all();
+    'SELECT * FROM iam_policies WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+  ).bind(tenantId, limit, offset).all();
 
   const formatted = results.results.map((p: Record<string, unknown>) => ({
     id: p.id,
@@ -28,7 +41,7 @@ iam.get('/policies', async (c) => {
     createdAt: p.created_at,
   }));
 
-  return c.json({ policies: formatted, total: formatted.length });
+  return c.json({ policies: formatted, total, page, limit, totalPages: Math.ceil(total / limit) });
 });
 
 // POST /api/iam/policies
@@ -81,12 +94,17 @@ iam.get('/roles', async (c) => {
   return c.json({ roles });
 });
 
-// GET /api/iam/users
+// GET /api/iam/users (M12: paginated)
 iam.get('/users', async (c) => {
   const tenantId = getTenantId(c);
+  const { page, limit, offset } = parsePagination(c);
+
+  const countResult = await c.env.DB.prepare('SELECT COUNT(*) as total FROM users WHERE tenant_id = ?').bind(tenantId).first<{ total: number }>();
+  const total = countResult?.total || 0;
+
   const results = await c.env.DB.prepare(
-    'SELECT id, email, name, role, permissions, status, last_login, created_at FROM users WHERE tenant_id = ? ORDER BY created_at DESC'
-  ).bind(tenantId).all();
+    'SELECT id, email, name, role, permissions, status, last_login, created_at FROM users WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+  ).bind(tenantId, limit, offset).all();
 
   const formatted = results.results.map((u: Record<string, unknown>) => ({
     id: u.id,
@@ -99,7 +117,7 @@ iam.get('/users', async (c) => {
     createdAt: u.created_at,
   }));
 
-  return c.json({ users: formatted, total: formatted.length });
+  return c.json({ users: formatted, total, page, limit, totalPages: Math.ceil(total / limit) });
 });
 
 // POST /api/iam/users

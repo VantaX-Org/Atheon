@@ -5,6 +5,40 @@ import { getValidatedJsonBody } from '../middleware/validation';
 
 const auth = new Hono<AppBindings>();
 
+// Security S3: Password strength validation
+function validatePasswordStrength(password: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (password.length < 10) errors.push('Password must be at least 10 characters');
+  if (!/[A-Z]/.test(password)) errors.push('Password must contain at least one uppercase letter');
+  if (!/[a-z]/.test(password)) errors.push('Password must contain at least one lowercase letter');
+  if (!/[0-9]/.test(password)) errors.push('Password must contain at least one digit');
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push('Password must contain at least one special character');
+  return { valid: errors.length === 0, errors };
+}
+
+// Security S5: Per-account login lockout helper
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_SECONDS = 900; // 15 minutes
+
+async function checkAndIncrementLoginAttempts(cache: KVNamespace, email: string): Promise<{ locked: boolean; attempts: number }> {
+  const key = `login_attempts:${email}`;
+  const current = await cache.get(key);
+  const attempts = current ? parseInt(current, 10) : 0;
+  if (attempts >= MAX_LOGIN_ATTEMPTS) return { locked: true, attempts };
+  return { locked: false, attempts };
+}
+
+async function recordFailedLogin(cache: KVNamespace, email: string): Promise<void> {
+  const key = `login_attempts:${email}`;
+  const current = await cache.get(key);
+  const attempts = current ? parseInt(current, 10) + 1 : 1;
+  await cache.put(key, attempts.toString(), { expirationTtl: LOCKOUT_DURATION_SECONDS });
+}
+
+async function clearLoginAttempts(cache: KVNamespace, email: string): Promise<void> {
+  await cache.delete(`login_attempts:${email}`);
+}
+
 // POST /api/auth/register
 auth.post('/register', async (c) => {
   const { data: body, errors } = await getValidatedJsonBody<{
@@ -18,6 +52,12 @@ auth.post('/register', async (c) => {
 
   if (!body || errors.length > 0) {
     return c.json({ error: 'Invalid input', details: errors }, 400);
+  }
+
+  // Security S3: Validate password strength
+  const pwStrength = validatePasswordStrength(body.password);
+  if (!pwStrength.valid) {
+    return c.json({ error: 'Weak password', details: pwStrength.errors }, 400);
   }
 
   const slug = body.tenant_slug || 'vantax';
@@ -83,26 +123,42 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Invalid input', details: errors }, 400);
   }
 
+  // Security S5: Check login lockout before proceeding
+  const lockoutCheck = await checkAndIncrementLoginAttempts(c.env.CACHE, body.email);
+  if (lockoutCheck.locked) {
+    return c.json({ error: 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.' }, 429);
+  }
+
   // Find user by email
   const user = await c.env.DB.prepare(
     'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
   ).bind(body.email, 'active').first();
 
   if (!user) {
+    await recordFailedLogin(c.env.CACHE, body.email);
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
-  // Verify password if hash exists
-  if (user.password_hash) {
-    const valid = await verifyPassword(body.password, user.password_hash as string);
-    if (!valid) {
-      // Log failed attempt
-      await c.env.DB.prepare(
-        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'login_failed', 'auth', 'session', JSON.stringify({ email: body.email, reason: 'invalid_password' }), 'failure').run();
-      return c.json({ error: 'Invalid credentials' }, 401);
-    }
+  // Verify password — reject login if no password hash exists (e.g. SSO-only or unprovisioned user)
+  if (!user.password_hash) {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'login_failed', 'auth', 'session', JSON.stringify({ email: body.email, reason: 'no_password_set' }), 'failure').run();
+    return c.json({ error: 'Password login is not available for this account. Please use SSO or contact your administrator to set a password.' }, 401);
   }
+
+  const valid = await verifyPassword(body.password, user.password_hash as string);
+  if (!valid) {
+    await recordFailedLogin(c.env.CACHE, body.email);
+    // Log failed attempt
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'login_failed', 'auth', 'session', JSON.stringify({ email: body.email, reason: 'invalid_password' }), 'failure').run();
+    return c.json({ error: 'Invalid credentials' }, 401);
+  }
+
+  // Security S5: Clear lockout counter on successful login
+  await clearLoginAttempts(c.env.CACHE, body.email);
 
   const token = await generateToken({
     sub: user.id as string,
@@ -121,8 +177,18 @@ auth.post('/login', async (c) => {
   // Update last login
   await c.env.DB.prepare('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?').bind(user.id).run();
 
+  // M5: Generate refresh token (longer-lived, stored in KV)
+  const refreshToken = crypto.randomUUID();
+  const REFRESH_TTL = 7 * 24 * 3600; // 7 days
+  await c.env.CACHE.put(`refresh_token:${refreshToken}`, JSON.stringify({
+    userId: user.id, tenantId: user.tenant_id, email: user.email,
+    name: user.name, role: user.role, permissions: JSON.parse(user.permissions as string || '[]'),
+  }), { expirationTtl: REFRESH_TTL });
+
   return c.json({
     token,
+    refreshToken,
+    expiresIn: 3600,
     user: {
       id: user.id,
       email: user.email,
@@ -136,9 +202,52 @@ auth.post('/login', async (c) => {
   });
 });
 
+// M5: POST /api/auth/refresh - Exchange refresh token for new access token
+auth.post('/refresh', async (c) => {
+  const { data: body, errors } = await getValidatedJsonBody<{ refresh_token: string }>(c, [
+    { field: 'refresh_token', type: 'string', required: true, minLength: 1 },
+  ]);
+  if (!body || errors.length > 0) {
+    return c.json({ error: 'Invalid input', details: errors }, 400);
+  }
+
+  const stored = await c.env.CACHE.get(`refresh_token:${body.refresh_token}`);
+  if (!stored) {
+    return c.json({ error: 'Invalid or expired refresh token' }, 401);
+  }
+
+  const userData = JSON.parse(stored) as {
+    userId: string; tenantId: string; email: string;
+    name: string; role: string; permissions: string[];
+  };
+
+  // Issue new access token
+  const newToken = await generateToken({
+    sub: userData.userId,
+    email: userData.email,
+    name: userData.name,
+    role: userData.role,
+    tenant_id: userData.tenantId,
+    permissions: userData.permissions,
+  }, c.env.JWT_SECRET);
+
+  // Rotate refresh token: delete old, issue new
+  await c.env.CACHE.delete(`refresh_token:${body.refresh_token}`);
+  const newRefreshToken = crypto.randomUUID();
+  await c.env.CACHE.put(`refresh_token:${newRefreshToken}`, stored, { expirationTtl: 7 * 24 * 3600 });
+
+  return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: 3600 });
+});
+
 // POST /api/auth/demo-login (for demo access without password)
+// Bug #2: Gate behind DEMO_LOGIN_SECRET rather than trusting env var alone
 auth.post('/demo-login', async (c) => {
   if (c.env.ENVIRONMENT === 'production') {
+    return c.json({ error: 'Not found' }, 404);
+  }
+  // Double-gate: require a secret header even in non-production to prevent accidental exposure
+  const demoSecret = c.req.header('X-Demo-Secret');
+  if (!demoSecret || demoSecret !== (c.env as Record<string, string>).DEMO_LOGIN_SECRET) {
     return c.json({ error: 'Not found' }, 404);
   }
 
@@ -235,6 +344,12 @@ auth.post('/change-password', async (c) => {
     }
   }
 
+  // Security S3: Validate new password strength
+  const pwCheck = validatePasswordStrength(body.new_password);
+  if (!pwCheck.valid) {
+    return c.json({ error: 'Weak password', details: pwCheck.errors }, 400);
+  }
+
   const newHash = await hashPassword(body.new_password);
   await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(newHash, payload.sub).run();
 
@@ -259,10 +374,12 @@ auth.post('/logout', async (c) => {
     return c.json({ error: 'Invalid token' }, 401);
   }
 
-  // Blacklist the token in KV until it expires
+  // Bug #13 fix: Hash the token before using as KV key
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
   const exp = (payload.exp as number) || Math.floor(Date.now() / 1000) + 86400;
   const ttl = Math.max(exp - Math.floor(Date.now() / 1000), 60);
-  await c.env.CACHE.put(`token:blacklist:${token}`, 'revoked', { expirationTtl: ttl });
+  await c.env.CACHE.put(`token:blacklist:${tokenHash}`, 'revoked', { expirationTtl: ttl });
 
   // Audit log
   await c.env.DB.prepare(
@@ -346,6 +463,12 @@ auth.post('/reset-password', async (c) => {
   }
 
   const { userId, tenantId } = JSON.parse(resetData) as { userId: string; email: string; tenantId: string };
+
+  // Security S3: Validate new password strength on reset
+  const pwResetCheck = validatePasswordStrength(body.new_password);
+  if (!pwResetCheck.valid) {
+    return c.json({ error: 'Weak password', details: pwResetCheck.errors }, 400);
+  }
 
   // Hash new password and update
   const newHash = await hashPassword(body.new_password);

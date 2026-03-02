@@ -61,7 +61,7 @@ export function AppLayout() {
       <main
         className={cn(
           'pt-12 min-h-screen transition-all duration-200',
-          'pl-0 lg:pl-14'
+          'pl-0 md:pl-14'
         )}
       >
         <div className="p-4 sm:p-5 lg:p-6">

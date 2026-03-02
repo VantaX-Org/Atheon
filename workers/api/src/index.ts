@@ -6,7 +6,7 @@ import { seedSampleCompany } from './services/seed-sample-company';
 import { seedTestCompanies } from './services/seed-test-companies';
 import { apiRateLimiter, authRateLimiter, aiRateLimiter, demoAuthRateLimiter } from './middleware/ratelimit';
 import { auditEnrichment, requestSizeLimiter } from './middleware/validation';
-import { tenantIsolation } from './middleware/tenant';
+import { tenantIsolation, requireRole } from './middleware/tenant';
 import { DashboardRoom } from './services/realtime';
 import { handleScheduled, handleQueueMessage } from './services/scheduled';
 import type { CatalystQueueMessage } from './services/scheduled';
@@ -32,9 +32,12 @@ export { DashboardRoom };
 const app = new Hono<AppBindings>();
 
 // CORS - restricted to production and preview domains
+// Bug #10 fix: Add localhost origins for local development
 const ALLOWED_ORIGINS = [
   'https://atheon.vantax.co.za',
   'https://atheon-33b.pages.dev',
+  'http://localhost:5173',
+  'http://localhost:3000',
 ];
 
 app.use('*', cors({
@@ -51,6 +54,14 @@ app.use('*', cors({
   maxAge: 86400,
   credentials: true,
 }));
+
+// Security S8: X-Request-ID correlation header
+app.use('*', async (c, next) => {
+  const requestId = c.req.header('X-Request-ID') || crypto.randomUUID();
+  c.set('requestId' as never, requestId as never);
+  await next();
+  c.header('X-Request-ID', requestId);
+});
 
 // Request size limiter (1MB max)
 app.use('/api/*', requestSizeLimiter(1048576));
@@ -252,6 +263,13 @@ const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memo
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
+}
+
+// Bug #3 fix: Server-side role enforcement for admin-only routes
+const adminOnlyPrefixes = ['tenants', 'iam', 'controlplane'];
+for (const prefix of adminOnlyPrefixes) {
+  app.use(`/api/${prefix}/*`, requireRole('admin', 'executive'));
+  app.use(`/api/v1/${prefix}/*`, requireRole('admin', 'executive'));
 }
 
 // Mount route modules (both /api/ and /api/v1/ for backward compatibility)

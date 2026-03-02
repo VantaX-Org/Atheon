@@ -14,7 +14,8 @@ const notifications = new Hono<AppBindings>();
 
 function getTenantId(c: { get: (key: string) => unknown }): string {
   const auth = c.get('auth') as AuthContext | undefined;
-  return auth?.tenantId || 'vantax';
+  if (!auth?.tenantId) throw new Error('No tenant context available');
+  return auth.tenantId;
 }
 
 // GET /api/notifications
@@ -184,7 +185,7 @@ notifications.post('/webhooks', async (c) => {
   const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
   // Encrypt the secret before storing in D1
-  const encryptedSecret = await encrypt(secret, c.env.JWT_SECRET);
+  const encryptedSecret = await encrypt(secret, c.env.ENCRYPTION_KEY || c.env.JWT_SECRET);
 
   await c.env.DB.prepare(
     'INSERT INTO webhooks (id, tenant_id, url, secret, events, active, retry_count, created_at) VALUES (?, ?, ?, ?, ?, 1, 0, datetime(\'now\'))'
@@ -236,7 +237,7 @@ notifications.post('/webhooks/:id/test', async (c) => {
   // Decrypt the webhook secret for signing
   const storedSecret = webhook.secret as string;
   const decryptedSecret = isEncrypted(storedSecret)
-    ? await decrypt(storedSecret, c.env.JWT_SECRET) || storedSecret
+    ? await decrypt(storedSecret, c.env.ENCRYPTION_KEY || c.env.JWT_SECRET) || storedSecret
     : storedSecret;
 
   const { dispatchWebhook } = await import('../services/notifications');
