@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceCo
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
- Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2
+ Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -62,28 +63,36 @@ export function CatalystsPage() {
  const [showDeployCatalyst, setShowDeployCatalyst] = useState(false);
  const [deployForm, setDeployForm] = useState({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
  const [deploying, setDeploying] = useState(false);
+ const [deployError, setDeployError] = useState<string | null>(null);
+ const [actionError, setActionError] = useState<string | null>(null);
 
  const handleApprove = async (actionId: string) => {
  if (updatingAction) return;
  setUpdatingAction(actionId);
+ setActionError(null);
  try {
  await api.catalysts.approveAction(actionId);
  const ind = industry !== 'general' ? industry : undefined;
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to approve action');
+ }
  setUpdatingAction(null);
  };
 
  const handleReject = async (actionId: string) => {
  if (updatingAction) return;
  setUpdatingAction(actionId);
+ setActionError(null);
  try {
  await api.catalysts.rejectAction(actionId);
  const ind = industry !== 'general' ? industry : undefined;
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to reject action');
+ }
  setUpdatingAction(null);
  };
 
@@ -125,6 +134,7 @@ export function CatalystsPage() {
  const handleDeployCatalyst = async () => {
  if (!deployForm.name.trim() || deploying) return;
  setDeploying(true);
+ setDeployError(null);
  try {
  await api.catalysts.createCluster({
  name: deployForm.name.trim(),
@@ -136,7 +146,9 @@ export function CatalystsPage() {
  setClusters(c.clusters);
  setShowDeployCatalyst(false);
  setDeployForm({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
- } catch { /* silent */ }
+ } catch (err) {
+ setDeployError(err instanceof Error ? err.message : 'Failed to deploy catalyst');
+ }
  setDeploying(false);
  };
 
@@ -224,7 +236,9 @@ export function CatalystsPage() {
  const ind = industry !== 'general' ? industry : undefined;
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to toggle sub-catalyst');
+ }
  setTogglingSubCatalyst(null);
  };
 
@@ -360,6 +374,14 @@ export function CatalystsPage() {
  )}
  </div>
 
+ {actionError && (
+ <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+ <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+ <p className="text-sm text-red-400 flex-1">{actionError}</p>
+ <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300"><X size={14} /></button>
+ </div>
+ )}
+
  {exceptionCount > 0 && (
  <div className="flex items-center gap-3 p-3 bg-red-500/[0.08] border border-red-500/20 rounded-xl">
  <AlertTriangle size={18} className="text-red-400 flex-shrink-0" />
@@ -372,7 +394,7 @@ export function CatalystsPage() {
  )}
 
  {showManualExec && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary flex items-center gap-2"><Play size={18} className="text-accent" /> Manual Catalyst Execution</h3>
@@ -437,15 +459,15 @@ export function CatalystsPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {showDeployCatalyst && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Deploy New Catalyst</h3>
- <button onClick={() => setShowDeployCatalyst(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+ <button onClick={() => { setShowDeployCatalyst(false); setDeployError(null); }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
  </div>
  <div className="space-y-3">
  <div><label className="text-xs t-muted">Cluster Name</label><input className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={deployForm.name} onChange={e => setDeployForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Finance Catalyst" /></div>
@@ -453,17 +475,20 @@ export function CatalystsPage() {
  <div><label className="text-xs t-muted">Autonomy Tier</label><select className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={deployForm.autonomy_tier} onChange={e => setDeployForm(p => ({ ...p, autonomy_tier: e.target.value }))}><option value="read-only">Read-Only</option><option value="assisted">Assisted</option><option value="transactional">Transactional</option></select></div>
  <div><label className="text-xs t-muted">Description (optional)</label><textarea className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary resize-none" rows={2} value={deployForm.description} onChange={e => setDeployForm(p => ({ ...p, description: e.target.value }))} placeholder="What does this catalyst do?" /></div>
  </div>
+ {deployError && (
+ <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2"><AlertTriangle size={14} /> {deployError}</div>
+ )}
  <div className="flex gap-3 pt-2">
- <Button variant="secondary" size="sm" onClick={() => setShowDeployCatalyst(false)}>Cancel</Button>
+ <Button variant="secondary" size="sm" onClick={() => { setShowDeployCatalyst(false); setDeployError(null); }}>Cancel</Button>
  <Button variant="primary" size="sm" onClick={handleDeployCatalyst} disabled={deploying || !deployForm.name.trim()}>
  {deploying ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Deploy
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
- <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+ <Tabs tabs={tabs}activeTab={activeTab} onTabChange={setActiveTab} />
 
  {activeTab === 'clusters' && (
  <TabPanel>
@@ -686,7 +711,7 @@ export function CatalystsPage() {
 
  {/* Data Source Configuration Modal */}
  {showDataSourceConfig && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
@@ -900,7 +925,7 @@ export function CatalystsPage() {
  </div>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
  </div>
  );

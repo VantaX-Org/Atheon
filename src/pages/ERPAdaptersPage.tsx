@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,15 +8,17 @@ import { api } from "@/lib/api";
 import type { ERPAdapter, ERPConnection } from "@/lib/api";
 import {
  Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
- Activity, Loader2, X
+ Activity, Loader2, X, AlertCircle
 } from "lucide-react";
 import { IconERP_SAP, IconERP_Cloud, IconERP_Generic } from "@/components/icons/AtheonIcons";
+import { useAppStore } from "@/stores/appStore";
 
 const systemIconMap: Record<string, React.FC<{ size?: number }>> = {
  SAP: IconERP_SAP, SF: IconERP_Cloud, WD: IconERP_Generic, ORC: IconERP_Generic, D365: IconERP_Generic, NS: IconERP_Generic, SG: IconERP_Generic, API: IconERP_Generic};
 
 export function ERPAdaptersPage() {
  const { activeTab, setActiveTab } = useTabState('adapters');
+ const user = useAppStore((s) => s.user);
  const [adapters, setAdapters] = useState<ERPAdapter[]>([]);
  const [connections, setConnections] = useState<ERPConnection[]>([]);
  const [loading, setLoading] = useState(true);
@@ -24,36 +27,49 @@ export function ERPAdaptersPage() {
  const [syncing, setSyncing] = useState<string | null>(null);
  const [connecting, setConnecting] = useState(false);
  const [showLogs, setShowLogs] = useState<string | null>(null);
+ const [actionError, setActionError] = useState<string | null>(null);
+ const [connectError, setConnectError] = useState<string | null>(null);
 
- const handleSync = async (connectionId: string) => {
+  const handleSync = async (connectionId: string) => {
  setSyncing(connectionId);
+ setActionError(null);
  try {
  await api.erp.sync(connectionId);
  const c = await api.erp.connections();
  setConnections(c.connections);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Sync failed');
+ }
  setSyncing(null);
  };
 
  const handleConnect = async () => {
  if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
+ if (!user?.tenantId) {
+ setConnectError('Unable to determine tenant. Please log in again.');
+ return;
+ }
  setConnecting(true);
+ setConnectError(null);
  try {
  await api.erp.createConnection({
  adapter_id: connectForm.adapterId,
  name: connectForm.name.trim(),
  sync_frequency: connectForm.syncFrequency,
- tenant_id: 'vantax'});
+ tenant_id: user.tenantId});
  const c = await api.erp.connections();
  setConnections(c.connections);
  setShowConnect(false);
  setConnectForm({ adapterId: '', name: '', syncFrequency: 'daily' });
- } catch { /* silent */ }
+ } catch (err) {
+ setConnectError(err instanceof Error ? err.message : 'Connection failed');
+ }
  setConnecting(false);
  };
 
  const handleAdapterConnect = (adapterId: string, adapterName: string) => {
  setConnectForm({ adapterId, name: adapterName + ' Connection', syncFrequency: 'daily' });
+ setConnectError(null);
  setShowConnect(true);
  };
 
@@ -99,13 +115,21 @@ export function ERPAdaptersPage() {
  <Button variant="primary" size="sm" onClick={() => setShowConnect(true)}><Plus size={14} /> Connect ERP</Button>
  </div>
 
+ {actionError && (
+ <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+ <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+ <p className="text-sm text-red-400 flex-1">{actionError}</p>
+ <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300"><X size={14} /></button>
+ </div>
+ )}
+
  {/* Connect ERP Modal */}
  {showConnect && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Connect ERP System</h3>
- <button onClick={() => setShowConnect(false)} className="text-gray-400 hover:text-gray-400"><X size={18} /></button>
+ <button onClick={() => { setShowConnect(false); setConnectError(null); }} className="text-gray-400 hover:text-gray-400"><X size={18} /></button>
  </div>
  <div className="space-y-3">
  <div><label className="text-xs t-muted">ERP Adapter</label><select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm" value={connectForm.adapterId} onChange={e => setConnectForm(p => ({ ...p, adapterId: e.target.value }))}><option value="">Select an adapter...</option>{adapters.map(a => <option key={a.id} value={a.id}>{a.name} ({a.system})</option>)}</select></div>
@@ -113,14 +137,17 @@ export function ERPAdaptersPage() {
  <div><label className="text-xs t-muted">Sync Frequency</label><select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm" value={connectForm.syncFrequency} onChange={e => setConnectForm(p => ({ ...p, syncFrequency: e.target.value }))}><option value="realtime">Real-time</option><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
  </div>
  <p className="text-[10px] text-gray-400">OAuth authentication will be initiated after connection setup. You will be redirected to the ERP provider to authorise access.</p>
+ {connectError && (
+ <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2"><AlertCircle size={14} /> {connectError}</div>
+ )}
  <div className="flex gap-3 pt-2">
- <Button variant="secondary" size="sm" onClick={() => setShowConnect(false)}>Cancel</Button>
+ <Button variant="secondary" size="sm" onClick={() => { setShowConnect(false); setConnectError(null); }}>Cancel</Button>
  <Button variant="primary" size="sm" onClick={handleConnect} disabled={!connectForm.adapterId || !connectForm.name.trim() || connecting}>
  {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />} Connect
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Summary */}

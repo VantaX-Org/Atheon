@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -326,7 +327,7 @@ export function TenantsPage() {
 
  {/* Onboard Modal */}
  {showOnboard && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Onboard New Tenant</h3>
@@ -347,7 +348,7 @@ export function TenantsPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Summary Cards */}
@@ -598,7 +599,7 @@ export function TenantsPage() {
 
  {/* Manage Users Modal */}
  {showManageUsers && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Manage Users</h3>
@@ -644,12 +645,12 @@ export function TenantsPage() {
  </>
  )}
  </div>
- </div>
+ </div></Portal>
  )}
 
- {/* Deploy Catalyst Modal — Enhanced with Industry Templates */}
+ {/* Deploy Catalyst Modal— Enhanced with Industry Templates */}
  {showDeployCatalyst && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-3xl space-y-4 max-h-[90vh] overflow-y-auto">
 
  {/* Header */}
@@ -959,12 +960,12 @@ export function TenantsPage() {
  )}
 
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Configure Data Source Modal */}
  {configuringSub && (
- <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Configure Data Source</h3>
@@ -1056,12 +1057,12 @@ export function TenantsPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Edit Entitlements Modal */}
  {showEditEntitlements && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Edit Entitlements</h3>
@@ -1134,7 +1135,7 @@ export function TenantsPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
  </div>
  );

@@ -22,6 +22,7 @@ export function SettingsPage() {
  const [email, setEmail] = useState(user?.email || '');
  const [saving, setSaving] = useState(false);
  const [saved, setSaved] = useState(false);
+ const [saveError, setSaveError] = useState<string | null>(null);
 
  const [notifications, setNotifications] = useState<NotificationPref[]>([
  { label: 'Risk alerts (critical)', desc: 'Immediate notification for critical risk alerts', enabled: true },
@@ -38,14 +39,15 @@ export function SettingsPage() {
  const handleSaveProfile = async () => {
  setSaving(true);
  setSaved(false);
+ setSaveError(null);
  try {
  if (user) {
  setUser({ ...user, name: displayName, email });
  }
  setSaved(true);
  setTimeout(() => setSaved(false), 3000);
- } catch {
- // silent
+ } catch (err) {
+ setSaveError(err instanceof Error ? err.message : 'Failed to save profile');
  }
  setSaving(false);
  };
@@ -118,6 +120,7 @@ export function SettingsPage() {
  {saved ? 'Saved' : 'Save Changes'}
  </Button>
  {saved && <span className="text-xs text-emerald-500">Profile updated</span>}
+ {saveError && <span className="text-xs text-red-400">{saveError}</span>}
  </div>
 
  {/* Password Change */}

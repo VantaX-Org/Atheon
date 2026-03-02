@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { useAppStore } from "@/stores/appStore";
 import { X, Zap, BarChart3, Brain, Shield, Database, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,7 @@ export function OnboardingModal() {
   const isLast = currentStep === steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <Portal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div
         style={{ background: "rgba(18,18,42,0.97)", border: "1px solid rgba(255,255,255,0.1)" }}
         className="rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
@@ -114,6 +115,6 @@ export function OnboardingModal() {
           </div>
         </div>
       </div>
-    </div>
+    </div></Portal>
   );
 }

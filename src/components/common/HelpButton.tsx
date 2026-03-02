@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { HelpCircle, X, Book, Zap, Shield, Database, Brain, BarChart3, MessageCircle } from "lucide-react";
 
 const helpTopics = [
@@ -55,7 +56,7 @@ export function HelpButton() {
 
       {/* Help panel */}
       {open && (
-        <div className="fixed inset-0 z-[60] flex justify-end">
+        <Portal><div className="fixed inset-0 z-[60] flex justify-end">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div
             style={{ background: "rgba(18,18,42,0.98)", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
@@ -99,7 +100,7 @@ export function HelpButton() {
               </p>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </>
   );
