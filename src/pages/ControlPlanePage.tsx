@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,7 +202,7 @@ export function ControlPlanePage() {
 
  {/* Deploy Modal */}
  {showDeploy && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Deploy New Agent</h3>
@@ -223,12 +224,12 @@ export function ControlPlanePage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Edit Config Modal */}
  {showEditConfig && editingDeployment && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-xl space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Edit Deployment Config</h3>
@@ -299,7 +300,7 @@ export function ControlPlanePage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Error Banner */}

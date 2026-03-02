@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Portal } from "@/components/ui/portal";
 import { useAppStore } from "@/stores/appStore";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +89,7 @@ export function IAMPage() {
 
  {/* New Policy Modal */}
  {showNewPolicy && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Create New Policy</h3>
@@ -107,7 +108,7 @@ export function IAMPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Summary */}

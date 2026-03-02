@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,7 @@ export function ERPAdaptersPage() {
 
  {/* Connect ERP Modal */}
  {showConnect && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">Connect ERP System</h3>
@@ -146,7 +147,7 @@ export function ERPAdaptersPage() {
  </Button>
  </div>
  </div>
- </div>
+ </div></Portal>
  )}
 
  {/* Summary */}

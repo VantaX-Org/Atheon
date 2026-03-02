@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Portal } from "@/components/ui/portal";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppStore } from "@/stores/appStore";
 import { Button } from "@/components/ui/button";
@@ -148,7 +149,7 @@ export function LoginPage() {
             </Button>
           </form>
           {showForgotPw && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+            <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
               <div className="rounded-xl p-5 w-full max-w-sm space-y-3" style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-modal)' }}>
                 <h3 className="text-sm font-semibold t-primary">Reset Password</h3>
                 {forgotSent ? (
@@ -157,7 +158,7 @@ export function LoginPage() {
                   <div className="space-y-3"><p className="text-xs t-muted">Enter your email and we will send you a reset link.</p><input className="w-full px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }} type="email" placeholder="you@company.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} /><div className="flex gap-2"><Button variant="secondary" size="sm" className="flex-1" onClick={() => { setShowForgotPw(false); setForgotEmail(''); }}>Cancel</Button><Button variant="primary" size="sm" className="flex-1" onClick={handleForgotPassword} disabled={!forgotEmail.trim()}>Send Reset Link</Button></div></div>
                 )}
               </div>
-            </div>
+            </div></Portal>
           )}
           <p className="text-[10px] t-muted text-center mt-6">
             {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Sign in</button></>}
