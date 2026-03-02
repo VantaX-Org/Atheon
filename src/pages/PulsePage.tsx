@@ -192,7 +192,7 @@ export function PulsePage() {
  </div>
 
  {flow.bottlenecks.length > 0 && (
- <div className="mt-3 p-3 rounded-lg bg-red-500/100/5 border border-red-500/10">
+ <div className="mt-3 p-3 rounded-lg bg-red-500/5 border border-red-500/10">
  <span className="text-xs font-medium text-red-400">Bottlenecks: </span>
  <span className="text-xs t-muted">{flow.bottlenecks.join(', ')}</span>
  </div>

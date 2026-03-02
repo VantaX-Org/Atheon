@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import type { HealthScore, Briefing, Risk, ScenarioItem } from "@/lib/api";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
- Play, ArrowRight, BarChart3, Shield, Lightbulb, Loader2
+ Play, ArrowRight, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X
 } from "lucide-react";
 
 
@@ -31,10 +31,12 @@ export function ApexPage() {
  const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
  const [loading, setLoading] = useState(true);
  const [creatingScenario, setCreatingScenario] = useState(false);
+ const [actionError, setActionError] = useState<string | null>(null);
 
  const handleNewScenario = async () => {
  if (creatingScenario) return;
  setCreatingScenario(true);
+ setActionError(null);
  try {
  const result = await api.apex.createScenario({
  title: `Scenario ${scenarios.length + 1}`,
@@ -45,7 +47,9 @@ export function ApexPage() {
  const s = await api.apex.scenarios();
  setScenarios(s.scenarios);
  }
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to create scenario');
+ }
  setCreatingScenario(false);
  };
 
@@ -94,6 +98,14 @@ export function ApexPage() {
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Apex</h1>
  <p className="text-sm t-muted mt-1">Executive Intelligence — C-Suite Command Centre</p>
  </div>
+
+ {actionError && (
+ <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+ <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+ <p className="text-sm text-red-400 flex-1">{actionError}</p>
+ <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300"><X size={14} /></button>
+ </div>
+ )}
 
  <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 

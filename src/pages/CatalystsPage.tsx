@@ -9,7 +9,7 @@ import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceCo
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
- Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2
+ Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -62,28 +62,35 @@ export function CatalystsPage() {
  const [showDeployCatalyst, setShowDeployCatalyst] = useState(false);
  const [deployForm, setDeployForm] = useState({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
  const [deploying, setDeploying] = useState(false);
+ const [actionError, setActionError] = useState<string | null>(null);
 
  const handleApprove = async (actionId: string) => {
  if (updatingAction) return;
  setUpdatingAction(actionId);
+ setActionError(null);
  try {
  await api.catalysts.approveAction(actionId);
  const ind = industry !== 'general' ? industry : undefined;
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to approve action');
+ }
  setUpdatingAction(null);
  };
 
  const handleReject = async (actionId: string) => {
  if (updatingAction) return;
  setUpdatingAction(actionId);
+ setActionError(null);
  try {
  await api.catalysts.rejectAction(actionId);
  const ind = industry !== 'general' ? industry : undefined;
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to reject action');
+ }
  setUpdatingAction(null);
  };
 
@@ -136,7 +143,9 @@ export function CatalystsPage() {
  setClusters(c.clusters);
  setShowDeployCatalyst(false);
  setDeployForm({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to deploy catalyst');
+ }
  setDeploying(false);
  };
 
@@ -224,7 +233,9 @@ export function CatalystsPage() {
  const ind = industry !== 'general' ? industry : undefined;
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Failed to toggle sub-catalyst');
+ }
  setTogglingSubCatalyst(null);
  };
 
@@ -359,6 +370,14 @@ export function CatalystsPage() {
  </div>
  )}
  </div>
+
+ {actionError && (
+ <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+ <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+ <p className="text-sm text-red-400 flex-1">{actionError}</p>
+ <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300"><X size={14} /></button>
+ </div>
+ )}
 
  {exceptionCount > 0 && (
  <div className="flex items-center gap-3 p-3 bg-red-500/[0.08] border border-red-500/20 rounded-xl">

@@ -7,15 +7,17 @@ import { api } from "@/lib/api";
 import type { ERPAdapter, ERPConnection } from "@/lib/api";
 import {
  Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
- Activity, Loader2, X
+ Activity, Loader2, X, AlertCircle
 } from "lucide-react";
 import { IconERP_SAP, IconERP_Cloud, IconERP_Generic } from "@/components/icons/AtheonIcons";
+import { useAppStore } from "@/stores/appStore";
 
 const systemIconMap: Record<string, React.FC<{ size?: number }>> = {
  SAP: IconERP_SAP, SF: IconERP_Cloud, WD: IconERP_Generic, ORC: IconERP_Generic, D365: IconERP_Generic, NS: IconERP_Generic, SG: IconERP_Generic, API: IconERP_Generic};
 
 export function ERPAdaptersPage() {
  const { activeTab, setActiveTab } = useTabState('adapters');
+ const user = useAppStore((s) => s.user);
  const [adapters, setAdapters] = useState<ERPAdapter[]>([]);
  const [connections, setConnections] = useState<ERPConnection[]>([]);
  const [loading, setLoading] = useState(true);
@@ -24,31 +26,38 @@ export function ERPAdaptersPage() {
  const [syncing, setSyncing] = useState<string | null>(null);
  const [connecting, setConnecting] = useState(false);
  const [showLogs, setShowLogs] = useState<string | null>(null);
+ const [actionError, setActionError] = useState<string | null>(null);
 
- const handleSync = async (connectionId: string) => {
+  const handleSync = async (connectionId: string) => {
  setSyncing(connectionId);
+ setActionError(null);
  try {
  await api.erp.sync(connectionId);
  const c = await api.erp.connections();
  setConnections(c.connections);
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Sync failed');
+ }
  setSyncing(null);
  };
 
- const handleConnect = async () => {
+  const handleConnect = async () => {
  if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
  setConnecting(true);
+ setActionError(null);
  try {
  await api.erp.createConnection({
  adapter_id: connectForm.adapterId,
  name: connectForm.name.trim(),
  sync_frequency: connectForm.syncFrequency,
- tenant_id: 'vantax'});
+ tenant_id: user?.tenantId || ''});
  const c = await api.erp.connections();
  setConnections(c.connections);
  setShowConnect(false);
  setConnectForm({ adapterId: '', name: '', syncFrequency: 'daily' });
- } catch { /* silent */ }
+ } catch (err) {
+ setActionError(err instanceof Error ? err.message : 'Connection failed');
+ }
  setConnecting(false);
  };
 
@@ -98,6 +107,14 @@ export function ERPAdaptersPage() {
  </div>
  <Button variant="primary" size="sm" onClick={() => setShowConnect(true)}><Plus size={14} /> Connect ERP</Button>
  </div>
+
+ {actionError && (
+ <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+ <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
+ <p className="text-sm text-red-400 flex-1">{actionError}</p>
+ <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300"><X size={14} /></button>
+ </div>
+ )}
 
  {/* Connect ERP Modal */}
  {showConnect && (
