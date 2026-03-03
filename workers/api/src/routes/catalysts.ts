@@ -80,7 +80,7 @@ function domainToDimensions(domain: string): string[] {
  */
 function domainToRiskCategory(domain: string): string {
   if (domain.includes('compliance') || domain.includes('safety') || domain.includes('environment') || domain.includes('quality')) return 'compliance';
-  if (domain.includes('finance') || domain === 'sales' || domain === 'procurement') return 'financial';
+  if (domain.includes('finance') || domain.startsWith('fin-') || domain === 'sales' || domain === 'procurement') return 'financial';
   if (domain.includes('tech') || domain.includes('data') || domain.includes('devops') || domain.includes('security')) return 'technology';
   return 'operational';
 }
