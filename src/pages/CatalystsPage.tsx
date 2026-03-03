@@ -236,6 +236,7 @@ export function CatalystsPage() {
  if (sub.data_source) {
  setDsType(sub.data_source.type);
  setDsConfig(sub.data_source.config || {});
+ setErpConnections([]);
  } else {
  // Pre-fill from tenant's connected ERP if available
  setDsType('erp');
