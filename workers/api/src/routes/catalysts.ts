@@ -894,8 +894,8 @@ catalysts.put('/actions/:id/escalate', async (c) => {
   const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
   if (!action) return c.json({ error: 'Action not found' }, 404);
 
-  const currentLevel = (action.escalation_level as string) || 'L1';
-  const nextLevel = currentLevel === 'L1' ? 'L2' : currentLevel === 'L2' ? 'L3' : 'L3';
+  const currentLevel = (action.escalation_level as string) || null;
+  const nextLevel = !currentLevel ? 'L1' : currentLevel === 'L1' ? 'L2' : currentLevel === 'L2' ? 'L3' : 'L3';
 
   await c.env.DB.prepare(
     'UPDATE catalyst_actions SET status = ?, escalation_level = ?, output_data = ? WHERE id = ?'

@@ -354,7 +354,7 @@ export function CatalystsPage() {
  const handleResolveException = async (actionId: string) => {
  setResolvingAction(actionId);
  try {
- await api.catalysts.resolveException(actionId, resolveNotes || undefined);
+ await api.catalysts.resolveException(actionId, (activeNotesAction === actionId ? resolveNotes : '') || undefined);
  const ind = industry !== 'general' ? industry : undefined;
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
