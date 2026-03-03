@@ -36,10 +36,11 @@ function domainToDimensions(domain: string): string[] {
     'mining-safety': ['compliance'],
     'mining-environment': ['compliance'],
     'health-compliance': ['compliance'],
-    // Technology / data
-    'health-pharmacy': ['technology', 'operational'],
+    // Healthcare
+    'health-supply': ['technology', 'operational'],
     'health-patient': ['operational'],
     'health-staffing': ['operational'],
+    'health-experience': ['strategic', 'operational'],
     // Industry-specific operational
     'mining-equipment': ['technology', 'operational'],
     'mining-ore': ['operational'],
@@ -50,27 +51,23 @@ function domainToDimensions(domain: string): string[] {
     'agri-market': ['strategic'],
     // Logistics
     'logistics-fleet': ['operational'],
-    'logistics-route': ['operational', 'technology'],
     'logistics-warehouse': ['operational'],
     'logistics-compliance': ['compliance'],
-    'logistics-last-mile': ['operational'],
     // Technology
     'tech-devops': ['technology'],
     'tech-security': ['technology', 'compliance'],
-    'tech-data': ['technology'],
     'tech-product': ['strategic', 'technology'],
+    'tech-customer-success': ['strategic', 'operational'],
     // Manufacturing
     'mfg-production': ['operational'],
     'mfg-quality': ['compliance', 'operational'],
     'mfg-maintenance': ['technology', 'operational'],
-    // Financial services
-    'fin-risk': ['compliance', 'financial'],
-    'fin-advisory': ['strategic', 'financial'],
-    'fin-ops': ['operational', 'financial'],
+    'mfg-energy': ['technology', 'operational'],
     // FMCG
-    'fmcg-distribution': ['operational'],
-    'fmcg-brand': ['strategic'],
-    'fmcg-manufacturing': ['operational'],
+    'fmcg-trade': ['financial', 'strategic'],
+    'fmcg-distributor': ['operational', 'strategic'],
+    'fmcg-launch': ['strategic'],
+    'fmcg-shelf': ['strategic', 'operational'],
   };
   return map[domain] || ['operational'];
 }
