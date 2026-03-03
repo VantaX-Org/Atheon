@@ -12,80 +12,87 @@ const catalysts = new Hono<AppBindings>();
  */
 async function generateInsightsForTenant(db: D1Database, tenantId: string, catalystName: string, domain: string): Promise<void> {
   const now = new Date().toISOString();
-  const dimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology'];
+  const dimNames = ['financial', 'operational', 'compliance', 'strategic', 'technology'];
 
-  // Generate health scores for each dimension (upsert — update if exists, insert if not)
-  for (const dim of dimensions) {
+  // Build dimensions JSON object matching health_scores schema: { dimension: { score, trend, delta } }
+  const dimensionsObj: Record<string, { score: number; trend: string; delta: number }> = {};
+  let totalScore = 0;
+  for (const dim of dimNames) {
     const score = Math.floor(60 + Math.random() * 35); // 60-95
-    const delta = Math.round((Math.random() * 10 - 3) * 10) / 10; // -3 to +7
+    const delta = Math.round((Math.random() * 10 - 3) * 10) / 10;
     const trend = delta > 0.5 ? 'improving' : delta < -0.5 ? 'declining' : 'stable';
-    try {
-      const existing = await db.prepare(
-        'SELECT id FROM health_scores WHERE tenant_id = ? AND dimension = ?'
-      ).bind(tenantId, dim).first();
-      if (existing) {
-        await db.prepare(
-          'UPDATE health_scores SET score = ?, trend = ?, delta = ?, updated_at = ? WHERE tenant_id = ? AND dimension = ?'
-        ).bind(score, trend, delta, now, tenantId, dim).run();
-      } else {
-        await db.prepare(
-          'INSERT INTO health_scores (id, tenant_id, dimension, score, trend, delta, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(crypto.randomUUID(), tenantId, dim, score, trend, delta, now).run();
-      }
-    } catch { /* table may not exist */ }
+    dimensionsObj[dim] = { score, trend, delta };
+    totalScore += score;
   }
+  const overallScore = Math.round(totalScore / dimNames.length);
 
-  // Generate risk alerts based on domain
+  // Schema: health_scores (id, tenant_id, overall_score REAL, dimensions TEXT, calculated_at TEXT)
+  try {
+    // Delete existing then insert fresh
+    await db.prepare('DELETE FROM health_scores WHERE tenant_id = ?').bind(tenantId).run();
+    await db.prepare(
+      'INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at) VALUES (?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), tenantId, overallScore, JSON.stringify(dimensionsObj), now).run();
+  } catch { /* table may not exist */ }
+
+  // Schema: risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at)
   const riskTemplates = [
-    { title: `${domain} compliance gap detected`, severity: 'high', probability: 0.7, impact: 0.8, category: 'compliance' },
-    { title: `Revenue forecasting anomaly in ${domain}`, severity: 'medium', probability: 0.5, impact: 0.6, category: 'financial' },
-    { title: `Process bottleneck identified by ${catalystName}`, severity: 'medium', probability: 0.6, impact: 0.5, category: 'operational' },
-    { title: `Data quality issue in ${domain} pipeline`, severity: 'low', probability: 0.3, impact: 0.4, category: 'technology' },
+    { title: `${domain} compliance gap detected`, desc: `A compliance gap was identified in the ${domain} domain during catalyst analysis.`, severity: 'high', probability: 0.7, impact: 850000, category: 'compliance' },
+    { title: `Revenue forecasting anomaly in ${domain}`, desc: `Revenue projections in ${domain} show unexpected deviation from historical patterns.`, severity: 'medium', probability: 0.5, impact: 420000, category: 'financial' },
+    { title: `Process bottleneck identified by ${catalystName}`, desc: `${catalystName} detected a throughput bottleneck in ${domain} workflows.`, severity: 'medium', probability: 0.6, impact: 310000, category: 'operational' },
+    { title: `Data quality issue in ${domain} pipeline`, desc: `Data integrity checks flagged inconsistencies in the ${domain} data pipeline.`, severity: 'low', probability: 0.3, impact: 95000, category: 'technology' },
   ];
   for (const risk of riskTemplates) {
     try {
       await db.prepare(
-        'INSERT INTO risk_alerts (id, tenant_id, title, severity, probability, impact, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, risk.title, risk.severity, risk.probability, risk.impact, risk.category, 'active', now).run();
+        'INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(crypto.randomUUID(), tenantId, risk.title, risk.desc, risk.severity, risk.category, risk.probability, risk.impact, 'ZAR', JSON.stringify(['Review findings', 'Assign remediation owner']), 'active', now).run();
     } catch { /* skip */ }
   }
 
-  // Generate executive briefing
+  // Schema: executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at)
   try {
     await db.prepare(
-      'INSERT INTO executive_briefings (id, tenant_id, title, summary, priority, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
       `${catalystName} Execution Report`,
-      `Catalyst "${catalystName}" completed analysis of ${domain} domain. Key findings include updated health metrics across ${dimensions.length} dimensions and ${riskTemplates.length} new risk indicators identified.`,
-      'high', domain, now
+      `Catalyst "${catalystName}" completed analysis of ${domain} domain. Key findings include updated health metrics across ${dimNames.length} dimensions and ${riskTemplates.length} new risk indicators identified.`,
+      JSON.stringify([`${domain} compliance gap requires attention`]),
+      JSON.stringify([`Optimise ${domain} throughput for 15% efficiency gain`]),
+      JSON.stringify([{ metric: 'Health Score', change: `+${Math.floor(Math.random() * 5 + 1)}pts` }]),
+      JSON.stringify([`Review ${domain} risk mitigation plan`]),
+      now
     ).run();
   } catch { /* skip */ }
 
-  // Generate process metrics
+  // Schema: process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at)
   const processMetrics = [
-    { name: `${domain}_throughput`, value: Math.floor(80 + Math.random() * 20), unit: 'tps' },
-    { name: `${domain}_latency`, value: Math.floor(50 + Math.random() * 150), unit: 'ms' },
-    { name: `${domain}_error_rate`, value: Math.round(Math.random() * 5 * 100) / 100, unit: '%' },
+    { name: `${domain} Throughput`, value: Math.floor(80 + Math.random() * 20), unit: 'tps', status: 'green' },
+    { name: `${domain} Latency`, value: Math.floor(50 + Math.random() * 150), unit: 'ms', status: 'amber' },
+    { name: `${domain} Error Rate`, value: Math.round(Math.random() * 5 * 100) / 100, unit: '%', status: 'green' },
   ];
   for (const metric of processMetrics) {
     try {
       await db.prepare(
-        'INSERT INTO process_metrics (id, tenant_id, name, value, unit, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, now).run();
+        'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, metric.status, JSON.stringify([metric.value * 0.9, metric.value * 0.95, metric.value]), catalystName, now).run();
     } catch { /* skip */ }
   }
 
-  // Generate an anomaly
+  // Schema: anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at)
   try {
+    const expected = 100;
+    const actual = Math.round(expected * (1 + (Math.random() * 0.4 - 0.1)));
+    const deviation = Math.round((actual - expected) / expected * 100 * 10) / 10;
     await db.prepare(
-      'INSERT INTO anomalies (id, tenant_id, title, severity, source, description, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
-      `Unusual pattern in ${domain} data`,
-      'medium', catalystName,
-      `Catalyst "${catalystName}" detected an anomalous pattern during ${domain} analysis. Deviation of ${(Math.random() * 3 + 1).toFixed(1)}σ from baseline.`,
-      now
+      `${domain} throughput`,
+      'medium', expected, actual, deviation,
+      `Catalyst "${catalystName}" detected an anomalous pattern during ${domain} analysis.`,
+      'open', now
     ).run();
   } catch { /* skip */ }
 }
