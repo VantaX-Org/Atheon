@@ -766,6 +766,12 @@ auth.post('/admin-reset', async (c) => {
     return c.json({ error: 'User not found' }, 404);
   }
 
+  // Security S3: Validate new password strength
+  const pwCheck = validatePasswordStrength(body.new_password);
+  if (!pwCheck.valid) {
+    return c.json({ error: 'Weak password', details: pwCheck.errors }, 400);
+  }
+
   const newHash = await hashPassword(body.new_password);
   await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(newHash, user.id).run();
 
