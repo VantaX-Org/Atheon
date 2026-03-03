@@ -56,6 +56,7 @@ export function CatalystsPage() {
 
  // Exception Management state
  const [resolveNotes, setResolveNotes] = useState('');
+ const [activeNotesAction, setActiveNotesAction] = useState<string | null>(null);
  const [resolvingAction, setResolvingAction] = useState<string | null>(null);
  const [escalatingAction, setEscalatingAction] = useState<string | null>(null);
 
@@ -336,7 +337,7 @@ export function CatalystsPage() {
  setTogglingSubCatalyst(null);
  };
 
- const exceptionCount = actions.filter(a => a.status === 'exception').length;
+ const exceptionCount = actions.filter(a => a.status === 'exception' || a.status === 'escalated').length;
 
  // Load execution logs when tab changes or action selected
  const loadExecutionLogs = async (actionId?: string) => {
@@ -376,6 +377,14 @@ export function CatalystsPage() {
  }
  setEscalatingAction(null);
  };
+
+ // Auto-load execution logs when tab is activated
+ useEffect(() => {
+ if (activeTab === 'execution-logs') {
+ loadExecutionLogs(selectedLogAction || undefined);
+ }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [activeTab]);
 
  const tabs = [
  { id: 'clusters', label: 'Catalyst Clusters', icon: <Bot size={14} /> },
@@ -905,13 +914,13 @@ export function CatalystsPage() {
  <input
  className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-xs t-primary"
  placeholder="Resolution notes (optional)..."
- value={resolvingAction === action.id ? resolveNotes : ''}
- onChange={(e) => { setResolvingAction(action.id); setResolveNotes(e.target.value); }}
+ value={activeNotesAction === action.id ? resolveNotes : ''}
+ onChange={(e) => { setActiveNotesAction(action.id); setResolveNotes(e.target.value); }}
  onClick={(e) => e.stopPropagation()}
  />
  </div>
  <div className="flex gap-2">
- <Button variant="success" size="sm" onClick={(e) => { e.stopPropagation(); handleResolveException(action.id); }} disabled={resolvingAction === action.id && !resolveNotes}>
+ <Button variant="success" size="sm" onClick={(e) => { e.stopPropagation(); handleResolveException(action.id); }} disabled={resolvingAction === action.id}>
  {resolvingAction === action.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Resolve
  </Button>
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleEscalateException(action.id); }} disabled={escalatingAction === action.id}>
