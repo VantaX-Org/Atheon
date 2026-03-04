@@ -51,6 +51,10 @@ interface AppState {
   theme: Theme;
   accentColor: AccentColor;
   onboardingDismissed: boolean;
+  // Tenant switching for platform admins
+  activeTenantId: string | null;
+  activeTenantName: string | null;
+  activeTenantIndustry: IndustryVertical | null;
   setUser: (user: User | null) => void;
   setCurrentLayer: (layer: AtheonLayer) => void;
   toggleSidebar: () => void;
@@ -60,6 +64,7 @@ interface AppState {
   toggleTheme: () => void;
   setAccentColor: (color: AccentColor) => void;
   dismissOnboarding: () => void;
+  setActiveTenant: (tenantId: string | null, tenantName: string | null, tenantIndustry: IndustryVertical | null) => void;
 }
 
 const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('atheon-theme') : null) as Theme | null;
@@ -85,10 +90,13 @@ export const useAppStore = create<AppState>((set) => ({
   user: null,
   currentLayer: 'apex',
   sidebarOpen: true,
-  industry: 'general',
+  industry: ((typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-industry') : null) || 'general') as IndustryVertical,
   theme: savedTheme || 'light',
   accentColor: savedAccent || 'indigo',
   onboardingDismissed: savedOnboarding,
+  activeTenantId: typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-id') : null,
+  activeTenantName: typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-name') : null,
+  activeTenantIndustry: (typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-industry') : null) as IndustryVertical | null,
   setUser: (user) => set({ user }),
   setCurrentLayer: (layer) => set({ currentLayer: layer }),
   mobileSidebarOpen: false,
@@ -121,5 +129,22 @@ export const useAppStore = create<AppState>((set) => ({
   dismissOnboarding: () => {
     localStorage.setItem('atheon-onboarding-dismissed', 'true');
     set({ onboardingDismissed: true });
+  },
+  setActiveTenant: (tenantId, tenantName, tenantIndustry) => {
+    set({ activeTenantId: tenantId, activeTenantName: tenantName, activeTenantIndustry: tenantIndustry });
+    // Persist to localStorage for page reload survival
+    if (tenantId) {
+      localStorage.setItem('atheon-active-tenant-id', tenantId);
+      localStorage.setItem('atheon-active-tenant-name', tenantName || '');
+      localStorage.setItem('atheon-active-tenant-industry', tenantIndustry || '');
+    } else {
+      localStorage.removeItem('atheon-active-tenant-id');
+      localStorage.removeItem('atheon-active-tenant-name');
+      localStorage.removeItem('atheon-active-tenant-industry');
+    }
+    // Also update industry filter to match the selected tenant's industry
+    if (tenantIndustry) {
+      set({ industry: tenantIndustry });
+    }
   },
 }));

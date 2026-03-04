@@ -106,6 +106,7 @@ auth.post('/register', async (c) => {
       tenantId: tenant.id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
+      tenantIndustry: tenant.industry || 'general',
       permissions: ['read'],
     },
   }, 201);
@@ -185,6 +186,9 @@ auth.post('/login', async (c) => {
     name: user.name, role: user.role, permissions: JSON.parse(user.permissions as string || '[]'),
   }), { expirationTtl: REFRESH_TTL });
 
+  // Fetch tenant industry for the user's company
+  const loginTenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(user.tenant_id).first();
+
   return c.json({
     token,
     refreshToken,
@@ -197,6 +201,7 @@ auth.post('/login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
+      tenantIndustry: loginTenant?.industry || 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
@@ -301,6 +306,7 @@ auth.post('/demo-login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
+      tenantIndustry: tenant.industry || 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
@@ -682,7 +688,7 @@ auth.post('/sso/callback', async (c) => {
 
   // Find or auto-provision user
   let user = await c.env.DB.prepare(
-    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
+    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
   ).bind(ssoEmail, tenant.id).first();
 
   if (!user && sso.auto_provision) {
@@ -696,7 +702,7 @@ auth.post('/sso/callback', async (c) => {
     ).bind(userId, tenant.id, ssoEmail, ssoName, defaultRole, defaultPerms, 'active').run();
 
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
+      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
     ).bind(userId).first();
 
     // Log auto-provision
@@ -741,6 +747,7 @@ auth.post('/sso/callback', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
+      tenantIndustry: user.tenant_industry || 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });

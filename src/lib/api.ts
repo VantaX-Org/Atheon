@@ -1,6 +1,7 @@
 export const API_URL = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
 
 let authToken: string | null = localStorage.getItem('atheon_token');
+let tenantOverrideId: string | null = localStorage.getItem('atheon_tenant_override');
 
 export function setToken(token: string | null) {
   authToken = token;
@@ -13,6 +14,20 @@ export function setToken(token: string | null) {
 
 export function getToken(): string | null {
   return authToken;
+}
+
+/** Set a global tenant override for cross-tenant access (superadmin/support_admin) */
+export function setTenantOverride(tenantId: string | null) {
+  tenantOverrideId = tenantId;
+  if (tenantId) {
+    localStorage.setItem('atheon_tenant_override', tenantId);
+  } else {
+    localStorage.removeItem('atheon_tenant_override');
+  }
+}
+
+export function getTenantOverride(): string | null {
+  return tenantOverrideId;
 }
 
 /** Build query string from params, omitting undefined/null values */
@@ -31,7 +46,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
+  // Inject global tenant override into URL if set and not already present
+  let finalPath = path;
+  if (tenantOverrideId && !path.includes('tenant_id=') && !path.startsWith('/api/auth') && !path.startsWith('/api/tenants')) {
+    const sep = path.includes('?') ? '&' : '?';
+    finalPath = `${path}${sep}tenant_id=${encodeURIComponent(tenantOverrideId)}`;
+  }
+
+  const res = await fetch(`${API_URL}${finalPath}`, {
     ...options,
     headers,
   });
@@ -184,7 +206,12 @@ export const api = {
     manualExecute: async (data: FormData): Promise<ManualExecuteResult> => {
       const headers: Record<string, string> = {};
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/catalysts/manual-execute`, {
+      // Include tenant override for cross-tenant manual execution
+      let url = `${API_URL}/api/catalysts/manual-execute`;
+      if (tenantOverrideId) {
+        url += `?tenant_id=${encodeURIComponent(tenantOverrideId)}`;
+      }
+      const res = await fetch(url, {
         method: 'POST', headers, body: data,
       });
       if (!res.ok) {

@@ -1,10 +1,12 @@
 import { useAppStore } from "@/stores/appStore";
-import { Bell, ChevronDown, Menu, LogOut, MessageCircle, Settings, X, Check, Sun, Moon, Building2 } from "lucide-react";
+import { Bell, ChevronDown, Menu, LogOut, MessageCircle, Settings, X, Check, Sun, Moon, Building2, Factory } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { api, setToken } from "@/lib/api";
-import type { NotificationItem } from "@/lib/api";
+import { api, setToken, setTenantOverride } from "@/lib/api";
+import type { NotificationItem, Tenant } from "@/lib/api";
 import type { IndustryVertical } from "@/types";
 import { useState, useEffect, useRef, useCallback } from "react";
+
+const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
 const industries: { value: IndustryVertical; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -39,14 +41,50 @@ function timeAgo(dateStr: string): string {
 }
 
 export function Header() {
-  const { user, industry, setIndustry, setMobileSidebarOpen, setUser, theme, toggleTheme } = useAppStore();
+  const { user, industry, setIndustry, setMobileSidebarOpen, setUser, theme, toggleTheme, activeTenantId, activeTenantName, setActiveTenant } = useAppStore();
   const navigate = useNavigate();
+  const isPlatformAdmin = user?.role && PLATFORM_ADMIN_ROLES.includes(user.role);
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Company selector state for platform admins
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Load tenants list for platform admins
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    api.tenants.list().then((data) => {
+      setTenants(data.tenants || []);
+      // If no active tenant is selected, default to user's own tenant
+      if (!activeTenantId && user?.tenantId) {
+        const myTenant = data.tenants?.find((t: Tenant) => t.id === user.tenantId);
+        if (myTenant) {
+          setActiveTenant(myTenant.id, myTenant.name, myTenant.industry as IndustryVertical);
+          setTenantOverride(null); // Don't override for own tenant
+        }
+      }
+    }).catch(() => { /* silent - non-critical */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlatformAdmin, user?.tenantId, setActiveTenant]);
+
+  // Close company dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (companyDropdownRef.current && !companyDropdownRef.current.contains(e.target as Node)) {
+        setShowCompanyDropdown(false);
+      }
+    }
+    if (showCompanyDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showCompanyDropdown]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -110,9 +148,29 @@ export function Header() {
       // Continue with client-side logout even if API call fails
     }
     setToken(null);
+    setTenantOverride(null);
     setUser(null);
+    setActiveTenant(null, null, null);
     navigate('/login', { replace: true });
   };
+
+  const handleSelectTenant = (tenant: Tenant) => {
+    setActiveTenant(tenant.id, tenant.name, tenant.industry as IndustryVertical);
+    // Set tenant override for API calls (null if it's user's own tenant)
+    if (tenant.id === user?.tenantId) {
+      setTenantOverride(null);
+    } else {
+      setTenantOverride(tenant.id);
+    }
+    setShowCompanyDropdown(false);
+    // Navigate to dashboard to refresh data with new tenant context
+    navigate('/dashboard');
+    // Reload to ensure all cached data is refreshed
+    window.location.reload();
+  };
+
+  // Get display industry for the header badge
+  const displayIndustry = industries.find(i => i.value === industry);
 
   return (
     <header
@@ -130,30 +188,85 @@ export function Header() {
 
         <div className="hidden lg:block flex-shrink-0 w-8" />
 
-        {user?.tenantName && (
+        {/* Company Selector for Platform Admins */}
+        {isPlatformAdmin && tenants.length > 0 ? (
+          <div className="relative" ref={companyDropdownRef}>
+            <button
+              onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md cursor-pointer hover:bg-[var(--bg-tertiary)] transition-all"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
+              title="Switch company"
+            >
+              <Building2 size={12} className="flex-shrink-0 t-muted" />
+              <span className="text-[11px] font-medium t-secondary truncate max-w-[180px]">
+                {activeTenantName || user?.tenantName || 'Select Company'}
+              </span>
+              <ChevronDown size={10} className="flex-shrink-0 t-muted" />
+            </button>
+
+            {showCompanyDropdown && (
+              <div
+                className="absolute left-0 top-full mt-1 w-64 rounded-lg overflow-hidden z-50"
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-dropdown)' }}
+              >
+                <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--border-card)' }}>
+                  <p className="text-[10px] font-medium t-muted uppercase tracking-wider">Switch Company</p>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {tenants.map((t) => {
+                    const isActive = t.id === activeTenantId;
+                    const industryLabel = industries.find(i => i.value === t.industry)?.label || t.industry;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => handleSelectTenant(t)}
+                        className="w-full text-left px-3 py-2 transition-all hover:bg-[var(--bg-secondary)] flex items-center gap-2.5"
+                        style={isActive ? { background: 'var(--accent-subtle)' } : undefined}
+                      >
+                        <Building2 size={13} className={isActive ? 'text-accent flex-shrink-0' : 't-muted flex-shrink-0'} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[12px] leading-tight truncate ${isActive ? 'font-medium t-primary' : 't-secondary'}`}>{t.name}</p>
+                          <p className="text-[10px] t-muted">{industryLabel} &middot; {t.plan}</p>
+                        </div>
+                        {isActive && <Check size={12} className="text-accent flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : user?.tenantName ? (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}>
             <Building2 size={12} className="flex-shrink-0 t-muted" />
             <span className="text-[11px] font-medium t-secondary truncate max-w-[180px]">{user.tenantName}</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="flex items-center gap-0.5">
-        {/* Industry Selector */}
-        <div className="relative hidden md:block">
-          <select
-            value={industry}
-            onChange={(e) => setIndustry(e.target.value as IndustryVertical)}
-            className="appearance-none rounded-md pl-2.5 pr-6 py-1 text-[11px] t-secondary cursor-pointer focus:outline-none transition-all"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
-            title="Filter analytics by industry vertical"
-          >
-            {industries.map(i => (
-              <option key={i.value} value={i.value}>{i.label}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 t-muted pointer-events-none" />
-        </div>
+        {/* Industry Selector for platform admins / Industry Display for regular users */}
+        {isPlatformAdmin ? (
+          <div className="relative hidden md:block">
+            <select
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value as IndustryVertical)}
+              className="appearance-none rounded-md pl-2.5 pr-6 py-1 text-[11px] t-secondary cursor-pointer focus:outline-none transition-all"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
+              title="Filter analytics by industry vertical"
+            >
+              {industries.map(i => (
+                <option key={i.value} value={i.value}>{i.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 t-muted pointer-events-none" />
+          </div>
+        ) : displayIndustry && displayIndustry.value !== 'general' ? (
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}>
+            <Factory size={11} className="flex-shrink-0 t-muted" />
+            <span className="text-[11px] font-medium t-secondary">{displayIndustry.label}</span>
+          </div>
+        ) : null}
 
         <button
           onClick={() => navigate('/chat')}
