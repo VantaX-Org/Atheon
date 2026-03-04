@@ -184,6 +184,10 @@ export const api = {
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-source${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(dataSource) }),
     removeDataSource: (clusterId: string, subName: string, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-source${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
+    setSchedule: (clusterId: string, subName: string, schedule: { frequency: string; day_of_week?: number; day_of_month?: number; time_of_day?: string }, tenantId?: string) =>
+      request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/schedule${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(schedule) }),
+    removeSchedule: (clusterId: string, subName: string, tenantId?: string) =>
+      request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/schedule${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
     cluster: (id: string) => request<ClusterDetail>(`/api/catalysts/clusters/${id}`),
     actions: (tenantId?: string, clusterId?: string, industry?: string) =>
       request<{ actions: ActionItem[]; total: number }>(`/api/catalysts/actions${qs({ tenant_id: tenantId, cluster_id: clusterId, industry: industry && industry !== 'general' ? industry : undefined })}`),
@@ -515,6 +519,7 @@ export interface CatalystSubCatalystTemplate {
   name: string;
   enabled: boolean;
   description: string;
+  schedule?: SubCatalystSchedule;
 }
 
 export interface CatalystClusterTemplate {
@@ -534,11 +539,21 @@ export interface CatalystIndustryTemplate {
   clusters: CatalystClusterTemplate[];
 }
 
+export interface SubCatalystSchedule {
+  frequency: 'manual' | 'daily' | 'weekly' | 'monthly';
+  day_of_week?: number;   // 0=Sun..6=Sat (for weekly)
+  day_of_month?: number;  // 1-31 (for monthly)
+  time_of_day?: string;   // HH:MM in UTC
+  last_run?: string;      // ISO datetime of last scheduled run
+  next_run?: string;      // ISO datetime of next scheduled run
+}
+
 export interface SubCatalyst {
   name: string;
   enabled: boolean;
   description?: string;
   data_source?: DataSourceConfig;
+  schedule?: SubCatalystSchedule;
 }
 
 export interface ClusterItem {

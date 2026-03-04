@@ -193,6 +193,51 @@ function friendlyRiskDescription(severity: string, domain: string, catalystName:
 }
 
 /**
+ * Calculate the next run time for a scheduled sub-catalyst.
+ */
+function calculateNextRun(
+  frequency: string,
+  dayOfWeek?: number,
+  dayOfMonth?: number,
+  timeOfDay?: string,
+): string {
+  const now = new Date();
+  const [hours, minutes] = (timeOfDay || '06:00').split(':').map(Number);
+
+  if (frequency === 'daily') {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next.toISOString();
+  }
+
+  if (frequency === 'weekly' && dayOfWeek !== undefined) {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    const currentDay = next.getUTCDay();
+    let daysUntil = dayOfWeek - currentDay;
+    if (daysUntil < 0) daysUntil += 7;
+    if (daysUntil === 0 && next <= now) daysUntil = 7;
+    next.setUTCDate(next.getUTCDate() + daysUntil);
+    return next.toISOString();
+  }
+
+  if (frequency === 'monthly' && dayOfMonth !== undefined) {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    next.setUTCDate(dayOfMonth);
+    if (next <= now) {
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      next.setUTCDate(dayOfMonth);
+    }
+    return next.toISOString();
+  }
+
+  // manual — no next run
+  return '';
+}
+
+/**
  * Generate Apex/Pulse insight data for a tenant after catalyst execution.
  * INCREMENTAL: Only updates the dimensions and risk categories relevant to the catalyst domain.
  * When only one catalyst has run, the dashboard shows scoped data for that domain.
@@ -732,6 +777,101 @@ catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/data-source', asyn
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(
     crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.data_source_removed', 'catalysts', clusterId,
+    JSON.stringify({ sub_catalyst: subName }),
+    'success'
+  ).run().catch(() => {});
+
+  return c.json({ success: true, subCatalyst: subs[idx] });
+});
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/schedule - Set schedule for a sub-catalyst
+catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/schedule', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden', message: 'Only admins can configure schedules' }, 403);
+  }
+
+  const body = await c.req.json<{
+    frequency: 'manual' | 'daily' | 'weekly' | 'monthly';
+    day_of_week?: number;
+    day_of_month?: number;
+    time_of_day?: string;
+  }>();
+
+  if (!body.frequency || !['manual', 'daily', 'weekly', 'monthly'].includes(body.frequency)) {
+    return c.json({ error: 'Invalid frequency. Must be: manual, daily, weekly, or monthly' }, 400);
+  }
+  if (body.frequency === 'weekly' && (body.day_of_week === undefined || body.day_of_week < 0 || body.day_of_week > 6)) {
+    return c.json({ error: 'Weekly schedule requires day_of_week (0=Sun..6=Sat)' }, 400);
+  }
+  if (body.frequency === 'monthly' && (body.day_of_month === undefined || body.day_of_month < 1 || body.day_of_month > 31)) {
+    return c.json({ error: 'Monthly schedule requires day_of_month (1-31)' }, 400);
+  }
+
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as Array<Record<string, unknown>>;
+  const idx = subs.findIndex((s) => s.name === subName);
+  if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
+
+  // Calculate next run time
+  const nextRun = calculateNextRun(body.frequency, body.day_of_week, body.day_of_month, body.time_of_day);
+
+  subs[idx].schedule = {
+    frequency: body.frequency,
+    ...(body.day_of_week !== undefined ? { day_of_week: body.day_of_week } : {}),
+    ...(body.day_of_month !== undefined ? { day_of_month: body.day_of_month } : {}),
+    ...(body.time_of_day ? { time_of_day: body.time_of_day } : {}),
+    next_run: nextRun,
+  };
+
+  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+    .bind(JSON.stringify(subs), clusterId, targetTenant).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.schedule_configured', 'catalysts', clusterId,
+    JSON.stringify({ sub_catalyst: subName, frequency: body.frequency, next_run: nextRun }),
+    'success'
+  ).run().catch(() => {});
+
+  return c.json({ success: true, subCatalyst: subs[idx] });
+});
+
+// DELETE /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/schedule - Remove schedule (set to manual)
+catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/schedule', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden', message: 'Only admins can configure schedules' }, 403);
+  }
+
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as Array<Record<string, unknown>>;
+  const idx = subs.findIndex((s) => s.name === subName);
+  if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
+
+  delete subs[idx].schedule;
+  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+    .bind(JSON.stringify(subs), clusterId, targetTenant).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.schedule_removed', 'catalysts', clusterId,
     JSON.stringify({ sub_catalyst: subName }),
     'success'
   ).run().catch(() => {});

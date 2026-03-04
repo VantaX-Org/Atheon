@@ -8,6 +8,12 @@ export interface SubCatalystTemplate {
   name: string;
   enabled: boolean;
   description: string;
+  schedule?: {
+    frequency: 'manual' | 'daily' | 'weekly' | 'monthly';
+    day_of_week?: number;   // 0=Sun..6=Sat (for weekly)
+    day_of_month?: number;  // 1-31 (for monthly)
+    time_of_day?: string;   // HH:MM in UTC
+  };
 }
 
 export interface CatalystTemplate {
