@@ -4,7 +4,7 @@ import type { Env, AppBindings } from './types';
 import { seedDatabase } from './services/seed';
 import { seedSampleCompany } from './services/seed-sample-company';
 import { seedTestCompanies } from './services/seed-test-companies';
-import { apiRateLimiter, authRateLimiter, aiRateLimiter, demoAuthRateLimiter } from './middleware/ratelimit';
+import { apiRateLimiter, authRateLimiter, aiRateLimiter, demoAuthRateLimiter, contactRateLimiter } from './middleware/ratelimit';
 import { auditEnrichment, requestSizeLimiter } from './middleware/validation';
 import { tenantIsolation, requireRole } from './middleware/tenant';
 import { DashboardRoom } from './services/realtime';
@@ -73,6 +73,7 @@ app.use('/api/*', auditEnrichment());
 app.use('/api/auth/demo-login', demoAuthRateLimiter);
 app.use('/api/auth/*', authRateLimiter);
 app.use('/api/mind/*', aiRateLimiter);
+app.use('/api/contact', contactRateLimiter);
 app.use('/api/*', apiRateLimiter);
 
 // 4.4: Database migrations — canonical definitions live in /migrations/*.sql files
@@ -330,9 +331,41 @@ app.get('/', (c) => {
   });
 });
 
-// Health check
-app.get('/healthz', (c) => {
-  return c.json({ status: 'ok', timestamp: new Date().toISOString() });
+// GAP-05: Enhanced health check with DB connectivity probe
+app.get('/healthz', async (c) => {
+  const t0 = Date.now();
+  let dbStatus = 'ok';
+  let dbLatencyMs = 0;
+  try {
+    const dbStart = Date.now();
+    await c.env.DB.prepare('SELECT 1').first();
+    dbLatencyMs = Date.now() - dbStart;
+  } catch (err) {
+    dbStatus = 'error';
+    console.error('Healthz DB probe failed:', err);
+  }
+
+  let cacheStatus = 'ok';
+  try {
+    await c.env.CACHE.put('healthz:probe', '1', { expirationTtl: 60 });
+    const val = await c.env.CACHE.get('healthz:probe');
+    if (val !== '1') cacheStatus = 'degraded';
+  } catch {
+    cacheStatus = 'error';
+  }
+
+  const overall = dbStatus === 'ok' && cacheStatus === 'ok' ? 'healthy' : 'degraded';
+  const statusCode = overall === 'healthy' ? 200 : 503;
+
+  return c.json({
+    status: overall,
+    timestamp: new Date().toISOString(),
+    uptime: Date.now() - t0,
+    checks: {
+      database: { status: dbStatus, latencyMs: dbLatencyMs },
+      cache: { status: cacheStatus },
+    },
+  }, statusCode);
 });
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
@@ -419,7 +452,7 @@ app.post('/api/contact', async (c) => {
             }),
           });
         }
-      } catch { /* email send failed, still log the contact */ }
+      } catch (err) { console.error('BUG-20: contact form Graph email send failed:', err); }
     }
 
     // Always log to DB as a fallback
@@ -430,10 +463,11 @@ app.post('/api/contact', async (c) => {
         JSON.stringify({ name: body.name, email: body.email, company: body.company, message: body.message }),
         'success'
       ).run();
-    } catch { /* DB log failed */ }
+    } catch (err) { console.error('BUG-20: contact form DB log failed:', err); }
 
     return c.json({ success: true, message: 'Your message has been received. We will be in touch shortly.' });
-  } catch {
+  } catch (err) {
+    console.error('Contact form handler failed:', err);
     return c.json({ error: 'Failed to process contact form' }, 500);
   }
 });

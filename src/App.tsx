@@ -55,6 +55,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<LoginPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />

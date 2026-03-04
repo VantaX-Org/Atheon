@@ -10,6 +10,14 @@ export interface Env {
   AZURE_AD_CLIENT_SECRET: string;
   AZURE_AD_TENANT_ID: string;
   AZURE_AD_CLIENT_ID: string;
+  // BUG-27: Microsoft Graph (contact form + email delivery)
+  MS_GRAPH_CLIENT_ID: string;
+  MS_GRAPH_CLIENT_SECRET: string;
+  MS_GRAPH_TENANT_ID: string;
+  // BUG-11: SSO redirect URI (optional, defaults to production URL)
+  SSO_REDIRECT_URI?: string;
+  // BUG-03: Demo login secret (only used in non-production)
+  DEMO_LOGIN_SECRET?: string;
   OLLAMA_API_KEY: string;
   ENVIRONMENT: string;
 }

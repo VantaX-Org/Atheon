@@ -84,11 +84,6 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ new_password: newPassword, current_password: currentPassword }),
       }),
-    demoLogin: (tenantSlug?: string, role?: string) =>
-      request<{ token: string; user: AuthUser }>('/api/auth/demo-login', {
-        method: 'POST',
-        body: JSON.stringify({ tenant_slug: tenantSlug || 'vantax', role: role || 'admin' }),
-      }),
     me: () => request<AuthUser>('/api/auth/me'),
     ssoLogin: (provider: string) =>
       request<{ token: string; user: AuthUser }>('/api/auth/sso', {

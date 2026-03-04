@@ -80,3 +80,10 @@ export const demoAuthRateLimiter = rateLimiter({
   maxRequests: 3,    // 3 per hour
   keyPrefix: 'rl:demo',
 });
+
+// BUG-20: Contact form rate limit (prevent spam)
+export const contactRateLimiter = rateLimiter({
+  windowMs: 3600000, // 1 hour
+  maxRequests: 5,    // 5 per hour per IP
+  keyPrefix: 'rl:contact',
+});
