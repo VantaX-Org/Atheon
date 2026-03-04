@@ -90,7 +90,7 @@ export const useAppStore = create<AppState>((set) => ({
   user: null,
   currentLayer: 'apex',
   sidebarOpen: true,
-  industry: 'general',
+  industry: ((typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-industry') : null) || 'general') as IndustryVertical,
   theme: savedTheme || 'light',
   accentColor: savedAccent || 'indigo',
   onboardingDismissed: savedOnboarding,
