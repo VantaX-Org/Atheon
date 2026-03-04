@@ -51,6 +51,10 @@ interface AppState {
   theme: Theme;
   accentColor: AccentColor;
   onboardingDismissed: boolean;
+  // Tenant switching for platform admins
+  activeTenantId: string | null;
+  activeTenantName: string | null;
+  activeTenantIndustry: IndustryVertical | null;
   setUser: (user: User | null) => void;
   setCurrentLayer: (layer: AtheonLayer) => void;
   toggleSidebar: () => void;
@@ -60,6 +64,7 @@ interface AppState {
   toggleTheme: () => void;
   setAccentColor: (color: AccentColor) => void;
   dismissOnboarding: () => void;
+  setActiveTenant: (tenantId: string | null, tenantName: string | null, tenantIndustry: IndustryVertical | null) => void;
 }
 
 const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('atheon-theme') : null) as Theme | null;
@@ -89,6 +94,9 @@ export const useAppStore = create<AppState>((set) => ({
   theme: savedTheme || 'light',
   accentColor: savedAccent || 'indigo',
   onboardingDismissed: savedOnboarding,
+  activeTenantId: null,
+  activeTenantName: null,
+  activeTenantIndustry: null,
   setUser: (user) => set({ user }),
   setCurrentLayer: (layer) => set({ currentLayer: layer }),
   mobileSidebarOpen: false,
@@ -121,5 +129,12 @@ export const useAppStore = create<AppState>((set) => ({
   dismissOnboarding: () => {
     localStorage.setItem('atheon-onboarding-dismissed', 'true');
     set({ onboardingDismissed: true });
+  },
+  setActiveTenant: (tenantId, tenantName, tenantIndustry) => {
+    set({ activeTenantId: tenantId, activeTenantName: tenantName, activeTenantIndustry: tenantIndustry });
+    // Also update industry filter to match the selected tenant's industry
+    if (tenantIndustry) {
+      set({ industry: tenantIndustry });
+    }
   },
 }));
