@@ -83,6 +83,116 @@ function domainToRiskCategory(domain: string): string {
 }
 
 /**
+ * Human-friendly label for a domain key.
+ */
+function friendlyDomain(domain: string): string {
+  const map: Record<string, string> = {
+    'finance': 'Financial Operations',
+    'procurement': 'Procurement & Sourcing',
+    'supply-chain': 'Supply Chain',
+    'hr': 'Human Resources',
+    'sales': 'Sales & Revenue',
+    'mining-safety': 'Workplace Safety',
+    'mining-environment': 'Environmental Compliance',
+    'mining-equipment': 'Equipment & Machinery',
+    'mining-ore': 'Ore Processing & Quality',
+    'health-compliance': 'Healthcare Compliance',
+    'health-supply': 'Medical Supply Chain',
+    'health-patient': 'Patient Care',
+    'health-staffing': 'Staffing & Workforce',
+    'health-experience': 'Patient Experience',
+    'agri-crop': 'Crop Management',
+    'agri-irrigation': 'Irrigation Systems',
+    'agri-quality': 'Produce Quality',
+    'agri-market': 'Market & Pricing',
+    'logistics-fleet': 'Fleet Management',
+    'logistics-warehouse': 'Warehouse Operations',
+    'logistics-compliance': 'Logistics Compliance',
+    'tech-devops': 'DevOps & Infrastructure',
+    'tech-security': 'Cybersecurity',
+    'tech-product': 'Product Development',
+    'tech-customer-success': 'Customer Success',
+    'mfg-production': 'Production Line',
+    'mfg-quality': 'Quality Assurance',
+    'mfg-maintenance': 'Plant Maintenance',
+    'mfg-energy': 'Energy Management',
+    'fmcg-trade': 'Trade Spend',
+    'fmcg-distributor': 'Distributor Network',
+    'fmcg-launch': 'Product Launch',
+    'fmcg-shelf': 'Shelf Performance',
+  };
+  return map[domain] || domain.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Human-friendly label for a risk category.
+ */
+function friendlyCategory(cat: string): string {
+  const map: Record<string, string> = {
+    'compliance': 'Compliance & Governance',
+    'financial': 'Financial',
+    'technology': 'Technology & Systems',
+    'operational': 'Operational',
+  };
+  return map[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
+}
+
+/**
+ * Human-friendly label for a dimension key.
+ */
+function friendlyDimension(dim: string): string {
+  const map: Record<string, string> = {
+    'financial': 'Financial Health',
+    'operational': 'Operational Efficiency',
+    'compliance': 'Compliance & Governance',
+    'strategic': 'Strategic Alignment',
+    'technology': 'Technology Readiness',
+    'risk': 'Risk Posture',
+    'catalyst': 'Catalyst Performance',
+    'process': 'Process Maturity',
+  };
+  return map[dim] || dim.charAt(0).toUpperCase() + dim.slice(1);
+}
+
+/**
+ * Generate a human-friendly risk title based on severity and domain.
+ */
+function friendlyRiskTitle(severity: string, domain: string): string {
+  const domainLabel = friendlyDomain(domain);
+  if (severity === 'high') return `Elevated risk detected in ${domainLabel}`;
+  if (severity === 'medium') return `Moderate concern flagged in ${domainLabel}`;
+  return `Minor observation noted in ${domainLabel}`;
+}
+
+/**
+ * Check if a role has admin-level privileges (superadmin, support_admin, admin, or system_admin).
+ */
+function isAdminRole(role: string | undefined): boolean {
+  return role === 'superadmin' || role === 'support_admin' || role === 'admin' || role === 'system_admin';
+}
+
+/**
+ * Check if a role can override tenant_id (cross-tenant access).
+ */
+function canCrossTenant(role: string | undefined): boolean {
+  return role === 'superadmin' || role === 'support_admin' || role === 'system_admin';
+}
+
+/**
+ * Generate a human-friendly risk description.
+ */
+function friendlyRiskDescription(severity: string, domain: string, catalystName: string): string {
+  const domainLabel = friendlyDomain(domain);
+  if (severity === 'high') {
+    return `During routine analysis, ${catalystName} identified a significant risk indicator within ${domainLabel}. This warrants immediate attention from the relevant stakeholders to assess potential business impact and agree on next steps.`;
+  }
+  if (severity === 'medium') {
+    return `${catalystName} flagged a moderate-level concern within ${domainLabel}. While not critical, this should be reviewed within the current planning cycle to prevent escalation.`;
+  }
+  return `${catalystName} noted a low-level observation within ${domainLabel}. No immediate action is needed, but it should be tracked as part of ongoing monitoring.`;
+}
+
+/**
  * Generate Apex/Pulse insight data for a tenant after catalyst execution.
  * INCREMENTAL: Only updates the dimensions and risk categories relevant to the catalyst domain.
  * When only one catalyst has run, the dashboard shows scoped data for that domain.
@@ -94,15 +204,17 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   let step = 1;
   const affectedDimensions = domainToDimensions(domain);
   const riskCategory = domainToRiskCategory(domain);
+  const domainLabel = friendlyDomain(domain);
+  const categoryLabel = friendlyCategory(riskCategory);
 
   // Step 1: Initialisation
   const t0 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Initialisation', 'completed', `Catalyst "${catalystName}" started for ${domain} domain. Updating dimensions: ${affectedDimensions.join(', ')}`, Date.now() - t0);
+  await writeLog(db, tenantId, logId, step, 'Initialisation', 'completed', `${catalystName} started analysis of ${domainLabel}. Updating: ${affectedDimensions.map(friendlyDimension).join(', ')}.`, Date.now() - t0);
   step++;
 
   // Step 2: Incremental Health Score — only update affected dimensions
   const t1 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'running', `Updating ${affectedDimensions.length} dimension(s): ${affectedDimensions.join(', ')}`, 0);
+  await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'running', `Recalculating ${affectedDimensions.length} health dimension(s): ${affectedDimensions.map(friendlyDimension).join(', ')}`, 0);
 
   // Fetch existing health scores to merge with
   let existingDimensions: Record<string, { score: number; trend: string; delta: number }> = {};
@@ -145,74 +257,85 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   } catch { /* table may not exist */ }
 
   const dimCount = Object.keys(existingDimensions).length;
-  await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'completed', `Updated ${affectedDimensions.length} dimension(s), overall score: ${overallScore} (${dimCount} dimension(s) populated)`, Date.now() - t1);
+  await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'completed', `Health score updated — overall ${overallScore}/100 across ${dimCount} dimension(s)`, Date.now() - t1);
   step++;
 
   // Step 3: Risk Alert — only generate risk for this catalyst's domain category
   const t2 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'running', `Scanning ${riskCategory} risk indicators for ${domain}...`, 0);
+  await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'running', `Scanning ${domainLabel} for ${categoryLabel.toLowerCase()} risk indicators...`, 0);
   const riskRand = Math.random();
   const riskSeverity = riskRand > 0.6 ? 'high' : riskRand > 0.4 ? 'medium' : 'low';
   const riskImpact = riskSeverity === 'high' ? Math.floor(500000 + Math.random() * 500000) : riskSeverity === 'medium' ? Math.floor(200000 + Math.random() * 300000) : Math.floor(50000 + Math.random() * 100000);
+  const riskTitle = friendlyRiskTitle(riskSeverity, domain);
+  const riskDesc = friendlyRiskDescription(riskSeverity, domain, catalystName);
   try {
     await db.prepare(
       'INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
-      `${catalystName}: ${domain} risk indicator detected`,
-      `Catalyst "${catalystName}" identified a ${riskSeverity}-severity risk in the ${domain} domain during analysis.`,
+      riskTitle, riskDesc,
       riskSeverity, riskCategory, Math.round((0.3 + Math.random() * 0.5) * 100) / 100,
       riskImpact, 'ZAR',
-      JSON.stringify([`Review ${domain} findings`, `Assign ${riskCategory} remediation owner`]),
+      JSON.stringify([`Review ${domainLabel} findings and assess exposure`, `Assign a remediation owner from the ${categoryLabel} team`, `Schedule a follow-up review within 14 days`]),
       'active', now
     ).run();
   } catch { /* skip */ }
-  await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'completed', `1 ${riskCategory} risk alert generated (${riskSeverity} severity)`, Date.now() - t2);
+  await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'completed', `${categoryLabel} risk alert raised (${riskSeverity} severity)`, Date.now() - t2);
   step++;
 
   // Step 4: Executive Briefing — scoped to this catalyst
   const t3 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'running', `Generating briefing for ${catalystName}...`, 0);
+  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'running', `Preparing executive summary for ${domainLabel}...`, 0);
   try {
+    const dimDelta = existingDimensions[affectedDimensions[0]]?.delta ?? 0;
+    const dimDeltaStr = `${dimDelta > 0 ? '+' : ''}${dimDelta}`;
     await db.prepare(
       'INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
-      `${catalystName} — ${domain} Report`,
-      `Catalyst "${catalystName}" completed analysis of the ${domain} domain. Health dimension(s) updated: ${affectedDimensions.join(', ')}. Overall health score is now ${overallScore}.`,
-      JSON.stringify([`${riskCategory} risk in ${domain} requires review`]),
-      JSON.stringify([`Optimise ${domain} processes for efficiency gains`]),
-      JSON.stringify([{ metric: `${affectedDimensions[0]} Score`, change: `${existingDimensions[affectedDimensions[0]]?.delta > 0 ? '+' : ''}${existingDimensions[affectedDimensions[0]]?.delta ?? 0}pts` }]),
-      JSON.stringify([`Review ${domain} findings and assign actions`]),
+      `${domainLabel} — Executive Summary`,
+      `${catalystName} completed its analysis of ${domainLabel}. The overall business health score is now ${overallScore}/100 with ${affectedDimensions.map(friendlyDimension).join(' and ')} updated. Key findings have been surfaced for your review.`,
+      JSON.stringify([`A ${riskSeverity}-severity ${categoryLabel.toLowerCase()} risk was identified — review recommended`]),
+      JSON.stringify([`Explore efficiency improvements in ${domainLabel} to reduce cost and cycle time`]),
+      JSON.stringify([{ metric: `${friendlyDimension(affectedDimensions[0])}`, change: `${dimDeltaStr} pts` }]),
+      JSON.stringify([`Review the ${domainLabel} risk findings and agree on next steps`]),
       now
     ).run();
   } catch { /* skip */ }
-  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'completed', `Briefing generated for ${catalystName}`, Date.now() - t3);
+  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'completed', `Executive summary generated for ${domainLabel}`, Date.now() - t3);
   step++;
 
   // Step 5: Process Metrics — scoped to this domain only
   const t4 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Process Metrics', 'running', `Capturing ${domain} metrics...`, 0);
+  await writeLog(db, tenantId, logId, step, 'Process Metrics', 'running', `Capturing ${domainLabel} performance metrics...`, 0);
   const processMetrics = [
-    { name: `${domain} Throughput`, value: Math.floor(80 + Math.random() * 20), unit: 'tps', status: 'green' as const },
-    { name: `${domain} Latency`, value: Math.floor(50 + Math.random() * 150), unit: 'ms', status: Math.random() > 0.5 ? 'amber' as const : 'green' as const },
-    { name: `${domain} Error Rate`, value: Math.round(Math.random() * 5 * 100) / 100, unit: '%', status: Math.random() > 0.8 ? 'red' as const : 'green' as const },
+    { name: `${domainLabel} — Throughput`, value: Math.floor(80 + Math.random() * 20), unit: 'tps', status: 'green' as const },
+    { name: `${domainLabel} — Response Time`, value: Math.floor(50 + Math.random() * 150), unit: 'ms', status: Math.random() > 0.5 ? 'amber' as const : 'green' as const },
+    { name: `${domainLabel} — Error Rate`, value: Math.round(Math.random() * 5 * 100) / 100, unit: '%', status: Math.random() > 0.8 ? 'red' as const : 'green' as const },
   ];
+  // Clean up any old-format metrics for this domain (pre-friendly-label format)
+  try {
+    await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domain} %`).run();
+    await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domainLabel} —%`).run();
+  } catch { /* skip */ }
   for (const metric of processMetrics) {
     try {
-      // Upsert: delete old metric for this domain+name then insert new
-      await db.prepare('DELETE FROM process_metrics WHERE tenant_id = ? AND name = ?').bind(tenantId, metric.name).run();
       await db.prepare(
         'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, metric.status, JSON.stringify([metric.value * 0.9, metric.value * 0.95, metric.value]), catalystName, now).run();
     } catch { /* skip */ }
   }
-  await writeLog(db, tenantId, logId, step, 'Process Metrics', 'completed', `${processMetrics.length} ${domain} metrics captured`, Date.now() - t4);
+  await writeLog(db, tenantId, logId, step, 'Process Metrics', 'completed', `${processMetrics.length} performance metrics captured for ${domainLabel}`, Date.now() - t4);
   step++;
 
   // Step 6: Anomaly Detection — scoped to this domain
   const t5 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'running', `Running anomaly detection on ${domain}...`, 0);
+  await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'running', `Scanning ${domainLabel} for unusual patterns...`, 0);
+  // Clean up old-format anomaly rows for this domain
+  try {
+    await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domain} throughput`).run();
+    await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domainLabel} throughput`).run();
+  } catch { /* skip */ }
   // Only insert anomaly ~40% of the time (not every catalyst run should find one)
   if (Math.random() < 0.4) {
     try {
@@ -223,21 +346,21 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
         'INSERT INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         crypto.randomUUID(), tenantId,
-        `${domain} throughput`,
+        `${domainLabel} throughput`,
         Math.abs(deviation) > 15 ? 'high' : Math.abs(deviation) > 5 ? 'medium' : 'low',
         expected, actual, deviation,
-        `Catalyst "${catalystName}" detected an anomalous pattern in ${domain} throughput.`,
+        `An unusual throughput pattern was detected in ${domainLabel}. The observed value deviates ${Math.abs(deviation).toFixed(1)}% from the expected baseline, which may indicate a process change or external factor.`,
         'open', now
       ).run();
     } catch { /* skip */ }
-    await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `Anomaly detected in ${domain}`, Date.now() - t5);
+    await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `Anomaly detected in ${domainLabel} — flagged for review`, Date.now() - t5);
   } else {
-    await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `No anomalies detected in ${domain}`, Date.now() - t5);
+    await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `No anomalies detected in ${domainLabel}`, Date.now() - t5);
   }
   step++;
 
   // Step 7: Finalisation
-  await writeLog(db, tenantId, logId, step, 'Finalisation', 'completed', `Catalyst execution complete for ${domain}. Total duration: ${Date.now() - t0}ms`, Date.now() - t0);
+  await writeLog(db, tenantId, logId, step, 'Finalisation', 'completed', `Analysis complete for ${domainLabel}. All insights have been published.`, Date.now() - t0);
 }
 
 // Safe JSON parse that handles plain text strings
@@ -260,7 +383,7 @@ function getTenantId(c: { get: (key: string) => unknown }): string {
 catalysts.get('/clusters', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
   const defaultTenantId = auth?.tenantId || 'vantax';
-  const tenantId = (auth?.role === 'admin' || auth?.role === 'system_admin') ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
+  const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
   const results = await c.env.DB.prepare(
     'SELECT * FROM catalyst_clusters WHERE tenant_id = ? ORDER BY domain ASC'
   ).bind(tenantId).all();
@@ -348,7 +471,7 @@ catalysts.post('/clusters', async (c) => {
 
   // Admin can override tenant_id for creating clusters on behalf of other tenants
   const auth = c.get('auth') as AuthContext | undefined;
-  const targetTenant = (auth?.role === 'admin' || auth?.role === 'system_admin') && raw.tenant_id ? raw.tenant_id : tenantId;
+  const targetTenant = canCrossTenant(auth?.role) && raw.tenant_id ? raw.tenant_id : tenantId;
 
   if (!raw.name || raw.name.length < 1) return c.json({ error: 'name is required' }, 400);
   if (raw.name.length > 100) return c.json({ error: 'name must be 100 characters or less' }, 400);
@@ -388,7 +511,7 @@ catalysts.get('/templates', async (c) => {
 // POST /api/catalysts/deploy-template - Deploy all catalyst clusters for an industry template
 catalysts.post('/deploy-template', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!auth || (auth.role !== 'admin' && auth.role !== 'system_admin')) {
+  if (!auth || !isAdminRole(auth.role)) {
     return c.json({ error: 'Forbidden', message: 'Only admins can deploy catalyst templates' }, 403);
   }
 
@@ -462,13 +585,13 @@ catalysts.post('/deploy-template', async (c) => {
 catalysts.delete('/clusters/:id', async (c) => {
   const id = c.req.param('id');
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!auth || (auth.role !== 'admin' && auth.role !== 'system_admin')) {
+  if (!auth || !isAdminRole(auth.role)) {
     return c.json({ error: 'Forbidden', message: 'Only admins can delete catalyst clusters' }, 403);
   }
 
   const tenantId = auth.tenantId;
-  // Admin can delete from any tenant by providing query param
-  const targetTenant = c.req.query('tenant_id') || tenantId;
+  // Only superadmin/support_admin can delete from other tenants via query param
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || tenantId) : tenantId;
 
   await c.env.DB.prepare('DELETE FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(id, targetTenant).run();
 
@@ -489,12 +612,12 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/toggle', async (c) =>
   const clusterId = c.req.param('clusterId');
   const subName = decodeURIComponent(c.req.param('subName'));
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!auth || (auth.role !== 'admin' && auth.role !== 'executive' && auth.role !== 'system_admin')) {
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
     return c.json({ error: 'Forbidden', message: 'Only admins can toggle sub-catalysts' }, 403);
   }
 
   // Admin can manage clusters of other tenants via tenant_id query param
-  const targetTenant = (auth.role === 'admin' || auth.role === 'system_admin') ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
   const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
@@ -524,7 +647,7 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (
   const clusterId = c.req.param('clusterId');
   const subName = decodeURIComponent(c.req.param('subName'));
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!auth || (auth.role !== 'admin' && auth.role !== 'executive' && auth.role !== 'system_admin')) {
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
     return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
   }
 
@@ -550,7 +673,7 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (
   }
 
   // Admin can manage clusters of other tenants via tenant_id query param
-  const targetTenant = (auth.role === 'admin' || auth.role === 'system_admin') ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
   const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
@@ -580,12 +703,12 @@ catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/data-source', asyn
   const clusterId = c.req.param('clusterId');
   const subName = decodeURIComponent(c.req.param('subName'));
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!auth || (auth.role !== 'admin' && auth.role !== 'executive' && auth.role !== 'system_admin')) {
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
     return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
   }
 
   // Admin can manage clusters of other tenants via tenant_id query param
-  const targetTenant = (auth.role === 'admin' || auth.role === 'system_admin') ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
   const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);

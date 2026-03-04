@@ -6,6 +6,12 @@ import { getWelcomeEmailTemplate, sendOrQueueEmail } from '../services/email';
 
 const iam = new Hono<AppBindings>();
 
+/** Role hierarchy levels — higher number = more privilege */
+const ROLE_LEVELS: Record<string, number> = {
+  superadmin: 120, support_admin: 110, admin: 100, executive: 90,
+  manager: 70, analyst: 50, operator: 40, viewer: 10,
+};
+
 function getTenantId(c: { get: (key: string) => unknown }): string {
   const auth = c.get('auth') as AuthContext | undefined;
   if (!auth?.tenantId) throw new Error('No tenant context available');
@@ -80,12 +86,14 @@ iam.get('/roles', async (c) => {
   ).bind(tenantId).all();
 
   const roles = [
-    { id: 'admin', name: 'Administrator', description: 'Full platform access', level: 100 },
-    { id: 'executive', name: 'Executive', description: 'C-Suite view with approval authority', level: 90 },
-    { id: 'manager', name: 'Manager', description: 'Department-level management', level: 70 },
-    { id: 'analyst', name: 'Analyst', description: 'Read-only analytics access', level: 50 },
-    { id: 'operator', name: 'Operator', description: 'Operational task execution', level: 40 },
-    { id: 'viewer', name: 'Viewer', description: 'Dashboard viewing only', level: 10 },
+    { id: 'superadmin', name: 'Super Admin', description: 'Full platform access — can create and reset companies, manage all tenants', level: 120 },
+    { id: 'support_admin', name: 'Support Admin', description: 'Configure catalysts, manage users and roles, ERP connections, and system connectivity', level: 110 },
+    { id: 'admin', name: 'Company Admin', description: 'Full access within own tenant — manage users, catalysts, and settings', level: 100 },
+    { id: 'executive', name: 'Executive', description: 'C-Suite strategic view — Apex intelligence, briefings, risk alerts, and approvals', level: 90 },
+    { id: 'manager', name: 'Manager', description: 'Department-level access — dashboards, catalysts, process intelligence, and team oversight', level: 70 },
+    { id: 'analyst', name: 'Analyst', description: 'Read-only analytics — dashboards, process metrics, conversational AI, and reports', level: 50 },
+    { id: 'operator', name: 'Operator', description: 'Operational execution — dashboards, catalyst tasks, and process monitoring', level: 40 },
+    { id: 'viewer', name: 'Viewer', description: 'View-only access — dashboard overview only', level: 10 },
   ].map(r => ({
     ...r,
     userCount: (results.results.find((u: Record<string, unknown>) => u.role === r.id) as Record<string, unknown> | undefined)?.user_count || 0,
@@ -150,7 +158,16 @@ iam.post('/users', async (c) => {
   const passwordHash = await hashPassword(tempPassword);
   const id = crypto.randomUUID();
   const role = body.role || 'analyst';
-  const permissions = body.permissions || (role === 'admin' ? ['*'] : ['read']);
+
+  // Prevent privilege escalation: caller cannot assign a role higher than their own
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+  const requestedLevel = ROLE_LEVELS[role] ?? 0;
+  if (requestedLevel > callerLevel) {
+    return c.json({ error: 'Forbidden', message: `Cannot assign role "${role}" — exceeds your own privilege level` }, 403);
+  }
+
+  const permissions = body.permissions || (role === 'superadmin' || role === 'support_admin' || role === 'admin' ? ['*'] : ['read']);
 
   await c.env.DB.prepare(
     'INSERT INTO users (id, tenant_id, email, name, role, password_hash, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'

@@ -41,8 +41,13 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   return <>{children}</>;
 }
 
-const ADMIN_ROLES: UserRole[] = ['admin', 'executive'];
-const ALL_ROLES: UserRole[] = ['admin', 'executive', 'manager', 'analyst', 'operator'];
+const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
+const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
+const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
+const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
+const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
+const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'];
+const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
 
 export default function App() {
   return (
@@ -52,20 +57,20 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/apex" element={<ApexPage />} />
-          <Route path="/pulse" element={<PulsePage />} />
-          <Route path="/catalysts" element={<ProtectedRoute allowedRoles={ALL_ROLES}><CatalystsPage /></ProtectedRoute>} />
-          <Route path="/mind" element={<MindPage />} />
-          <Route path="/memory" element={<MemoryPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/connectivity" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
-          <Route path="/audit" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
+          <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />
+          <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
+          <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
+          <Route path="/mind" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><MindPage /></ProtectedRoute>} />
+          <Route path="/memory" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><MemoryPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ChatPage /></ProtectedRoute>} />
+          <Route path="/connectivity" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><ConnectivityPage /></ProtectedRoute>} />
+          <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/tenants" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
-          <Route path="/iam" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><IAMPage /></ProtectedRoute>} />
-          <Route path="/control-plane" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><ControlPlanePage /></ProtectedRoute>} />
-          <Route path="/canonical-api" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><CanonicalApiPage /></ProtectedRoute>} />
-          <Route path="/erp-adapters" element={<ProtectedRoute allowedRoles={ADMIN_ROLES}><ERPAdaptersPage /></ProtectedRoute>} />
+          <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
+          <Route path="/iam" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><IAMPage /></ProtectedRoute>} />
+          <Route path="/control-plane" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><ControlPlanePage /></ProtectedRoute>} />
+          <Route path="/canonical-api" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><CanonicalApiPage /></ProtectedRoute>} />
+          <Route path="/erp-adapters" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><ERPAdaptersPage /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
