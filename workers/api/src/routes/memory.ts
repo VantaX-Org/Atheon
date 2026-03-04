@@ -6,6 +6,11 @@ import { semanticSearch, indexGraphEntities } from '../services/vectorize';
 
 const memory = new Hono<AppBindings>();
 
+// BUG-09: Escape user input for SQL LIKE patterns
+function escapeLike(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 function getTenantId(c: { get: (key: string) => unknown }): string {
   const auth = c.get('auth') as AuthContext | undefined;
   return auth?.tenantId || 'vantax';
@@ -21,7 +26,11 @@ memory.get('/entities', async (c) => {
   const binds: unknown[] = [tenantId];
 
   if (entityType) { query += ' AND type = ?'; binds.push(entityType); }
-  if (search) { query += ' AND (name LIKE ? OR type LIKE ?)'; binds.push(`%${search}%`, `%${search}%`); }
+  if (search) {
+    const escaped = escapeLike(search);
+    query += " AND (name LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\')";
+    binds.push(`%${escaped}%`, `%${escaped}%`);
+  }
 
   query += ' ORDER BY name ASC LIMIT 100';
 

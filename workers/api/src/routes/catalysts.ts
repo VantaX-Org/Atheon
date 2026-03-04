@@ -14,7 +14,7 @@ async function writeLog(db: D1Database, tenantId: string, actionId: string, step
     await db.prepare(
       'INSERT INTO execution_logs (id, tenant_id, action_id, step_number, step_name, status, detail, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), tenantId, actionId, stepNumber, stepName, status, detail, durationMs ?? null).run();
-  } catch { /* execution_logs table may not exist yet */ }
+  } catch (err) { console.error('writeLog: execution_logs table may not exist yet:', err); }
 }
 
 /**
@@ -271,7 +271,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
       const parsed = JSON.parse(existing.dimensions);
       if (parsed && typeof parsed === 'object') existingDimensions = parsed;
     }
-  } catch { /* no existing data */ }
+  } catch (err) { console.error('generateInsights: failed to read existing health data:', err); }
 
   // Only generate new scores for the affected dimensions
   for (const dim of affectedDimensions) {
@@ -299,9 +299,9 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
         'INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at) VALUES (?, ?, ?, ?, ?)'
       ).bind(crypto.randomUUID(), tenantId, overallScore, JSON.stringify(existingDimensions), now).run();
     }
-  } catch { /* table may not exist */ }
+  } catch (err) { console.error('generateInsights: health_scores upsert failed:', err); }
 
-  const dimCount = Object.keys(existingDimensions).length;
+  const dimCount= Object.keys(existingDimensions).length;
   await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'completed', `Health score updated — overall ${overallScore}/100 across ${dimCount} dimension(s)`, Date.now() - t1);
   step++;
 
@@ -324,7 +324,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
       JSON.stringify([`Review ${domainLabel} findings and assess exposure`, `Assign a remediation owner from the ${categoryLabel} team`, `Schedule a follow-up review within 14 days`]),
       'active', now
     ).run();
-  } catch { /* skip */ }
+  } catch (err) { console.error('generateInsights: risk_alerts insert failed:', err); }
   await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'completed', `${categoryLabel} risk alert raised (${riskSeverity} severity)`, Date.now() - t2);
   step++;
 
@@ -346,7 +346,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
       JSON.stringify([`Review the ${domainLabel} risk findings and agree on next steps`]),
       now
     ).run();
-  } catch { /* skip */ }
+  } catch (err) { console.error('generateInsights: executive_briefings insert failed:', err); }
   await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'completed', `Executive summary generated for ${domainLabel}`, Date.now() - t3);
   step++;
 
@@ -362,13 +362,13 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   try {
     await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domain} %`).run();
     await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domainLabel} —%`).run();
-  } catch { /* skip */ }
-  for (const metric of processMetrics) {
+  } catch (err) { console.error('generateInsights: process_metrics cleanup failed:', err); }
+  for (const metric of processMetrics){
     try {
       await db.prepare(
         'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, metric.status, JSON.stringify([metric.value * 0.9, metric.value * 0.95, metric.value]), catalystName, now).run();
-    } catch { /* skip */ }
+    } catch (err) { console.error('generateInsights: process_metrics insert failed:', err); }
   }
   await writeLog(db, tenantId, logId, step, 'Process Metrics', 'completed', `${processMetrics.length} performance metrics captured for ${domainLabel}`, Date.now() - t4);
   step++;
@@ -380,8 +380,8 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   try {
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domain} throughput`).run();
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domainLabel} throughput`).run();
-  } catch { /* skip */ }
-  // Only insert anomaly ~40% of the time (not every catalyst run should find one)
+  } catch (err) { console.error('generateInsights: anomalies cleanup failed:', err); }
+  // Only insert anomaly~40% of the time (not every catalyst run should find one)
   if (Math.random() < 0.4) {
     try {
       const expected = 100;
@@ -397,7 +397,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
         `An unusual throughput pattern was detected in ${domainLabel}. The observed value deviates ${Math.abs(deviation).toFixed(1)}% from the expected baseline, which may indicate a process change or external factor.`,
         'open', now
       ).run();
-    } catch { /* skip */ }
+    } catch (err) { console.error('generateInsights: anomaly insert failed:', err); }
     await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `Anomaly detected in ${domainLabel} — flagged for review`, Date.now() - t5);
   } else {
     await writeLog(db, tenantId, logId, step, 'Anomaly Detection', 'completed', `No anomalies detected in ${domainLabel}`, Date.now() - t5);
@@ -455,19 +455,24 @@ catalysts.get('/clusters', async (c) => {
 // GET /api/catalysts/clusters/:id
 catalysts.get('/clusters/:id', async (c) => {
   const id = c.req.param('id');
-  const cl = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ?').bind(id).first();
+  const auth = c.get('auth') as AuthContext | undefined;
+  const defaultTenantId = auth?.tenantId || 'vantax';
+  const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
+
+  // BUG-26: Enforce tenant ownership on cluster reads
+  const cl = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
 
   if (!cl) return c.json({ error: 'Cluster not found' }, 404);
 
-  // Get recent actions
+  // Get recent actions (scoped by tenant)
   const actions = await c.env.DB.prepare(
-    'SELECT * FROM catalyst_actions WHERE cluster_id = ? ORDER BY created_at DESC LIMIT 20'
-  ).bind(id).all();
+    'SELECT * FROM catalyst_actions WHERE cluster_id = ? AND tenant_id = ? ORDER BY created_at DESC LIMIT 20'
+  ).bind(id, tenantId).all();
 
-  // Get deployments
+  // Get deployments (scoped by tenant)
   const deployments = await c.env.DB.prepare(
-    'SELECT * FROM agent_deployments WHERE cluster_id = ? ORDER BY created_at DESC'
-  ).bind(id).all();
+    'SELECT * FROM agent_deployments WHERE cluster_id = ? AND tenant_id = ? ORDER BY created_at DESC'
+  ).bind(id, tenantId).all();
 
   return c.json({
     id: cl.id,
@@ -882,7 +887,28 @@ catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/schedule', async (
 // PUT /api/catalysts/clusters/:id
 catalysts.put('/clusters/:id', async (c) => {
   const id = c.req.param('id');
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || !isAdminRole(auth.role)) {
+    return c.json({ error: 'Forbidden', message: 'Only admins can update catalyst clusters' }, 403);
+  }
+
+  const tenantId = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
   const body = await c.req.json<{ status?: string; autonomy_tier?: string }>();
+
+  // BUG-19: Validate update fields
+  const allowedStatus = new Set(['active', 'inactive']);
+  const allowedAutonomy = new Set(['read-only', 'assisted', 'transactional']);
+
+  if (body.status && !allowedStatus.has(body.status)) {
+    return c.json({ error: 'Invalid status', message: `Allowed: ${[...allowedStatus].join(', ')}` }, 400);
+  }
+  if (body.autonomy_tier && !allowedAutonomy.has(body.autonomy_tier)) {
+    return c.json({ error: 'Invalid autonomy_tier', message: `Allowed: ${[...allowedAutonomy].join(', ')}` }, 400);
+  }
+
+  // BUG-25: Enforce tenant ownership on cluster updates
+  const existing = await c.env.DB.prepare('SELECT id FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
+  if (!existing) return c.json({ error: 'Cluster not found' }, 404);
 
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -890,9 +916,18 @@ catalysts.put('/clusters/:id', async (c) => {
   if (body.autonomy_tier) { updates.push('autonomy_tier = ?'); values.push(body.autonomy_tier); }
 
   if (updates.length > 0) {
-    values.push(id);
-    await c.env.DB.prepare(`UPDATE catalyst_clusters SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+    values.push(id, tenantId);
+    await c.env.DB.prepare(`UPDATE catalyst_clusters SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`).bind(...values).run();
   }
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)' 
+  ).bind(
+    crypto.randomUUID(), tenantId, 'catalyst.cluster.updated', 'catalysts', id,
+    JSON.stringify({ status: body.status, autonomy_tier: body.autonomy_tier }),
+    'success'
+  ).run().catch((err) => { console.error('Failed to write audit log for cluster update:', err); });
 
   return c.json({ success: true });
 });
@@ -935,7 +970,9 @@ catalysts.get('/actions', async (c) => {
 
 // POST /api/catalysts/actions - Submit action through execution engine
 catalysts.post('/actions', async (c) => {
-  const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
+  const defaultTenantId = auth?.tenantId || 'vantax';
+  const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
   const { data: body, errors } = await getValidatedJsonBody<{
     cluster_id: string; catalyst_name: string; action: string;
     confidence?: number; input_data?: Record<string, unknown>; reasoning?: string;
@@ -950,8 +987,8 @@ catalysts.post('/actions', async (c) => {
 
   // Get cluster info for autonomy tier and trust score
   const cluster = await c.env.DB.prepare(
-    'SELECT * FROM catalyst_clusters WHERE id = ?'
-  ).bind(body.cluster_id).first();
+    'SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+  ).bind(body.cluster_id, tenantId).first();
 
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
@@ -1132,8 +1169,8 @@ catalysts.post('/manual-execute', async (c) => {
   if (fileData && c.env.STORAGE) {
     try {
       await c.env.STORAGE.put(`catalyst-files/${tenantId}/${actionId}/${fileName}`, fileData);
-    } catch {
-      // R2 may not be configured, continue without file storage
+    } catch (err) {
+      console.error('R2 file storage failed (non-critical):', err);
     }
   }
 
@@ -1141,8 +1178,8 @@ catalysts.post('/manual-execute', async (c) => {
   const clusterDomain = (cluster.domain as string) || 'finance';
   try {
     await generateInsightsForTenant(c.env.DB, tenantId, catalystName, clusterDomain, actionId);
-  } catch {
-    // Insight generation is non-critical — don't block the response
+  } catch (err) {
+    console.error('Insight generation failed (non-critical):', err);
   }
 
   // Audit log
@@ -1193,7 +1230,8 @@ catalysts.get('/execution-logs', async (c) => {
       createdAt: r.created_at,
     }));
     return c.json({ logs, total: logs.length });
-  } catch {
+  } catch (err) {
+    console.error('execution-logs query failed:', err);
     return c.json({ logs: [], total: 0 });
   }
 });
@@ -1219,7 +1257,8 @@ catalysts.get('/execution-logs/:actionId', async (c) => {
       createdAt: r.created_at,
     }));
     return c.json({ logs, total: logs.length });
-  } catch {
+  } catch (err) {
+    console.error('execution-logs/:actionId query failed:', err);
     return c.json({ logs: [], total: 0 });
   }
 });

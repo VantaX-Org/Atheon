@@ -45,7 +45,7 @@ auth.post('/register', async (c) => {
     email: string; password: string; name: string; tenant_slug?: string;
   }>(c, [
     { field: 'email', type: 'email', required: true },
-    { field: 'password', type: 'string', required: true, minLength: 8 },
+    { field: 'password', type: 'string', required: true, minLength: 10 },
     { field: 'name', type: 'string', required: true, minLength: 1, maxLength: 100 },
     { field: 'tenant_slug', type: 'string', required: false, maxLength: 64 },
   ]);
@@ -130,10 +130,28 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.' }, 429);
   }
 
-  // Find user by email
-  const user = await c.env.DB.prepare(
-    'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
-  ).bind(body.email, 'active').first();
+  // BUG-14: Prevent cross-tenant login collisions (same email in multiple tenants)
+  let user;
+  if (body.tenant_slug) {
+    const loginTenantRow = await c.env.DB.prepare('SELECT id FROM tenants WHERE slug = ?').bind(body.tenant_slug).first();
+    if (!loginTenantRow) {
+      await recordFailedLogin(c.env.CACHE, body.email);
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+    user = await c.env.DB.prepare(
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
+    ).bind(body.email, loginTenantRow.id, 'active').first();
+  } else {
+    const matches = await c.env.DB.prepare(
+      'SELECT COUNT(*) as count FROM users WHERE email = ? AND status = ?'
+    ).bind(body.email, 'active').first<{ count: number }>();
+    if ((matches?.count || 0) > 1) {
+      return c.json({ error: 'Tenant selection required', message: 'This email exists in multiple workspaces. Please provide tenant_slug.' }, 400);
+    }
+    user = await c.env.DB.prepare(
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
+    ).bind(body.email, 'active').first();
+  }
 
   if (!user) {
     await recordFailedLogin(c.env.CACHE, body.email);
@@ -192,7 +210,7 @@ auth.post('/login', async (c) => {
   return c.json({
     token,
     refreshToken,
-    expiresIn: 3600,
+    expiresIn: 86400,
     user: {
       id: user.id,
       email: user.email,
@@ -241,7 +259,7 @@ auth.post('/refresh', async (c) => {
   const newRefreshToken = crypto.randomUUID();
   await c.env.CACHE.put(`refresh_token:${newRefreshToken}`, stored, { expirationTtl: 7 * 24 * 3600 });
 
-  return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: 3600 });
+  return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: 86400 });
 });
 
 // POST /api/auth/demo-login (for demo access without password)
@@ -326,7 +344,7 @@ auth.post('/change-password', async (c) => {
 
   const { data: body, errors } = await getValidatedJsonBody<{ current_password?: string; new_password: string }>(c, [
     { field: 'current_password', type: 'string', required: false, minLength: 1 },
-    { field: 'new_password', type: 'string', required: true, minLength: 8 },
+    { field: 'new_password', type: 'string', required: true, minLength: 10 },
   ]);
 
   if (!body || errors.length > 0) {
@@ -440,7 +458,7 @@ auth.post('/forgot-password', async (c) => {
       </div>`,
       `Reset your Atheon password: ${resetUrl}\nThis link expires in 1 hour.`,
       'pending',
-    ).run().catch(() => {});
+    ).run().catch((err) => { console.error('BUG-23: failed to queue forgot-password email:', err); });
 
     // Audit log
     await c.env.DB.prepare(
@@ -456,7 +474,7 @@ auth.post('/forgot-password', async (c) => {
 auth.post('/reset-password', async (c) => {
   const { data: body, errors } = await getValidatedJsonBody<{ token: string; new_password: string }>(c, [
     { field: 'token', type: 'string', required: true, minLength: 1 },
-    { field: 'new_password', type: 'string', required: true, minLength: 8 },
+    { field: 'new_password', type: 'string', required: true, minLength: 10 },
   ]);
   if (!body || errors.length > 0) {
     return c.json({ error: 'Invalid input', details: errors }, 400);
@@ -577,8 +595,14 @@ auth.post('/sso', async (c) => {
   }
 
   // Return the authorize URL for the frontend to redirect to
-  const redirectUri = 'https://atheon.vantax.co.za/login';
-  const state = btoa(JSON.stringify({ tenant_slug: slug, provider: body.provider }));
+  // BUG-11: SSO redirect URI from env var
+  const redirectUri = (c.env as Record<string, string>).SSO_REDIRECT_URI || 'https://atheon.vantax.co.za/login';
+  // BUG-16: Sign SSO state with HMAC to prevent tampering
+  const statePayload = JSON.stringify({ tenant_slug: slug, provider: body.provider, ts: Date.now() });
+  const stateHmacKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(c.env.JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const stateSignature = await crypto.subtle.sign('HMAC', stateHmacKey, new TextEncoder().encode(statePayload));
+  const stateSig = Array.from(new Uint8Array(stateSignature)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const state = btoa(JSON.stringify({ ...JSON.parse(statePayload), sig: stateSig }));
 
   if (body.provider === 'azure_ad') {
     const clientId = sso.client_id as string;
@@ -612,11 +636,23 @@ auth.post('/sso/callback', async (c) => {
     return c.json({ error: 'Invalid input', details: errors }, 400);
   }
 
-  let stateData: { tenant_slug: string; provider: string };
+  let stateData: { tenant_slug: string; provider: string; ts?: number; sig?: string };
   try {
     stateData = JSON.parse(atob(body.state));
   } catch {
     return c.json({ error: 'Invalid state parameter' }, 400);
+  }
+
+  // BUG-16: Verify HMAC signature on state to prevent tampering
+  if (stateData.sig) {
+    const { sig, ...payloadWithoutSig } = stateData;
+    const verifyPayload = JSON.stringify(payloadWithoutSig);
+    const verifyKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(c.env.JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const expectedSig = await crypto.subtle.sign('HMAC', verifyKey, new TextEncoder().encode(verifyPayload));
+    const expectedSigHex = Array.from(new Uint8Array(expectedSig)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (sig !== expectedSigHex) {
+      return c.json({ error: 'Invalid state signature — possible CSRF attack' }, 400);
+    }
   }
 
   const tenant = await c.env.DB.prepare('SELECT * FROM tenants WHERE slug = ?').bind(stateData.tenant_slug).first();
@@ -635,7 +671,8 @@ auth.post('/sso/callback', async (c) => {
   const clientId = sso.client_id as string;
   const issuerUrl = sso.issuer_url as string;
   const directoryTenantId = issuerUrl.split('/')[3] || 'common';
-  const redirectUri = 'https://atheon.vantax.co.za/login';
+  // BUG-11: SSO redirect URI from env var
+  const redirectUri = (c.env as Record<string, string>).SSO_REDIRECT_URI || 'https://atheon.vantax.co.za/login';
 
   // Exchange authorization code for tokens with Azure AD
   const tokenUrl = `https://login.microsoftonline.com/${directoryTenantId}/oauth2/v2.0/token`;
@@ -771,7 +808,7 @@ auth.post('/admin-reset', async (c) => {
 
   const { data: body, errors } = await getValidatedJsonBody<{ email: string; new_password: string }>(c, [
     { field: 'email', type: 'email', required: true },
-    { field: 'new_password', type: 'string', required: true, minLength: 8 },
+    { field: 'new_password', type: 'string', required: true, minLength: 10 },
   ]);
   if (!body || errors.length > 0) {
     return c.json({ error: 'Invalid input', details: errors }, 400);

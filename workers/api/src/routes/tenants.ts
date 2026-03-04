@@ -198,8 +198,8 @@ tenants.post('/:id/reset', async (c) => {
     try {
       const result = await c.env.DB.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).bind(id).run();
       deletedTotal += result.meta?.changes || 0;
-    } catch {
-      // Table may not exist or have no tenant_id column — skip
+    } catch (err) {
+      console.error(`Reset: failed to clear table ${table}:`, err);
     }
   }
 
@@ -212,7 +212,7 @@ tenants.post('/:id/reset', async (c) => {
       JSON.stringify({ tenantName: tenant.name, tablesCleared: insightTables.length, rowsDeleted: deletedTotal }),
       'success'
     ).run();
-  } catch { /* audit log failed — non-critical */ }
+  } catch (err) { console.error('Reset: audit log write failed:', err); }
 
   return c.json({ success: true, deletedRows: deletedTotal, tablesCleared: insightTables.length });
 });

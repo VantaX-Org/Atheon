@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowRight, Loader2, UserPlus } from "lucide-react";
 import { api, setToken, getToken, setTenantOverride } from "@/lib/api";
+import type { IndustryVertical, UserRole } from "@/types";
 
 type AuthMode= 'login' | 'register';
 
@@ -28,9 +29,9 @@ export function LoginPage() {
     // Clear any stale tenant override from a previous session
     setTenantOverride(null);
     setActiveTenant(null, null, null);
-    setUser({ id: res.user.id, email: res.user.email, name: res.user.name, role: res.user.role as 'admin' | 'executive' | 'manager' | 'analyst' | 'operator', tenantId: res.user.tenantId, tenantName: res.user.tenantName, permissions: res.user.permissions });
+    setUser({ id: res.user.id, email: res.user.email, name: res.user.name, role: res.user.role as UserRole, tenantId: res.user.tenantId, tenantName: res.user.tenantName, permissions: res.user.permissions });
     // Set industry from the user's tenant (default to 'general' if not provided)
-    setIndustry((res.user.tenantIndustry || 'general') as import('@/types').IndustryVertical);
+    setIndustry((res.user.tenantIndustry || 'general') as IndustryVertical);
     navigate('/dashboard');
   };
 
@@ -52,6 +53,14 @@ export function LoginPage() {
     if (existingUser && getToken()) navigate('/dashboard', { replace: true });
   }, [existingUser, navigate]);
 
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token && window.location.pathname.startsWith('/reset-password')) {
+      setResetToken(token);
+      setShowResetPw(true);
+    }
+  }, [searchParams]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -59,7 +68,7 @@ export function LoginPage() {
     try {
       if (mode === 'register') {
         if (!name.trim()) { setError('Name is required'); setLoading(false); return; }
-        if (password.length < 8) { setError('Password must be at least 8 characters'); setLoading(false); return; }
+        if (password.length < 10) { setError('Password must be at least 10 characters'); setLoading(false); return; }
         const res = await api.auth.register(email, password, name);
         handleAuthResult(res);
       } else {
@@ -74,6 +83,12 @@ export function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
 
+  // BUG-21: Support password reset via /reset-password?token=...
+  const [showResetPw, setShowResetPw] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetDone, setResetDone] = useState(false);
+
   const handleSSO = async (provider: string) => {
     setLoading(true);
     setError(null);
@@ -87,8 +102,35 @@ export function LoginPage() {
 
   const handleForgotPassword = async () => {
     if (!forgotEmail.trim()) return;
-    try { await api.auth.forgotPassword(forgotEmail); } catch { /* silent */ }
+    try {
+      await api.auth.forgotPassword(forgotEmail);
+    } catch (err) {
+      console.error('BUG-23: forgot password request failed:', err);
+      setError('Unable to send reset email right now. Please try again later.');
+    }
     setForgotSent(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetToken) {
+      setError('Reset token missing. Please request a new password reset link.');
+      return;
+    }
+    if (resetNewPassword.length < 10) {
+      setError('Password must be at least 10 characters');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      await api.auth.resetPassword(resetToken, resetNewPassword);
+      setResetDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -143,7 +185,7 @@ export function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-3">
             {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />}
             <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 8 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />
             {mode === 'login' && (
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1.5 text-[10px] t-muted"><input type="checkbox" className="rounded" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-card)' }} />Remember me</label>
@@ -155,6 +197,39 @@ export function LoginPage() {
               {mode === 'register' ? <><UserPlus size={14} /> Create Account</> : <>Sign In <ArrowRight size={14} /></>}
             </Button>
           </form>
+          {showResetPw && (
+            <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+              <div className="rounded-xl p-5 w-full max-w-sm space-y-3" style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-modal)' }}>
+                <h3 className="text-sm font-semibold t-primary">Set a new password</h3>
+                {resetDone ? (
+                  <div className="space-y-3">
+                    <p className="text-xs t-secondary">Your password has been reset. You can now sign in with your new password.</p>
+                    <Button variant="primary" size="sm" className="w-full" onClick={() => { setShowResetPw(false); setResetDone(false); setResetToken(null); setResetNewPassword(''); navigate('/login', { replace: true }); }}>Back to Login</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs t-muted">Enter a new password for your account.</p>
+                    <input
+                      className="w-full px-3 py-2 rounded-lg text-sm"
+                      style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
+                      type="password"
+                      placeholder="Min 10 characters"
+                      value={resetNewPassword}
+                      onChange={e => setResetNewPassword(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => { setShowResetPw(false); setResetToken(null); setResetNewPassword(''); navigate('/login', { replace: true }); }}>Cancel</Button>
+                      <Button variant="primary" size="sm" className="flex-1" onClick={handleResetPassword} disabled={loading || resetNewPassword.length < 10}>
+                        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
+                        Reset Password
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div></Portal>
+          )}
+
           {showForgotPw && (
             <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
               <div className="rounded-xl p-5 w-full max-w-sm space-y-3" style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-modal)' }}>

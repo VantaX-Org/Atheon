@@ -183,8 +183,8 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollama
       },
     );
     if (aiResult.response) summary = aiResult.response;
-  } catch {
-    // Use fallback summary
+  } catch (err) {
+    console.error('generateBriefing: AI summary failed, using fallback:', err);
   }
 
   const title = `Executive Briefing — ${new Date().toISOString().split('T')[0]}`;
@@ -474,7 +474,8 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string): P
     let subs: SubCatalystData[];
     try {
       subs = JSON.parse(subsJson);
-    } catch {
+    } catch (err) {
+      console.error(`executeScheduledSubCatalysts: failed to parse sub_catalysts JSON for cluster ${clusterRow.id}:`, err);
       continue;
     }
 
