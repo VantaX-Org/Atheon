@@ -64,11 +64,11 @@ async function attemptTokenRefresh(): Promise<boolean> {
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
     if (!res.ok) return false;
-    const data = await res.json() as { token: string; refreshToken?: string };
-    setToken(data.token, data.refreshToken || refreshToken);
+    const data = await res.json() as { token: string; refresh_token?: string };
+    setToken(data.token, data.refresh_token || refreshToken);
     return true;
   } catch {
     return false;
@@ -112,11 +112,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 401 && authToken && !path.startsWith('/api/auth/')) {
     if (!isRefreshing) {
       isRefreshing = true;
-      refreshPromise = attemptTokenRefresh();
+      refreshPromise = attemptTokenRefresh().finally(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+      });
     }
     const refreshed = await refreshPromise;
-    isRefreshing = false;
-    refreshPromise = null;
 
     if (refreshed) {
       // Retry the original request with the new token
