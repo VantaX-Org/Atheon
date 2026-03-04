@@ -79,7 +79,7 @@ app.use('/api/*', apiRateLimiter);
 // At runtime, Workers can't read files, so CREATE TABLE IF NOT EXISTS ensures idempotent setup.
 // New tables MUST be added to migrations/ files first, then mirrored here for runtime safety.
 // Migration files: 0001_init.sql, 0002_erp_sample_data.sql, 0003_extended_tables.sql
-const MIGRATION_VERSION = 'v14';
+const MIGRATION_VERSION = 'v15';
 app.use('*', async (c, next) => {
   const migrationKey = `db:migrated:${MIGRATION_VERSION}`;
   const alreadyMigrated = await c.env.CACHE.get(migrationKey);
@@ -203,6 +203,21 @@ app.use('*', async (c, next) => {
       }
 
       // Insight data (health_scores, risk_alerts, etc.) is populated by catalyst execution only — not seeded
+
+      // v15: Upgrade platform owner users to superadmin (fixes PR #74 role split)
+      // This ensures existing admin@vantax.co.za gets superadmin role so they can
+      // access Tenants, IAM, Control Plane, etc. in the new RBAC hierarchy.
+      try {
+        await c.env.DB.prepare(
+          "UPDATE users SET role = 'superadmin' WHERE email = 'admin@vantax.co.za' AND role = 'admin'"
+        ).run();
+        await c.env.DB.prepare(
+          "UPDATE users SET role = 'support_admin' WHERE email = 'atheon@vantax.co.za' AND role = 'admin'"
+        ).run();
+        await c.env.DB.prepare(
+          "UPDATE users SET role = 'support_admin' WHERE email = 'essen@vantax.co.za' AND role = 'admin'"
+        ).run();
+      } catch { /* users may not exist yet — seed will create them with correct roles */ }
 
       // Seed with demo data
       await seedDatabase(c.env.DB);
