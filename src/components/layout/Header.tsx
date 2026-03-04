@@ -70,7 +70,8 @@ export function Header() {
         }
       }
     }).catch(() => { /* silent - non-critical */ });
-  }, [isPlatformAdmin, user?.tenantId, activeTenantId, setActiveTenant]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlatformAdmin, user?.tenantId, setActiveTenant]);
 
   // Close company dropdown on outside click
   useEffect(() => {

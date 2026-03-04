@@ -206,7 +206,12 @@ export const api = {
     manualExecute: async (data: FormData): Promise<ManualExecuteResult> => {
       const headers: Record<string, string> = {};
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/catalysts/manual-execute`, {
+      // Include tenant override for cross-tenant manual execution
+      let url = `${API_URL}/api/catalysts/manual-execute`;
+      if (tenantOverrideId) {
+        url += `?tenant_id=${encodeURIComponent(tenantOverrideId)}`;
+      }
+      const res = await fetch(url, {
         method: 'POST', headers, body: data,
       });
       if (!res.ok) {
