@@ -46,7 +46,8 @@ const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
-const ALL_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'];
+const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'];
+const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
 
 export default function App() {
   return (
@@ -57,11 +58,11 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />
-          <Route path="/pulse" element={<PulsePage />} />
-          <Route path="/catalysts" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><CatalystsPage /></ProtectedRoute>} />
-          <Route path="/mind" element={<ProtectedRoute allowedRoles={ALL_ROLES}><MindPage /></ProtectedRoute>} />
+          <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
+          <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
+          <Route path="/mind" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><MindPage /></ProtectedRoute>} />
           <Route path="/memory" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><MemoryPage /></ProtectedRoute>} />
-          <Route path="/chat" element={<ProtectedRoute allowedRoles={ALL_ROLES}><ChatPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ChatPage /></ProtectedRoute>} />
           <Route path="/connectivity" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><ConnectivityPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />

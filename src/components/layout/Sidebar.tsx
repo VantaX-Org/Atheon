@@ -33,6 +33,7 @@ const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
+const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'];
 const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
 
 const navItems: NavItem[] = [
@@ -40,7 +41,7 @@ const navItems: NavItem[] = [
   { path: '/dashboard', label: 'Dashboard', icon: IconDashboard, section: 'intelligence' },
   { path: '/apex', label: 'Apex', icon: IconApex, section: 'intelligence', sublabel: 'Executive Intelligence', roles: EXECUTIVE_ROLES },
   { path: '/pulse', label: 'Pulse', icon: IconPulse, section: 'intelligence', sublabel: 'Process Intelligence', roles: STANDARD_ROLES },
-  { path: '/catalysts', label: 'Catalysts', icon: IconCatalysts, section: 'intelligence', sublabel: 'Autonomous Execution', roles: MANAGER_ROLES },
+  { path: '/catalysts', label: 'Catalysts', icon: IconCatalysts, section: 'intelligence', sublabel: 'Autonomous Execution', roles: OPERATOR_ROLES },
   { path: '/mind', label: 'Mind', icon: IconMind, section: 'intelligence', sublabel: 'Domain LLM', roles: STANDARD_ROLES },
   { path: '/memory', label: 'Memory', icon: IconMemory, section: 'intelligence', sublabel: 'GraphRAG', roles: MANAGER_ROLES },
   { path: '/chat', label: 'Chat', icon: IconChat, section: 'intelligence', sublabel: 'Conversational AI', roles: STANDARD_ROLES },
