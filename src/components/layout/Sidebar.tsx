@@ -29,7 +29,8 @@ type NavItem = {
 // viewer       — Dashboard only
 
 const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
-const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
+// SUPPORT_ROLES kept as reference but IAM/ERP/etc now use PLATFORM_ADMIN_ROLES so admin can manage their tenant
+// const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
@@ -47,12 +48,12 @@ const navItems: NavItem[] = [
   { path: '/chat', label: 'Chat', icon: IconChat, section: 'intelligence', sublabel: 'Conversational AI', roles: STANDARD_ROLES },
   // Platform — admin + support roles
   { path: '/tenants', label: 'Clients', icon: IconClients, section: 'platform', sublabel: 'Tenant Management', roles: SUPERADMIN_ROLES },
-  { path: '/iam', label: 'IAM', icon: IconIAM, section: 'platform', sublabel: 'Identity & Access', roles: SUPPORT_ROLES },
-  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform', sublabel: 'Agent Management', roles: SUPPORT_ROLES },
+  { path: '/iam', label: 'IAM', icon: IconIAM, section: 'platform', sublabel: 'Identity & Access', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform', sublabel: 'Agent Management', roles: PLATFORM_ADMIN_ROLES },
   { path: '/canonical-api', label: 'Canonical API', icon: IconCanonicalApi, section: 'platform', sublabel: 'Unified API', roles: PLATFORM_ADMIN_ROLES },
-  { path: '/erp-adapters', label: 'ERP Adapters', icon: IconERPAdapters, section: 'platform', sublabel: 'System Connectors', roles: SUPPORT_ROLES },
+  { path: '/erp-adapters', label: 'ERP Adapters', icon: IconERPAdapters, section: 'platform', sublabel: 'System Connectors', roles: PLATFORM_ADMIN_ROLES },
   // System — admin + support roles
-  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'system', sublabel: 'MCP + A2A', roles: SUPPORT_ROLES },
+  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'system', sublabel: 'MCP + A2A', roles: PLATFORM_ADMIN_ROLES },
   { path: '/audit', label: 'Audit', icon: IconAudit, section: 'system', sublabel: 'Governance', roles: PLATFORM_ADMIN_ROLES },
 ];
 
