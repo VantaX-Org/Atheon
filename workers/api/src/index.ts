@@ -79,7 +79,7 @@ app.use('/api/*', apiRateLimiter);
 // At runtime, Workers can't read files, so CREATE TABLE IF NOT EXISTS ensures idempotent setup.
 // New tables MUST be added to migrations/ files first, then mirrored here for runtime safety.
 // Migration files: 0001_init.sql, 0002_erp_sample_data.sql, 0003_extended_tables.sql
-const MIGRATION_VERSION = 'v17';
+const MIGRATION_VERSION = 'v18';
 app.use('*', async (c, next) => {
   const migrationKey = `db:migrated:${MIGRATION_VERSION}`;
   const alreadyMigrated = await c.env.CACHE.get(migrationKey);
@@ -200,6 +200,45 @@ app.use('*', async (c, next) => {
         await c.env.DB.prepare('ALTER TABLE catalyst_clusters ADD COLUMN sub_catalysts TEXT NOT NULL DEFAULT \'[]\'').run();
       } catch {
         // Column may already exist — ignore
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // SELF-HEALING SCHEMA MIGRATION (v18)
+      // Auto-detect and add missing columns across all tables.
+      // Uses ALTER TABLE ... ADD COLUMN wrapped in try/catch so existing
+      // columns are silently skipped. This ensures any deployment that
+      // missed an intermediate migration self-heals on first request.
+      // ═══════════════════════════════════════════════════════════════
+      const selfHealColumns: Array<{ table: string; column: string; definition: string }> = [
+        // catalyst_clusters — sub_catalysts already handled above
+        { table: 'catalyst_actions', column: 'escalation_level', definition: 'TEXT' },
+        { table: 'catalyst_actions', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
+        { table: 'tenants', column: 'industry', definition: "TEXT NOT NULL DEFAULT 'general'" },
+        { table: 'tenants', column: 'deployment_model', definition: "TEXT NOT NULL DEFAULT 'saas'" },
+        { table: 'tenants', column: 'region', definition: "TEXT NOT NULL DEFAULT 'af-south-1'" },
+        { table: 'users', column: 'password_hash', definition: 'TEXT' },
+        { table: 'users', column: 'last_login', definition: 'TEXT' },
+        { table: 'risk_alerts', column: 'probability', definition: 'REAL' },
+        { table: 'risk_alerts', column: 'impact_unit', definition: "TEXT DEFAULT 'ZAR'" },
+        { table: 'sso_configs', column: 'auto_provision', definition: 'INTEGER NOT NULL DEFAULT 0' },
+        { table: 'sso_configs', column: 'default_role', definition: "TEXT NOT NULL DEFAULT 'analyst'" },
+        { table: 'sso_configs', column: 'domain_hint', definition: 'TEXT' },
+        { table: 'notifications', column: 'action_url', definition: 'TEXT' },
+        { table: 'notifications', column: 'metadata', definition: 'TEXT' },
+        { table: 'notifications', column: 'read', definition: 'INTEGER NOT NULL DEFAULT 0' },
+        { table: 'erp_connections', column: 'sync_frequency', definition: "TEXT DEFAULT 'realtime'" },
+        { table: 'erp_connections', column: 'records_synced', definition: 'INTEGER NOT NULL DEFAULT 0' },
+        { table: 'erp_connections', column: 'connected_at', definition: 'TEXT' },
+        { table: 'documents', column: 'stored_in_r2', definition: 'INTEGER NOT NULL DEFAULT 0' },
+        { table: 'execution_logs', column: 'duration_ms', definition: 'INTEGER' },
+      ];
+
+      for (const col of selfHealColumns) {
+        try {
+          await c.env.DB.prepare(`ALTER TABLE ${col.table} ADD COLUMN ${col.column} ${col.definition}`).run();
+        } catch {
+          // Column already exists — skip
+        }
       }
 
       // Insight data (health_scores, risk_alerts, etc.) is populated by catalyst execution only — not seeded

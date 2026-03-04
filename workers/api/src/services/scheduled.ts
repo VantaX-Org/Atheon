@@ -49,6 +49,9 @@ export async function handleScheduled(
 
       // 5.4: Agent lifecycle — heartbeat check & status updates
       await checkAgentLifecycle(db, cache, tenantId);
+
+      // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts
+      await executeScheduledSubCatalysts(db, tenantId);
     } catch (err) {
       console.error(`Scheduled tasks failed for tenant ${tenantId}:`, err);
     }
@@ -390,6 +393,154 @@ async function checkAgentLifecycle(db: D1Database, cache: KVNamespace, tenantId:
         tenantId,
         timestamp: new Date().toISOString(),
       }), { expirationTtl: 3600 });
+    }
+  }
+}
+
+/**
+ * 6.0: Sub-Catalyst Scheduled Execution
+ * Checks all catalyst clusters for sub-catalysts with schedules that are due.
+ * Executes them and updates last_run / next_run timestamps.
+ */
+interface SubCatalystScheduleData {
+  frequency: string;
+  day_of_week?: number;
+  day_of_month?: number;
+  time_of_day?: string;
+  last_run?: string;
+  next_run?: string;
+}
+
+interface SubCatalystData {
+  name: string;
+  enabled: boolean;
+  description?: string;
+  schedule?: SubCatalystScheduleData;
+  data_source?: { type: string; config: Record<string, unknown> };
+}
+
+function calculateNextRunScheduled(
+  frequency: string,
+  dayOfWeek?: number,
+  dayOfMonth?: number,
+  timeOfDay?: string,
+): string {
+  const now = new Date();
+  const [hours, minutes] = (timeOfDay || '06:00').split(':').map(Number);
+
+  if (frequency === 'daily') {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next.toISOString();
+  }
+
+  if (frequency === 'weekly' && dayOfWeek !== undefined) {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    const currentDay = next.getUTCDay();
+    let daysUntil = dayOfWeek - currentDay;
+    if (daysUntil < 0) daysUntil += 7;
+    if (daysUntil === 0 && next <= now) daysUntil = 7;
+    next.setUTCDate(next.getUTCDate() + daysUntil);
+    return next.toISOString();
+  }
+
+  if (frequency === 'monthly' && dayOfMonth !== undefined) {
+    const next = new Date(now);
+    next.setUTCHours(hours, minutes, 0, 0);
+    next.setUTCDate(dayOfMonth);
+    if (next <= now) {
+      next.setUTCMonth(next.getUTCMonth() + 1);
+      next.setUTCDate(dayOfMonth);
+    }
+    return next.toISOString();
+  }
+
+  return '';
+}
+
+async function executeScheduledSubCatalysts(db: D1Database, tenantId: string): Promise<void> {
+  // Get all active clusters with sub-catalysts
+  const clusters = await db.prepare(
+    "SELECT id, name, domain, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active'"
+  ).bind(tenantId).all();
+
+  const now = new Date();
+
+  for (const cluster of clusters.results) {
+    const clusterRow = cluster as Record<string, unknown>;
+    const subsJson = (clusterRow.sub_catalysts as string) || '[]';
+    let subs: SubCatalystData[];
+    try {
+      subs = JSON.parse(subsJson);
+    } catch {
+      continue;
+    }
+
+    let updated = false;
+
+    for (const sub of subs) {
+      // Skip disabled, manual, or unscheduled sub-catalysts
+      if (!sub.enabled || !sub.schedule || sub.schedule.frequency === 'manual') continue;
+
+      // Check if next_run is in the past (i.e. due to execute)
+      const nextRun = sub.schedule.next_run ? new Date(sub.schedule.next_run) : null;
+      if (!nextRun || nextRun > now) continue;
+
+      // Execute: create a catalyst action for this sub-catalyst
+      const actionId = crypto.randomUUID();
+      const inputData = JSON.stringify({
+        scheduled: true,
+        frequency: sub.schedule.frequency,
+        sub_catalyst: sub.name,
+        triggered_at: now.toISOString(),
+      });
+
+      try {
+        await db.prepare(
+          "INSERT INTO catalyst_actions (id, cluster_id, tenant_id, catalyst_name, action, status, confidence, input_data, reasoning, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))"
+        ).bind(
+          actionId,
+          clusterRow.id as string,
+          tenantId,
+          sub.name,
+          `Scheduled ${sub.schedule.frequency} execution`,
+          'pending',
+          0.90,
+          inputData,
+          `Automatic scheduled execution (${sub.schedule.frequency}). Sub-catalyst: ${sub.name}.`
+        ).run();
+
+        // Log the scheduled execution
+        await db.prepare(
+          "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ).bind(
+          crypto.randomUUID(), tenantId, 'catalyst.sub_catalyst.scheduled_execution', 'catalysts',
+          clusterRow.id as string,
+          JSON.stringify({ sub_catalyst: sub.name, frequency: sub.schedule.frequency, action_id: actionId }),
+          'success'
+        ).run().catch(() => {});
+      } catch (err) {
+        console.error(`Scheduled execution failed for sub-catalyst ${sub.name} in cluster ${clusterRow.id}:`, err);
+      }
+
+      // Update last_run and next_run
+      sub.schedule.last_run = now.toISOString();
+      sub.schedule.next_run = calculateNextRunScheduled(
+        sub.schedule.frequency,
+        sub.schedule.day_of_week,
+        sub.schedule.day_of_month,
+        sub.schedule.time_of_day,
+      );
+      updated = true;
+    }
+
+    // Persist schedule updates back to DB
+    if (updated) {
+      await db.prepare(
+        'UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?'
+      ).bind(JSON.stringify(subs), clusterRow.id as string, tenantId).run();
     }
   }
 }

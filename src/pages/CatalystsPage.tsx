@@ -337,6 +337,74 @@ export function CatalystsPage() {
  setTogglingSubCatalyst(null);
  };
 
+ // Schedule configuration state
+ const [showScheduleConfig, setShowScheduleConfig] = useState(false);
+ const [schedClusterId, setSchedClusterId] = useState('');
+ const [schedSubName, setSchedSubName] = useState('');
+ const [schedFrequency, setSchedFrequency] = useState<'manual' | 'daily' | 'weekly' | 'monthly'>('manual');
+ const [schedDayOfWeek, setSchedDayOfWeek] = useState(1);
+ const [schedDayOfMonth, setSchedDayOfMonth] = useState(1);
+ const [schedTimeOfDay, setSchedTimeOfDay] = useState('06:00');
+ const [schedSaving, setSchedSaving] = useState(false);
+ const [schedError, setSchedError] = useState<string | null>(null);
+ const [schedExisting, setSchedExisting] = useState<SubCatalyst['schedule'] | undefined>(undefined);
+
+ const openScheduleConfig = (clusterId: string, sub: SubCatalyst) => {
+   setSchedClusterId(clusterId);
+   setSchedSubName(sub.name);
+   setSchedExisting(sub.schedule);
+   if (sub.schedule) {
+     setSchedFrequency(sub.schedule.frequency);
+     setSchedDayOfWeek(sub.schedule.day_of_week ?? 1);
+     setSchedDayOfMonth(sub.schedule.day_of_month ?? 1);
+     setSchedTimeOfDay(sub.schedule.time_of_day ?? '06:00');
+   } else {
+     setSchedFrequency('manual');
+     setSchedDayOfWeek(1);
+     setSchedDayOfMonth(1);
+     setSchedTimeOfDay('06:00');
+   }
+   setSchedError(null);
+   setShowScheduleConfig(true);
+ };
+
+ const handleSaveSchedule = async () => {
+   if (schedSaving) return;
+   setSchedSaving(true);
+   setSchedError(null);
+   try {
+     await api.catalysts.setSchedule(schedClusterId, schedSubName, {
+       frequency: schedFrequency,
+       ...(schedFrequency === 'weekly' ? { day_of_week: schedDayOfWeek } : {}),
+       ...(schedFrequency === 'monthly' ? { day_of_month: schedDayOfMonth } : {}),
+       ...(schedFrequency !== 'manual' ? { time_of_day: schedTimeOfDay } : {}),
+     });
+     const ind = industry !== 'general' ? industry : undefined;
+     const c = await api.catalysts.clusters(undefined, ind);
+     setClusters(c.clusters);
+     setShowScheduleConfig(false);
+   } catch (err) {
+     setSchedError(err instanceof Error ? err.message : 'Failed to save schedule');
+   }
+   setSchedSaving(false);
+ };
+
+ const handleRemoveSchedule = async () => {
+   if (schedSaving) return;
+   setSchedSaving(true);
+   setSchedError(null);
+   try {
+     await api.catalysts.removeSchedule(schedClusterId, schedSubName);
+     const ind = industry !== 'general' ? industry : undefined;
+     const c = await api.catalysts.clusters(undefined, ind);
+     setClusters(c.clusters);
+     setShowScheduleConfig(false);
+   } catch (err) {
+     setSchedError(err instanceof Error ? err.message : 'Failed to remove schedule');
+   }
+   setSchedSaving(false);
+ };
+
  const exceptionCount = actions.filter(a => a.status === 'exception' || a.status === 'escalated').length;
 
  // Load execution logs when tab changes or action selected
@@ -723,6 +791,13 @@ export function CatalystsPage() {
  </div>
  </div>
  <div className="flex items-center gap-1.5 flex-shrink-0">
+ {sub.schedule && sub.schedule.frequency !== 'manual' && (
+ <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title={sub.schedule.next_run ? `Next run: ${new Date(sub.schedule.next_run).toLocaleString()}` : ''}>
+ <Calendar size={8} />
+ {sub.schedule.frequency === 'daily' ? 'Daily' : sub.schedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'}
+ {sub.schedule.time_of_day ? ` ${sub.schedule.time_of_day}` : ''}
+ </span>
+ )}
  {sub.enabled && (
  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
  <Play size={10} className="mr-1" /> Run
@@ -730,6 +805,13 @@ export function CatalystsPage() {
  )}
  {isAdmin && (
  <>
+ <button
+ onClick={(e) => { e.stopPropagation(); openScheduleConfig(cluster.id, sub); }}
+ className="h-6 w-6 flex items-center justify-center rounded hover:bg-indigo-500/10 transition-colors"
+ title="Configure schedule"
+ >
+ <Calendar size={12} className="text-indigo-400" />
+ </button>
  <button
  onClick={(e) => { e.stopPropagation(); openDataSourceConfig(cluster.id, sub); }}
  className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent/10 transition-colors"
@@ -1312,6 +1394,143 @@ export function CatalystsPage() {
  <Button variant="secondary" size="sm" onClick={() => setShowDataSourceConfig(false)}>Cancel</Button>
  <Button variant="primary" size="sm" onClick={handleSaveDataSource} disabled={dsSaving}>
  {dsSaving ? <Loader2 size={14} className="animate-spin" /> : <Settings size={14} />} Save Configuration
+ </Button>
+ </div>
+ </div>
+ </div>
+ </div></Portal>
+ )}
+
+ {/* Schedule Configuration Modal */}
+ {showScheduleConfig && (
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+ <div className="flex items-center justify-between">
+ <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
+ <Calendar size={18} className="text-indigo-400" /> Schedule Configuration
+ </h3>
+ <button onClick={() => setShowScheduleConfig(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+ </div>
+
+ <p className="text-xs t-secondary">
+ Configure when <span className="font-semibold text-indigo-400">{schedSubName}</span> should run automatically.
+ </p>
+
+ {/* Frequency Selector */}
+ <div>
+ <label className="text-xs t-muted block mb-1.5">Run Frequency</label>
+ <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+ {([
+   { value: 'manual' as const, label: 'Manual', desc: 'On demand' },
+   { value: 'daily' as const, label: 'Daily', desc: 'Every day' },
+   { value: 'weekly' as const, label: 'Weekly', desc: 'Once a week' },
+   { value: 'monthly' as const, label: 'Monthly', desc: '1st of month' },
+ ]).map((opt) => (
+   <button
+     key={opt.value}
+     onClick={() => setSchedFrequency(opt.value)}
+     className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+       schedFrequency === opt.value
+         ? 'bg-indigo-500/10 border-indigo-500/40 ring-1 ring-indigo-500/30'
+         : 'bg-[var(--bg-secondary)] border-[var(--border-card)] hover:border-gray-400'
+     }`}
+   >
+     <span className={`text-xs font-medium ${schedFrequency === opt.value ? 'text-indigo-400' : 't-secondary'}`}>{opt.label}</span>
+     <span className="text-[9px] t-muted">{opt.desc}</span>
+   </button>
+ ))}
+ </div>
+ </div>
+
+ {/* Day of Week (for weekly) */}
+ {schedFrequency === 'weekly' && (
+ <div>
+ <label className="text-xs t-muted block mb-1.5">Day of Week</label>
+ <select
+   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+   value={schedDayOfWeek}
+   onChange={e => setSchedDayOfWeek(Number(e.target.value))}
+ >
+   <option value={0}>Sunday</option>
+   <option value={1}>Monday</option>
+   <option value={2}>Tuesday</option>
+   <option value={3}>Wednesday</option>
+   <option value={4}>Thursday</option>
+   <option value={5}>Friday</option>
+   <option value={6}>Saturday</option>
+ </select>
+ </div>
+ )}
+
+ {/* Day of Month (for monthly) */}
+ {schedFrequency === 'monthly' && (
+ <div>
+ <label className="text-xs t-muted block mb-1.5">Day of Month</label>
+ <select
+   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+   value={schedDayOfMonth}
+   onChange={e => setSchedDayOfMonth(Number(e.target.value))}
+ >
+   {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+     <option key={d} value={d}>{d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}</option>
+   ))}
+ </select>
+ </div>
+ )}
+
+ {/* Time of Day (for non-manual) */}
+ {schedFrequency !== 'manual' && (
+ <div>
+ <label className="text-xs t-muted block mb-1.5">Time of Day (UTC)</label>
+ <input
+   type="time"
+   className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+   value={schedTimeOfDay}
+   onChange={e => setSchedTimeOfDay(e.target.value)}
+ />
+ <p className="text-[9px] t-muted mt-1">All times are in UTC. Your local time may differ.</p>
+ </div>
+ )}
+
+ {/* Current Schedule Info */}
+ {schedExisting && schedExisting.frequency !== 'manual' && (
+ <div className="p-3 bg-indigo-500/5 border border-indigo-500/20 rounded-lg space-y-1">
+ <p className="text-xs t-secondary">
+   <span className="font-medium text-indigo-400">Current:</span>{' '}
+   {schedExisting.frequency === 'daily' ? 'Daily' : schedExisting.frequency === 'weekly' ? `Weekly (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][schedExisting.day_of_week ?? 0]})` : `Monthly (${schedExisting.day_of_month}${schedExisting.day_of_month === 1 ? 'st' : schedExisting.day_of_month === 2 ? 'nd' : schedExisting.day_of_month === 3 ? 'rd' : 'th'})`}
+   {schedExisting.time_of_day ? ` at ${schedExisting.time_of_day} UTC` : ''}
+ </p>
+ {schedExisting.last_run && (
+   <p className="text-[10px] t-muted">Last run: {new Date(schedExisting.last_run).toLocaleString()}</p>
+ )}
+ {schedExisting.next_run && (
+   <p className="text-[10px] t-muted">Next run: {new Date(schedExisting.next_run).toLocaleString()}</p>
+ )}
+ </div>
+ )}
+
+ {schedError && (
+ <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">
+ <AlertTriangle size={14} /> {schedError}
+ </div>
+ )}
+
+ <div className="flex items-center justify-between pt-2">
+ <div>
+ {schedExisting && schedExisting.frequency !== 'manual' && (
+   <button
+     onClick={handleRemoveSchedule}
+     disabled={schedSaving}
+     className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+   >
+     <Trash2 size={12} /> Remove Schedule
+   </button>
+ )}
+ </div>
+ <div className="flex gap-3">
+ <Button variant="secondary" size="sm" onClick={() => setShowScheduleConfig(false)}>Cancel</Button>
+ <Button variant="primary" size="sm" onClick={handleSaveSchedule} disabled={schedSaving}>
+ {schedSaving ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />} Save Schedule
  </Button>
  </div>
  </div>
