@@ -688,7 +688,7 @@ auth.post('/sso/callback', async (c) => {
 
   // Find or auto-provision user
   let user = await c.env.DB.prepare(
-    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
+    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
   ).bind(ssoEmail, tenant.id).first();
 
   if (!user && sso.auto_provision) {
@@ -702,7 +702,7 @@ auth.post('/sso/callback', async (c) => {
     ).bind(userId, tenant.id, ssoEmail, ssoName, defaultRole, defaultPerms, 'active').run();
 
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
+      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
     ).bind(userId).first();
 
     // Log auto-provision
@@ -747,6 +747,7 @@ auth.post('/sso/callback', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
+      tenantIndustry: user.tenant_industry || 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });

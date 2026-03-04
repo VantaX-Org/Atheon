@@ -29,10 +29,8 @@ export function LoginPage() {
     setTenantOverride(null);
     setActiveTenant(null, null, null);
     setUser({ id: res.user.id, email: res.user.email, name: res.user.name, role: res.user.role as 'admin' | 'executive' | 'manager' | 'analyst' | 'operator', tenantId: res.user.tenantId, tenantName: res.user.tenantName, permissions: res.user.permissions });
-    // Set industry from the user's tenant
-    if (res.user.tenantIndustry && res.user.tenantIndustry !== 'general') {
-      setIndustry(res.user.tenantIndustry as import('@/types').IndustryVertical);
-    }
+    // Set industry from the user's tenant (default to 'general' if not provided)
+    setIndustry((res.user.tenantIndustry || 'general') as import('@/types').IndustryVertical);
     navigate('/dashboard');
   };
 
