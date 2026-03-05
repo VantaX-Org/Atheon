@@ -419,9 +419,15 @@ function safeJsonParse(value: unknown): unknown {
   }
 }
 
-function getTenantId(c: { get: (key: string) => unknown }): string {
+/** Superadmin/support_admin can override tenant via ?tenant_id= query param */
+const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
+function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
   const auth = c.get('auth') as AuthContext | undefined;
-  return auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || 'vantax';
+  if (CROSS_TENANT_ROLES.has(auth?.role || '')) {
+    return c.req.query('tenant_id') || defaultTenantId;
+  }
+  return defaultTenantId;
 }
 
 // GET /api/catalysts/clusters
