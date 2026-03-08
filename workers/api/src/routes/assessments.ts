@@ -165,7 +165,7 @@ assessments.get('/:id/report/business', async (c) => {
   return new Response(obj.body, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${assessment.prospect_name}-business-case.pdf"`,
+      'Content-Disposition': `attachment; filename="${sanitizeFilename(assessment.prospect_name as string)}-business-case.pdf"`,
     },
   });
 });
@@ -189,7 +189,7 @@ assessments.get('/:id/report/technical', async (c) => {
   return new Response(obj.body, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${assessment.prospect_name}-technical-sizing.pdf"`,
+      'Content-Disposition': `attachment; filename="${sanitizeFilename(assessment.prospect_name as string)}-technical-sizing.pdf"`,
     },
   });
 });
@@ -213,7 +213,7 @@ assessments.get('/:id/report/excel', async (c) => {
   return new Response(obj.body, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${assessment.prospect_name}-model.xlsx"`,
+      'Content-Disposition': `attachment; filename="${sanitizeFilename(assessment.prospect_name as string)}-model.xlsx"`,
     },
   });
 });
@@ -247,6 +247,10 @@ assessments.delete('/:id', async (c) => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+function sanitizeFilename(name: string): string {
+  return name.replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);
+}
+
 function formatAssessment(a: Record<string, unknown>) {
   return {
     id: a.id,

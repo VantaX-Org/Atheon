@@ -254,7 +254,7 @@ function NewAssessmentWizard({ onCreated, onError }: {
   useEffect(() => {
     // Load default config
     api.assessments.getDefaultConfig().then(d => {
-      if (d.config) setConfig(prev => ({ ...prev, ...(d.config as Record<string, unknown>) }));
+      if (d && typeof d === 'object') setConfig(prev => ({ ...prev, ...(d as Record<string, unknown>) }));
     }).catch(() => {});
     // Load ERP connections
     api.erp.connections().then(d => setErpConnections((d.connections || []).map((c: ERPConnection) => ({ id: c.id, erp_type: c.adapterSystem || c.adapterName, company_name: c.name })))).catch(() => {});

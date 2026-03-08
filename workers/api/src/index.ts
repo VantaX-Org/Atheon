@@ -411,6 +411,13 @@ for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
 }
+// Deployments: selective tenant isolation — exclude /agent/* sub-routes (they use X-Licence-Key, not JWT)
+app.use('/api/deployments', tenantIsolation());
+app.use('/api/deployments/:id', tenantIsolation());
+app.use('/api/deployments/:id/*', tenantIsolation());
+app.use('/api/v1/deployments', tenantIsolation());
+app.use('/api/v1/deployments/:id', tenantIsolation());
+app.use('/api/v1/deployments/:id/*', tenantIsolation());
 
 // Bug #3 fix: Server-side role enforcement for admin-only routes
 // superadmin: full platform access (tenants, IAM, controlplane, etc.)
