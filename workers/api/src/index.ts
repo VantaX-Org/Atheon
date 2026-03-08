@@ -319,28 +319,29 @@ app.use('*', async (c, next) => {
 
       try { await seedSampleCompany(c.env.DB); } catch (e) { console.error('seedSampleCompany error:', e); }
 
-      // Mark schema migration as complete first (fast), then seed test companies in background
+      // Mark schema migration as complete first (fast)
       await c.env.CACHE.put(migrationKey, 'true', { expirationTtl: 86400 });
     } catch (e) {
       console.error('Migration/seed error:', e);
       // Mark in KV anyway to avoid thundering herd retries
       await c.env.CACHE.put(migrationKey, 'error', { expirationTtl: 300 });
     }
+  }
 
-    // Seed test companies lazily — separate KV key so it retries independently
-    const testSeedKey = `db:test-companies-seeded:${MIGRATION_VERSION}`;
-    const testSeeded = await c.env.CACHE.get(testSeedKey);
-    if (!testSeeded) {
-      try {
-        await seedTestCompanies(c.env.DB);
-        await c.env.CACHE.put(testSeedKey, 'true', { expirationTtl: 86400 });
-      } catch (e) {
-        console.error('Test company seed error (will retry next request):', e);
-        // Mark with short TTL so it retries on next request
-        await c.env.CACHE.put(testSeedKey, 'partial', { expirationTtl: 10 });
-      }
+  // Seed test companies lazily — outside migration guard so it retries independently
+  const testSeedKey = `db:test-companies-seeded:${MIGRATION_VERSION}`;
+  const testSeeded = await c.env.CACHE.get(testSeedKey);
+  if (!testSeeded) {
+    try {
+      await seedTestCompanies(c.env.DB);
+      await c.env.CACHE.put(testSeedKey, 'true', { expirationTtl: 86400 });
+    } catch (e) {
+      console.error('Test company seed error (will retry next request):', e);
+      // Mark with short TTL so it retries on next request
+      await c.env.CACHE.put(testSeedKey, 'partial', { expirationTtl: 10 });
     }
   }
+
   await next();
 });
 
