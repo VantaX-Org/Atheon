@@ -119,13 +119,19 @@ docker compose up -d
 
 # ── Wait for health ──────────────────────────────────────────────────────
 info "Waiting for API to become healthy..."
+API_HEALTHY=false
 for i in $(seq 1 30); do
   if curl -sf http://localhost:3000/healthz >/dev/null 2>&1; then
     ok "API is healthy"
+    API_HEALTHY=true
     break
   fi
   sleep 2
 done
+
+if [ "$API_HEALTHY" = false ]; then
+  warn "API did not become healthy within 60 seconds. Check logs: docker compose logs api"
+fi
 
 echo ""
 echo "  ╔═══════════════════════════════════════════╗"

@@ -8,7 +8,7 @@ const agentRoutes = new Hono<AppBindings>();
 
 async function getDeploymentByLicenceKey(db: D1Database, licenceKey: string) {
   return db.prepare(
-    'SELECT * FROM managed_deployments WHERE licence_key = ? AND status != ?'
+    'SELECT * FROM managed_deployments WHERE licence_key = ? AND status != ? AND (licence_expires_at IS NULL OR licence_expires_at > datetime("now"))'
   ).bind(licenceKey, 'suspended').first<Record<string, unknown>>();
 }
 
@@ -36,10 +36,10 @@ agentRoutes.post('/heartbeat', async (c) => {
   if (typeof body.healthScore === 'number') { updates.push('health_score = ?'); values.push(body.healthScore); }
   if (body.resourceUsage) { updates.push('resource_usage = ?'); values.push(JSON.stringify(body.resourceUsage)); }
 
-  // If heartbeat arrives, deployment is active
-  const newStatus = dep.status === 'pending' || dep.status === 'offline' ? 'active' : dep.status as string;
+  // If heartbeat arrives, deployment is active. Allow agent to report 'active' or 'degraded' only.
+  const newStatus = dep.status === 'pending' || dep.status === 'offline' ? (body.status === 'degraded' ? 'degraded' : 'active') : (body.status === 'active' || body.status === 'degraded' ? body.status : dep.status as string);
   updates.push('status = ?');
-  values.push(body.status || newStatus);
+  values.push(newStatus);
 
   values.push(dep.id);
   await c.env.DB.prepare(
