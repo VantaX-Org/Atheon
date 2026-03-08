@@ -433,6 +433,165 @@ export async function seedTestCompanies(db: D1Database) {
       .bind(g.id,'bluepeak','Sage Pastel',g.code,g.name,g.type,g.balance).run();
   }
 
+  // ── BluePeak Employees (180 staff: drivers, mechanics, admin, warehouse) ──
+  const bpEmployees = [
+    {id:'emp-bp-1',num:'BP001',first:'Pieter',last:'Botha',dept:'Management',pos:'Operations Director',salary:85000},
+    {id:'emp-bp-2',num:'BP002',first:'Francois',last:'du Toit',dept:'Management',pos:'CEO',salary:120000},
+    {id:'emp-bp-3',num:'BP003',first:'Kagiso',last:'Molefe',dept:'Operations',pos:'Fleet Manager',salary:55000},
+    {id:'emp-bp-4',num:'BP004',first:'Tshepo',last:'Motaung',dept:'Driving',pos:'Long-Haul Driver',salary:28000},
+    {id:'emp-bp-5',num:'BP005',first:'Sipho',last:'Ndlovu',dept:'Driving',pos:'Long-Haul Driver',salary:28000},
+    {id:'emp-bp-6',num:'BP006',first:'Johannes',last:'van Wyk',dept:'Driving',pos:'Long-Haul Driver',salary:28000},
+    {id:'emp-bp-7',num:'BP007',first:'Thabo',last:'Mokoena',dept:'Driving',pos:'Long-Haul Driver',salary:26000},
+    {id:'emp-bp-8',num:'BP008',first:'Mandla',last:'Sithole',dept:'Driving',pos:'Long-Haul Driver',salary:26000},
+    {id:'emp-bp-9',num:'BP009',first:'David',last:'Pretorius',dept:'Driving',pos:'Local Delivery Driver',salary:22000},
+    {id:'emp-bp-10',num:'BP010',first:'William',last:'Mabasa',dept:'Driving',pos:'Local Delivery Driver',salary:22000},
+    {id:'emp-bp-11',num:'BP011',first:'Jacob',last:'Erasmus',dept:'Workshop',pos:'Head Mechanic',salary:45000},
+    {id:'emp-bp-12',num:'BP012',first:'Samuel',last:'Khumalo',dept:'Workshop',pos:'Mechanic',salary:32000},
+    {id:'emp-bp-13',num:'BP013',first:'Daniel',last:'Fourie',dept:'Workshop',pos:'Mechanic',salary:32000},
+    {id:'emp-bp-14',num:'BP014',first:'Michael',last:'Nkosi',dept:'Workshop',pos:'Tyre Specialist',salary:28000},
+    {id:'emp-bp-15',num:'BP015',first:'Zandile',last:'Mkhwanazi',dept:'Finance',pos:'Financial Controller',salary:65000},
+    {id:'emp-bp-16',num:'BP016',first:'Lerato',last:'Phiri',dept:'Finance',pos:'Accounts Clerk',salary:25000},
+    {id:'emp-bp-17',num:'BP017',first:'Nomsa',last:'Dlamini',dept:'Finance',pos:'Accounts Clerk',salary:25000},
+    {id:'emp-bp-18',num:'BP018',first:'Hendrik',last:'Venter',dept:'Warehouse',pos:'Depot Manager - JHB',salary:48000},
+    {id:'emp-bp-19',num:'BP019',first:'Solomon',last:'Mahlangu',dept:'Warehouse',pos:'Warehouse Operative',salary:18000},
+    {id:'emp-bp-20',num:'BP020',first:'Bongani',last:'Zwane',dept:'Warehouse',pos:'Warehouse Operative',salary:18000},
+    {id:'emp-bp-21',num:'BP021',first:'Andries',last:'Nel',dept:'Warehouse',pos:'Depot Manager - CPT',salary:48000},
+    {id:'emp-bp-22',num:'BP022',first:'Grace',last:'Maseko',dept:'Admin',pos:'HR Administrator',salary:30000},
+    {id:'emp-bp-23',num:'BP023',first:'Palesa',last:'Tau',dept:'Sales',pos:'Key Account Manager',salary:52000},
+    {id:'emp-bp-24',num:'BP024',first:'Themba',last:'Mthembu',dept:'Sales',pos:'Business Development',salary:45000},
+    {id:'emp-bp-25',num:'BP025',first:'Rudi',last:'Smit',dept:'Compliance',pos:'Compliance Officer',salary:42000},
+  ];
+  for (const e of bpEmployees) {
+    await db.prepare("INSERT OR IGNORE INTO erp_employees (id,tenant_id,source_system,employee_number,first_name,last_name,department,position,gross_salary,salary_frequency,status,hire_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(e.id,'bluepeak','Sage Pastel',e.num,e.first,e.last,e.dept,e.pos,e.salary,'monthly','active','2024-01-15').run();
+  }
+
+  // ── BluePeak Products (fleet parts, fuel, consumables) ──
+  const bpProducts = [
+    {id:'prod-bp-1',sku:'FUEL-DIESEL-50',name:'Diesel 50ppm',cat:'Fuel',cost:22.50,sell:0,stock:45000,uom:'litre'},
+    {id:'prod-bp-2',sku:'TYRE-STEER-315',name:'Steer Tyre 315/80R22.5',cat:'Tyres',cost:6800,sell:0,stock:24,uom:'EA'},
+    {id:'prod-bp-3',sku:'TYRE-DRIVE-315',name:'Drive Tyre 315/80R22.5',cat:'Tyres',cost:7200,sell:0,stock:36,uom:'EA'},
+    {id:'prod-bp-4',sku:'OIL-15W40-20L',name:'Engine Oil 15W-40 20L',cat:'Lubricants',cost:1850,sell:0,stock:60,uom:'EA'},
+    {id:'prod-bp-5',sku:'FILTER-OIL-HV',name:'Oil Filter Heavy Vehicle',cat:'Filters',cost:380,sell:0,stock:80,uom:'EA'},
+    {id:'prod-bp-6',sku:'FILTER-FUEL-HV',name:'Fuel Filter Heavy Vehicle',cat:'Filters',cost:420,sell:0,stock:60,uom:'EA'},
+    {id:'prod-bp-7',sku:'BRAKE-PAD-HV',name:'Brake Pad Set Heavy Vehicle',cat:'Brakes',cost:2800,sell:0,stock:20,uom:'set'},
+    {id:'prod-bp-8',sku:'CLUTCH-KIT-HV',name:'Clutch Kit Heavy Vehicle',cat:'Drivetrain',cost:18500,sell:0,stock:4,uom:'EA'},
+    {id:'prod-bp-9',sku:'ADBLUE-1000L',name:'AdBlue 1000L IBC',cat:'Consumables',cost:4200,sell:0,stock:8,uom:'EA'},
+    {id:'prod-bp-10',sku:'PALLET-STD',name:'Standard Pallet 1200x1000',cat:'Warehouse',cost:280,sell:0,stock:500,uom:'EA'},
+    {id:'prod-bp-11',sku:'STRAP-RATCHET',name:'Ratchet Strap 10m',cat:'Equipment',cost:350,sell:0,stock:120,uom:'EA'},
+    {id:'prod-bp-12',sku:'TARP-SIDE-13M',name:'Side Curtain Tarp 13.6m',cat:'Equipment',cost:28000,sell:0,stock:6,uom:'EA'},
+  ];
+  for (const p of bpProducts) {
+    await db.prepare('INSERT OR IGNORE INTO erp_products (id,tenant_id,source_system,sku,name,category,cost_price,selling_price,stock_on_hand,uom,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(p.id,'bluepeak','Sage Pastel',p.sku,p.name,p.cat,p.cost,p.sell,p.stock,p.uom,1).run();
+  }
+
+  // ── BluePeak Invoices (transport services billed to customers — 12 months) ──
+  const bpInvoices: {id:string;num:string;cust:string;cname:string;date:string;due:string;total:number;paid:number;status:string;pstatus:string}[] = [];
+  const bpInvCustomers = [
+    {id:'cust-bp-1',name:'Shoprite Holdings'},
+    {id:'cust-bp-2',name:'Massmart (Walmart)'},
+  ];
+  let bpInvIdx = 1;
+  for (let mo = 0; mo < 12; mo++) {
+    const m = String(mo + 1).padStart(2, '0');
+    const year = mo < 10 ? '2025' : '2026';
+    const month = mo < 10 ? String(mo + 3).padStart(2, '0') : String(mo - 9).padStart(2, '0');
+    const dateStr = `${year}-${month}-15`;
+    const dueStr = `${year}-${month}-28`;
+    // ~35 invoices/month across 2 major customers + smaller ones
+    for (let j = 0; j < 35; j++) {
+      const cust = bpInvCustomers[j % 2];
+      const amount = 25000 + Math.round(Math.sin(bpInvIdx * 0.7) * 15000 + bpInvIdx * 100);
+      const isPaid = mo < 9; // last 3 months unpaid
+      const isOverdue = !isPaid && mo < 11;
+      bpInvoices.push({
+        id: `inv-bp-${bpInvIdx}`,
+        num: `INV-BP-${String(bpInvIdx).padStart(5, '0')}`,
+        cust: cust.id,
+        cname: cust.name,
+        date: dateStr,
+        due: dueStr,
+        total: amount,
+        paid: isPaid ? amount : 0,
+        status: 'approved',
+        pstatus: isPaid ? 'paid' : (isOverdue ? 'overdue' : 'unpaid'),
+      });
+      bpInvIdx++;
+    }
+  }
+  for (const inv of bpInvoices) {
+    await db.prepare("INSERT OR IGNORE INTO erp_invoices (id,tenant_id,source_system,invoice_number,customer_id,customer_name,invoice_date,due_date,total,amount_paid,amount_due,status,payment_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(inv.id,'bluepeak','Sage Pastel',inv.num,inv.cust,inv.cname,inv.date,inv.due,inv.total,inv.paid,inv.total-inv.paid,inv.status,inv.pstatus).run();
+  }
+
+  // ── BluePeak Purchase Orders (fuel, parts, services — 12 months) ──
+  const bpPOs: {id:string;num:string;sup:string;sname:string;date:string;del:string;total:number;status:string}[] = [];
+  const bpPOSuppliers = [
+    {id:'sup-bp-1',name:'Engen Fleet'},
+    {id:'sup-bp-2',name:'Bridgestone SA'},
+  ];
+  let bpPOIdx = 1;
+  for (let mo = 0; mo < 12; mo++) {
+    const year = mo < 10 ? '2025' : '2026';
+    const month = mo < 10 ? String(mo + 3).padStart(2, '0') : String(mo - 9).padStart(2, '0');
+    const dateStr = `${year}-${month}-05`;
+    const delStr = `${year}-${month}-10`;
+    // ~20 POs/month (fuel deliveries, parts, service contracts)
+    for (let j = 0; j < 20; j++) {
+      const sup = bpPOSuppliers[j % 2];
+      const amount = j % 2 === 0 ? 180000 + Math.round(Math.sin(bpPOIdx) * 40000) : 15000 + Math.round(Math.sin(bpPOIdx) * 8000);
+      bpPOs.push({
+        id: `po-bp-${bpPOIdx}`,
+        num: `PO-BP-${String(bpPOIdx).padStart(5, '0')}`,
+        sup: sup.id,
+        sname: sup.name,
+        date: dateStr,
+        del: delStr,
+        total: amount,
+        status: mo < 10 ? 'received' : 'open',
+      });
+      bpPOIdx++;
+    }
+  }
+  for (const po of bpPOs) {
+    await db.prepare("INSERT OR IGNORE INTO erp_purchase_orders (id,tenant_id,source_system,po_number,supplier_id,supplier_name,order_date,delivery_date,total,status) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .bind(po.id,'bluepeak','Sage Pastel',po.num,po.sup,po.sname,po.date,po.del,po.total,po.status).run();
+  }
+
+  // ── BluePeak Journal Entries (monthly closing journals) ──
+  for (let mo = 0; mo < 12; mo++) {
+    const year = mo < 10 ? '2025' : '2026';
+    const month = mo < 10 ? String(mo + 3).padStart(2, '0') : String(mo - 9).padStart(2, '0');
+    const dateStr = `${year}-${month}-28`;
+    for (let j = 1; j <= 15; j++) {
+      const jid = `je-bp-${mo * 15 + j}`;
+      const jnum = `JE-BP-${String(mo * 15 + j).padStart(4, '0')}`;
+      const amt = 50000 + mo * 5000 + j * 1000;
+      await db.prepare("INSERT OR IGNORE INTO erp_journal_entries (id,tenant_id,source_system,journal_number,journal_date,description,total_debit,total_credit,status) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(jid,'bluepeak','Sage Pastel',jnum,dateStr,`Month-end closing entry ${j}`,amt,amt,'posted').run();
+    }
+  }
+
+  // ── BluePeak Bank Transactions (fuel, tolls, maintenance, customer receipts) ──
+  for (let mo = 0; mo < 12; mo++) {
+    const year = mo < 10 ? '2025' : '2026';
+    const month = mo < 10 ? String(mo + 3).padStart(2, '0') : String(mo - 9).padStart(2, '0');
+    for (let d = 1; d <= 25; d++) {
+      const day = String(d).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      const btId = `bt-bp-${mo * 25 + d}`;
+      // Alternate debits and credits
+      if (d % 3 === 0) {
+        await db.prepare("INSERT OR IGNORE INTO erp_bank_transactions (id,tenant_id,source_system,bank_account,transaction_date,description,reference,credit,debit,balance) VALUES (?,?,?,?,?,?,?,?,?,?)")
+          .bind(btId,'bluepeak','Sage Pastel','FNB-001',dateStr,'Customer payment received',`REC-${mo}-${d}`,85000 + d * 1000,0,1800000).run();
+      } else {
+        await db.prepare("INSERT OR IGNORE INTO erp_bank_transactions (id,tenant_id,source_system,bank_account,transaction_date,description,reference,debit,credit,balance) VALUES (?,?,?,?,?,?,?,?,?,?)")
+          .bind(btId,'bluepeak','Sage Pastel','FNB-001',dateStr,d % 2 === 0 ? 'Fuel purchase - Engen' : 'Toll fees - N3 corridor',`PAY-${mo}-${d}`,d % 2 === 0 ? 45000 : 3500,0,1800000).run();
+      }
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // COMPANY 5: NOVATECH SOLUTIONS — ORACLE FUSION — TECHNOLOGY / SAAS
   // ═══════════════════════════════════════════════════════════════════════════
