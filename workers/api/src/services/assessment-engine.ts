@@ -1341,13 +1341,13 @@ export async function generateTechnicalReportPDF(
   doc.text('Catalyst', 18, y + 5);
   doc.text('Sub-Catalysts', 65, y + 5);
   doc.text('API Calls/mo', 100, y + 5);
-  doc.text('DB (MB)', 130, y + 5);
+  doc.text('Cost (ZAR/mo)', 130, y + 5);
   doc.text('Vectors/mo', 150, y + 5);
   doc.text('LLM Tokens/mo', 175, y + 5);
   y += 9;
 
-  for (const cs of sizing.catalyst_sizing) {
-    if (sizing.catalyst_sizing.indexOf(cs) % 2 === 0) {
+  sizing.catalyst_sizing.forEach((cs, csIdx) => {
+    if (csIdx % 2 === 0) {
       doc.setFillColor(...lightBg);
       doc.rect(14, y - 3, pageW - 28, 6, 'F');
     }
@@ -1359,11 +1359,11 @@ export async function generateTechnicalReportPDF(
     doc.text(cs.catalyst_name.substring(0, 28), 18, y);
     doc.text(`${cs.sub_catalysts.length}`, 65, y);
     doc.text(`${totalApi.toLocaleString()}`, 100, y);
-    doc.text(`${cs.total_cost_pm_zar}`, 130, y);
+    doc.text(`R ${cs.total_cost_pm_zar}`, 130, y);
     doc.text(`${totalVec.toLocaleString()}`, 150, y);
     doc.text(`${totalLlm.toLocaleString()}`, 175, y);
     y += 6;
-  }
+  });
 
   techFooter();
 

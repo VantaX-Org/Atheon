@@ -17,8 +17,12 @@
 import { hashPassword } from '../middleware/auth';
 
 export async function seedTestCompanies(db: D1Database) {
-  // No early-return guard — INSERT OR IGNORE handles duplicates so partial
-  // seeds from a previous failed run are filled in automatically.
+  // Early-return guard: if the first company's ERP connection already exists, skip seeding.
+  // This avoids the expensive PBKDF2 hash computation that causes worker CPU timeout.
+  try {
+    const existing = await db.prepare("SELECT id FROM erp_connections WHERE id = 'conn-hv-sap'").first();
+    if (existing) return; // Already seeded
+  } catch { /* table may not exist yet — continue with seeding */ }
 
   // Generate a real PBKDF2 hash for the default test password
   const pwHash = await hashPassword('Atheon@Test2026');
