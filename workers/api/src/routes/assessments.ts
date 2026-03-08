@@ -50,7 +50,16 @@ assessments.post('/', async (c) => {
 
   const id = crypto.randomUUID();
   const config = { ...DEFAULT_ASSESSMENT_CONFIG, ...body.config };
-  const tenantId = auth!.tenantId;
+
+  // For pre-assessment: resolve tenant_id from the ERP connection so we query
+  // the prospect's data, not the superadmin's home tenant.
+  let tenantId = auth!.tenantId;
+  if (body.erp_connection_id) {
+    const conn = await c.env.DB.prepare(
+      'SELECT tenant_id FROM erp_connections WHERE id = ?'
+    ).bind(body.erp_connection_id).first<{ tenant_id: string }>();
+    if (conn) tenantId = conn.tenant_id;
+  }
 
   await c.env.DB.prepare(`
     INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, erp_connection_id, status, config, created_by)
