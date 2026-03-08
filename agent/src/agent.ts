@@ -79,8 +79,8 @@ async function checkLocalHealth(): Promise<{ healthy: boolean; latencyMs: number
 async function selfUpdate(targetVersion: string): Promise<void> {
   console.log(`[AGENT] Self-update triggered: target version ${targetVersion}`);
   try {
-    execSync('docker compose pull', { stdio: 'inherit', timeout: 300000 });
-    execSync('docker compose up -d', { stdio: 'inherit', timeout: 120000 });
+    execSync('docker compose pull', { cwd: '/workspace', stdio: 'inherit', timeout: 300000 });
+    execSync('docker compose up -d', { cwd: '/workspace', stdio: 'inherit', timeout: 120000 });
     console.log(`[AGENT] Self-update to ${targetVersion} complete`);
   } catch (err) {
     console.error('[AGENT] Self-update failed:', err);

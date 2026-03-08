@@ -40,7 +40,7 @@ services:
       - ATHEON_LOCAL_API_URL=http://api:3000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - .:/app:ro
+      - .:/workspace:ro
     depends_on:
       - api
     restart: unless-stopped
