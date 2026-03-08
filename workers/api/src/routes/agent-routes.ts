@@ -37,7 +37,7 @@ agentRoutes.post('/heartbeat', async (c) => {
   if (body.resourceUsage) { updates.push('resource_usage = ?'); values.push(JSON.stringify(body.resourceUsage)); }
 
   // If heartbeat arrives, deployment is active. Allow agent to report 'active' or 'degraded' only.
-  const newStatus = dep.status === 'pending' || dep.status === 'offline' ? 'active' : (body.status === 'active' || body.status === 'degraded' ? body.status : dep.status as string);
+  const newStatus = dep.status === 'pending' || dep.status === 'offline' ? (body.status === 'degraded' ? 'degraded' : 'active') : (body.status === 'active' || body.status === 'degraded' ? body.status : dep.status as string);
   updates.push('status = ?');
   values.push(newStatus);
 
