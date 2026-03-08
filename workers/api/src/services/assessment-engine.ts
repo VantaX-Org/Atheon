@@ -600,7 +600,7 @@ export async function generateBusinessReportPDF(
   const annualLicence = config.deployment_model === 'saas'
     ? sizing.annual_licence_revenue
     : config.deployment_model === 'hybrid' ? config.hybrid_licence_fee_pa : config.onprem_licence_fee_pa;
-  const paybackMonths = annualLicence > 0 ? Math.round((annualLicence / totalSaving) * 12) : 0;
+  const paybackMonths = annualLicence > 0 && totalSaving > 0 ? Math.round((annualLicence / totalSaving) * 12) : 0;
 
   // Metric boxes
   const boxes = [
@@ -1099,7 +1099,7 @@ export async function runAssessment(
     const annualLicence = config.deployment_model === 'saas'
       ? technicalSizing.annual_licence_revenue
       : config.deployment_model === 'hybrid' ? config.hybrid_licence_fee_pa : config.onprem_licence_fee_pa;
-    const paybackMonths = annualLicence > 0 ? Math.round((annualLicence / totalSaving) * 12) : 0;
+    const paybackMonths = annualLicence > 0 && totalSaving > 0 ? Math.round((annualLicence / totalSaving) * 12) : 0;
 
     const narrative = await generateNarrative(catalystScores, ai, totalSaving);
 

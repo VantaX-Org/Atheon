@@ -249,14 +249,14 @@ function buildInstallConfig(deploymentId: string, licenceKey: string, config: Re
   return {
     deploymentId,
     licenceKey,
-    controlPlaneUrl: 'https://atheon.vantax.co.za/api/deployments',
+    controlPlaneUrl: 'https://atheon-api.vantax.co.za',
     heartbeatIntervalSeconds: 60,
     agentImage: `gonxt/atheon-api:${config.updateChannel || 'stable'}`,
     initialConfig: config,
     envFile: [
       `ATHEON_DEPLOYMENT_ID=${deploymentId}`,
       `ATHEON_LICENCE_KEY=${licenceKey}`,
-      `ATHEON_CONTROL_PLANE_URL=https://atheon.vantax.co.za/api/deployments`,
+      `ATHEON_CONTROL_PLANE_URL=https://atheon-api.vantax.co.za`,
       `ATHEON_HEARTBEAT_INTERVAL=60`,
       `# Fill in these values:`,
       `DATABASE_URL=postgresql://atheon:CHANGEME@localhost:5432/atheon`,
