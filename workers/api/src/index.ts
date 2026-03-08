@@ -93,7 +93,7 @@ app.use('/api/*', apiRateLimiter);
 // At runtime, Workers can't read files, so CREATE TABLE IF NOT EXISTS ensures idempotent setup.
 // New tables MUST be added to migrations/ files first, then mirrored here for runtime safety.
 // Migration files: 0001_init.sql, 0002_erp_sample_data.sql, 0003_extended_tables.sql
-const MIGRATION_VERSION = 'v22';
+const MIGRATION_VERSION = 'v24';
 app.use('*', async (c, next) => {
   const migrationKey = `db:migrated:${MIGRATION_VERSION}`;
   const alreadyMigrated = await c.env.CACHE.get(migrationKey);
@@ -314,16 +314,12 @@ app.use('*', async (c, next) => {
         } catch (err) { console.error(`v20: failed to set password for ${saEmail}:`, err); }
       }
 
-      // Seed with demo data
-      await seedDatabase(c.env.DB);
+      // Seed with demo data — each step wrapped independently to avoid timeout
+      try { await seedDatabase(c.env.DB); } catch (e) { console.error('seedDatabase error:', e); }
 
-      // Seed sample test company (Protea Manufacturing)
-      await seedSampleCompany(c.env.DB);
+      try { await seedSampleCompany(c.env.DB); } catch (e) { console.error('seedSampleCompany error:', e); }
 
-      // Seed 5 test companies across different ERPs and industries
-      await seedTestCompanies(c.env.DB);
-
-      // Mark as migrated in KV (TTL 24h — re-checks daily)
+      // Mark schema migration as complete first (fast)
       await c.env.CACHE.put(migrationKey, 'true', { expirationTtl: 86400 });
     } catch (e) {
       console.error('Migration/seed error:', e);
@@ -331,6 +327,21 @@ app.use('*', async (c, next) => {
       await c.env.CACHE.put(migrationKey, 'error', { expirationTtl: 300 });
     }
   }
+
+  // Seed test companies lazily — outside migration guard so it retries independently
+  const testSeedKey = `db:test-companies-seeded:${MIGRATION_VERSION}`;
+  const testSeeded = await c.env.CACHE.get(testSeedKey);
+  if (!testSeeded) {
+    try {
+      await seedTestCompanies(c.env.DB);
+      await c.env.CACHE.put(testSeedKey, 'true', { expirationTtl: 86400 });
+    } catch (e) {
+      console.error('Test company seed error (will retry next request):', e);
+      // Mark with short TTL so it retries on next request
+      await c.env.CACHE.put(testSeedKey, 'partial', { expirationTtl: 10 });
+    }
+  }
+
   await next();
 });
 

@@ -589,8 +589,15 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
   const [tab, setTab] = useState<'business' | 'technical'>('business');
   const results = assessment.results as AssessmentResults | null;
 
-  if (!results) {
-    return <div className="text-center py-10" style={{ color: 'var(--text-muted)' }}>No results available.</div>;
+  if (!results || (!results.catalyst_scores && (results as Record<string, unknown>).error)) {
+    const errorMsg = (results as Record<string, unknown>)?.error as string;
+    return (
+      <div className="text-center py-10">
+        <p className="text-lg font-medium text-red-600">Assessment Failed</p>
+        {errorMsg && <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{errorMsg}</p>}
+        {!errorMsg && <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>No results available.</p>}
+      </div>
+    );
   }
 
   const catalysts = results.catalyst_scores || [];
@@ -651,15 +658,17 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
           </div>
 
           {/* Download */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => api.assessments.downloadBusiness(assessment.id)}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-white"
-              style={{ background: 'var(--accent)' }}
-            >
-              Download Business Case PDF
-            </button>
-          </div>
+          {assessment.businessReportKey && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => api.assessments.downloadBusiness(assessment.id)}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-white"
+                style={{ background: 'var(--accent)' }}
+              >
+                Download Business Case PDF
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -707,20 +716,24 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
 
           {/* Downloads */}
           <div className="flex gap-2">
-            <button
-              onClick={() => api.assessments.downloadTechnical(assessment.id)}
-              className="px-4 py-2 text-sm font-medium rounded-lg text-white"
-              style={{ background: 'var(--accent)' }}
-            >
-              Download Technical PDF
-            </button>
-            <button
-              onClick={() => api.assessments.downloadExcel(assessment.id)}
-              className="px-4 py-2 text-sm font-medium rounded-lg"
-              style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
-            >
-              Download Excel Model
-            </button>
+            {assessment.technicalReportKey && (
+              <button
+                onClick={() => api.assessments.downloadTechnical(assessment.id)}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-white"
+                style={{ background: 'var(--accent)' }}
+              >
+                Download Technical PDF
+              </button>
+            )}
+            {assessment.excelModelKey && (
+              <button
+                onClick={() => api.assessments.downloadExcel(assessment.id)}
+                className="px-4 py-2 text-sm font-medium rounded-lg"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+              >
+                Download Excel Model
+              </button>
+            )}
           </div>
         </div>
       )}
