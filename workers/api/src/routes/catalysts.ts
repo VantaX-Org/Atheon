@@ -975,29 +975,75 @@ const KNOWN_FIELDS: Record<string, string[]> = {
   ],
 };
 
+// Split a normalized field name into semantic tokens (e.g. 'vendorid' -> ['vendor','id'], 'invoice_number' -> ['invoice','number'])
+function tokenizeFieldName(raw: string): string[] {
+  // First split on delimiters
+  const parts = raw.toLowerCase().split(/[_\-\s]+/).filter(Boolean);
+  // Then split camelCase-style concatenated words using known vocabulary
+  const vocab = [
+    'invoice', 'vendor', 'customer', 'payment', 'transaction', 'account',
+    'amount', 'number', 'name', 'date', 'reference', 'description',
+    'balance', 'credit', 'debit', 'status', 'bank', 'posting',
+    'document', 'cost', 'center', 'price', 'unit', 'quantity',
+    'gross', 'net', 'tax', 'due', 'terms', 'currency', 'value',
+    'total', 'sum', 'id', 'code', 'ref', 'type', 'file', 'sheet',
+    'column', 'body', 'subject', 'sender', 'attachment', 'entry',
+    'narrative', 'counterparty', 'confirmation', 'mentioned', 'statement',
+  ];
+  const tokens: string[] = [];
+  for (const part of parts) {
+    // Try to split concatenated words greedily (longest match first)
+    let remaining = part;
+    while (remaining.length > 0) {
+      let matched = false;
+      // Try longest vocab words first
+      for (const word of vocab.sort((x, y) => y.length - x.length)) {
+        if (remaining.startsWith(word)) {
+          tokens.push(word);
+          remaining = remaining.slice(word.length);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // No vocab match — take the entire remaining as one token
+        tokens.push(remaining);
+        break;
+      }
+    }
+  }
+  return tokens;
+}
+
 // Similarity scoring for field name matching
 function fieldNameSimilarity(a: string, b: string): number {
   const na = a.toLowerCase().replace(/[_\-\s]/g, '');
   const nb = b.toLowerCase().replace(/[_\-\s]/g, '');
   if (na === nb) return 1.0;
   if (na.includes(nb) || nb.includes(na)) return 0.8;
-  // Check common synonyms
+
+  // Tokenize and check synonym groups using whole-token matching
+  const tokensA = tokenizeFieldName(a);
+  const tokensB = tokenizeFieldName(b);
+
   const synonyms: Record<string, string[]> = {
     'amount': ['value', 'total', 'sum', 'price', 'cost', 'gross', 'net'],
     'date': ['datetime', 'timestamp', 'posted', 'created', 'due'],
-    'reference': ['ref', 'number', 'id', 'identifier', 'code'],
+    'reference': ['ref', 'number', 'identifier', 'code'],
     'name': ['description', 'label', 'title', 'narrative'],
-    'account': ['gl', 'ledger', 'costcenter', 'bank'],
+    'account': ['ledger', 'costcenter', 'bank'],
     'invoice': ['bill', 'document', 'voucher'],
     'vendor': ['supplier', 'creditor'],
     'customer': ['debtor', 'client', 'buyer'],
     'payment': ['remittance', 'settlement', 'transfer'],
     'transaction': ['entry', 'posting', 'record'],
+    'id': ['identifier'],
   };
   for (const [key, syns] of Object.entries(synonyms)) {
-    const aMatchesKey = na.includes(key) || syns.some(s => na.includes(s));
-    const bMatchesKey = nb.includes(key) || syns.some(s => nb.includes(s));
-    if (aMatchesKey && bMatchesKey) return 0.65;
+    const allTerms = [key, ...syns];
+    const aHit = tokensA.some(t => allTerms.includes(t));
+    const bHit = tokensB.some(t => allTerms.includes(t));
+    if (aHit && bHit) return 0.65;
   }
   return 0;
 }
