@@ -1283,10 +1283,16 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     };
   }
 
-  // Store last execution result on the sub-catalyst
-  subs[idx].last_execution = result;
-  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
-    .bind(JSON.stringify(subs), clusterId, targetTenant).run();
+  // Re-read cluster to avoid overwriting concurrent changes (execution may take a while)
+  const freshCluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?')
+    .bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  const freshSubs = JSON.parse(freshCluster?.sub_catalysts || '[]') as SubCatalystRecord[];
+  const freshIdx = freshSubs.findIndex(s => s.name === subName);
+  if (freshIdx !== -1) {
+    freshSubs[freshIdx].last_execution = result;
+    await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+      .bind(JSON.stringify(freshSubs), clusterId, targetTenant).run();
+  }
 
   // Store execution in execution_logs for history
   await writeLog(c.env.DB, targetTenant, result.id, 1, `${subName} — ${execConfig.mode}`, result.status, JSON.stringify(result.summary), result.duration_ms);
