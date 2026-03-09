@@ -1250,8 +1250,8 @@ export function CatalystsPage() {
  <DsIcon size={16} className={dsColor} />
  <div className="min-w-0">
  <span className={`text-xs font-medium ${dsColor}`}>{dsLabel}</span>
- {src.type === 'erp' && src.config.module && <span className="text-[10px] t-muted block">{src.config.module as string}</span>}
- {src.type === 'custom_system' && src.config.endpoint_url && <span className="text-[10px] t-muted block truncate">{src.config.endpoint_url as string}</span>}
+ {src.type === 'erp' && src.config.module && <span className="text-[10px] t-muted block">{String(src.config.module)}</span>}
+ {src.type === 'custom_system' && src.config.endpoint_url && <span className="text-[10px] t-muted block truncate">{String(src.config.endpoint_url)}</span>}
  </div>
  </div>
  <div className="flex items-center gap-1 flex-shrink-0">
