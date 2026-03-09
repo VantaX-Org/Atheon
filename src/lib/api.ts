@@ -259,6 +259,10 @@ export const api = {
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-source${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(dataSource) }),
     removeDataSource: (clusterId: string, subName: string, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-source${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
+    setDataSources: (clusterId: string, subName: string, dataSources: DataSourceConfig[], tenantId?: string) =>
+      request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-sources${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify({ data_sources: dataSources }) }),
+    removeDataSourceByIndex: (clusterId: string, subName: string, index: number, tenantId?: string) =>
+      request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/data-sources/${index}${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
     setSchedule: (clusterId: string, subName: string, schedule: { frequency: string; day_of_week?: number; day_of_month?: number; time_of_day?: string }, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/schedule${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(schedule) }),
     removeSchedule: (clusterId: string, subName: string, tenantId?: string) =>
@@ -653,8 +657,10 @@ export interface PulseSummary {
   openAnomalies: number;
 }
 
+export type DataSourceType = 'erp' | 'email' | 'cloud_storage' | 'upload' | 'custom_system';
+
 export interface DataSourceConfig {
-  type: 'erp' | 'email' | 'cloud_storage' | 'upload';
+  type: DataSourceType;
   config: Record<string, unknown>;
 }
 
@@ -696,6 +702,7 @@ export interface SubCatalyst {
   enabled: boolean;
   description?: string;
   data_source?: DataSourceConfig;
+  data_sources?: DataSourceConfig[];
   schedule?: SubCatalystSchedule;
 }
 

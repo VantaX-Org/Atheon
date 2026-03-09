@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, ERPConnection, ExecutionLogEntry } from "@/lib/api";
+import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry } from "@/lib/api";
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
  Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle,
- ScrollText, ArrowUpRight, MessageSquare
+ ScrollText, ArrowUpRight, MessageSquare, Cog
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -234,30 +234,47 @@ export function CatalystsPage() {
  const [showDataSourceConfig, setShowDataSourceConfig] = useState(false);
  const [dsClusterId, setDsClusterId] = useState('');
  const [dsSubName, setDsSubName] = useState('');
- const [dsType, setDsType] = useState<'erp' | 'email' | 'cloud_storage' | 'upload'>('erp');
+ const [dsSources, setDsSources] = useState<DataSourceConfig[]>([]);
+ const [dsEditIndex, setDsEditIndex] = useState<number | null>(null); // which source is being edited
+ const [dsType, setDsType] = useState<DataSourceType>('erp');
  const [dsConfig, setDsConfig] = useState<Record<string, unknown>>({});
  const [dsSaving, setDsSaving] = useState(false);
  const [dsError, setDsError] = useState<string | null>(null);
- const [dsExisting, setDsExisting] = useState<DataSourceConfig | undefined>(undefined);
  const [erpConnections, setErpConnections] = useState<ERPConnection[]>([]);
+
+ // Helper: get existing data sources from sub-catalyst (backward compat with data_source)
+ const getSubDataSources = (sub: SubCatalyst): DataSourceConfig[] => {
+   if (sub.data_sources && sub.data_sources.length > 0) return sub.data_sources;
+   if (sub.data_source) return [sub.data_source];
+   return [];
+ };
 
  const openDataSourceConfig = async (clusterId: string, sub: SubCatalyst) => {
  setDsClusterId(clusterId);
  setDsSubName(sub.name);
- setDsExisting(sub.data_source);
- if (sub.data_source) {
- setDsType(sub.data_source.type);
- setDsConfig(sub.data_source.config || {});
- setErpConnections([]);
- } else {
- // Pre-fill from tenant's connected ERP if available
+ const existing = getSubDataSources(sub);
+ setDsSources(existing);
+ setDsEditIndex(null);
  setDsType('erp');
+ setDsConfig({});
+ // Pre-fetch ERP connections
  try {
  const erpData = await api.erp.connections();
  const connected = erpData.connections.filter(c => c.status === 'connected');
  setErpConnections(connected);
- if (connected.length > 0) {
- const primary = connected[0];
+ } catch {
+ setErpConnections([]);
+ }
+ setDsError(null);
+ setShowDataSourceConfig(true);
+ };
+
+ const dsStartAddNew = async () => {
+ setDsEditIndex(-1); // -1 means adding new
+ setDsType('erp');
+ // Pre-fill from ERP connections if available
+ if (erpConnections.length > 0) {
+ const primary = erpConnections[0];
  setDsConfig({
  erp_type: primary.adapterSystem.toLowerCase(),
  connection_id: primary.id,
@@ -266,32 +283,66 @@ export function CatalystsPage() {
  } else {
  setDsConfig({});
  }
- } catch {
- setDsConfig({});
- setErpConnections([]);
- }
- }
- setDsError(null);
- setShowDataSourceConfig(true);
  };
 
- const handleSaveDataSource = async () => {
+ const dsStartEdit = (index: number) => {
+ const src = dsSources[index];
+ setDsEditIndex(index);
+ setDsType(src.type);
+ setDsConfig({ ...src.config });
+ };
+
+ const dsCancelEdit = () => {
+ setDsEditIndex(null);
+ setDsType('erp');
+ setDsConfig({});
+ };
+
+ const dsConfirmEdit = () => {
+ const newEntry: DataSourceConfig = { type: dsType, config: { ...dsConfig } };
+ if (dsEditIndex === -1) {
+ // Adding new
+ setDsSources(prev => [...prev, newEntry]);
+ } else if (dsEditIndex !== null && dsEditIndex >= 0) {
+ // Editing existing
+ setDsSources(prev => prev.map((s, i) => i === dsEditIndex ? newEntry : s));
+ }
+ setDsEditIndex(null);
+ setDsType('erp');
+ setDsConfig({});
+ };
+
+ const dsRemoveSource = (index: number) => {
+ setDsSources(prev => prev.filter((_, i) => i !== index));
+ if (dsEditIndex === index) {
+ setDsEditIndex(null);
+ setDsType('erp');
+ setDsConfig({});
+ }
+ };
+
+ const handleSaveDataSources = async () => {
  if (dsSaving) return;
  setDsSaving(true);
  setDsError(null);
  try {
- await api.catalysts.setDataSource(dsClusterId, dsSubName, { type: dsType, config: dsConfig });
+ if (dsSources.length === 0) {
+ // Remove all data sources
+ await api.catalysts.removeDataSource(dsClusterId, dsSubName);
+ } else {
+ await api.catalysts.setDataSources(dsClusterId, dsSubName, dsSources);
+ }
  const ind = industry !== 'general' ? industry : undefined;
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
  } catch (err) {
- setDsError(err instanceof Error ? err.message : 'Failed to save data source');
+ setDsError(err instanceof Error ? err.message : 'Failed to save data sources');
  }
  setDsSaving(false);
  };
 
- const handleRemoveDataSource = async () => {
+ const handleRemoveAllDataSources = async () => {
  if (dsSaving) return;
  setDsSaving(true);
  setDsError(null);
@@ -302,7 +353,7 @@ export function CatalystsPage() {
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
  } catch (err) {
- setDsError(err instanceof Error ? err.message : 'Failed to remove data source');
+ setDsError(err instanceof Error ? err.message : 'Failed to remove data sources');
  }
  setDsSaving(false);
  };
@@ -773,19 +824,21 @@ export function CatalystsPage() {
  <div className="min-w-0">
  <div className="flex items-center gap-1.5">
  <span className="text-xs font-medium t-primary truncate">{sub.name}</span>
- {sub.data_source && (
- <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
- sub.data_source.type === 'erp' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
- sub.data_source.type === 'email' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
- sub.data_source.type === 'cloud_storage' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' :
+ {getSubDataSources(sub).map((ds, dsIdx) => (
+ <span key={dsIdx} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+ ds.type === 'erp' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+ ds.type === 'email' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
+ ds.type === 'cloud_storage' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' :
+ ds.type === 'custom_system' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
  'bg-amber-500/10 text-amber-400 border border-amber-500/20'
  }`}>
- {sub.data_source.type === 'erp' && <><Database size={8} /> ERP</>}
- {sub.data_source.type === 'email' && <><Mail size={8} /> Email</>}
- {sub.data_source.type === 'cloud_storage' && <><Cloud size={8} /> Cloud</>}
- {sub.data_source.type === 'upload' && <><HardDrive size={8} /> Upload</>}
+ {ds.type === 'erp' && <><Database size={8} /> ERP</>}
+ {ds.type === 'email' && <><Mail size={8} /> Email</>}
+ {ds.type === 'cloud_storage' && <><Cloud size={8} /> Cloud</>}
+ {ds.type === 'upload' && <><HardDrive size={8} /> Upload</>}
+ {ds.type === 'custom_system' && <><Cog size={8} /> {(ds.config.system_name as string) || 'Custom'}</>}
  </span>
- )}
+ ))}
  </div>
  {sub.description && <span className="text-[10px] t-secondary block truncate">{sub.description}</span>}
  </div>
@@ -1172,39 +1225,101 @@ export function CatalystsPage() {
  <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
- <Settings size={18} className="text-accent" /> Configure Data Source
+ <Settings size={18} className="text-accent" /> Configure Data Sources
  </h3>
  <button onClick={() => setShowDataSourceConfig(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
  </div>
 
  <p className="text-xs t-secondary">
- Configure where <span className="font-semibold text-accent">{dsSubName}</span> gets its input data from.
+ Configure where <span className="font-semibold text-accent">{dsSubName}</span> gets its input data from. A sub-catalyst can have multiple data sources.
  </p>
+
+ {/* Existing Data Sources List */}
+ {dsSources.length > 0 && dsEditIndex === null && (
+ <div className="space-y-2">
+ <label className="text-xs t-muted block">Configured Data Sources ({dsSources.length})</label>
+ {dsSources.map((src, i) => {
+ const dsIcon = src.type === 'erp' ? Database : src.type === 'email' ? Mail : src.type === 'cloud_storage' ? Cloud : src.type === 'custom_system' ? Cog : HardDrive;
+ const DsIcon = dsIcon;
+ const dsColor = src.type === 'erp' ? 'text-blue-400' : src.type === 'email' ? 'text-purple-400' : src.type === 'cloud_storage' ? 'text-cyan-400' : src.type === 'custom_system' ? 'text-rose-400' : 'text-amber-400';
+ const dsBg = src.type === 'erp' ? 'bg-blue-500/5 border-blue-500/20' : src.type === 'email' ? 'bg-purple-500/5 border-purple-500/20' : src.type === 'cloud_storage' ? 'bg-cyan-500/5 border-cyan-500/20' : src.type === 'custom_system' ? 'bg-rose-500/5 border-rose-500/20' : 'bg-amber-500/5 border-amber-500/20';
+ const dsLabel = src.type === 'erp' ? `ERP (${(src.config.erp_type as string) || 'unknown'})` : src.type === 'email' ? `Email (${(src.config.mailbox as string) || '...'})` : src.type === 'cloud_storage' ? `Cloud (${(src.config.provider as string) || '...'})` : src.type === 'custom_system' ? `Custom: ${(src.config.system_name as string) || 'System'}` : 'Manual Upload';
+ return (
+ <div key={i} className={`flex items-center justify-between p-3 rounded-lg border ${dsBg}`}>
+ <div className="flex items-center gap-2 min-w-0">
+ <DsIcon size={16} className={dsColor} />
+ <div className="min-w-0">
+ <span className={`text-xs font-medium ${dsColor}`}>{dsLabel}</span>
+ {src.type === 'erp' && !!src.config.module && <span className="text-[10px] t-muted block">{String(src.config.module)}</span>}
+ {src.type === 'custom_system' && !!src.config.endpoint_url && <span className="text-[10px] t-muted block truncate">{String(src.config.endpoint_url)}</span>}
+ </div>
+ </div>
+ <div className="flex items-center gap-1 flex-shrink-0">
+ <button onClick={() => dsStartEdit(i)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent/10 transition-colors" title="Edit">
+ <Settings size={12} className="text-accent" />
+ </button>
+ <button onClick={() => dsRemoveSource(i)} className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-500/10 transition-colors" title="Remove">
+ <Trash2 size={12} className="text-red-400" />
+ </button>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ )}
+
+ {/* Empty state */}
+ {dsSources.length === 0 && dsEditIndex === null && (
+ <div className="text-center py-6 border border-dashed border-[var(--border-card)] rounded-lg">
+ <Database size={24} className="mx-auto text-gray-400 mb-2" />
+ <p className="text-xs t-muted">No data sources configured yet.</p>
+ <p className="text-[10px] t-muted mt-1">Click &quot;Add Data Source&quot; to connect one.</p>
+ </div>
+ )}
+
+ {/* Add New Data Source button (shown when not editing) */}
+ {dsEditIndex === null && (
+ <button
+ onClick={dsStartAddNew}
+ className="flex items-center gap-2 w-full p-3 rounded-lg border border-dashed border-[var(--border-card)] hover:border-accent/40 hover:bg-accent/5 transition-all text-xs t-secondary"
+ >
+ <Plus size={14} className="text-accent" /> Add Data Source
+ </button>
+ )}
+
+ {/* Data Source Editor (shown when adding or editing) */}
+ {dsEditIndex !== null && (
+ <div className="border border-accent/30 rounded-lg p-4 space-y-3 bg-accent/5">
+ <div className="flex items-center justify-between">
+ <span className="text-xs font-semibold t-primary">{dsEditIndex === -1 ? 'Add New Data Source' : `Edit Data Source #${dsEditIndex + 1}`}</span>
+ <button onClick={dsCancelEdit} className="text-gray-400 hover:text-gray-600 text-xs">Cancel</button>
+ </div>
 
  {/* Data Source Type Selector */}
  <div>
  <label className="text-xs t-muted block mb-1.5">Data Source Type</label>
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+ <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
  {([
  { type: 'erp' as const, label: 'ERP', icon: Database, selectedBg: 'bg-blue-500/10 border-blue-500/40 ring-1 ring-blue-500/30', selectedText: 'text-blue-400' },
  { type: 'email' as const, label: 'Email', icon: Mail, selectedBg: 'bg-purple-500/10 border-purple-500/40 ring-1 ring-purple-500/30', selectedText: 'text-purple-400' },
  { type: 'cloud_storage' as const, label: 'Cloud', icon: Cloud, selectedBg: 'bg-cyan-500/10 border-cyan-500/40 ring-1 ring-cyan-500/30', selectedText: 'text-cyan-400' },
  { type: 'upload' as const, label: 'Upload', icon: HardDrive, selectedBg: 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/30', selectedText: 'text-amber-400' },
- ]).map((opt) => {
+ { type: 'custom_system' as const, label: 'Custom', icon: Cog, selectedBg: 'bg-rose-500/10 border-rose-500/40 ring-1 ring-rose-500/30', selectedText: 'text-rose-400' },
+ ] satisfies Array<{ type: DataSourceType; label: string; icon: typeof Database; selectedBg: string; selectedText: string }>).map((opt) => {
  const Icon = opt.icon;
  const selected = dsType === opt.type;
  return (
  <button
  key={opt.type}
  onClick={() => { setDsType(opt.type); setDsConfig({}); }}
- className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all ${
+ className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
  selected
  ? opt.selectedBg
  : 'bg-[var(--bg-secondary)] border-[var(--border-card)] hover:border-gray-400'
  }`}
  >
- <Icon size={18} className={selected ? opt.selectedText : 'text-gray-400'} />
- <span className={`text-xs font-medium ${selected ? opt.selectedText : 't-secondary'}`}>{opt.label}</span>
+ <Icon size={16} className={selected ? opt.selectedText : 'text-gray-400'} />
+ <span className={`text-[10px] font-medium ${selected ? opt.selectedText : 't-secondary'}`}>{opt.label}</span>
  </button>
  );
  })}
@@ -1369,7 +1484,82 @@ export function CatalystsPage() {
  </p>
  </>
  )}
+
+ {dsType === 'custom_system' && (
+ <>
+ <div>
+ <label className="text-xs t-muted">System Name</label>
+ <input
+ className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+ value={(dsConfig.system_name as string) || ''}
+ onChange={e => setDsConfig(prev => ({ ...prev, system_name: e.target.value }))}
+ placeholder="e.g. Banking Portal, HR System, Legacy ERP"
+ />
  </div>
+ <div>
+ <label className="text-xs t-muted">System Description (optional)</label>
+ <input
+ className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+ value={(dsConfig.description as string) || ''}
+ onChange={e => setDsConfig(prev => ({ ...prev, description: e.target.value }))}
+ placeholder="e.g. Internal banking reconciliation system"
+ />
+ </div>
+ <div>
+ <label className="text-xs t-muted">Endpoint URL (optional)</label>
+ <input
+ className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+ value={(dsConfig.endpoint_url as string) || ''}
+ onChange={e => setDsConfig(prev => ({ ...prev, endpoint_url: e.target.value }))}
+ placeholder="e.g. https://internal-system.company.com/api"
+ />
+ </div>
+ <div>
+ <label className="text-xs t-muted">Authentication Type (optional)</label>
+ <select
+ className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+ value={(dsConfig.auth_type as string) || ''}
+ onChange={e => setDsConfig(prev => ({ ...prev, auth_type: e.target.value }))}
+ >
+ <option value="">None / Not applicable</option>
+ <option value="api_key">API Key</option>
+ <option value="oauth2">OAuth 2.0</option>
+ <option value="basic_auth">Basic Auth</option>
+ <option value="certificate">Client Certificate</option>
+ <option value="custom">Custom Token</option>
+ </select>
+ </div>
+ <div>
+ <label className="text-xs t-muted">Data Format (optional)</label>
+ <select
+ className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
+ value={(dsConfig.data_format as string) || ''}
+ onChange={e => setDsConfig(prev => ({ ...prev, data_format: e.target.value }))}
+ >
+ <option value="">Auto-detect</option>
+ <option value="json">JSON</option>
+ <option value="xml">XML</option>
+ <option value="csv">CSV</option>
+ <option value="fixed_width">Fixed Width</option>
+ <option value="proprietary">Proprietary</option>
+ </select>
+ </div>
+ <p className="text-[10px] t-secondary flex items-center gap-1">
+ <Cog size={10} /> For in-house or customized systems not covered by standard adapters.
+ </p>
+ </>
+ )}
+ </div>
+
+ {/* Confirm/Cancel for individual source */}
+ <div className="flex gap-2 pt-1">
+ <Button variant="secondary" size="sm" onClick={dsCancelEdit}>Cancel</Button>
+ <Button variant="primary" size="sm" onClick={dsConfirmEdit}>
+ <CheckCircle size={12} className="mr-1" /> {dsEditIndex === -1 ? 'Add Source' : 'Update Source'}
+ </Button>
+ </div>
+ </div>
+ )}
 
  {dsError && (
  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">
@@ -1377,23 +1567,23 @@ export function CatalystsPage() {
  </div>
  )}
 
- <div className="flex items-center justify-between pt-2">
+ {/* Footer Actions */}
+ <div className="flex items-center justify-between pt-2 border-t border-[var(--border-card)]">
  <div>
- {dsExisting && (
+ {dsSources.length > 0 && dsEditIndex === null && (
  <button
- onClick={handleRemoveDataSource}
+ onClick={handleRemoveAllDataSources}
  disabled={dsSaving}
  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
  >
- <Trash2 size={12} /> Remove Data Source
+ <Trash2 size={12} /> Remove All
  </button>
-
  )}
  </div>
  <div className="flex gap-3">
  <Button variant="secondary" size="sm" onClick={() => setShowDataSourceConfig(false)}>Cancel</Button>
- <Button variant="primary" size="sm" onClick={handleSaveDataSource} disabled={dsSaving}>
- {dsSaving ? <Loader2 size={14} className="animate-spin" /> : <Settings size={14} />} Save Configuration
+ <Button variant="primary" size="sm" onClick={handleSaveDataSources} disabled={dsSaving || dsEditIndex !== null}>
+ {dsSaving ? <Loader2 size={14} className="animate-spin" /> : <Settings size={14} />} Save All ({dsSources.length})
  </Button>
  </div>
  </div>
