@@ -472,12 +472,12 @@ export function CatalystsPage() {
  const [execSubName, setExecSubName] = useState('');
  const [execMode, setExecMode] = useState<ExecutionConfig['mode']>('reconciliation');
  const [execSaving, setExecSaving] = useState(false);
- const [execError, setExecError] = useState<string | null>(null);
+ const [execCfgError, setExecCfgError] = useState<string | null>(null);
 
  // Execution result state
  const [showExecResult, setShowExecResult] = useState(false);
  const [execResult, setExecResult] = useState<ExecutionResult | null>(null);
- const [executing, setExecuting] = useState<string | null>(null); // "clusterId:subName" currently executing
+ const [subExecuting, setSubExecuting] = useState<string | null>(null); // "clusterId:subName" currently executing
 
  const openFieldMappingConfig = (clusterId: string, sub: SubCatalyst) => {
    setFmClusterId(clusterId);
@@ -525,14 +525,14 @@ export function CatalystsPage() {
    setExecClusterId(clusterId);
    setExecSubName(sub.name);
    setExecMode(sub.execution_config?.mode || 'reconciliation');
-   setExecError(null);
+   setExecCfgError(null);
    setShowExecutionConfig(true);
  };
 
  const handleSaveExecutionConfig = async () => {
    if (execSaving) return;
    setExecSaving(true);
-   setExecError(null);
+   setExecCfgError(null);
    try {
      await api.catalysts.setExecutionConfig(execClusterId, execSubName, { mode: execMode });
      const ind = industry !== 'general' ? industry : undefined;
@@ -540,15 +540,15 @@ export function CatalystsPage() {
      setClusters(c.clusters);
      setShowExecutionConfig(false);
    } catch (err) {
-     setExecError(err instanceof Error ? err.message : 'Failed to save execution config');
+     setExecCfgError(err instanceof Error ? err.message : 'Failed to save execution config');
    }
    setExecSaving(false);
  };
 
  const handleExecuteSubCatalyst = async (clusterId: string, subName: string) => {
    const key = `${clusterId}:${subName}`;
-   if (executing) return;
-   setExecuting(key);
+   if (subExecuting) return;
+   setSubExecuting(key);
    try {
      const result = await api.catalysts.executeSubCatalyst(clusterId, subName);
      setExecResult(result);
@@ -567,7 +567,7 @@ export function CatalystsPage() {
      });
      setShowExecResult(true);
    }
-   setExecuting(null);
+   setSubExecuting(null);
  };
 
  const exceptionCount = actions.filter(a => a.status === 'exception' || a.status === 'escalated').length;
@@ -966,8 +966,8 @@ export function CatalystsPage() {
  </span>
  )}
  {sub.enabled && getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0 && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={executing === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
- {executing === `${cluster.id}:${sub.name}` ? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
+ {subExecuting === `${cluster.id}:${sub.name}`? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
  </Button>
  )}
  {sub.enabled && (
@@ -2028,9 +2028,9 @@ export function CatalystsPage() {
  ))}
  </div>
 
- {execError && (
+ {execCfgError && (
  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2 mb-4">
- <AlertTriangle size={14} /> {execError}
+ <AlertTriangle size={14} /> {execCfgError}
  </div>
  )}
 
