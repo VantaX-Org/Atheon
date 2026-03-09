@@ -1378,6 +1378,7 @@ async function performReconciliation(
     let foundMatch = false;
 
     for (let ti = 0; ti < targetData.length; ti++) {
+      if (matchedTargetIndices.has(ti)) continue; // skip already-matched targets
       const tgtRow = targetData[ti];
       const tgtVal = String(tgtRow[primaryKey.target_field] ?? '').toLowerCase().trim();
       if (!tgtVal) continue; // skip records with empty key field
