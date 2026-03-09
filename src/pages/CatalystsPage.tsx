@@ -986,7 +986,7 @@ export function CatalystsPage() {
  title={`Last execution: ${sub.last_execution.status} — ${sub.last_execution.summary.matched} matched, ${sub.last_execution.summary.discrepancies} discrepancies`}
  >
  <BarChart3 size={8} />
- {sub.last_execution.summary.matched}M/{sub.last_execution.summary.discrepancies}D
+ {sub.last_execution.summary.matched} matched / {sub.last_execution.summary.discrepancies} disc.
  </button>
  )}
  {isAdmin && (

@@ -1243,7 +1243,7 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     .bind(JSON.stringify(subs), clusterId, targetTenant).run();
 
   // Store execution in execution_logs for history
-  await writeLog(c.env.DB, targetTenant, clusterId, 1, `${subName} — ${execConfig.mode}`, result.status, JSON.stringify(result.summary), result.duration_ms);
+  await writeLog(c.env.DB, targetTenant, result.id, 1, `${subName} — ${execConfig.mode}`, result.status, JSON.stringify(result.summary), result.duration_ms);
 
   // Audit log
   await c.env.DB.prepare(
