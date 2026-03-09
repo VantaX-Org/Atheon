@@ -704,7 +704,30 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/toggle', async (c) =>
   return c.json({ success: true, subCatalyst: subs[idx] });
 });
 
-// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-source - Configure data source for a sub-catalyst
+const VALID_DS_TYPES = ['erp', 'email', 'cloud_storage', 'upload', 'custom_system'];
+
+type SubCatalystRecord = {
+  name: string;
+  enabled: boolean;
+  description?: string;
+  data_source?: { type: string; config: Record<string, unknown> };
+  data_sources?: Array<{ type: string; config: Record<string, unknown> }>;
+  schedule?: Record<string, unknown>;
+};
+
+function validateDataSourceConfig(ds: { type: string; config: Record<string, unknown> }): string | null {
+  if (!ds.type || !VALID_DS_TYPES.includes(ds.type)) {
+    return `Invalid data source type. Must be: ${VALID_DS_TYPES.join(', ')}`;
+  }
+  const config = ds.config || {};
+  if (ds.type === 'erp' && !config.erp_type) return 'ERP data source requires erp_type in config';
+  if (ds.type === 'email' && !config.mailbox) return 'Email data source requires mailbox in config';
+  if (ds.type === 'cloud_storage' && (!config.provider || !config.path)) return 'Cloud storage data source requires provider and path in config';
+  if (ds.type === 'custom_system' && !config.system_name) return 'Custom system data source requires system_name in config';
+  return null;
+}
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-source - Configure single data source (backward compat)
 catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (c) => {
   const clusterId = c.req.param('clusterId');
   const subName = decodeURIComponent(c.req.param('subName'));
@@ -713,42 +736,29 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (
     return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
   }
 
-  const body = await c.req.json<{
-    type: 'erp' | 'email' | 'cloud_storage' | 'upload';
-    config: Record<string, unknown>;
-  }>();
+  const body = await c.req.json<{ type: string; config: Record<string, unknown> }>();
+  const validationError = validateDataSourceConfig(body);
+  if (validationError) return c.json({ error: validationError }, 400);
 
-  if (!body.type || !['erp', 'email', 'cloud_storage', 'upload'].includes(body.type)) {
-    return c.json({ error: 'Invalid data source type. Must be: erp, email, cloud_storage, or upload' }, 400);
-  }
-
-  // Validate config based on type
   const config = body.config || {};
-  if (body.type === 'erp' && !config.erp_type) {
-    return c.json({ error: 'ERP data source requires erp_type in config' }, 400);
-  }
-  if (body.type === 'email' && !config.mailbox) {
-    return c.json({ error: 'Email data source requires mailbox in config' }, 400);
-  }
-  if (body.type === 'cloud_storage' && (!config.provider || !config.path)) {
-    return c.json({ error: 'Cloud storage data source requires provider and path in config' }, 400);
-  }
-
-  // Admin can manage clusters of other tenants via tenant_id query param
   const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
   const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
-  const subs = JSON.parse(cluster.sub_catalysts || '[]') as Array<{ name: string; enabled: boolean; description?: string; data_source?: { type: string; config: Record<string, unknown> } }>;
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as SubCatalystRecord[];
   const idx = subs.findIndex((s) => s.name === subName);
   if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
 
-  subs[idx].data_source = { type: body.type, config };
+  const dsEntry = { type: body.type, config };
+  subs[idx].data_source = dsEntry;
+  // Also sync to data_sources array (keep both in sync for backward compat)
+  if (!subs[idx].data_sources) subs[idx].data_sources = [];
+  subs[idx].data_sources = [dsEntry];
+
   await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
     .bind(JSON.stringify(subs), clusterId, targetTenant).run();
 
-  // Audit log
   await c.env.DB.prepare(
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(
@@ -760,7 +770,7 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (
   return c.json({ success: true, subCatalyst: subs[idx] });
 });
 
-// DELETE /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-source - Remove data source config
+// DELETE /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-source - Remove all data sources
 catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/data-source', async (c) => {
   const clusterId = c.req.param('clusterId');
   const subName = decodeURIComponent(c.req.param('subName'));
@@ -769,26 +779,119 @@ catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/data-source', asyn
     return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
   }
 
-  // Admin can manage clusters of other tenants via tenant_id query param
   const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
   const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
-  const subs = JSON.parse(cluster.sub_catalysts || '[]') as Array<{ name: string; enabled: boolean; description?: string; data_source?: { type: string; config: Record<string, unknown> } }>;
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as SubCatalystRecord[];
   const idx = subs.findIndex((s) => s.name === subName);
   if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
 
   delete subs[idx].data_source;
+  delete subs[idx].data_sources;
   await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
     .bind(JSON.stringify(subs), clusterId, targetTenant).run();
 
-  // Audit log
   await c.env.DB.prepare(
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(
     crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.data_source_removed', 'catalysts', clusterId,
     JSON.stringify({ sub_catalyst: subName }),
+    'success'
+  ).run().catch(() => {});
+
+  return c.json({ success: true, subCatalyst: subs[idx] });
+});
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-sources - Set multiple data sources
+catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/data-sources', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
+  }
+
+  const body = await c.req.json<{ data_sources: Array<{ type: string; config: Record<string, unknown> }> }>();
+  if (!body.data_sources || !Array.isArray(body.data_sources)) {
+    return c.json({ error: 'data_sources must be an array' }, 400);
+  }
+
+  // Validate each data source
+  for (let i = 0; i < body.data_sources.length; i++) {
+    const err = validateDataSourceConfig(body.data_sources[i]);
+    if (err) return c.json({ error: `Data source ${i + 1}: ${err}` }, 400);
+  }
+
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as SubCatalystRecord[];
+  const idx = subs.findIndex((s) => s.name === subName);
+  if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
+
+  const cleaned = body.data_sources.map(ds => ({ type: ds.type, config: ds.config || {} }));
+  subs[idx].data_sources = cleaned;
+  // Keep data_source in sync (first source for backward compat)
+  subs[idx].data_source = cleaned.length > 0 ? cleaned[0] : undefined;
+  if (!subs[idx].data_source) delete subs[idx].data_source;
+
+  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+    .bind(JSON.stringify(subs), clusterId, targetTenant).run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.data_sources_configured', 'catalysts', clusterId,
+    JSON.stringify({ sub_catalyst: subName, data_source_count: cleaned.length, types: cleaned.map(d => d.type) }),
+    'success'
+  ).run().catch(() => {});
+
+  return c.json({ success: true, subCatalyst: subs[idx] });
+});
+
+// DELETE /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/data-sources/:index - Remove a specific data source by index
+catalysts.delete('/clusters/:clusterId/sub-catalysts/:subName/data-sources/:index', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const dsIndex = parseInt(c.req.param('index'), 10);
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden', message: 'Only admins can configure data sources' }, 403);
+  }
+
+  if (isNaN(dsIndex) || dsIndex < 0) return c.json({ error: 'Invalid data source index' }, 400);
+
+  const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const subs = JSON.parse(cluster.sub_catalysts || '[]') as SubCatalystRecord[];
+  const idx = subs.findIndex((s) => s.name === subName);
+  if (idx === -1) return c.json({ error: 'Sub-catalyst not found' }, 404);
+
+  const sources = subs[idx].data_sources || [];
+  if (dsIndex >= sources.length) return c.json({ error: 'Data source index out of range' }, 400);
+
+  sources.splice(dsIndex, 1);
+  subs[idx].data_sources = sources;
+  // Keep data_source in sync
+  subs[idx].data_source = sources.length > 0 ? sources[0] : undefined;
+  if (!subs[idx].data_source) delete subs[idx].data_source;
+  if (sources.length === 0) delete subs[idx].data_sources;
+
+  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+    .bind(JSON.stringify(subs), clusterId, targetTenant).run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.data_source_removed', 'catalysts', clusterId,
+    JSON.stringify({ sub_catalyst: subName, removed_index: dsIndex }),
     'success'
   ).run().catch(() => {});
 
