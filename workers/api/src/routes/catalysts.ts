@@ -1737,39 +1737,42 @@ async function raiseExecutionExceptions(
   const actionIds: string[] = [];
   for (const exc of exceptions) {
     const actionId = crypto.randomUUID();
-    actionIds.push(actionId);
 
-    await db.prepare(
-      'INSERT INTO catalyst_actions (id, cluster_id, tenant_id, catalyst_name, action, status, confidence, input_data, output_data, reasoning, escalation_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-    ).bind(
-      actionId,
-      clusterId,
-      tenantId,
-      subName,
-      `${execConfig.mode}_exception`,
-      exc.escalationLevel ? 'escalated' : 'exception',
-      exc.confidence,
-      JSON.stringify({
-        execution_id: result.id,
-        mode: execConfig.mode,
-        sub_catalyst: subName,
-        summary: result.summary,
-        thresholds,
-      }),
-      JSON.stringify({
-        exception_type: exc.type,
-        exception_detail: exc.detail,
-        severity: exc.severity,
-        execution_summary: result.summary,
-        discrepancy_sample: result.discrepancies?.slice(0, 5) || [],
-      }),
-      exc.detail,
-      exc.escalationLevel,
-    ).run().catch((err) => {
+    try {
+      await db.prepare(
+        'INSERT INTO catalyst_actions (id, cluster_id, tenant_id, catalyst_name, action, status, confidence, input_data, output_data, reasoning, escalation_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+      ).bind(
+        actionId,
+        clusterId,
+        tenantId,
+        subName,
+        `${execConfig.mode}_exception`,
+        exc.escalationLevel ? 'escalated' : 'exception',
+        exc.confidence,
+        JSON.stringify({
+          execution_id: result.id,
+          mode: execConfig.mode,
+          sub_catalyst: subName,
+          summary: result.summary,
+          thresholds,
+        }),
+        JSON.stringify({
+          exception_type: exc.type,
+          exception_detail: exc.detail,
+          severity: exc.severity,
+          execution_summary: result.summary,
+          discrepancy_sample: result.discrepancies?.slice(0, 5) || [],
+        }),
+        exc.detail,
+        exc.escalationLevel,
+      ).run();
+      actionIds.push(actionId);
+    } catch (err) {
       console.error('Failed to insert execution exception:', err);
-    });
+      continue;
+    }
 
-    // Write execution log step for each exception
+    // Write execution log step for each successfully persisted exception
     await writeLog(db, tenantId, result.id, actionIds.length + 1, `Exception: ${exc.type}`, 'failed', exc.detail, 0);
   }
 
