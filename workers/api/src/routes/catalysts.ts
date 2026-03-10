@@ -1770,7 +1770,7 @@ async function raiseExecutionExceptions(
     });
 
     // Write execution log step for each exception
-    await writeLog(db, tenantId, result.id, actionIds.length + 1, `Exception: ${exc.type}`, exc.severity, exc.detail, 0);
+    await writeLog(db, tenantId, result.id, actionIds.length + 1, `Exception: ${exc.type}`, 'failed', exc.detail, 0);
   }
 
   return actionIds;
