@@ -278,8 +278,19 @@ app.post('/api/v1/admin/setup', async (c) => {
     return c.json({ error: 'Not found', path: c.req.path }, 404);
   }
 
+  // Parse raw body first to get unsanitized setup_secret, then validate email/password separately
+  let rawBody: AdminSetupBody;
+  try {
+    rawBody = await c.req.json<AdminSetupBody>();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!rawBody.setup_secret || typeof rawBody.setup_secret !== 'string' || rawBody.setup_secret.length < 8) {
+    return c.json({ error: 'Validation failed', details: ['setup_secret must be a string with at least 8 characters'] }, 400);
+  }
+
   const { data, errors } = await getValidatedJsonBody<AdminSetupBody>(c, [
-    { field: 'setup_secret', type: 'string', required: true, minLength: 8 },
     { field: 'email', type: 'email', required: true },
     { field: 'password', type: 'string', required: true, minLength: 8, maxLength: 128 },
   ]);
@@ -289,7 +300,8 @@ app.post('/api/v1/admin/setup', async (c) => {
   }
 
   // Constant-time comparison to prevent timing attacks (no early return on length mismatch)
-  const secretBytes = new TextEncoder().encode(data.setup_secret);
+  // Use raw (unsanitized) setup_secret to avoid sanitizer stripping special chars
+  const secretBytes = new TextEncoder().encode(rawBody.setup_secret);
   const expectedBytes = new TextEncoder().encode(env.SETUP_SECRET);
   let mismatch = secretBytes.length !== expectedBytes.length ? 1 : 0;
   const len = Math.min(secretBytes.length, expectedBytes.length);

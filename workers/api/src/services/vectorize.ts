@@ -326,23 +326,27 @@ export async function indexInsightsForRAG(
 
   // Index health scores
   const healthScores = await db.prepare(
-    'SELECT * FROM health_scores WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100'
+    'SELECT * FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 100'
   ).bind(tenantId).all();
 
   for (const hs of healthScores.results) {
-    const content = `Health Score for dimension "${hs.dimension}": ${hs.score}/100. Category: ${hs.category}. Trend: ${hs.trend}. Summary: ${hs.summary || 'N/A'}`;
+    // health_scores schema: id, tenant_id, overall_score, dimensions (JSON), calculated_at
+    let dimensionsSummary = 'N/A';
+    try {
+      const dims = JSON.parse(hs.dimensions as string || '{}');
+      dimensionsSummary = Object.entries(dims).map(([k, v]) => `${k}: ${v}`).join(', ');
+    } catch { /* ignore parse errors */ }
+    const content = `Health Score: ${hs.overall_score}/100. Dimensions: ${dimensionsSummary}. Calculated at: ${hs.calculated_at || 'N/A'}`;
     const result = await indexDocument(vectorize, ai, {
       id: `hs-${hs.id}`,
       tenantId,
       type: 'health_score',
-      name: `${hs.dimension} Health Score`,
+      name: `Overall Health Score (${hs.overall_score})`,
       content,
       metadata: {
         source: 'health_scores',
-        dimension: hs.dimension,
-        score: hs.score,
-        category: hs.category,
-        trend: hs.trend,
+        overall_score: hs.overall_score,
+        calculated_at: hs.calculated_at,
       },
     });
     if (result.indexed) indexed++;
@@ -351,11 +355,12 @@ export async function indexInsightsForRAG(
 
   // Index risk alerts
   const riskAlerts = await db.prepare(
-    'SELECT * FROM risk_alerts WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100'
+    'SELECT * FROM risk_alerts WHERE tenant_id = ? ORDER BY detected_at DESC LIMIT 100'
   ).bind(tenantId).all();
 
   for (const ra of riskAlerts.results) {
-    const content = `Risk Alert: ${ra.title}. Severity: ${ra.severity}. Category: ${ra.category}. Description: ${ra.description}. Recommendation: ${ra.recommendation || 'N/A'}`;
+    // risk_alerts schema: id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at, resolved_at
+    const content = `Risk Alert: ${ra.title}. Severity: ${ra.severity}. Category: ${ra.category}. Description: ${ra.description}. Recommended Actions: ${ra.recommended_actions || 'N/A'}`;
     const result = await indexDocument(vectorize, ai, {
       id: `ra-${ra.id}`,
       tenantId,
@@ -374,11 +379,12 @@ export async function indexInsightsForRAG(
 
   // Index executive briefings
   const briefings = await db.prepare(
-    'SELECT * FROM executive_briefings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50'
+    'SELECT * FROM executive_briefings WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 50'
   ).bind(tenantId).all();
 
   for (const eb of briefings.results) {
-    const content = `Executive Briefing: ${eb.title}. Priority: ${eb.priority}. Summary: ${eb.summary}. Recommendation: ${eb.recommendation || 'N/A'}`;
+    // executive_briefings schema: id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at
+    const content = `Executive Briefing: ${eb.title}. Summary: ${eb.summary}. Risks: ${eb.risks || '[]'}. Opportunities: ${eb.opportunities || '[]'}. Decisions Needed: ${eb.decisions_needed || '[]'}`;
     const result = await indexDocument(vectorize, ai, {
       id: `eb-${eb.id}`,
       tenantId,
@@ -387,8 +393,7 @@ export async function indexInsightsForRAG(
       content,
       metadata: {
         source: 'executive_briefings',
-        priority: eb.priority,
-        domain: eb.domain,
+        generated_at: eb.generated_at,
       },
     });
     if (result.indexed) indexed++;

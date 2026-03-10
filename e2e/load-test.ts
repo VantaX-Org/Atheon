@@ -123,7 +123,7 @@ async function runLoadTest(): Promise<void> {
   // Step 2: Run concurrent workers
   const workers = Array.from({ length: CONCURRENCY }, async (_, workerId) => {
     while (Date.now() < endTime) {
-      const ep = ENDPOINTS[workerId % ENDPOINTS.length];
+      const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
       const result = await makeRequest(ep, token);
       results.get(ep.path)?.push(result.latencyMs);
       if (result.success) {

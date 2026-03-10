@@ -727,19 +727,37 @@ const dynamics365Adapter: ERPAdapter = {
     const result: SyncResult = { recordsSynced: 0, recordsFailed: 0, duration: 0, entities: [], errors: [] };
     const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
 
+    // Resolve companyId by fetching the first company from Business Central
+    let companyId = '';
+    try {
+      const companiesResp = await fetch(`${credentials.baseUrl}/api/v2.0/companies`, { headers });
+      if (companiesResp.ok) {
+        const companiesData = await companiesResp.json() as { value?: Array<{ id?: string }> };
+        companyId = companiesData.value?.[0]?.id || '';
+      }
+    } catch (err) {
+      result.errors.push(`Failed to resolve companyId: ${(err as Error).message}`);
+    }
+
+    if (!companyId) {
+      result.errors.push('No company found in Dynamics 365 Business Central — cannot sync entities');
+      result.duration = Date.now() - start;
+      return result;
+    }
+
     for (const entity of entities) {
       try {
         const apiMap: Record<string, string> = {
-          'customers': '/api/v2.0/companies({companyId})/customers?$top=1000',
-          'vendors': '/api/v2.0/companies({companyId})/vendors?$top=1000',
-          'items': '/api/v2.0/companies({companyId})/items?$top=1000',
-          'sales_orders': '/api/v2.0/companies({companyId})/salesOrders?$top=1000',
-          'purchase_orders': '/api/v2.0/companies({companyId})/purchaseOrders?$top=1000',
-          'invoices': '/api/v2.0/companies({companyId})/salesInvoices?$top=1000',
-          'gl_accounts': '/api/v2.0/companies({companyId})/accounts?$top=1000',
-          'employees': '/api/v2.0/companies({companyId})/employees?$top=1000',
+          'customers': `/api/v2.0/companies(${companyId})/customers?$top=1000`,
+          'vendors': `/api/v2.0/companies(${companyId})/vendors?$top=1000`,
+          'items': `/api/v2.0/companies(${companyId})/items?$top=1000`,
+          'sales_orders': `/api/v2.0/companies(${companyId})/salesOrders?$top=1000`,
+          'purchase_orders': `/api/v2.0/companies(${companyId})/purchaseOrders?$top=1000`,
+          'invoices': `/api/v2.0/companies(${companyId})/salesInvoices?$top=1000`,
+          'gl_accounts': `/api/v2.0/companies(${companyId})/accounts?$top=1000`,
+          'employees': `/api/v2.0/companies(${companyId})/employees?$top=1000`,
         };
-        const path = apiMap[entity] || `/api/v2.0/companies({companyId})/${entity}?$top=1000`;
+        const path = apiMap[entity] || `/api/v2.0/companies(${companyId})/${entity}?$top=1000`;
         const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
         if (resp.ok) {
           const data = await resp.json() as { value?: unknown[] };
