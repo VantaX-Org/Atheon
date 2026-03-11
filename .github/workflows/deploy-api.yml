@@ -82,7 +82,7 @@ jobs:
             HTTP_CODE=$(curl -s -o /tmp/migrate.json -w "%{http_code}" -X POST "${API_URL}/api/v1/admin/migrate" -H "X-Setup-Secret: ${SETUP_SECRET}" -H "Content-Type: application/json")
             echo "Migration response code: $HTTP_CODE"
             cat /tmp/migrate.json
-            if [ "$HTTP_CODE" -ge 400 ]; then echo "Migration returned $HTTP_CODE — check logs"; fi
+            if [ "$HTTP_CODE" -ge 400 ]; then echo "Migration returned $HTTP_CODE — check logs"; exit 1; fi
           else
             echo "Skipping auto-migration: SETUP_SECRET or API_URL not configured"
           fi

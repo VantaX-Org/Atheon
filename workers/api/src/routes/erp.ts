@@ -388,25 +388,33 @@ erp.post('/sync/:connection_id', async (c) => {
   ).bind(connectionId, tenantId).first();
   if (!conn) return c.json({ error: 'Connection not found' }, 404);
 
-  const config = JSON.parse(conn.config as string || '{}');
+  // Read from encrypted_config first, fallback to config
+  const encCfgSync = conn.encrypted_config as string | null;
+  let config: Record<string, unknown> = {};
+  if (encCfgSync && isEncrypted(encCfgSync)) {
+    const decrypted = await decrypt(encCfgSync, c.env.ENCRYPTION_KEY);
+    config = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    config = JSON.parse(conn.config as string || '{}');
+  }
   const adapter = getERPAdapter(conn.adapter_system as string);
 
   if (adapter && config.access_token) {
     // Decrypt tokens for use
-    const decryptedToken = isEncrypted(config.access_token)
-      ? await decrypt(config.access_token, c.env.ENCRYPTION_KEY)
-      : config.access_token;
-    const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
-      ? await decrypt(config.client_secret, c.env.ENCRYPTION_KEY)
-      : config.client_secret || '';
+    const decryptedToken = isEncrypted(config.access_token as string)
+      ? (await decrypt(config.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+      : config.access_token as string;
+    const decryptedSecret = config.client_secret && isEncrypted(config.client_secret as string)
+      ? (await decrypt(config.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
+      : (config.client_secret as string) || '';
 
     // Real sync via ERP adapter
     const credentials: ERPCredentials = {
-      clientId: config.client_id || '',
+      clientId: (config.client_id as string) || '',
       clientSecret: decryptedSecret,
-      baseUrl: config.base_url || '',
+      baseUrl: (config.base_url as string) || '',
     };
-    const entities = config.sync_entities || ['accounts', 'contacts'];
+    const entities = (config.sync_entities as string[]) || ['accounts', 'contacts'];
     const result = await adapter.syncData(credentials, decryptedToken, entities);
 
     // 3.12: Write synced records to canonical tables
@@ -453,29 +461,37 @@ erp.post('/connections/:id/test', async (c) => {
   ).bind(id, tenantId).first();
   if (!conn) return c.json({ error: 'Connection not found' }, 404);
 
-  const config = JSON.parse(conn.config as string || '{}');
+  // Read from encrypted_config first, fallback to config
+  const encCfgTest = conn.encrypted_config as string | null;
+  let testConfig: Record<string, unknown> = {};
+  if (encCfgTest && isEncrypted(encCfgTest)) {
+    const decrypted = await decrypt(encCfgTest, c.env.ENCRYPTION_KEY);
+    testConfig = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    testConfig = JSON.parse(conn.config as string || '{}');
+  }
   const adapter = getERPAdapter(conn.adapter_system as string);
 
   if (!adapter) {
     return c.json({ connected: false, message: `No adapter found for system: ${conn.adapter_system}` });
   }
 
-  if (!config.access_token) {
+  if (!testConfig.access_token) {
     return c.json({ connected: false, message: 'No access token configured. Complete OAuth flow first.' });
   }
 
   // Decrypt tokens for use
-  const decryptedToken = isEncrypted(config.access_token)
-    ? await decrypt(config.access_token, c.env.ENCRYPTION_KEY)
-    : config.access_token;
-  const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
-    ? await decrypt(config.client_secret, c.env.ENCRYPTION_KEY)
-    : config.client_secret || '';
+  const decryptedToken = isEncrypted(testConfig.access_token as string)
+    ? (await decrypt(testConfig.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+    : testConfig.access_token as string;
+  const decryptedSecret = testConfig.client_secret && isEncrypted(testConfig.client_secret as string)
+    ? (await decrypt(testConfig.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
+    : (testConfig.client_secret as string) || '';
 
   const credentials: ERPCredentials = {
-    clientId: config.client_id || '',
+    clientId: (testConfig.client_id as string) || '',
     clientSecret: decryptedSecret,
-    baseUrl: config.base_url || '',
+    baseUrl: (testConfig.base_url as string) || '',
   };
 
   const result = await adapter.testConnection(credentials, decryptedToken);
@@ -530,8 +546,17 @@ erp.post('/oauth/authorize', async (c) => {
   }), { expirationTtl: 600 });
 
   // Store credentials in connection config (encrypted)
+  // Read from encrypted_config first, fallback to config
+  const encCfgOauth = conn.encrypted_config as string | null;
+  let existingOauthConfig: Record<string, unknown> = {};
+  if (encCfgOauth && isEncrypted(encCfgOauth)) {
+    const decrypted = await decrypt(encCfgOauth, c.env.ENCRYPTION_KEY);
+    existingOauthConfig = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    existingOauthConfig = JSON.parse(conn.config as string || '{}');
+  }
   const encryptedConfig = {
-    ...JSON.parse(conn.config as string || '{}'),
+    ...existingOauthConfig,
     client_id: body.client_id,
     client_secret: await encrypt(body.client_secret, c.env.ENCRYPTION_KEY),
     base_url: body.base_url,

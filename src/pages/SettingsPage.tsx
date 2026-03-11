@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,14 +108,38 @@ export function SettingsPage() {
    }
  };
 
- // Phase 4.4: API key display state
+ // Phase 4.4: API key — server-side generation
  const [apiKeyVisible, setApiKeyVisible] = useState(false);
- const [generatedApiKey] = useState(() => {
-   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-   let key = 'athn_';
-   for (let i = 0; i < 32; i++) key += chars[Math.floor(Math.random() * chars.length)];
-   return key;
- });
+ const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null);
+ const [apiKeyMeta, setApiKeyMeta] = useState<{ id: string; name: string; prefix: string; createdAt: string } | null>(null);
+ const [apiKeyLoading, setApiKeyLoading] = useState(false);
+ const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
+ const loadApiKeys = useCallback(async () => {
+   try {
+     const res = await api.auth.listApiKeys();
+     if (res.keys.length > 0) {
+       const k = res.keys[0];
+       setApiKeyMeta({ id: k.id, name: k.name, prefix: k.prefix, createdAt: k.createdAt });
+     }
+   } catch { /* no keys yet */ }
+ }, []);
+
+ useEffect(() => { loadApiKeys(); }, [loadApiKeys]);
+
+ const handleGenerateApiKey = async () => {
+   setApiKeyLoading(true);
+   setApiKeyError(null);
+   try {
+     const res = await api.auth.generateApiKey();
+     setGeneratedApiKey(res.key);
+     setApiKeyMeta({ id: res.id, name: res.name, prefix: res.prefix, createdAt: new Date().toISOString() });
+     setApiKeyVisible(true);
+   } catch (err) {
+     setApiKeyError(err instanceof Error ? err.message : 'Failed to generate API key');
+   }
+   setApiKeyLoading(false);
+ };
 
  const accentOptions: { key: AccentColor; label: string; lightColor: string; darkColor: string }[] = [
  { key: 'indigo', label: 'Indigo', lightColor: '#4f46e5', darkColor: '#818cf8' },
@@ -321,17 +345,37 @@ export function SettingsPage() {
  </h3>
  <div className="space-y-3">
    <p className="text-xs t-muted">Use this key to authenticate API requests programmatically.</p>
-   <div className="flex items-center gap-2">
-     <div className="flex-1 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] font-mono text-xs t-primary">
-       {apiKeyVisible ? generatedApiKey : '•'.repeat(20)}
+   {generatedApiKey ? (
+     <>
+       <div className="flex items-center gap-2">
+         <div className="flex-1 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] font-mono text-xs t-primary">
+           {apiKeyVisible ? generatedApiKey : '•'.repeat(20)}
+         </div>
+         <Button variant="secondary" size="sm" onClick={() => setApiKeyVisible(!apiKeyVisible)} title={apiKeyVisible ? 'Hide API key' : 'Reveal API key'}>
+           {apiKeyVisible ? 'Hide' : 'Show'}
+         </Button>
+         <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(generatedApiKey)} title="Copy API key to clipboard">
+           <Copy size={14} />
+         </Button>
+       </div>
+       <p className="text-[10px] text-amber-500">Save this key now. It will not be shown again after you leave this page.</p>
+     </>
+   ) : apiKeyMeta ? (
+     <div className="space-y-2">
+       <div className="flex items-center gap-2 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+         <span className="font-mono text-xs t-primary">{apiKeyMeta.prefix}••••••••</span>
+         <span className="text-[10px] t-muted ml-auto">Created {new Date(apiKeyMeta.createdAt).toLocaleDateString()}</span>
+       </div>
+       <Button variant="secondary" size="sm" onClick={handleGenerateApiKey} disabled={apiKeyLoading} title="Generate a new API key (revokes existing)">
+         {apiKeyLoading ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Regenerate Key
+       </Button>
      </div>
-     <Button variant="secondary" size="sm" onClick={() => setApiKeyVisible(!apiKeyVisible)} title={apiKeyVisible ? 'Hide API key' : 'Reveal API key'}>
-       {apiKeyVisible ? 'Hide' : 'Show'}
+   ) : (
+     <Button variant="primary" size="sm" onClick={handleGenerateApiKey} disabled={apiKeyLoading} title="Generate a new API key">
+       {apiKeyLoading ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Generate API Key
      </Button>
-     <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(generatedApiKey)} title="Copy API key to clipboard">
-       <Copy size={14} />
-     </Button>
-   </div>
+   )}
+   {apiKeyError && <div className="text-xs p-2 rounded bg-red-500/10 text-red-400">{apiKeyError}</div>}
    <p className="text-[10px] text-gray-400">Include as <code className="text-accent">X-API-Key</code> header in your requests.</p>
  </div>
  </Card>

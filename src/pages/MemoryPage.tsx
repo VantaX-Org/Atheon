@@ -96,15 +96,19 @@ function ForceGraph({ entities, relationships }: { entities: GraphEntity[]; rela
         n.x = Math.max(20, Math.min(w - 20, n.x + n.vx));
         n.y = Math.max(20, Math.min(h - 20, n.y + n.vy));
       });
+      // Convergence check: stop animation when kinetic energy is low
+      const totalEnergy = next.reduce((sum, n) => sum + n.vx * n.vx + n.vy * n.vy, 0);
+      if (totalEnergy > 0.01) {
+        animRef.current = requestAnimationFrame(simulate);
+      }
       return next;
     });
-    animRef.current = requestAnimationFrame(simulate);
   }, [edges]);
 
   useEffect(() => {
     if (nodes.length > 0) { animRef.current = requestAnimationFrame(simulate); }
     return () => cancelAnimationFrame(animRef.current);
-  }, [nodes.length > 0, simulate]);
+  }, [simulate]);
 
   const typeColors: Record<string, string> = {
     Organisation: '#4f46e5', Department: '#6366f1', Person: '#8b5cf6',

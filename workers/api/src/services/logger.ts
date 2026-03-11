@@ -25,11 +25,15 @@ export class Logger {
   private requestId?: string;
   private tenantId?: string;
   private userId?: string;
+  private layer?: string;
+  private action?: string;
 
-  constructor(opts?: { requestId?: string; tenantId?: string; userId?: string }) {
+  constructor(opts?: { requestId?: string; tenantId?: string; userId?: string; layer?: string; action?: string }) {
     this.requestId = opts?.requestId;
     this.tenantId = opts?.tenantId;
     this.userId = opts?.userId;
+    this.layer = opts?.layer;
+    this.action = opts?.action;
   }
 
   private emit(level: LogLevel, message: string, metadata?: Record<string, unknown>) {
@@ -40,6 +44,8 @@ export class Logger {
       requestId: this.requestId,
       tenantId: this.tenantId,
       userId: this.userId,
+      layer: this.layer,
+      action: this.action,
       ...metadata,
     };
     // Remove undefined fields for cleaner output
@@ -60,8 +66,13 @@ export class Logger {
 
   /** Create a child logger with additional context */
   child(opts: { layer?: string; action?: string }): Logger {
-    const child = new Logger({ requestId: this.requestId, tenantId: this.tenantId, userId: this.userId });
-    return child;
+    return new Logger({
+      requestId: this.requestId,
+      tenantId: this.tenantId,
+      userId: this.userId,
+      layer: opts.layer || this.layer,
+      action: opts.action || this.action,
+    });
   }
 }
 

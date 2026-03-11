@@ -197,6 +197,13 @@ export const api = {
       request<{ secret: string; otpauthUri: string }>('/api/auth/mfa/setup', { method: 'POST' }),
     mfaVerify: (code: string) =>
       request<{ success: boolean }>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+    // API key management
+    listApiKeys: () =>
+      request<{ keys: { id: string; name: string; prefix: string; createdAt: string; lastUsed: string | null }[] }>('/api/auth/api-keys'),
+    generateApiKey: (name?: string) =>
+      request<{ id: string; name: string; key: string; prefix: string; message: string }>('/api/auth/api-keys', { method: 'POST', body: JSON.stringify({ name }) }),
+    revokeApiKey: (id: string) =>
+      request<{ success: boolean }>(`/api/auth/api-keys/${id}`, { method: 'DELETE' }),
   },
 
   tenants: {

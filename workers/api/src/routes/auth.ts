@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppBindings } from '../types';
 import { generateToken, verifyToken, hashPassword, verifyPassword } from '../middleware/auth';
 import { getValidatedJsonBody } from '../middleware/validation';
+import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 
 const auth = new Hono<AppBindings>();
 
@@ -1114,9 +1115,10 @@ auth.post('/mfa/verify', async (c) => {
   }
 
   // Enable MFA and store encrypted secret
+  const encryptedMfaSecret = await encrypt(pendingSecret, c.env.ENCRYPTION_KEY);
   await c.env.DB.prepare(
     'UPDATE users SET mfa_enabled = 1, mfa_secret = ? WHERE id = ?'
-  ).bind(pendingSecret, payload.sub).run();
+  ).bind(encryptedMfaSecret, payload.sub).run();
 
   // Clean up
   await c.env.CACHE.delete(`mfa_setup:${payload.sub}`);
@@ -1156,8 +1158,14 @@ auth.post('/mfa/validate', async (c) => {
     return c.json({ error: 'MFA not configured' }, 400);
   }
 
-  // Verify TOTP code
-  const valid = await verifyTOTP(user.mfa_secret as string, body.code);
+  // Verify TOTP code — decrypt secret if encrypted
+  const rawMfaSecret = isEncrypted(user.mfa_secret as string)
+    ? await decrypt(user.mfa_secret as string, c.env.ENCRYPTION_KEY)
+    : user.mfa_secret as string;
+  if (!rawMfaSecret) {
+    return c.json({ error: 'MFA configuration error' }, 500);
+  }
+  const valid = await verifyTOTP(rawMfaSecret, body.code);
   if (!valid) {
     return c.json({ error: 'Invalid TOTP code' }, 401);
   }
@@ -1233,7 +1241,14 @@ auth.post('/mfa/disable', async (c) => {
     return c.json({ error: 'MFA is not enabled' }, 400);
   }
 
-  const valid = await verifyTOTP(user.mfa_secret as string, body.code);
+  // Decrypt MFA secret before verifying
+  const rawDisableSecret = isEncrypted(user.mfa_secret as string)
+    ? await decrypt(user.mfa_secret as string, c.env.ENCRYPTION_KEY)
+    : user.mfa_secret as string;
+  if (!rawDisableSecret) {
+    return c.json({ error: 'MFA configuration error' }, 500);
+  }
+  const valid = await verifyTOTP(rawDisableSecret, body.code);
   if (!valid) {
     return c.json({ error: 'Invalid TOTP code' }, 401);
   }
@@ -1246,6 +1261,69 @@ auth.post('/mfa/disable', async (c) => {
   ).bind(crypto.randomUUID(), payload.tenant_id, payload.sub, 'mfa_disabled', 'auth', 'user', '{}', 'success').run();
 
   return c.json({ success: true, message: 'MFA has been disabled.' });
+});
+
+// Phase 6 Fix: Server-side API key generation
+// POST /api/auth/api-keys — Generate a new API key (returns plaintext once, stores SHA-256 hash)
+auth.post('/api-keys', async (c) => {
+  const payload = await verifyToken(c.req.header('Authorization')?.replace('Bearer ', '') || '', c.env.JWT_SECRET);
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401);
+
+  const { data: body, errors } = await getValidatedJsonBody<{ name?: string }>(c, [
+    { field: 'name', type: 'string', required: false, maxLength: 100 },
+  ]);
+  if (errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
+
+  // Generate key with athn_ prefix
+  const rawBytes = new Uint8Array(24);
+  crypto.getRandomValues(rawBytes);
+  const keyChars = Array.from(rawBytes).map(b => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[b % 62]).join('');
+  const plaintextKey = `athn_${keyChars}`;
+
+  // SHA-256 hash for storage
+  const encoder = new TextEncoder();
+  const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(plaintextKey));
+  const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const keyId = crypto.randomUUID();
+  const keyName = body?.name || 'Default API Key';
+
+  await c.env.DB.prepare(
+    'INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash, key_prefix, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, datetime(\'now\'))'
+  ).bind(keyId, payload.tenant_id, payload.sub, keyName, hashHex, plaintextKey.slice(0, 10)).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), payload.tenant_id, payload.sub, 'api_key_created', 'auth', 'api_key', JSON.stringify({ keyId, name: keyName }), 'success').run();
+
+  return c.json({ id: keyId, name: keyName, key: plaintextKey, prefix: plaintextKey.slice(0, 10), message: 'Store this key securely. It will not be shown again.' }, 201);
+});
+
+// GET /api/auth/api-keys — List existing API key metadata (no plaintext)
+auth.get('/api-keys', async (c) => {
+  const payload = await verifyToken(c.req.header('Authorization')?.replace('Bearer ', '') || '', c.env.JWT_SECRET);
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401);
+
+  const results = await c.env.DB.prepare(
+    'SELECT id, name, key_prefix, created_at, last_used_at FROM api_keys WHERE user_id = ? AND tenant_id = ? ORDER BY created_at DESC'
+  ).bind(payload.sub, payload.tenant_id).all();
+
+  return c.json({
+    keys: results.results.map((k: Record<string, unknown>) => ({
+      id: k.id, name: k.name, prefix: k.key_prefix, createdAt: k.created_at, lastUsed: k.last_used_at,
+    })),
+  });
+});
+
+// DELETE /api/auth/api-keys/:id — Revoke an API key
+auth.delete('/api-keys/:id', async (c) => {
+  const payload = await verifyToken(c.req.header('Authorization')?.replace('Bearer ', '') || '', c.env.JWT_SECRET);
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401);
+
+  const keyId = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM api_keys WHERE id = ? AND user_id = ? AND tenant_id = ?').bind(keyId, payload.sub, payload.tenant_id).run();
+  return c.json({ success: true });
 });
 
 export default auth;
