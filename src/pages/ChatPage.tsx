@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LayerBadge } from "@/components/ui/layer-badge";
 import { api } from "@/lib/api";
 import type { MindQueryResult } from "@/lib/api";
-import { MessageSquare, Send, Plus, User, Sparkles, Loader2, Trash2 } from "lucide-react";
+import { MessageSquare, Send, Plus, User, Sparkles, Loader2, Trash2, ChevronDown } from "lucide-react";
 import { IconAttachment } from "@/components/icons/AtheonIcons";
 import type { AtheonLayer } from "@/types";
 
@@ -15,6 +15,29 @@ interface ChatMessage {
  content: string;
  layer?: AtheonLayer;
  citations?: { id: string; source: string; confidence: number }[];
+ tier?: string;
+}
+
+/** Phase 4.1: Render markdown-like formatting for assistant responses */
+function renderMarkdown(text: string) {
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('### ')) return <h4 key={i} className="font-semibold t-primary mt-3 mb-1 text-sm">{line.slice(4)}</h4>;
+    if (line.startsWith('## ')) return <h3 key={i} className="font-bold t-primary mt-3 mb-1">{line.slice(3)}</h3>;
+    if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold t-primary mt-2 mb-1">{line.replace(/\*\*/g, '')}</p>;
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      return <p key={i} className="ml-3 t-secondary flex items-start gap-1"><span className="text-accent mt-0.5 flex-shrink-0">•</span><span>{line.slice(2)}</span></p>;
+    }
+    if (/^\d+\.\s/.test(line)) {
+      const num = line.match(/^(\d+)\./)?.[1] || '';
+      return <p key={i} className="ml-3 t-secondary flex items-start gap-2"><span className="text-accent font-mono text-xs mt-0.5 flex-shrink-0">{num}.</span><span>{line.replace(/^\d+\.\s/, '')}</span></p>;
+    }
+    if (line.includes('`')) {
+      const parts = line.split(/(`[^`]+`)/);
+      return <p key={i}>{parts.map((part, pi) => part.startsWith('`') && part.endsWith('`') ? <code key={pi} className="px-1 py-0.5 rounded bg-[var(--bg-secondary)] font-mono text-xs text-accent">{part.slice(1, -1)}</code> : part)}</p>;
+    }
+    if (line === '') return <p key={i} className="h-2" />;
+    return <p key={i}>{line}</p>;
+  });
 }
 
 interface ChatThread {
@@ -30,9 +53,21 @@ export function ChatPage() {
  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
  const [sending, setSending] = useState(false);
  const [loadingHistory, setLoadingHistory] = useState(true);
+ const [selectedTier, setSelectedTier] = useState<string>('tier-1');
+ const [showTierMenu, setShowTierMenu] = useState(false);
+ const messagesEndRef = useRef<HTMLDivElement>(null);
 
- const activeThread = threads.find((t) => t.id === activeThreadId);
+ const tierOptions = [
+   { id: 'tier-1', label: 'Fast (Tier 1)', desc: 'Low latency, basic queries' },
+   { id: 'tier-2', label: 'Standard (Tier 2)', desc: 'Balanced speed & depth' },
+   { id: 'tier-3', label: 'Deep (Tier 3)', desc: 'Complex analysis, highest quality' },
+ ];
+
+ const activeThread= threads.find((t) => t.id === activeThreadId);
  const messages = activeThread?.messages ?? [];
+
+ // Phase 4.1: Auto-scroll to bottom on new messages
+ useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
 
  const createNewThread = useCallback(() => {
    const id = `thread-${Date.now()}`;
@@ -114,17 +149,18 @@ export function ChatPage() {
 
  const handleSend = async () => {
  if (!input.trim() || sending || !activeThreadId) return;
- const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: input };
- addMessageToThread(activeThreadId, userMsg);
- setInput('');
- setSending(true);
- try {
- const result: MindQueryResult = await api.mind.query(userMsg.content, 'tier-1');
- const assistantMsg: ChatMessage = {
- id: result.id,
- role: 'assistant',
- content: result.response,
- citations: result.citations.map((c, i) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))};
+ const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: input, tier: selectedTier };
+  addMessageToThread(activeThreadId, userMsg);
+  setInput('');
+  setSending(true);
+  try {
+  const result: MindQueryResult = await api.mind.query(userMsg.content, selectedTier);
+  const assistantMsg: ChatMessage = {
+  id: result.id,
+  role: 'assistant',
+  content: result.response,
+  tier: selectedTier,
+  citations: result.citations.map((c, i) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))};
  addMessageToThread(activeThreadId, assistantMsg);
  } catch {
  addMessageToThread(activeThreadId, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' });
@@ -148,7 +184,24 @@ export function ChatPage() {
  {/* Sidebar - Thread List (Bug #8: multi-thread support) */}
  <div className="space-y-3">
  <Button variant="primary" size="sm" className="w-full" onClick={createNewThread} title="Start a new conversation thread"><Plus size={14} /> New Thread</Button>
- {threads.map((thread) => (
+  {/* Phase 4.1: Model tier selector */}
+  <div className="relative">
+    <button onClick={() => setShowTierMenu(!showTierMenu)} className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-secondary hover:border-accent/30 transition-all" title="Select AI model tier">
+      <span className="text-xs">{tierOptions.find(t => t.id === selectedTier)?.label}</span>
+      <ChevronDown size={14} className={`transition-transform ${showTierMenu ? 'rotate-180' : ''}`} />
+    </button>
+    {showTierMenu && (
+      <div className="absolute z-10 w-full mt-1 rounded-lg border border-[var(--border-card)] bg-[var(--bg-card-solid)] shadow-lg overflow-hidden">
+        {tierOptions.map(tier => (
+          <button key={tier.id} onClick={() => { setSelectedTier(tier.id); setShowTierMenu(false); }} className={`w-full text-left px-3 py-2 text-xs hover:bg-accent/10 transition-colors ${selectedTier === tier.id ? 'bg-accent/5 text-accent' : 't-secondary'}`}>
+            <div className="font-medium">{tier.label}</div>
+            <div className="text-[10px] text-gray-400">{tier.desc}</div>
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+  {threads.map((thread) => (
  <Card
    key={thread.id}
    hover
@@ -178,13 +231,17 @@ export function ChatPage() {
  <div className="lg:col-span-3">
  <Card className="flex flex-col" style={{ minHeight: '600px' }}>
  {/* Messages */}
- <div className="flex-1 space-y-4 mb-4 overflow-y-auto">
+ <div className="flex-1 space-y-4 mb-4 overflow-y-auto" style={{ maxHeight: '500px' }}>
  {loadingHistory && (
  <div className="flex items-center justify-center h-40 text-gray-400 text-sm"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading conversation history...</div>
  )}
  {!loadingHistory && messages.length === 0 && (
- <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Ask Atheon anything to get started</div>
- )}
+  <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+    <Sparkles className="w-8 h-8 text-accent/30 mb-3" />
+    <p className="text-sm">Ask Atheon anything to get started</p>
+    <p className="text-xs text-gray-500 mt-1">Select a suggested query below or type your own</p>
+  </div>
+  )}
  {messages.map((msg) => (
  <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
  {msg.role === 'assistant' && (
@@ -198,16 +255,8 @@ export function ChatPage() {
  : 'bg-[var(--bg-secondary)] border border-[var(--border-card)]'
  }`}>
  <div className="text-sm t-primary whitespace-pre-wrap leading-relaxed">
- {msg.content.split('\n').map((line, i) => {
- if (line.startsWith('**') && line.endsWith('**')) {
- return <p key={i} className="font-semibold t-primary mt-2 mb-1">{line.replace(/\*\*/g, '')}</p>;
- }
- if (line.startsWith('- ')) {
- return <p key={i} className="ml-3 t-secondary">{line}</p>;
- }
- return <p key={i} className={line === '' ? 'h-2' : ''}>{line}</p>;
- })}
- </div>
+  {msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content}
+  </div>
 
  {/* Citations */}
  {msg.citations && msg.citations.length > 0 && (
@@ -223,7 +272,8 @@ export function ChatPage() {
  )}
 
  {msg.layer && <LayerBadge layer={msg.layer} className="mt-2" />}
- </div>
+  {msg.tier && <span className="text-[10px] text-gray-500 mt-1 block">Model: {tierOptions.find(t => t.id === msg.tier)?.label || msg.tier}</span>}
+  </div>
  {msg.role === 'user' && (
  <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
  <User className="w-4 h-4 text-gray-400" />
@@ -237,11 +287,19 @@ export function ChatPage() {
  <Loader2 className="w-4 h-4 text-white animate-spin" />
  </div>
  <div className="rounded-xl p-4 bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <span className="text-sm t-muted">Thinking...</span>
- </div>
- </div>
- )}
- </div>
+ <div className="flex items-center gap-2">
+    <span className="text-sm t-muted">Thinking</span>
+    <span className="flex gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '0ms' }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '150ms' }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
+    </span>
+  </div>
+  </div>
+  </div>
+  )}
+  <div ref={messagesEndRef} />
+  </div>
 
  {/* Suggested Queries */}
  <div className="mb-3">

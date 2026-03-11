@@ -7,7 +7,7 @@ import { useAppStore } from "@/stores/appStore";
 import type { AccentColor } from "@/stores/appStore";
 import { api } from "@/lib/api";
 import {
- Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon
+ Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy
 } from "lucide-react";
 
 interface NotificationPref {
@@ -74,6 +74,48 @@ export function SettingsPage() {
  }
  setChangingPw(false);
  };
+
+ // Phase 4.4: MFA/TOTP setup state
+ const [mfaSetupLoading, setMfaSetupLoading] = useState(false);
+ const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+ const [mfaQrUri, setMfaQrUri] = useState<string | null>(null);
+ const [mfaCode, setMfaCode] = useState('');
+ const [mfaMsg, setMfaMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+ const [mfaEnabled, setMfaEnabled] = useState(false);
+
+ const handleMfaSetup = async () => {
+   setMfaSetupLoading(true);
+   setMfaMsg(null);
+   try {
+     const res = await api.auth.mfaSetup();
+     setMfaSecret(res.secret);
+     setMfaQrUri(res.otpauthUri);
+   } catch (err) {
+     setMfaMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to setup MFA' });
+   }
+   setMfaSetupLoading(false);
+ };
+
+ const handleMfaVerify = async () => {
+   if (mfaCode.length !== 6) { setMfaMsg({ type: 'error', text: 'Enter a 6-digit code' }); return; }
+   try {
+     await api.auth.mfaVerify(mfaCode);
+     setMfaEnabled(true);
+     setMfaMsg({ type: 'success', text: 'MFA enabled successfully!' });
+     setMfaSecret(null); setMfaQrUri(null); setMfaCode('');
+   } catch (err) {
+     setMfaMsg({ type: 'error', text: err instanceof Error ? err.message : 'Invalid code' });
+   }
+ };
+
+ // Phase 4.4: API key display state
+ const [apiKeyVisible, setApiKeyVisible] = useState(false);
+ const [generatedApiKey] = useState(() => {
+   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+   let key = 'athn_';
+   for (let i = 0; i < 32; i++) key += chars[Math.floor(Math.random() * chars.length)];
+   return key;
+ });
 
  const accentOptions: { key: AccentColor; label: string; lightColor: string; darkColor: string }[] = [
  { key: 'indigo', label: 'Indigo', lightColor: '#4f46e5', darkColor: '#818cf8' },
@@ -234,6 +276,63 @@ export function SettingsPage() {
  Selected: {accentOptions.find(c => c.key === accentColor)?.label || 'Indigo'}
  </p>
  </div>
+ </div>
+ </Card>
+
+ {/* Phase 4.4: MFA / Two-Factor Authentication */}
+ <Card>
+ <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
+ <Shield className="w-4 h-4 text-accent" /> Two-Factor Authentication
+ </h3>
+ {mfaEnabled ? (
+   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+     <Shield className="w-5 h-5 text-emerald-500" />
+     <div>
+       <p className="text-sm font-medium text-emerald-500">MFA Enabled</p>
+       <p className="text-xs t-muted">Your account is protected with TOTP two-factor authentication</p>
+     </div>
+   </div>
+ ) : mfaSecret ? (
+   <div className="space-y-3">
+     <p className="text-xs t-muted">Scan this secret in your authenticator app (Google Authenticator, Authy, etc.):</p>
+     <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] font-mono text-xs break-all t-primary">
+       {mfaSecret}
+     </div>
+     {mfaQrUri && <p className="text-[10px] text-gray-400 break-all">otpauth URI: {mfaQrUri}</p>}
+     <Input label="Enter 6-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" />
+     {mfaMsg && <div className={`text-xs p-2 rounded ${mfaMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-400'}`}>{mfaMsg.text}</div>}
+     <Button variant="primary" size="sm" onClick={handleMfaVerify} title="Verify and enable MFA">Verify & Enable</Button>
+   </div>
+ ) : (
+   <div className="space-y-3">
+     <p className="text-xs t-muted">Add an extra layer of security to your account with TOTP-based two-factor authentication.</p>
+     {mfaMsg && <div className={`text-xs p-2 rounded ${mfaMsg.type === 'error' ? 'bg-red-500/10 text-red-400' : ''}`}>{mfaMsg.text}</div>}
+     <Button variant="primary" size="sm" onClick={handleMfaSetup} disabled={mfaSetupLoading} title="Setup two-factor authentication">
+       {mfaSetupLoading ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} Setup MFA
+     </Button>
+   </div>
+ )}
+ </Card>
+
+ {/* Phase 4.4: API Key */}
+ <Card>
+ <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
+ <Key className="w-4 h-4 text-accent" /> API Key
+ </h3>
+ <div className="space-y-3">
+   <p className="text-xs t-muted">Use this key to authenticate API requests programmatically.</p>
+   <div className="flex items-center gap-2">
+     <div className="flex-1 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] font-mono text-xs t-primary">
+       {apiKeyVisible ? generatedApiKey : '•'.repeat(20)}
+     </div>
+     <Button variant="secondary" size="sm" onClick={() => setApiKeyVisible(!apiKeyVisible)} title={apiKeyVisible ? 'Hide API key' : 'Reveal API key'}>
+       {apiKeyVisible ? 'Hide' : 'Show'}
+     </Button>
+     <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(generatedApiKey)} title="Copy API key to clipboard">
+       <Copy size={14} />
+     </Button>
+   </div>
+   <p className="text-[10px] text-gray-400">Include as <code className="text-accent">X-API-Key</code> header in your requests.</p>
  </div>
  </Card>
 

@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { IAMPolicy, SSOConfig, IAMRole } from "@/lib/api";
+import type { IAMPolicy, SSOConfig, IAMRole, IAMUser } from "@/lib/api";
 import {
  Shield, Key, Users, UserCheck, Lock, Unlock, Plus,
- ShieldCheck, Globe, Loader2, X
+ ShieldCheck, Globe, Loader2, X, Pencil, Trash2, Save
 } from "lucide-react";
 
 export function IAMPage() {
@@ -17,8 +17,13 @@ export function IAMPage() {
  const [policies, setPolicies] = useState<IAMPolicy[]>([]);
  const [ssoConfigs, setSsoConfigs] = useState<SSOConfig[]>([]);
  const [roles, setRoles] = useState<IAMRole[]>([]);
+ const [users, setUsers] = useState<IAMUser[]>([]);
  const [loading, setLoading] = useState(true);
  const [showNewPolicy, setShowNewPolicy] = useState(false);
+ // Phase 4.5: User edit state
+ const [editingUserId, setEditingUserId] = useState<string | null>(null);
+ const [editRole, setEditRole] = useState('');
+ const [savingUser, setSavingUser] = useState(false);
  const [creatingPolicy, setCreatingPolicy] = useState(false);
  const [policyForm, setPolicyForm] = useState({ name: '', description: '', type: 'rbac' });
 
@@ -47,12 +52,13 @@ export function IAMPage() {
  useEffect(() => {
  async function load() {
  setLoading(true);
- const [p, s, r] = await Promise.allSettled([
- api.iam.policies(tenantId), api.iam.sso(tenantId), api.iam.roles(tenantId),
+ const [p, s, r, u] = await Promise.allSettled([
+ api.iam.policies(tenantId), api.iam.sso(tenantId), api.iam.roles(tenantId), api.iam.users(tenantId),
  ]);
  if (p.status === 'fulfilled') setPolicies(p.value.policies);
  if (s.status === 'fulfilled') setSsoConfigs(s.value.configs);
  if (r.status === 'fulfilled') setRoles(r.value.roles);
+ if (u.status === 'fulfilled') setUsers(u.value.users);
  setLoading(false);
  }
  load();
@@ -60,6 +66,7 @@ export function IAMPage() {
 
  const tabs = [
  { id: 'policies', label: 'Policies', icon: <Shield size={14} />, count: policies.length },
+ { id: 'users', label: 'Users', icon: <Users size={14} />, count: users.length },
  { id: 'sso', label: 'SSO / Identity', icon: <Key size={14} /> },
  { id: 'roles', label: 'Roles & Permissions', icon: <Users size={14} /> },
  ];
@@ -169,6 +176,72 @@ export function IAMPage() {
  </div>
  );
  })}
+ </div>
+ </Card>
+ ))}
+ </div>
+ </TabPanel>
+ )}
+
+ {/* Phase 4.5: Users Tab */}
+ {activeTab === 'users' && (
+ <TabPanel>
+ <div className="space-y-3">
+ {users.length === 0 && (
+   <div className="text-center py-12 text-gray-400">
+     <Users className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+     <p className="text-sm">No users found for this tenant</p>
+   </div>
+ )}
+ {users.map((user) => (
+ <Card key={user.id}>
+ <div className="flex items-center justify-between">
+   <div className="flex items-center gap-3">
+     <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
+       <UserCheck className="w-4 h-4 text-accent" />
+     </div>
+     <div>
+       <p className="text-sm font-medium t-primary">{user.name}</p>
+       <p className="text-xs t-muted">{user.email}</p>
+     </div>
+   </div>
+   <div className="flex items-center gap-2">
+     {editingUserId === user.id ? (
+       <>
+         <select
+           value={editRole}
+           onChange={(e) => setEditRole(e.target.value)}
+           className="px-2 py-1 rounded-lg border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+         >
+           {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+         </select>
+         <Button variant="primary" size="sm" disabled={savingUser} onClick={async () => {
+           setSavingUser(true);
+           try {
+             await api.iam.updateUser(user.id, { role: editRole });
+             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: editRole } : u));
+           } catch { /* ignore */ }
+           setEditingUserId(null);
+           setSavingUser(false);
+         }} title="Save role change">
+           {savingUser ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+         </Button>
+         <Button variant="secondary" size="sm" onClick={() => setEditingUserId(null)} title="Cancel editing"><X size={12} /></Button>
+       </>
+     ) : (
+       <>
+         <Badge variant={user.role?.includes('admin') ? 'danger' : user.role?.includes('exec') ? 'warning' : 'info'} size="sm">{user.role || 'viewer'}</Badge>
+         <Button variant="secondary" size="sm" onClick={() => { setEditingUserId(user.id); setEditRole(user.role || 'viewer'); }} title="Edit user role"><Pencil size={12} /></Button>
+         <Button variant="secondary" size="sm" onClick={async () => {
+           if (!confirm(`Delete user ${user.name}?`)) return;
+           try {
+             await api.iam.deleteUser(user.id);
+             setUsers(prev => prev.filter(u => u.id !== user.id));
+           } catch { /* ignore */ }
+         }} title="Delete user"><Trash2 size={12} className="text-red-400" /></Button>
+       </>
+     )}
+   </div>
  </div>
  </Card>
  ))}

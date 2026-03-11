@@ -19,6 +19,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MarketingPage } from "@/pages/MarketingPage";
 import { DeploymentsPage } from "@/pages/DeploymentsPage";
 import { AssessmentsPage } from "@/pages/AssessmentsPage";
+import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
+        <Route path="/erp/oauth/callback" element={<ERPOAuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />

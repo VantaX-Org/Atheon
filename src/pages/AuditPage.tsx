@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { LayerBadge } from "@/components/ui/layer-badge";
 import { api } from "@/lib/api";
 import type { AuditEntry } from "@/lib/api";
-import { Shield, CheckCircle, XCircle, Clock, Filter, Loader2, Download } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Clock, Filter, Loader2, Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function AuditPage() {
@@ -12,6 +12,9 @@ export function AuditPage() {
  const [showFilters, setShowFilters] = useState(false);
  const [filterLayer, setFilterLayer] = useState<string>('');
  const [filterOutcome, setFilterOutcome] = useState<string>('');
+ // Phase 4.6: Date range filter
+ const [dateFrom, setDateFrom] = useState<string>('');
+ const [dateTo, setDateTo] = useState<string>('');
 
  useEffect(() => {
  async function load() {
@@ -64,6 +67,41 @@ export function AuditPage() {
  >
  <Download size={14} /> Export CSV
  </Button>
+ {/* Phase 4.6: PDF Export */}
+ <Button
+ variant="secondary"
+ size="sm"
+ onClick={() => {
+ const filtered = entries.filter(e => {
+ const matchLayer = !filterLayer || e.layer === filterLayer;
+ const matchOutcome = !filterOutcome || e.outcome === filterOutcome;
+ const entryDate = new Date(e.createdAt);
+ const matchFrom = !dateFrom || entryDate >= new Date(dateFrom);
+ const matchTo = !dateTo || entryDate <= new Date(dateTo + 'T23:59:59');
+ return matchLayer && matchOutcome && matchFrom && matchTo;
+ });
+ // Generate a simple text-based PDF-like report
+ const lines = [
+ 'ATHEON AUDIT LOG REPORT',
+ `Generated: ${new Date().toISOString()}`,
+ `Filters: ${[filterLayer && `Layer=${filterLayer}`, filterOutcome && `Outcome=${filterOutcome}`, dateFrom && `From=${dateFrom}`, dateTo && `To=${dateTo}`].filter(Boolean).join(', ') || 'None'}`,
+ `Total entries: ${filtered.length}`,
+ '',
+ 'TIMESTAMP | ACTION | LAYER | OUTCOME | DETAILS',
+ '-'.repeat(100),
+ ...filtered.map(e => `${new Date(e.createdAt).toISOString()} | ${e.action} | ${e.layer} | ${e.outcome} | ${e.details ? Object.entries(e.details).map(([k,v]) => `${k}: ${v}`).join('; ') : '-'}`),
+ ];
+ const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = `atheon-audit-${new Date().toISOString().slice(0,10)}.txt`;
+ a.click();
+ URL.revokeObjectURL(url);
+ }}
+ >
+ <FileText size={14} /> Export Report
+ </Button>
  <button
  onClick={() => setShowFilters(!showFilters)}
  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${showFilters ? 'bg-accent/10 border-accent/20 text-accent' : 'bg-[var(--bg-secondary)] border-[var(--border-card)] text-gray-400 hover:bg-[var(--bg-secondary)]'}`}
@@ -100,8 +138,17 @@ export function AuditPage() {
  <option value="failure">Failed</option>
  </select>
  </div>
- {(filterLayer || filterOutcome) && (
- <button onClick={() => { setFilterLayer(''); setFilterOutcome(''); }} className="self-end text-xs text-accent hover:text-[#3a9cac] pb-1.5" title="Reset all filters">Clear filters</button>
+ {/* Phase 4.6: Date range filter */}
+ <div>
+ <label className="text-xs t-muted block mb-1">From Date</label>
+ <input type="date" className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+ </div>
+ <div>
+ <label className="text-xs t-muted block mb-1">To Date</label>
+ <input type="date" className="px-3 py-1.5 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+ </div>
+ {(filterLayer || filterOutcome || dateFrom || dateTo) && (
+ <button onClick={() => { setFilterLayer(''); setFilterOutcome(''); setDateFrom(''); setDateTo(''); }} className="self-end text-xs text-accent hover:text-[#3a9cac] pb-1.5" title="Reset all filters">Clear filters</button>
  )}
  </div>
  )}
@@ -140,7 +187,14 @@ export function AuditPage() {
  </tr>
  </thead>
  <tbody>
- {entries.filter(e => (!filterLayer || e.layer === filterLayer) && (!filterOutcome || e.outcome === filterOutcome)).map((entry) => (
+ {entries.filter(e => {
+ const matchLayer = !filterLayer || e.layer === filterLayer;
+ const matchOutcome = !filterOutcome || e.outcome === filterOutcome;
+ const entryDate = new Date(e.createdAt);
+ const matchFrom = !dateFrom || entryDate >= new Date(dateFrom);
+ const matchTo = !dateTo || entryDate <= new Date(dateTo + 'T23:59:59');
+ return matchLayer && matchOutcome && matchFrom && matchTo;
+ }).map((entry) => (
  <tr key={entry.id} className="border-b border-[var(--border-card)] hover:bg-[var(--bg-secondary)] transition-colors">
  <td className="py-3 px-4 text-xs text-gray-500 font-mono whitespace-nowrap">
  {new Date(entry.createdAt).toLocaleString()}
