@@ -220,6 +220,9 @@ auth.post('/login', async (c) => {
   // Phase 1.4: Check MFA/TOTP if enabled
   const mfaEnabled = user.mfa_enabled as number | undefined;
   if (mfaEnabled === 1) {
+    // Password was correct — clear lockout counter so failed attempts don't accumulate across MFA flow
+    await clearLoginAttempts(c.env.CACHE, body.email);
+
     // Generate a short-lived MFA challenge token
     const mfaChallengeToken = crypto.randomUUID();
     await c.env.CACHE.put(`mfa_challenge:${mfaChallengeToken}`, JSON.stringify({

@@ -106,7 +106,10 @@ function ForceGraph({ entities, relationships }: { entities: GraphEntity[]; rela
   }, [edges]);
 
   useEffect(() => {
-    if (nodes.length > 0) { animRef.current = requestAnimationFrame(simulate); }
+    if (nodes.length > 0) {
+      cancelAnimationFrame(animRef.current);
+      animRef.current = requestAnimationFrame(simulate);
+    }
     return () => cancelAnimationFrame(animRef.current);
   }, [simulate]);
 
