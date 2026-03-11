@@ -61,8 +61,14 @@ export function AuditPage() {
  const matchTo = !dateTo || entryDate <= new Date(dateTo + 'T23:59:59');
  return matchLayer && matchOutcome && matchFrom && matchTo;
  });
+ // Sanitize CSV values to prevent formula injection (=, +, -, @, tab, CR)
+ const csvSafe = (val: string) => {
+ const s = val.replace(/"/g, '""');
+ if (/^[=+\-@\t\r]/.test(s)) return `"'${s}"`;
+ return `"${s}"`;
+ };
  const csv = ['Timestamp,Action,Layer,Outcome,Details']
- .concat(filtered.map(e => `"${new Date(e.createdAt).toISOString()}","${e.action}","${e.layer}","${e.outcome}","${e.details ? Object.entries(e.details).map(([k,v]) => `${k}: ${v}`).join('; ') : ''}"`));
+ .concat(filtered.map(e => [csvSafe(new Date(e.createdAt).toISOString()), csvSafe(e.action), csvSafe(e.layer), csvSafe(e.outcome), csvSafe(e.details ? Object.entries(e.details).map(([k,v]) => `${k}: ${v}`).join('; ') : '')].join(',')));
  const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
  const url = URL.createObjectURL(blob);
  const a = document.createElement('a');
