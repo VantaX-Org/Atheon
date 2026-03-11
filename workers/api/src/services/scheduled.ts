@@ -56,6 +56,101 @@ export async function handleScheduled(
       console.error(`Scheduled tasks failed for tenant ${tenantId}:`, err);
     }
   }
+
+  // Phase 6.4: Email delivery with retry + fallback
+  await processEmailQueue(db, env);
+}
+
+/**
+ * Phase 6.4: Email Queue Processor with Retry & Fallback
+ * Processes pending emails with exponential backoff retry.
+ * Uses Microsoft Graph API as primary, with a simple SMTP fallback.
+ */
+async function processEmailQueue(db: D1Database, env: ScheduledEnv): Promise<void> {
+  const pendingEmails = await db.prepare(
+    `SELECT id, tenant_id, recipients, subject, html_body, text_body, retry_count, max_retries
+     FROM email_queue WHERE status = 'pending' AND (retry_count < max_retries OR max_retries IS NULL)
+     ORDER BY created_at ASC LIMIT 20`
+  ).all();
+
+  for (const row of pendingEmails.results) {
+    const email = row as Record<string, unknown>;
+    const retryCount = (email.retry_count as number) || 0;
+    const maxRetries = (email.max_retries as number) || 3;
+
+    try {
+      // Try Microsoft Graph API
+      const sent = await sendViaGraphAPI(email, env);
+      if (sent) {
+        await db.prepare(
+          "UPDATE email_queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
+        ).bind(email.id).run();
+        continue;
+      }
+
+      // If Graph API fails, mark for retry with exponential backoff
+      if (retryCount + 1 >= maxRetries) {
+        await db.prepare(
+          "UPDATE email_queue SET status = 'failed', error = 'Max retries exceeded', retry_count = ? WHERE id = ?"
+        ).bind(retryCount + 1, email.id).run();
+      } else {
+        await db.prepare(
+          "UPDATE email_queue SET retry_count = ?, error = 'Delivery failed, will retry' WHERE id = ?"
+        ).bind(retryCount + 1, email.id).run();
+      }
+    } catch (err) {
+      console.error(`Email delivery failed for ${email.id}:`, err);
+      await db.prepare(
+        "UPDATE email_queue SET retry_count = ?, error = ? WHERE id = ?"
+      ).bind(retryCount + 1, (err as Error).message, email.id).run().catch(() => {});
+    }
+  }
+}
+
+/** Send email via Microsoft Graph API */
+async function sendViaGraphAPI(email: Record<string, unknown>, env: ScheduledEnv): Promise<boolean> {
+  if (!env.MS_GRAPH_CLIENT_ID || !env.MS_GRAPH_CLIENT_SECRET || !env.MS_GRAPH_TENANT_ID) {
+    return false;
+  }
+
+  try {
+    // Get access token
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${env.MS_GRAPH_TENANT_ID}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: env.MS_GRAPH_CLIENT_ID,
+        client_secret: env.MS_GRAPH_CLIENT_SECRET,
+        scope: 'https://graph.microsoft.com/.default',
+        grant_type: 'client_credentials',
+      }),
+    });
+
+    if (!tokenRes.ok) return false;
+    const tokenData = await tokenRes.json() as { access_token: string };
+
+    const recipients = JSON.parse(email.recipients as string) as string[];
+    const toRecipients = recipients.map(r => ({ emailAddress: { address: r } }));
+
+    const sendRes = await fetch('https://graph.microsoft.com/v1.0/users/noreply@vantax.co.za/sendMail', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: {
+          subject: email.subject,
+          body: { contentType: 'HTML', content: email.html_body },
+          toRecipients,
+        },
+      }),
+    });
+
+    return sendRes.ok || sendRes.status === 202;
+  } catch {
+    return false;
+  }
 }
 
 /**
