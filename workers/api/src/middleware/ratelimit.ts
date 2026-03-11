@@ -87,3 +87,50 @@ export const contactRateLimiter = rateLimiter({
   maxRequests: 5,    // 5 per hour per IP
   keyPrefix: 'rl:contact',
 });
+
+/**
+ * Phase 6.2: Per-Tenant Rate Limiter
+ * Reads tenant entitlements to enforce custom rate limits per tenant.
+ * Falls back to default limits if entitlements are not configured.
+ */
+export function tenantRateLimiter(defaultMax: number = 120) {
+  return async (c: Context<{ Bindings: Env }>, next: Next) => {
+    const auth = c.get('auth' as never) as { tenantId?: string } | undefined;
+    const tenantId = auth?.tenantId || 'anonymous';
+
+    // Look up tenant-specific limit from KV cache
+    let maxRequests = defaultMax;
+    try {
+      const cached = await c.env.CACHE.get(`tenant_rl:${tenantId}`);
+      if (cached) {
+        maxRequests = parseInt(cached, 10) || defaultMax;
+      }
+    } catch {
+      // KV failure — use default
+    }
+
+    const windowMs = 60000;
+    const windowKey = Math.floor(Date.now() / windowMs);
+    const kvKey = `rl:tenant:${tenantId}:${windowKey}`;
+
+    try {
+      const current = await c.env.CACHE.get(kvKey);
+      const count = current ? parseInt(current) : 0;
+
+      if (count >= maxRequests) {
+        c.header('X-RateLimit-Limit', String(maxRequests));
+        c.header('X-RateLimit-Remaining', '0');
+        c.header('Retry-After', String(Math.ceil(windowMs / 1000)));
+        return c.json({ error: 'Tenant rate limit exceeded', retryAfter: Math.ceil(windowMs / 1000) }, 429);
+      }
+
+      await c.env.CACHE.put(kvKey, String(count + 1), { expirationTtl: Math.ceil(windowMs / 1000) + 10 });
+      c.header('X-RateLimit-Limit', String(maxRequests));
+      c.header('X-RateLimit-Remaining', String(maxRequests - count - 1));
+    } catch (err) {
+      console.error('Tenant rate limit error:', err);
+    }
+
+    await next();
+  };
+}

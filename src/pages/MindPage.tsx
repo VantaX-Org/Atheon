@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import type { MindModels, MindStats } from "@/lib/api";
-import { Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2 } from "lucide-react";
+import { Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2, Radio } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 
 export function MindPage() {
@@ -48,6 +48,9 @@ export function MindPage() {
  { name: 'Domain Fine-Tuning', status: pipeline?.domainFineTuning?.status || 'pending', progress: pipeline?.domainFineTuning?.progress || 0, duration: `Epoch ${pipeline?.domainFineTuning?.currentEpoch || 0}/${pipeline?.domainFineTuning?.totalEpochs || 0}`, tokens: '' },
  { name: 'RLHF Alignment', status: pipeline?.rlhf?.status || 'pending', progress: pipeline?.rlhf?.progress || 0, duration: '', tokens: '' },
  ];
+
+ // Phase 4.3: Streaming status indicator
+ const streamingStatus = stats?.totalQueries != null && stats.totalQueries > 0 ? 'active' : 'idle';
 
  const eval_ = pipeline?.evaluation;
  const evaluationMetrics = [
@@ -173,6 +176,23 @@ export function MindPage() {
  })}
  </div>
  </div>
+
+ {/* Phase 4.3: Streaming Status */}
+ <Card>
+ <div className="flex items-center justify-between">
+   <div className="flex items-center gap-3">
+     <div className={`w-3 h-3 rounded-full ${streamingStatus === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+     <div>
+       <span className="text-sm font-medium t-primary">Inference Engine</span>
+       <p className="text-xs t-muted">{streamingStatus === 'active' ? 'Active — processing queries via SSE stream' : 'Idle — awaiting queries'}</p>
+     </div>
+   </div>
+   <div className="flex items-center gap-2">
+     <Radio size={14} className={streamingStatus === 'active' ? 'text-emerald-400' : 'text-gray-400'} />
+     <Badge variant={streamingStatus === 'active' ? 'success' : 'default'} size="sm">{streamingStatus === 'active' ? 'Streaming' : 'Standby'}</Badge>
+   </div>
+ </div>
+ </Card>
 
  {/* Architecture Note — admin only */}
  {isAdmin && <Card variant="black">

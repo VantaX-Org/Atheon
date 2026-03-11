@@ -262,19 +262,37 @@ erp.get('/connections', async (c) => {
     'SELECT ec.*, ea.name as adapter_name, ea.system as adapter_system, ea.protocol as adapter_protocol FROM erp_connections ec JOIN erp_adapters ea ON ec.adapter_id = ea.id WHERE ec.tenant_id = ? ORDER BY ec.name ASC'
   ).bind(tenantId).all();
 
-  const formatted = results.results.map((conn: Record<string, unknown>) => ({
-    id: conn.id,
-    adapterId: conn.adapter_id,
-    adapterName: conn.adapter_name,
-    adapterSystem: conn.adapter_system,
-    adapterProtocol: conn.adapter_protocol,
-    name: conn.name,
-    status: conn.status,
-    config: JSON.parse(conn.config as string || '{}'),
-    lastSync: conn.last_sync,
-    syncFrequency: conn.sync_frequency,
-    recordsSynced: conn.records_synced,
-    connectedAt: conn.connected_at,
+  // Phase 1.1: Decrypt config on read
+  const formatted = await Promise.all(results.results.map(async (conn: Record<string, unknown>) => {
+    let config: Record<string, unknown> = {};
+    // Try encrypted_config first, fallback to config
+    const encCfg = conn.encrypted_config as string | null;
+    if (encCfg && isEncrypted(encCfg)) {
+      const decrypted = await decrypt(encCfg, c.env.ENCRYPTION_KEY);
+      config = decrypted ? JSON.parse(decrypted) : {};
+    } else {
+      config = JSON.parse(conn.config as string || '{}');
+    }
+    // Redact secrets from response
+    const safeConfig = { ...config };
+    if (safeConfig.client_secret) safeConfig.client_secret = '***';
+    if (safeConfig.access_token) safeConfig.access_token = '***';
+    if (safeConfig.refresh_token) safeConfig.refresh_token = '***';
+
+    return {
+      id: conn.id,
+      adapterId: conn.adapter_id,
+      adapterName: conn.adapter_name,
+      adapterSystem: conn.adapter_system,
+      adapterProtocol: conn.adapter_protocol,
+      name: conn.name,
+      status: conn.status,
+      config: safeConfig,
+      lastSync: conn.last_sync,
+      syncFrequency: conn.sync_frequency,
+      recordsSynced: conn.records_synced,
+      connectedAt: conn.connected_at,
+    };
   }));
 
   return c.json({ connections: formatted, total: formatted.length });
@@ -293,9 +311,14 @@ erp.post('/connections', async (c) => {
   if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
 
   const id = crypto.randomUUID();
+  // Phase 1.1: Encrypt sensitive config fields before storing
+  const rawConfig = body.config || {};
+  const configStr = JSON.stringify(rawConfig);
+  const encryptedConfigStr = await encrypt(configStr, c.env.ENCRYPTION_KEY);
+
   await c.env.DB.prepare(
-    'INSERT INTO erp_connections (id, tenant_id, adapter_id, name, config, sync_frequency, connected_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-  ).bind(id, tenantId, body.adapter_id, body.name, JSON.stringify(body.config || {}), body.sync_frequency || 'realtime').run();
+    'INSERT INTO erp_connections (id, tenant_id, adapter_id, name, config, encrypted_config, sync_frequency, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+  ).bind(id, tenantId, body.adapter_id, body.name, '{}', encryptedConfigStr, body.sync_frequency || 'realtime').run();
 
   return c.json({ id, status: 'connected' }, 201);
 });
@@ -365,25 +388,33 @@ erp.post('/sync/:connection_id', async (c) => {
   ).bind(connectionId, tenantId).first();
   if (!conn) return c.json({ error: 'Connection not found' }, 404);
 
-  const config = JSON.parse(conn.config as string || '{}');
+  // Read from encrypted_config first, fallback to config
+  const encCfgSync = conn.encrypted_config as string | null;
+  let config: Record<string, unknown> = {};
+  if (encCfgSync && isEncrypted(encCfgSync)) {
+    const decrypted = await decrypt(encCfgSync, c.env.ENCRYPTION_KEY);
+    config = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    config = JSON.parse(conn.config as string || '{}');
+  }
   const adapter = getERPAdapter(conn.adapter_system as string);
 
   if (adapter && config.access_token) {
     // Decrypt tokens for use
-    const decryptedToken = isEncrypted(config.access_token)
-      ? await decrypt(config.access_token, c.env.ENCRYPTION_KEY)
-      : config.access_token;
-    const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
-      ? await decrypt(config.client_secret, c.env.ENCRYPTION_KEY)
-      : config.client_secret || '';
+    const decryptedToken = isEncrypted(config.access_token as string)
+      ? (await decrypt(config.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+      : config.access_token as string;
+    const decryptedSecret = config.client_secret && isEncrypted(config.client_secret as string)
+      ? (await decrypt(config.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
+      : (config.client_secret as string) || '';
 
     // Real sync via ERP adapter
     const credentials: ERPCredentials = {
-      clientId: config.client_id || '',
+      clientId: (config.client_id as string) || '',
       clientSecret: decryptedSecret,
-      baseUrl: config.base_url || '',
+      baseUrl: (config.base_url as string) || '',
     };
-    const entities = config.sync_entities || ['accounts', 'contacts'];
+    const entities = (config.sync_entities as string[]) || ['accounts', 'contacts'];
     const result = await adapter.syncData(credentials, decryptedToken, entities);
 
     // 3.12: Write synced records to canonical tables
@@ -430,29 +461,37 @@ erp.post('/connections/:id/test', async (c) => {
   ).bind(id, tenantId).first();
   if (!conn) return c.json({ error: 'Connection not found' }, 404);
 
-  const config = JSON.parse(conn.config as string || '{}');
+  // Read from encrypted_config first, fallback to config
+  const encCfgTest = conn.encrypted_config as string | null;
+  let testConfig: Record<string, unknown> = {};
+  if (encCfgTest && isEncrypted(encCfgTest)) {
+    const decrypted = await decrypt(encCfgTest, c.env.ENCRYPTION_KEY);
+    testConfig = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    testConfig = JSON.parse(conn.config as string || '{}');
+  }
   const adapter = getERPAdapter(conn.adapter_system as string);
 
   if (!adapter) {
     return c.json({ connected: false, message: `No adapter found for system: ${conn.adapter_system}` });
   }
 
-  if (!config.access_token) {
+  if (!testConfig.access_token) {
     return c.json({ connected: false, message: 'No access token configured. Complete OAuth flow first.' });
   }
 
   // Decrypt tokens for use
-  const decryptedToken = isEncrypted(config.access_token)
-    ? await decrypt(config.access_token, c.env.ENCRYPTION_KEY)
-    : config.access_token;
-  const decryptedSecret = config.client_secret && isEncrypted(config.client_secret)
-    ? await decrypt(config.client_secret, c.env.ENCRYPTION_KEY)
-    : config.client_secret || '';
+  const decryptedToken = isEncrypted(testConfig.access_token as string)
+    ? (await decrypt(testConfig.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+    : testConfig.access_token as string;
+  const decryptedSecret = testConfig.client_secret && isEncrypted(testConfig.client_secret as string)
+    ? (await decrypt(testConfig.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
+    : (testConfig.client_secret as string) || '';
 
   const credentials: ERPCredentials = {
-    clientId: config.client_id || '',
+    clientId: (testConfig.client_id as string) || '',
     clientSecret: decryptedSecret,
-    baseUrl: config.base_url || '',
+    baseUrl: (testConfig.base_url as string) || '',
   };
 
   const result = await adapter.testConnection(credentials, decryptedToken);
@@ -507,8 +546,17 @@ erp.post('/oauth/authorize', async (c) => {
   }), { expirationTtl: 600 });
 
   // Store credentials in connection config (encrypted)
+  // Read from encrypted_config first, fallback to config
+  const encCfgOauth = conn.encrypted_config as string | null;
+  let existingOauthConfig: Record<string, unknown> = {};
+  if (encCfgOauth && isEncrypted(encCfgOauth)) {
+    const decrypted = await decrypt(encCfgOauth, c.env.ENCRYPTION_KEY);
+    existingOauthConfig = decrypted ? JSON.parse(decrypted) : {};
+  } else {
+    existingOauthConfig = JSON.parse(conn.config as string || '{}');
+  }
   const encryptedConfig = {
-    ...JSON.parse(conn.config as string || '{}'),
+    ...existingOauthConfig,
     client_id: body.client_id,
     client_secret: await encrypt(body.client_secret, c.env.ENCRYPTION_KEY),
     base_url: body.base_url,
@@ -516,8 +564,8 @@ erp.post('/oauth/authorize', async (c) => {
     token_url: body.token_url,
   };
   await c.env.DB.prepare(
-    'UPDATE erp_connections SET config = ?, status = ? WHERE id = ? AND tenant_id = ?'
-  ).bind(JSON.stringify(encryptedConfig), 'authorizing', body.connection_id, tenantId).run();
+    'UPDATE erp_connections SET encrypted_config = ?, config = ?, status = ? WHERE id = ? AND tenant_id = ?'
+  ).bind(JSON.stringify(encryptedConfig), '{}', 'authorizing', body.connection_id, tenantId).run();
 
   return c.json({ authUrl, state });
 });
@@ -544,9 +592,16 @@ erp.post('/oauth/callback', async (c) => {
   try {
     const tokenResponse = await adapter.exchangeToken(credentials, body.code);
 
-    // Update connection with tokens
-    const conn = await c.env.DB.prepare('SELECT config FROM erp_connections WHERE id = ? AND tenant_id = ?').bind(connectionId, tenantId).first();
-    const existingConfig = JSON.parse(conn?.config as string || '{}');
+    // Update connection with tokens — read from encrypted_config first
+    const conn = await c.env.DB.prepare('SELECT encrypted_config, config FROM erp_connections WHERE id = ? AND tenant_id = ?').bind(connectionId, tenantId).first();
+    const encCfgCallback = conn?.encrypted_config as string | null;
+    let existingConfig: Record<string, unknown> = {};
+    if (encCfgCallback && isEncrypted(encCfgCallback)) {
+      const decrypted = await decrypt(encCfgCallback, c.env.ENCRYPTION_KEY);
+      existingConfig = decrypted ? JSON.parse(decrypted) : {};
+    } else {
+      existingConfig = JSON.parse(conn?.config as string || '{}');
+    }
 
     // Encrypt tokens before storing
     const encryptedTokenConfig = {
@@ -558,8 +613,8 @@ erp.post('/oauth/callback', async (c) => {
     };
 
     await c.env.DB.prepare(
-      'UPDATE erp_connections SET config = ?, status = ?, connected_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
-    ).bind(JSON.stringify(encryptedTokenConfig), 'connected', connectionId, tenantId).run();
+      'UPDATE erp_connections SET encrypted_config = ?, config = ?, status = ?, connected_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+    ).bind(JSON.stringify(encryptedTokenConfig), '{}', 'connected', connectionId, tenantId).run();
 
     // Clean up state
     await c.env.CACHE.delete(`oauth_state:${body.state}`);
@@ -739,10 +794,36 @@ erp.get('/data/journal-entries', async (c) => {
   return c.json({ journalEntries: results.results, total: total?.total || 0, limit, offset });
 });
 
+/**
+ * Phase 1.2: PII masking helper — mask sensitive strings (show last 4 chars)
+ */
+function maskPII(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) return '****';
+  if (value.length <= 4) return '****';
+  return '****' + value.slice(-4);
+}
+
+/**
+ * Phase 1.2: Salary range masking — show salary as a range bracket
+ */
+function maskSalary(salary: unknown): string {
+  const val = typeof salary === 'number' ? salary : 0;
+  if (val <= 0) return 'Not disclosed';
+  if (val < 10000) return 'R0 - R10,000';
+  if (val < 25000) return 'R10,000 - R25,000';
+  if (val < 50000) return 'R25,000 - R50,000';
+  if (val < 100000) return 'R50,000 - R100,000';
+  if (val < 250000) return 'R100,000 - R250,000';
+  return 'R250,000+';
+}
+
 // GET /api/erp/data/employees
 erp.get('/data/employees', async (c) => {
   const tenantId = getTenantId(c);
   const department = c.req.query('department');
+  // Phase 1.2: Only superadmin can view unmasked sensitive data
+  const auth = c.get('auth') as AuthContext | undefined;
+  const includeSensitive = c.req.query('include_sensitive') === 'true' && auth?.role === 'superadmin';
 
   let query = 'SELECT * FROM erp_employees WHERE tenant_id = ?';
   const binds: unknown[] = [tenantId];
@@ -753,6 +834,18 @@ erp.get('/data/employees', async (c) => {
     ? await c.env.DB.prepare(query).bind(...binds).all()
     : await c.env.DB.prepare(query).bind(tenantId).all();
 
+  // Phase 1.2: Mask PII fields unless superadmin requests full data
+  const maskedEmployees = results.results.map((emp: Record<string, unknown>) => {
+    if (includeSensitive) return emp;
+    return {
+      ...emp,
+      id_number: maskPII(emp.id_number),
+      tax_number: maskPII(emp.tax_number),
+      bank_account: maskPII(emp.bank_account),
+      gross_salary: maskSalary(emp.gross_salary),
+    };
+  });
+
   // Department summary
   const deptSummary = await c.env.DB.prepare(`
     SELECT department, COUNT(*) as headcount, SUM(gross_salary) as total_salary, AVG(gross_salary) as avg_salary
@@ -760,7 +853,7 @@ erp.get('/data/employees', async (c) => {
     GROUP BY department ORDER BY department
   `).bind(tenantId).all();
 
-  return c.json({ employees: results.results, total: results.results.length, departmentSummary: deptSummary.results });
+  return c.json({ employees: maskedEmployees, total: maskedEmployees.length, departmentSummary: deptSummary.results });
 });
 
 // GET /api/erp/data/bank-transactions

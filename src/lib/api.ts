@@ -192,6 +192,18 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ token, new_password: newPassword }),
       }),
+    // Phase 4.4: MFA endpoints
+    mfaSetup: () =>
+      request<{ secret: string; otpauthUri: string }>('/api/auth/mfa/setup', { method: 'POST' }),
+    mfaVerify: (code: string) =>
+      request<{ success: boolean }>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+    // API key management
+    listApiKeys: () =>
+      request<{ keys: { id: string; name: string; prefix: string; createdAt: string; lastUsed: string | null }[] }>('/api/auth/api-keys'),
+    generateApiKey: (name?: string) =>
+      request<{ id: string; name: string; key: string; prefix: string; message: string }>('/api/auth/api-keys', { method: 'POST', body: JSON.stringify({ name }) }),
+    revokeApiKey: (id: string) =>
+      request<{ success: boolean }>(`/api/auth/api-keys/${id}`, { method: 'DELETE' }),
   },
 
   tenants: {
@@ -222,6 +234,11 @@ export const api = {
       request<{ id: string; name: string }>('/api/iam/policies', { method: 'POST', body: JSON.stringify(data) }),
     deletePolicy: (id: string) =>
       request<{ success: boolean }>(`/api/iam/policies/${id}`, { method: 'DELETE' }),
+    // Phase 4.5: User management
+    updateUser: (id: string, data: Record<string, unknown>) =>
+      request<{ success: boolean }>(`/api/iam/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteUser: (id: string) =>
+      request<{ success: boolean }>(`/api/iam/users/${id}`, { method: 'DELETE' }),
   },
 
   apex: {
