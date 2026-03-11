@@ -77,8 +77,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Run post-deploy migration
         run: |
-          echo "Staging deployment complete. Run migration manually:"
-          echo "curl -X POST https://atheon-api-staging.<account>.workers.dev/api/v1/admin/migrate -H 'X-Setup-Secret: <setup-secret>'"
+          if [ -n "$SETUP_SECRET" ] && [ -n "$API_URL" ]; then
+            echo "Running post-deploy migration on staging..."
+            HTTP_CODE=$(curl -s -o /tmp/migrate.json -w "%{http_code}" -X POST "${API_URL}/api/v1/admin/migrate" -H "X-Setup-Secret: ${SETUP_SECRET}" -H "Content-Type: application/json")
+            echo "Migration response code: $HTTP_CODE"
+            cat /tmp/migrate.json
+            if [ "$HTTP_CODE" -ge 400 ]; then echo "Migration returned $HTTP_CODE — check logs"; fi
+          else
+            echo "Skipping auto-migration: SETUP_SECRET or API_URL not configured"
+          fi
+        env:
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          API_URL: ${{ vars.STAGING_API_URL }}
 
   deploy-production:
     name: Deploy to Production
@@ -104,5 +114,24 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Run post-deploy migration
         run: |
-          echo "Production deployment complete. Run migration manually:"
-          echo "curl -X POST https://atheon-api.<account>.workers.dev/api/v1/admin/migrate -H 'X-Setup-Secret: <setup-secret>'"
+          if [ -n "$SETUP_SECRET" ] && [ -n "$API_URL" ]; then
+            echo "Running post-deploy migration on production..."
+            HTTP_CODE=$(curl -s -o /tmp/migrate.json -w "%{http_code}" -X POST "${API_URL}/api/v1/admin/migrate" -H "X-Setup-Secret: ${SETUP_SECRET}" -H "Content-Type: application/json")
+            echo "Migration response code: $HTTP_CODE"
+            cat /tmp/migrate.json
+            if [ "$HTTP_CODE" -ge 400 ]; then echo "Migration returned $HTTP_CODE — check logs"; exit 1; fi
+          else
+            echo "Skipping auto-migration: SETUP_SECRET or API_URL not configured"
+          fi
+        env:
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
+      - name: Verify deployment health
+        run: |
+          if [ -n "$API_URL" ]; then
+            HTTP_CODE=$(curl -s -o /tmp/healthz.json -w "%{http_code}" "${API_URL}/healthz")
+            echo "Health check: $HTTP_CODE"
+            cat /tmp/healthz.json
+          fi
+        env:
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
