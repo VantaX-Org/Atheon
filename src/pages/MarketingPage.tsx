@@ -1269,11 +1269,11 @@ export function MarketingPage() {
               <div className="mk5-ind-stat-label">Catalyst clusters covering<br />every retail domain</div>
             </div>
             <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num">43</div>
+              <div className="mk5-ind-stat-num">45</div>
               <div className="mk5-ind-stat-label">Pre-built sub-catalysts<br />ready to deploy</div>
             </div>
             <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num">5</div>
+              <div className="mk5-ind-stat-num">3</div>
               <div className="mk5-ind-stat-label">Autonomy tiers from<br />read-only to transactional</div>
             </div>
           </div>
