@@ -1039,7 +1039,10 @@ const odooAdapter: ERPAdapter = {
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {}, id: 1 }),
       });
       if (resp.ok) {
-        const data = await resp.json() as { result?: { server_version?: string; server_version_info?: number[] } };
+        const data = await resp.json() as { result?: { server_version?: string; server_version_info?: number[] }; error?: { message?: string; data?: { message?: string } } };
+        if (data.error) {
+          return { connected: false, message: `Odoo error: ${data.error.data?.message || data.error.message || 'Unknown RPC error'}` };
+        }
         const version = data.result?.server_version || '18.0';
         return {
           connected: true,

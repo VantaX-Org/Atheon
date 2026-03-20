@@ -123,7 +123,7 @@ export async function seedSampleCompany(db: D1Database) {
       name: 'Protea Salesforce CRM',
       status: 'connected',
       config: JSON.stringify({
-        instance: 'protea-mfg.my.salesforce.com', api_version: '59.0',
+        instance: 'protea-mfg.my.salesforce.com', api_version: '66.0',
         sync_entities: ['accounts', 'contacts', 'opportunities', 'leads'],
         base_url: 'https://protea-mfg.my.salesforce.com',
       }),
