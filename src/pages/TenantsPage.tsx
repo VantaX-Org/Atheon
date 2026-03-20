@@ -1041,7 +1041,8 @@ export function TenantsPage() {
  <option value="sage-pastel">Sage Pastel</option>
  <option value="oracle">Oracle</option>
  <option value="sap">SAP</option>
- <option value="quickbooks">QuickBooks</option>
+  <option value="quickbooks">QuickBooks</option>
+ <option value="odoo">Odoo</option>
  </select>
  </div>
  <div>

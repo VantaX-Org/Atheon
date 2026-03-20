@@ -1558,7 +1558,8 @@ export function CatalystsPage() {
  <option value="sap">SAP</option>
  <option value="xero">Xero</option>
  <option value="sage">Sage</option>
- <option value="pastel">Pastel</option>
+  <option value="pastel">Pastel</option>
+ <option value="odoo">Odoo</option>
  </>
  )}
  </select>
