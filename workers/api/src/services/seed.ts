@@ -74,15 +74,15 @@ export async function seedDatabase(db: D1Database) {
 
   // Seed ERP Adapters
   const adapters = [
-    { id: 'erp-sap-s4', name: 'SAP S/4HANA', system: 'SAP', version: '2023 FPS02', protocol: 'OData v4', status: 'available', operations: '["RFC","BAPI","OData","CDS Views","IDoc"]', auth_methods: '["OAuth 2.0","X.509 Certificate","Basic Auth"]' },
+    { id: 'erp-sap-s4', name: 'SAP S/4HANA', system: 'SAP', version: '2025 FPS01', protocol: 'OData V4', status: 'available', operations: '["RFC","BAPI","OData V4","CDS Views","IDoc"]', auth_methods: '["OAuth 2.0","X.509 Certificate","Basic Auth"]' },
     { id: 'erp-sap-ecc', name: 'SAP ECC 6.0', system: 'SAP', version: 'EHP8', protocol: 'RFC/BAPI', status: 'available', operations: '["RFC","BAPI","IDoc","ALE"]', auth_methods: '["SNC","Basic Auth"]' },
-    { id: 'erp-oracle', name: 'Oracle Fusion Cloud', system: 'Oracle', version: '24B', protocol: 'REST', status: 'available', operations: '["REST API","SOAP","BI Publisher","OTBI"]', auth_methods: '["OAuth 2.0","JWT Bearer"]' },
-    { id: 'erp-d365', name: 'Microsoft Dynamics 365', system: 'Microsoft', version: '10.0.38', protocol: 'OData v4', status: 'available', operations: '["OData","Custom API","Power Automate","Dataverse"]', auth_methods: '["Azure AD OAuth","Service Principal"]' },
-    { id: 'erp-sf', name: 'Salesforce', system: 'Salesforce', version: 'Spring 24', protocol: 'REST/SOAP', status: 'available', operations: '["REST API","Bulk API","Streaming API","Metadata API"]', auth_methods: '["OAuth 2.0","JWT Bearer","SAML"]' },
-    { id: 'erp-wd', name: 'Workday', system: 'Workday', version: '2024R1', protocol: 'REST/SOAP', status: 'available', operations: '["REST API","SOAP API","RaaS","EIB"]', auth_methods: '["OAuth 2.0","X.509","API Key"]' },
-    { id: 'erp-ns', name: 'NetSuite', system: 'Oracle', version: '2024.1', protocol: 'REST/SuiteTalk', status: 'available', operations: '["REST API","SuiteTalk SOAP","SuiteQL","RESTlets"]', auth_methods: '["OAuth 2.0","Token-Based Auth"]' },
-    { id: 'erp-sage', name: 'Sage Intacct', system: 'Sage', version: 'R4 2024', protocol: 'REST/XML', status: 'available', operations: '["REST API","XML Gateway","Web Services"]', auth_methods: '["API Key","Session Auth"]' },
-    { id: 'erp-odoo', name: 'Odoo ERP', system: 'Odoo', version: '17.0', protocol: 'JSON-RPC/REST', status: 'available', operations: '["JSON-RPC","REST API","XML-RPC","ORM API"]', auth_methods: '["OAuth 2.0","API Key","Session Auth"]' },
+    { id: 'erp-oracle', name: 'Oracle Fusion Cloud', system: 'Oracle', version: '26A', protocol: 'REST', status: 'available', operations: '["REST API","SOAP","BI Publisher","OTBI"]', auth_methods: '["OAuth 2.0","JWT Bearer"]' },
+    { id: 'erp-d365', name: 'Microsoft Dynamics 365', system: 'Microsoft', version: '10.0.42', protocol: 'OData v4', status: 'available', operations: '["OData","Custom API","Power Automate","Dataverse"]', auth_methods: '["Azure AD OAuth","Service Principal"]' },
+    { id: 'erp-sf', name: 'Salesforce', system: 'Salesforce', version: 'Spring 26', protocol: 'REST/SOAP', status: 'available', operations: '["REST API v66.0","Bulk API 2.0","Pub/Sub API","Metadata API"]', auth_methods: '["OAuth 2.0","JWT Bearer","SAML"]' },
+    { id: 'erp-wd', name: 'Workday', system: 'Workday', version: '2025R2', protocol: 'REST/SOAP', status: 'available', operations: '["REST API","SOAP API v45.2","RaaS","EIB","WQL"]', auth_methods: '["OAuth 2.0","X.509","API Key"]' },
+    { id: 'erp-ns', name: 'NetSuite', system: 'Oracle', version: '2026.1', protocol: 'REST/SuiteTalk', status: 'available', operations: '["REST API","SuiteTalk SOAP","SuiteQL","RESTlets"]', auth_methods: '["OAuth 2.0","Token-Based Auth"]' },
+    { id: 'erp-sage', name: 'Sage Intacct', system: 'Sage', version: 'R1 2026', protocol: 'REST/XML', status: 'available', operations: '["REST API","XML Gateway","Web Services"]', auth_methods: '["API Key","Session Auth"]' },
+    { id: 'erp-odoo', name: 'Odoo ERP', system: 'Odoo', version: '18.0', protocol: 'JSON-RPC/REST', status: 'available', operations: '["JSON-RPC 2.0","REST API v2","XML-RPC","ORM API"]', auth_methods: '["OAuth 2.0","API Key","Session Auth"]' },
   ];
 
   for (const a of adapters) {
@@ -93,7 +93,7 @@ export async function seedDatabase(db: D1Database) {
   // Seed ERP Connections
   const connections = [
     { id: 'conn-1', tenant_id: 'vantax', adapter_id: 'erp-sap-s4', name: 'Vanta X SAP S/4HANA Production', status: 'connected', config: '{"host":"s4hana.vantax.co.za","client":"100","system_id":"S4P"}', sync_frequency: 'realtime', records_synced: 2847291 },
-    { id: 'conn-2', tenant_id: 'vantax', adapter_id: 'erp-sf', name: 'Vanta X Salesforce CRM', status: 'connected', config: '{"instance":"vantax.my.salesforce.com","api_version":"59.0"}', sync_frequency: '5min', records_synced: 156432 },
+    { id: 'conn-2', tenant_id: 'vantax', adapter_id: 'erp-sf', name: 'Vanta X Salesforce CRM', status: 'connected', config: '{"instance":"vantax.my.salesforce.com","api_version":"66.0"}', sync_frequency: '5min', records_synced: 156432 },
     { id: 'conn-3', tenant_id: 'freshco', adapter_id: 'erp-sap-s4', name: 'FreshCo SAP S/4HANA', status: 'connected', config: '{"host":"s4.freshco.co.za","client":"200","system_id":"FCP"}', sync_frequency: 'realtime', records_synced: 1523847 },
     { id: 'conn-4', tenant_id: 'deepmine', adapter_id: 'erp-sap-ecc', name: 'DeepMine SAP ECC', status: 'connected', config: '{"host":"ecc.deepmine.co.za","client":"300","system_id":"DMP"}', sync_frequency: '15min', records_synced: 892341 },
   ];
@@ -126,7 +126,7 @@ export async function seedDatabase(db: D1Database) {
     { id: 'ge-2', tenant_id: 'vantax', type: 'Department', name: 'Finance', properties: '{"headcount":45,"budget":"R12M"}', confidence: 1.0, source: 'sap' },
     { id: 'ge-3', tenant_id: 'vantax', type: 'Department', name: 'Supply Chain', properties: '{"headcount":120,"warehouses":5}', confidence: 1.0, source: 'sap' },
     { id: 'ge-4', tenant_id: 'vantax', type: 'Process', name: 'Order-to-Cash', properties: '{"avg_duration":"4.2 days","volume":"850/month"}', confidence: 0.95, source: 'process-mining' },
-    { id: 'ge-5', tenant_id: 'vantax', type: 'System', name: 'SAP S/4HANA', properties: '{"version":"2023 FPS02","type":"ERP"}', confidence: 1.0, source: 'erp-adapter' },
+    { id: 'ge-5', tenant_id: 'vantax', type: 'System', name: 'SAP S/4HANA', properties: '{"version":"2025 FPS01","type":"ERP"}', confidence: 1.0, source: 'erp-adapter' },
     { id: 'ge-6', tenant_id: 'vantax', type: 'KPI', name: 'OTIF Rate', properties: '{"current":87.3,"target":95,"unit":"%"}', confidence: 0.98, source: 'pulse' },
     { id: 'ge-7', tenant_id: 'vantax', type: 'Risk', name: 'Port Congestion Risk', properties: '{"severity":"critical","probability":0.87}', confidence: 0.92, source: 'apex' },
     { id: 'ge-8', tenant_id: 'vantax', type: 'Person', name: 'Reshigan', properties: '{"role":"CEO","department":"Executive"}', confidence: 1.0, source: 'hr' },

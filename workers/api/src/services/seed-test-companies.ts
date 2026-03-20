@@ -942,7 +942,7 @@ export async function seedTestCompanies(db: D1Database) {
   await db.prepare(
     "INSERT OR IGNORE INTO erp_connections (id,tenant_id,adapter_id,name,status,config,sync_frequency,records_synced,connected_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))"
   ).bind('conn-nt-oracle','novatech','erp-oracle','NovaTech Oracle Fusion Cloud','connected',
-    '{"instance":"novatech.oraclecloud.com","api_version":"24B","base_url":"https://novatech.oraclecloud.com","modules":["Financials","HCM","SCM"]}',
+    '{"instance":"novatech.oraclecloud.com","api_version":"26A","base_url":"https://novatech.oraclecloud.com","modules":["Financials","HCM","SCM"]}',
     '5min',345678).run();
 
   const ntClusters = [
@@ -1200,7 +1200,7 @@ export async function seedTestCompanies(db: D1Database) {
   const pmEntities = [
     {id:'ge-pm-1',type:'organisation',name:'Protea Manufacturing',props:'{"employees":102,"revenue":"R280M","founded":2001}'},
     {id:'ge-pm-2',type:'department',name:'Production Floor',props:'{"headcount":45,"location":"Epping, Cape Town"}'},
-    {id:'ge-pm-3',type:'system',name:'Sage 300',props:'{"version":"2024.1","modules":["IC","OE","PO","AP","AR","GL"]}'},
+    {id:'ge-pm-3',type:'system',name:'Sage 300',props:'{"version":"2026.1","modules":["IC","OE","PO","AP","AR","GL"]}'},
     {id:'ge-pm-4',type:'kpi',name:'Production Output',props:'{"target":15000,"actual":13200,"unit":"units/month"}'},
   ];
   for (const e of pmEntities) {
