@@ -968,7 +968,7 @@ const quickbooksAdapter: ERPAdapter = {
         };
         const query = queryMap[entity] || `SELECT * FROM ${entity} MAXRESULTS 1000`;
         const resp = await fetch(
-          `${baseApi}/query?query=${encodeURIComponent(query)}`,
+          `${baseApi}/query?query=${encodeURIComponent(query)}&minorversion=75`,
           { headers },
         );
         if (resp.ok) {
