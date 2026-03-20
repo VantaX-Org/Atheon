@@ -54,4 +54,4 @@ export type DeploymentModel = 'saas' | 'on-premise' | 'hybrid';
 export type AutonomyTier = 'read-only' | 'assisted' | 'transactional';
 export type AtheonLayer = 'apex' | 'pulse' | 'catalysts' | 'mind' | 'memory';
 export type RiskSeverity = 'critical' | 'high' | 'medium' | 'low';
-export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing';
+export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing' | 'retail';

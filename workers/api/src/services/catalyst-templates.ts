@@ -821,6 +821,120 @@ const fmcgClusters: CatalystTemplate[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RETAIL
+// ═══════════════════════════════════════════════════════════════════════════
+const retailClusters: CatalystTemplate[] = [
+  {
+    name: 'Point of Sale Intelligence Catalyst', domain: 'retail-pos',
+    description: 'POS analytics, basket analysis, transaction monitoring, and shrinkage detection',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Transaction Analytics', enabled: true, description: 'Real-time POS transaction monitoring and trend analysis' },
+      { name: 'Basket Analysis', enabled: true, description: 'Market basket analysis for cross-sell and upsell opportunities' },
+      { name: 'Shrinkage Detection', enabled: true, description: 'Inventory shrinkage pattern detection and loss prevention alerts' },
+      { name: 'Cashier Performance', enabled: false, description: 'Cashier speed, accuracy, and void rate monitoring' },
+      { name: 'Peak Hour Forecasting', enabled: true, description: 'Customer traffic prediction for staffing and register allocation' },
+    ],
+  },
+  {
+    name: 'Inventory & Merchandise Catalyst', domain: 'retail-inventory',
+    description: 'Stock optimization, replenishment automation, and merchandise planning',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Automated Replenishment', enabled: true, description: 'ML-driven reorder point calculation and purchase order generation' },
+      { name: 'Stock Allocation', enabled: true, description: 'Multi-store stock allocation based on demand patterns and store profiles' },
+      { name: 'Dead Stock Detection', enabled: true, description: 'Slow-moving inventory identification and markdown recommendations' },
+      { name: 'Seasonal Planning', enabled: true, description: 'Seasonal demand forecasting and pre-season buy planning' },
+      { name: 'Planogram Compliance', enabled: false, description: 'In-store planogram adherence monitoring via image recognition' },
+    ],
+  },
+  {
+    name: 'Customer Experience Catalyst', domain: 'retail-cx',
+    description: 'Loyalty program management, customer segmentation, and omnichannel engagement',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Loyalty Analytics', enabled: true, description: 'Loyalty program performance, redemption patterns, and churn prediction' },
+      { name: 'Customer Segmentation', enabled: true, description: 'RFM-based customer segmentation and lifecycle stage tracking' },
+      { name: 'Personalized Promotions', enabled: true, description: 'AI-driven personalized offer generation based on purchase history' },
+      { name: 'NPS & Sentiment', enabled: false, description: 'Customer sentiment analysis from reviews, surveys, and social media' },
+      { name: 'Omnichannel Tracking', enabled: true, description: 'Unified customer journey tracking across online, in-store, and mobile' },
+    ],
+  },
+  {
+    name: 'Retail Finance Catalyst', domain: 'finance',
+    description: 'Daily reconciliation, margin analysis, rent and lease management',
+    autonomy_tier: 'transactional',
+    sub_catalysts: [
+      { name: 'Daily Reconciliation', enabled: true, description: 'POS-to-bank daily cash reconciliation and variance detection' },
+      { name: 'Margin Analysis', enabled: true, description: 'Product and category-level margin tracking and erosion alerts' },
+      { name: 'Accounts Payable', enabled: true, description: 'Supplier invoice processing and payment scheduling' },
+      { name: 'Rent & Lease Management', enabled: true, description: 'Store lease tracking, renewal alerts, and turnover rent calculation' },
+      { name: 'Franchise Royalty', enabled: false, description: 'Automated franchise fee calculation and royalty billing' },
+    ],
+  },
+  {
+    name: 'Supply Chain & Logistics Catalyst', domain: 'retail-supply-chain',
+    description: 'Supplier management, distribution center operations, and last-mile delivery',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Supplier Performance', enabled: true, description: 'Supplier fill rate, lead time, and quality scorecarding' },
+      { name: 'DC Operations', enabled: true, description: 'Distribution center throughput monitoring and bottleneck detection' },
+      { name: 'Demand Forecasting', enabled: true, description: 'Store-level demand prediction using weather, events, and trends' },
+      { name: 'Last-Mile Tracking', enabled: false, description: 'Delivery tracking and estimated arrival time optimization' },
+      { name: 'Returns Management', enabled: true, description: 'Return rate analysis, reason coding, and refurbishment routing' },
+    ],
+  },
+  {
+    name: 'Pricing & Promotions Catalyst', domain: 'retail-pricing',
+    description: 'Dynamic pricing, promotion effectiveness, and competitor price monitoring',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Dynamic Pricing', enabled: true, description: 'AI-driven price optimization based on demand elasticity and competition' },
+      { name: 'Promotion ROI', enabled: true, description: 'Promotion effectiveness measurement and cannibalization analysis' },
+      { name: 'Competitor Monitoring', enabled: true, description: 'Competitor price scraping and price index benchmarking' },
+      { name: 'Markdown Optimization', enabled: false, description: 'End-of-season and clearance markdown timing and depth optimization' },
+      { name: 'Price Compliance', enabled: true, description: 'Shelf price vs system price compliance checking' },
+    ],
+  },
+  {
+    name: 'Store Operations Catalyst', domain: 'retail-ops',
+    description: 'Store performance benchmarking, task management, and compliance',
+    autonomy_tier: 'read-only',
+    sub_catalysts: [
+      { name: 'Store Scorecarding', enabled: true, description: 'Multi-KPI store performance ranking and benchmarking' },
+      { name: 'Task Management', enabled: true, description: 'Store task assignment, completion tracking, and escalation' },
+      { name: 'Health & Safety', enabled: true, description: 'Store safety compliance, incident tracking, and audit scheduling' },
+      { name: 'Energy Management', enabled: false, description: 'Store-level energy consumption monitoring and optimization' },
+      { name: 'Customer Traffic', enabled: true, description: 'Footfall counting, conversion rate tracking, and heatmap analysis' },
+    ],
+  },
+  {
+    name: 'Workforce Management Catalyst', domain: 'hr',
+    description: 'Staff scheduling, labor cost optimization, and training compliance',
+    autonomy_tier: 'read-only',
+    sub_catalysts: [
+      { name: 'Smart Scheduling', enabled: true, description: 'Traffic-driven staff scheduling with skills and availability matching' },
+      { name: 'Labor Cost Control', enabled: true, description: 'Labor-to-sales ratio monitoring and overtime management' },
+      { name: 'Training Compliance', enabled: true, description: 'Product knowledge and compliance training completion tracking' },
+      { name: 'Attrition Prediction', enabled: false, description: 'Employee flight risk scoring and retention intervention triggers' },
+      { name: 'Onboarding Automation', enabled: true, description: 'New hire onboarding workflow automation and checklist management' },
+    ],
+  },
+  {
+    name: 'E-Commerce Intelligence Catalyst', domain: 'retail-ecommerce',
+    description: 'Online store analytics, conversion optimization, and marketplace integration',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Conversion Funnel', enabled: true, description: 'Cart abandonment analysis and checkout optimization' },
+      { name: 'Product Recommendations', enabled: true, description: 'Collaborative and content-based product recommendation engine' },
+      { name: 'Search Analytics', enabled: true, description: 'Site search performance, zero-result tracking, and synonym management' },
+      { name: 'Marketplace Sync', enabled: false, description: 'Inventory and pricing sync across Takealot, Amazon, and other marketplaces' },
+      { name: 'Fulfillment Optimization', enabled: true, description: 'Ship-from-store vs DC routing optimization for online orders' },
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GENERAL (cross-industry baseline)
 // ═══════════════════════════════════════════════════════════════════════════
 const generalClusters: CatalystTemplate[] = [
@@ -933,6 +1047,12 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
     label: 'FMCG',
     description: 'Trade promotion, distributor management, shelf intelligence, and product launch',
     clusters: fmcgClusters,
+  },
+  {
+    industry: 'retail',
+    label: 'Retail',
+    description: 'POS intelligence, inventory optimization, customer experience, pricing, and e-commerce',
+    clusters: retailClusters,
   },
   {
     industry: 'general',

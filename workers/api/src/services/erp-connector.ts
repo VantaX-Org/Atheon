@@ -1,7 +1,6 @@
 /**
  * ERP Connector Service
- * Real OAuth flows, connection testing, and data sync for SAP, Salesforce, Workday, Oracle, Xero, Sage, Pastel, Dynamics 365, NetSuite, QuickBooks, Odoo
- * All adapters updated to target the latest API versions as of 2026.
+ * Real OAuth flows, connection testing, and data sync for SAP, Salesforce, Workday, Oracle, Xero, Sage, Pastel
  */
 
 export interface ERPCredentials {
@@ -40,7 +39,7 @@ interface ERPAdapter {
   syncData(credentials: ERPCredentials, token: string, entities: string[]): Promise<SyncResult>;
 }
 
-// ── SAP S/4HANA Adapter (OData V4 — 2025 FPS01) ──
+// ── SAP S/4HANA Adapter ──
 const sapAdapter: ERPAdapter = {
   name: 'SAP S/4HANA',
 
@@ -76,13 +75,13 @@ const sapAdapter: ERPAdapter = {
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/sap/opu/odata4/sap/api_business_partner/srvd_a2x/sap/a_businesspartner/0001/$metadata`, {
+      const resp = await fetch(`${credentials.baseUrl}/sap/opu/odata/sap/API_BUSINESS_PARTNER/$metadata`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/xml' },
       });
       return {
         connected: resp.ok,
-        version: resp.headers.get('sap-metadata-version') || '4.0',
-        message: resp.ok ? 'Connected to SAP S/4HANA OData V4 API (2025)' : `Connection failed: ${resp.status}`,
+        version: resp.headers.get('sap-metadata-version') || '2.0',
+        message: resp.ok ? 'Connected to SAP S/4HANA OData API' : `Connection failed: ${resp.status}`,
       };
     } catch (err) {
       return { connected: false, message: `Connection error: ${(err as Error).message}` };
@@ -97,13 +96,13 @@ const sapAdapter: ERPAdapter = {
     for (const entity of entities) {
       try {
         const apiMap: Record<string, string> = {
-          'business_partners': '/sap/opu/odata4/sap/api_business_partner/srvd_a2x/sap/a_businesspartner/0001/A_BusinessPartner?$top=1000',
-          'sales_orders': '/sap/opu/odata4/sap/api_salesorder/srvd_a2x/sap/salesorder/0001/A_SalesOrder?$top=1000',
-          'purchase_orders': '/sap/opu/odata4/sap/api_purchaseorder/srvd_a2x/sap/purchaseorder/0001/A_PurchaseOrder?$top=1000',
-          'materials': '/sap/opu/odata4/sap/api_product/srvd_a2x/sap/product/0001/A_Product?$top=1000',
-          'gl_accounts': '/sap/opu/odata4/sap/api_journalentryitembasic/srvd_a2x/sap/journalentryitembasic/0001/A_JournalEntryItemBasic?$top=1000',
+          'business_partners': '/sap/opu/odata/sap/API_BUSINESS_PARTNER/A_BusinessPartner?$top=1000',
+          'sales_orders': '/sap/opu/odata/sap/API_SALES_ORDER_SRV/A_SalesOrder?$top=1000',
+          'purchase_orders': '/sap/opu/odata/sap/API_PURCHASEORDER_PROCESS_SRV/A_PurchaseOrder?$top=1000',
+          'materials': '/sap/opu/odata/sap/API_PRODUCT_SRV/A_Product?$top=1000',
+          'gl_accounts': '/sap/opu/odata/sap/API_JOURNALENTRYITEMBASIC_SRV/A_JournalEntryItemBasic?$top=1000',
         };
-        const path = apiMap[entity] || `/sap/opu/odata4/sap/${entity}?$top=1000`;
+        const path = apiMap[entity] || `/sap/opu/odata/sap/${entity}?$top=1000`;
         const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
         if (resp.ok) {
           const data = await resp.json() as { d?: { results?: Record<string, unknown>[] }; value?: Record<string, unknown>[] };
@@ -126,7 +125,7 @@ const sapAdapter: ERPAdapter = {
   },
 };
 
-// ── Salesforce Adapter (REST API v66.0 — Spring '26) ──
+// ── Salesforce Adapter ──
 const salesforceAdapter: ERPAdapter = {
   name: 'Salesforce',
 
@@ -161,12 +160,12 @@ const salesforceAdapter: ERPAdapter = {
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/services/data/v66.0/`, {
+      const resp = await fetch(`${credentials.baseUrl}/services/data/v59.0/`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (resp.ok) {
         const data = await resp.json() as { version?: string };
-        return { connected: true, version: data.version || 'v66.0', message: 'Connected to Salesforce REST API (Spring \'26)' };
+        return { connected: true, version: data.version || 'v59.0', message: 'Connected to Salesforce REST API' };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
     } catch (err) {
@@ -190,7 +189,7 @@ const salesforceAdapter: ERPAdapter = {
         };
         const soql = soqlMap[entity] || `SELECT Id,Name FROM ${entity} LIMIT 1000`;
         const resp = await fetch(
-          `${credentials.baseUrl}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
+          `${credentials.baseUrl}/services/data/v59.0/query?q=${encodeURIComponent(soql)}`,
           { headers },
         );
         if (resp.ok) {
@@ -214,7 +213,7 @@ const salesforceAdapter: ERPAdapter = {
   },
 };
 
-// ── Workday Adapter (REST v1 / WWS v45.2 — 2025R2) ──
+// ── Workday Adapter ──
 const workdayAdapter: ERPAdapter = {
   name: 'Workday',
 
@@ -251,8 +250,8 @@ const workdayAdapter: ERPAdapter = {
       });
       return {
         connected: resp.ok,
-        version: 'v45.2',
-        message: resp.ok ? 'Connected to Workday REST API (2025R2)' : `Connection failed: ${resp.status}`,
+        version: 'v40.1',
+        message: resp.ok ? 'Connected to Workday REST API' : `Connection failed: ${resp.status}`,
       };
     } catch (err) {
       return { connected: false, message: `Connection error: ${(err as Error).message}` };
@@ -297,9 +296,9 @@ const workdayAdapter: ERPAdapter = {
   },
 };
 
-// ── Oracle Fusion Cloud Adapter (26A) ──
+// ── Oracle Fusion Adapter ──
 const oracleAdapter: ERPAdapter = {
-  name: 'Oracle Fusion Cloud',
+  name: 'Oracle Fusion',
 
   getAuthUrl(credentials: ERPCredentials, state: string): string {
     const authUrl = credentials.authUrl || `${credentials.baseUrl}/oauth2/v1/authorize`;
@@ -329,13 +328,13 @@ const oracleAdapter: ERPAdapter = {
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/fscmRestApi/resources/11.13.18.05`, {
+      const resp = await fetch(`${credentials.baseUrl}/fscmRestApi/resources/v1`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       return {
         connected: resp.ok,
-        version: '26A',
-        message: resp.ok ? 'Connected to Oracle Fusion Cloud REST API (26A)' : `Connection failed: ${resp.status}`,
+        version: 'v1',
+        message: resp.ok ? 'Connected to Oracle Fusion REST API' : `Connection failed: ${resp.status}`,
       };
     } catch (err) {
       return { connected: false, message: `Connection error: ${(err as Error).message}` };
@@ -349,13 +348,13 @@ const oracleAdapter: ERPAdapter = {
     for (const entity of entities) {
       try {
         const apiMap: Record<string, string> = {
-          'suppliers': '/fscmRestApi/resources/11.13.18.05/suppliers?limit=1000',
-          'invoices': '/fscmRestApi/resources/11.13.18.05/invoices?limit=1000',
-          'purchase_orders': '/fscmRestApi/resources/11.13.18.05/purchaseOrders?limit=1000',
-          'gl_journals': '/fscmRestApi/resources/11.13.18.05/journals?limit=1000',
-          'items': '/fscmRestApi/resources/11.13.18.05/items?limit=1000',
+          'suppliers': '/fscmRestApi/resources/v1/suppliers?limit=1000',
+          'invoices': '/fscmRestApi/resources/v1/invoices?limit=1000',
+          'purchase_orders': '/fscmRestApi/resources/v1/purchaseOrders?limit=1000',
+          'gl_journals': '/fscmRestApi/resources/v1/journals?limit=1000',
+          'items': '/fscmRestApi/resources/v1/items?limit=1000',
         };
-        const path = apiMap[entity] || `/fscmRestApi/resources/11.13.18.05/${entity}?limit=1000`;
+        const path = apiMap[entity] || `/fscmRestApi/resources/v1/${entity}?limit=1000`;
         const resp = await fetch(`${credentials.baseUrl}${path}`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -380,7 +379,7 @@ const oracleAdapter: ERPAdapter = {
   },
 };
 
-// ── Xero Adapter (API 2.0 — current) ──
+// ── Xero Adapter ──
 const xeroAdapter: ERPAdapter = {
   name: 'Xero',
 
@@ -422,7 +421,7 @@ const xeroAdapter: ERPAdapter = {
         return {
           connected: true,
           version: '2.0',
-          message: `Connected to Xero API 2.0. ${connections.length} organisation(s) linked.`,
+          message: `Connected to Xero. ${connections.length} organisation(s) linked.`,
         };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
@@ -477,7 +476,7 @@ const xeroAdapter: ERPAdapter = {
   },
 };
 
-// ── Sage Business Cloud Accounting Adapter (v3.1 — current) ──
+// ── Sage Business Cloud Accounting Adapter ──
 const sageAdapter: ERPAdapter = {
   name: 'Sage Business Cloud',
 
@@ -571,7 +570,7 @@ const sageAdapter: ERPAdapter = {
   },
 };
 
-// ── Sage Pastel (Sage 50cloud / Pastel Partner/Xpress) Adapter (v2 — 2026) ──
+// ── Sage Pastel (Sage 50cloud / Pastel Partner/Xpress) Adapter ──
 const pastelAdapter: ERPAdapter = {
   name: 'Sage Pastel',
 
@@ -605,7 +604,7 @@ const pastelAdapter: ERPAdapter = {
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/api/v2/company`, {
+      const resp = await fetch(`${credentials.baseUrl}/api/v1/company`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-API-Key': credentials.apiKey || '',
@@ -616,8 +615,8 @@ const pastelAdapter: ERPAdapter = {
         const data = await resp.json() as { CompanyName?: string; Version?: string };
         return {
           connected: true,
-          version: data.Version || '2026',
-          message: `Connected to Pastel (2026): ${data.CompanyName || 'OK'}`,
+          version: data.Version || '2024',
+          message: `Connected to Pastel: ${data.CompanyName || 'OK'}`,
         };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
@@ -638,20 +637,20 @@ const pastelAdapter: ERPAdapter = {
     for (const entity of entities) {
       try {
         const apiMap: Record<string, string> = {
-          'customers': '/api/v2/customers?limit=500',
-          'suppliers': '/api/v2/suppliers?limit=500',
-          'invoices': '/api/v2/invoices?limit=500',
-          'purchase_orders': '/api/v2/purchase-orders?limit=500',
-          'inventory': '/api/v2/inventory-items?limit=500',
-          'gl_accounts': '/api/v2/general-ledger/accounts?limit=500',
-          'gl_transactions': '/api/v2/general-ledger/transactions?limit=500',
-          'bank_accounts': '/api/v2/bank-accounts',
-          'employees': '/api/v2/employees?limit=500',
-          'tax_types': '/api/v2/tax-types',
-          'quotes': '/api/v2/quotes?limit=500',
-          'credit_notes': '/api/v2/credit-notes?limit=500',
+          'customers': '/api/v1/customers?limit=500',
+          'suppliers': '/api/v1/suppliers?limit=500',
+          'invoices': '/api/v1/invoices?limit=500',
+          'purchase_orders': '/api/v1/purchase-orders?limit=500',
+          'inventory': '/api/v1/inventory-items?limit=500',
+          'gl_accounts': '/api/v1/general-ledger/accounts?limit=500',
+          'gl_transactions': '/api/v1/general-ledger/transactions?limit=500',
+          'bank_accounts': '/api/v1/bank-accounts',
+          'employees': '/api/v1/employees?limit=500',
+          'tax_types': '/api/v1/tax-types',
+          'quotes': '/api/v1/quotes?limit=500',
+          'credit_notes': '/api/v1/credit-notes?limit=500',
         };
-        const path = apiMap[entity] || `/api/v2/${entity}?limit=500`;
+        const path = apiMap[entity] || `/api/v1/${entity}?limit=500`;
         const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
         if (resp.ok) {
           const data = await resp.json() as { TotalResults?: number; Results?: Record<string, unknown>[] };
@@ -674,7 +673,7 @@ const pastelAdapter: ERPAdapter = {
   },
 };
 
-// ── Microsoft Dynamics 365 Business Central Adapter (API v2.0 — 2026 Wave 1) ──
+// ── Microsoft Dynamics 365 Business Central Adapter ──
 const dynamics365Adapter: ERPAdapter = {
   name: 'Microsoft Dynamics 365',
 
@@ -788,7 +787,7 @@ const dynamics365Adapter: ERPAdapter = {
   },
 };
 
-// ── Oracle NetSuite (SuiteTalk REST — 2026.1) Adapter ──
+// ── Oracle NetSuite (SuiteTalk REST) Adapter ──
 const netsuiteAdapter: ERPAdapter = {
   name: 'Oracle NetSuite',
 
@@ -833,8 +832,8 @@ const netsuiteAdapter: ERPAdapter = {
       );
       return {
         connected: resp.ok,
-        version: '2026.1',
-        message: resp.ok ? 'Connected to NetSuite SuiteTalk REST API (2026.1)' : `Connection failed: ${resp.status}`,
+        version: 'v1',
+        message: resp.ok ? 'Connected to NetSuite SuiteTalk REST API' : `Connection failed: ${resp.status}`,
       };
     } catch (err) {
       return { connected: false, message: `Connection error: ${(err as Error).message}` };
@@ -884,7 +883,7 @@ const netsuiteAdapter: ERPAdapter = {
   },
 };
 
-// ── Intuit QuickBooks Online Adapter (v3 — minor version 75) ──
+// ── Intuit QuickBooks Online Adapter ──
 const quickbooksAdapter: ERPAdapter = {
   name: 'QuickBooks Online',
 
@@ -923,7 +922,7 @@ const quickbooksAdapter: ERPAdapter = {
     try {
       const realmId = credentials.apiKey || '';
       const resp = await fetch(
-        `https://quickbooks.api.intuit.com/v3/company/${realmId}/companyinfo/${realmId}?minorversion=75`,
+        `https://quickbooks.api.intuit.com/v3/company/${realmId}/companyinfo/${realmId}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -935,8 +934,8 @@ const quickbooksAdapter: ERPAdapter = {
         const data = await resp.json() as { CompanyInfo?: { CompanyName?: string } };
         return {
           connected: true,
-          version: 'v3-minor75',
-          message: `Connected to QuickBooks Online (v3, minor 75): ${data.CompanyInfo?.CompanyName || 'OK'}`,
+          version: 'v3',
+          message: `Connected to QuickBooks: ${data.CompanyInfo?.CompanyName || 'OK'}`,
         };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
@@ -950,7 +949,7 @@ const quickbooksAdapter: ERPAdapter = {
     const result: SyncResult = { recordsSynced: 0, recordsFailed: 0, duration: 0, entities: [], errors: [] };
     const realmId = credentials.apiKey || '';
     const baseApi = `https://quickbooks.api.intuit.com/v3/company/${realmId}`;
-    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json', 'Content-Type': 'application/json' };
+    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
 
     for (const entity of entities) {
       try {
@@ -968,7 +967,7 @@ const quickbooksAdapter: ERPAdapter = {
         };
         const query = queryMap[entity] || `SELECT * FROM ${entity} MAXRESULTS 1000`;
         const resp = await fetch(
-          `${baseApi}/query?query=${encodeURIComponent(query)}&minorversion=75`,
+          `${baseApi}/query?query=${encodeURIComponent(query)}`,
           { headers },
         );
         if (resp.ok) {
@@ -993,61 +992,57 @@ const quickbooksAdapter: ERPAdapter = {
   },
 };
 
-// ── Odoo Adapter (v18 — JSON-RPC / REST API) ──
+// ── Odoo Adapter (JSON-RPC / XML-RPC compatible) ──
 const odooAdapter: ERPAdapter = {
   name: 'Odoo',
 
   getAuthUrl(credentials: ERPCredentials, state: string): string {
-    const authUrl = credentials.authUrl || `${credentials.baseUrl}/api/v2/authentication/oauth2/authorize`;
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: credentials.clientId,
-      redirect_uri: `${credentials.baseUrl}/oauth/callback`,
-      scope: credentials.scope || 'openid profile email',
-      state,
-    });
-    return `${authUrl}?${params}`;
+    // Odoo JSON-RPC uses username/password — OAuth not required
+    return `${credentials.baseUrl}/web/login?state=${state}`;
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
-    const tokenUrl = credentials.tokenUrl || `${credentials.baseUrl}/api/v2/authentication/oauth2/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${credentials.clientId}:${credentials.clientSecret}`)}`,
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: `${credentials.baseUrl}/oauth/callback`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', method: 'call', id: 1,
+        params: {
+          model: 'res.users', method: 'authenticate',
+          args: [credentials.apiKey, credentials.username, credentials.password, {}],
+          kwargs: {},
+        },
       }),
     });
-    if (!resp.ok) throw new Error(`Odoo token exchange failed: ${resp.status}`);
-    return resp.json();
+    if (!resp.ok) throw new Error(`Odoo auth failed: ${resp.status}`);
+    const data = await resp.json() as {
+      result?: number; error?: { message: string }
+    };
+    if (!data.result) throw new Error(
+      `Odoo auth failed: ${data.error?.message || 'Invalid credentials'}`
+    );
+    return {
+      access_token: String(data.result),  // Odoo uid
+      token_type: 'odoo-jsonrpc',
+      expires_in: 86400,
+      refresh_token: credentials.apiKey,  // db_name stored for reuse
+    };
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      // Odoo 18 JSON-RPC version info endpoint
       const resp = await fetch(`${credentials.baseUrl}/web/webclient/version_info`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {}, id: 1 }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
       });
       if (resp.ok) {
-        const data = await resp.json() as { result?: { server_version?: string; server_version_info?: number[] }; error?: { message?: string; data?: { message?: string } } };
-        if (data.error) {
-          return { connected: false, message: `Odoo error: ${data.error.data?.message || data.error.message || 'Unknown RPC error'}` };
-        }
-        const version = data.result?.server_version || '18.0';
+        const data = await resp.json() as { result?: { server_version?: string } };
         return {
           connected: true,
-          version,
-          message: `Connected to Odoo ${version} (JSON-RPC)`,
+          version: data.result?.server_version || '17.0',
+          message: `Connected to Odoo JSON-RPC API (uid: ${token})`,
         };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
@@ -1059,66 +1054,90 @@ const odooAdapter: ERPAdapter = {
   async syncData(credentials: ERPCredentials, token: string, entities: string[]): Promise<SyncResult> {
     const start = Date.now();
     const result: SyncResult = { recordsSynced: 0, recordsFailed: 0, duration: 0, entities: [], errors: [] };
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
+    const uid = parseInt(token);
+    const dbName = credentials.apiKey || '';
+    if (!uid || !dbName) {
+      result.errors.push('Missing uid or db_name — re-authenticate');
+      result.duration = Date.now() - start;
+      return result;
+    }
+    const modelMap: Record<string, { model: string; fields: string[]; domain: unknown[] }> = {
+      customers: {
+        model: 'res.partner',
+        fields: ['id','name','email','phone','street','city','country_id','is_company'],
+        domain: [['customer_rank','>',0]],
+      },
+      suppliers: {
+        model: 'res.partner',
+        fields: ['id','name','email','phone','street','city','supplier_rank'],
+        domain: [['supplier_rank','>',0]],
+      },
+      invoices: {
+        model: 'account.move',
+        fields: ['id','name','amount_total','amount_residual','state',
+                 'invoice_date','partner_id','move_type'],
+        domain: [['move_type','in',['out_invoice','in_invoice']]],
+      },
+      sales_orders: {
+        model: 'sale.order',
+        fields: ['id','name','amount_total','state','date_order','partner_id'],
+        domain: [],
+      },
+      purchase_orders: {
+        model: 'purchase.order',
+        fields: ['id','name','amount_total','state','date_order','partner_id'],
+        domain: [],
+      },
+      products: {
+        model: 'product.template',
+        fields: ['id','name','list_price','standard_price','categ_id',
+                 'qty_available','active'],
+        domain: [['active','=',true]],
+      },
+      employees: {
+        model: 'hr.employee',
+        fields: ['id','name','department_id','job_title','work_email'],
+        domain: [['active','=',true]],
+      },
+      gl_accounts: {
+        model: 'account.account',
+        fields: ['id','name','code','account_type'],
+        domain: [],
+      },
     };
-
     for (const entity of entities) {
+      const cfg = modelMap[entity];
+      if (!cfg) {
+        result.errors.push(`${entity}: no model mapping defined`);
+        continue;
+      }
       try {
-        const modelMap: Record<string, string> = {
-          'customers': 'res.partner',
-          'contacts': 'res.partner',
-          'suppliers': 'res.partner',
-          'vendors': 'res.partner',
-          'invoices': 'account.move',
-          'sales_orders': 'sale.order',
-          'purchase_orders': 'purchase.order',
-          'products': 'product.product',
-          'items': 'product.template',
-          'employees': 'hr.employee',
-          'gl_accounts': 'account.account',
-        };
-        const model = modelMap[entity] || entity;
-
-        // Build domain filters for Odoo 18 search_read
-        const domainFilters: [string, string, unknown][] = [];
-        if (entity === 'customers') domainFilters.push(['customer_rank', '>', 0]);
-        if (entity === 'suppliers' || entity === 'vendors') domainFilters.push(['supplier_rank', '>', 0]);
-        if (entity === 'invoices') domainFilters.push(['move_type', 'in', ['out_invoice', 'in_invoice']]);
-
-        // Use Odoo 18 /web/dataset/call_kw endpoint with Bearer token auth
-        // This is compatible with OAuth2 tokens, unlike raw /jsonrpc execute_kw
-        // which requires session-based (db, uid, password) authentication
-        const rpcPayload = {
-          jsonrpc: '2.0',
-          method: 'call',
-          params: {
-            model,
-            method: 'search_read',
-            args: [domainFilters],
-            kwargs: { limit: 1000 },
-          },
-          id: Date.now(),
-        };
-
-        const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw/${model}/search_read`, {
+        const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
           method: 'POST',
-          headers,
-          body: JSON.stringify(rpcPayload),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', method: 'call', id: 1,
+            params: {
+              model: cfg.model, method: 'search_read',
+              args: [cfg.domain],
+              kwargs: { fields: cfg.fields, limit: 1000,
+                        context: { uid, lang: 'en_US' } },
+            },
+          }),
         });
-
         if (resp.ok) {
-          const data = await resp.json() as { result?: { records?: Record<string, unknown>[]; length?: number } | Record<string, unknown>[]; error?: { message?: string; data?: { message?: string } } };
+          const data = await resp.json() as {
+            result?: Record<string, unknown>[];
+            error?: { message: string };
+          };
           if (data.error) {
             result.recordsFailed++;
-            result.errors.push(`${entity}: ${data.error.data?.message || data.error.message || 'RPC error'}`);
-          } else {
-            const records = Array.isArray(data.result) ? data.result : (data.result?.records || []);
-            const count = records.length;
-            result.recordsSynced += count;
-            result.entities.push({ type: entity, count, records: records as Record<string, unknown>[] });
+            result.errors.push(`${entity}: ${data.error.message}`);
+            continue;
           }
+          const records = data.result || [];
+          result.recordsSynced += records.length;
+          result.entities.push({ type: entity, count: records.length, records });
         } else {
           result.recordsFailed++;
           result.errors.push(`${entity}: HTTP ${resp.status}`);
@@ -1128,7 +1147,6 @@ const odooAdapter: ERPAdapter = {
         result.errors.push(`${entity}: ${(err as Error).message}`);
       }
     }
-
     result.duration = Date.now() - start;
     return result;
   },
