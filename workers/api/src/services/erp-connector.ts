@@ -992,51 +992,57 @@ const quickbooksAdapter: ERPAdapter = {
   },
 };
 
-// ── Odoo Adapter ──
+// ── Odoo Adapter (JSON-RPC / XML-RPC compatible) ──
 const odooAdapter: ERPAdapter = {
   name: 'Odoo',
 
   getAuthUrl(credentials: ERPCredentials, state: string): string {
-    const authUrl = credentials.authUrl || `${credentials.baseUrl}/api/v1/oauth2/authorize`;
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: credentials.clientId,
-      redirect_uri: `${credentials.baseUrl}/oauth/callback`,
-      scope: credentials.scope || 'openid profile email',
-      state,
-    });
-    return `${authUrl}?${params}`;
+    // Odoo JSON-RPC uses username/password — OAuth not required
+    return `${credentials.baseUrl}/web/login?state=${state}`;
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
-    const tokenUrl = credentials.tokenUrl || `${credentials.baseUrl}/api/v1/oauth2/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${credentials.clientId}:${credentials.clientSecret}`)}`,
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: `${credentials.baseUrl}/oauth/callback`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', method: 'call', id: 1,
+        params: {
+          model: 'res.users', method: 'authenticate',
+          args: [credentials.apiKey, credentials.username, credentials.password, {}],
+          kwargs: {},
+        },
       }),
     });
-    if (!resp.ok) throw new Error(`Odoo token exchange failed: ${resp.status}`);
-    return resp.json();
+    if (!resp.ok) throw new Error(`Odoo auth failed: ${resp.status}`);
+    const data = await resp.json() as {
+      result?: number; error?: { message: string }
+    };
+    if (!data.result) throw new Error(
+      `Odoo auth failed: ${data.error?.message || 'Invalid credentials'}`
+    );
+    return {
+      access_token: String(data.result),  // Odoo uid
+      token_type: 'odoo-jsonrpc',
+      expires_in: 86400,
+      refresh_token: credentials.apiKey,  // db_name stored for reuse
+    };
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/api/v1/version`, {
-        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+      const resp = await fetch(`${credentials.baseUrl}/web/webclient/version_info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
       });
       if (resp.ok) {
-        const data = await resp.json() as { server_version?: string };
+        const data = await resp.json() as { result?: { server_version?: string } };
         return {
           connected: true,
-          version: data.server_version || '17.0',
-          message: 'Connected to Odoo JSON-RPC / REST API',
+          version: data.result?.server_version || '17.0',
+          message: `Connected to Odoo JSON-RPC API (uid: ${token})`,
         };
       }
       return { connected: false, message: `Connection failed: ${resp.status}` };
@@ -1048,31 +1054,90 @@ const odooAdapter: ERPAdapter = {
   async syncData(credentials: ERPCredentials, token: string, entities: string[]): Promise<SyncResult> {
     const start = Date.now();
     const result: SyncResult = { recordsSynced: 0, recordsFailed: 0, duration: 0, entities: [], errors: [] };
-    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json', 'Content-Type': 'application/json' };
-
+    const uid = parseInt(token);
+    const dbName = credentials.apiKey || '';
+    if (!uid || !dbName) {
+      result.errors.push('Missing uid or db_name — re-authenticate');
+      result.duration = Date.now() - start;
+      return result;
+    }
+    const modelMap: Record<string, { model: string; fields: string[]; domain: unknown[] }> = {
+      customers: {
+        model: 'res.partner',
+        fields: ['id','name','email','phone','street','city','country_id','is_company'],
+        domain: [['customer_rank','>',0]],
+      },
+      suppliers: {
+        model: 'res.partner',
+        fields: ['id','name','email','phone','street','city','supplier_rank'],
+        domain: [['supplier_rank','>',0]],
+      },
+      invoices: {
+        model: 'account.move',
+        fields: ['id','name','amount_total','amount_residual','state',
+                 'invoice_date','partner_id','move_type'],
+        domain: [['move_type','in',['out_invoice','in_invoice']]],
+      },
+      sales_orders: {
+        model: 'sale.order',
+        fields: ['id','name','amount_total','state','date_order','partner_id'],
+        domain: [],
+      },
+      purchase_orders: {
+        model: 'purchase.order',
+        fields: ['id','name','amount_total','state','date_order','partner_id'],
+        domain: [],
+      },
+      products: {
+        model: 'product.template',
+        fields: ['id','name','list_price','standard_price','categ_id',
+                 'qty_available','active'],
+        domain: [['active','=',true]],
+      },
+      employees: {
+        model: 'hr.employee',
+        fields: ['id','name','department_id','job_title','work_email'],
+        domain: [['active','=',true]],
+      },
+      gl_accounts: {
+        model: 'account.account',
+        fields: ['id','name','code','account_type'],
+        domain: [],
+      },
+    };
     for (const entity of entities) {
+      const cfg = modelMap[entity];
+      if (!cfg) {
+        result.errors.push(`${entity}: no model mapping defined`);
+        continue;
+      }
       try {
-        const modelMap: Record<string, string> = {
-          'customers': 'res.partner',
-          'contacts': 'res.partner',
-          'suppliers': 'res.partner',
-          'vendors': 'res.partner',
-          'invoices': 'account.move',
-          'sales_orders': 'sale.order',
-          'purchase_orders': 'purchase.order',
-          'products': 'product.product',
-          'items': 'product.template',
-          'employees': 'hr.employee',
-          'gl_accounts': 'account.account',
-        };
-        const model = modelMap[entity] || entity;
-        const resp = await fetch(`${credentials.baseUrl}/api/v1/${model.replace(/\./g, '/')}?limit=1000`, { headers });
+        const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', method: 'call', id: 1,
+            params: {
+              model: cfg.model, method: 'search_read',
+              args: [cfg.domain],
+              kwargs: { fields: cfg.fields, limit: 1000,
+                        context: { uid, lang: 'en_US' } },
+            },
+          }),
+        });
         if (resp.ok) {
-          const data = await resp.json() as { length?: number; records?: Record<string, unknown>[]; results?: Record<string, unknown>[] };
-          const rawRecords = data.records || data.results || [];
-          const count = data.length || rawRecords.length;
-          result.recordsSynced += count;
-          result.entities.push({ type: entity, count, records: rawRecords as Record<string, unknown>[] });
+          const data = await resp.json() as {
+            result?: Record<string, unknown>[];
+            error?: { message: string };
+          };
+          if (data.error) {
+            result.recordsFailed++;
+            result.errors.push(`${entity}: ${data.error.message}`);
+            continue;
+          }
+          const records = data.result || [];
+          result.recordsSynced += records.length;
+          result.entities.push({ type: entity, count: records.length, records });
         } else {
           result.recordsFailed++;
           result.errors.push(`${entity}: HTTP ${resp.status}`);
@@ -1082,7 +1147,6 @@ const odooAdapter: ERPAdapter = {
         result.errors.push(`${entity}: ${(err as Error).message}`);
       }
     }
-
     result.duration = Date.now() - start;
     return result;
   },
