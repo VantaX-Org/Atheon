@@ -267,6 +267,7 @@ function resolveTokenUrl(config: RefreshConfig, systemType: string): string {
   if (sys.includes('oracle')) return `${config.base_url}/oauth2/v1/token`;
   if (sys.includes('workday')) return `${config.base_url}/oauth2/token`;
   if (sys.includes('netsuite')) return `${config.base_url}/services/rest/auth/oauth2/v1/token`;
+  if (sys.includes('odoo')) return ''; // Odoo uses JSON-RPC re-auth, not token refresh
 
   return '';
 }
