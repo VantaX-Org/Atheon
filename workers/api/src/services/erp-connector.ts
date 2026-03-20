@@ -1061,9 +1061,6 @@ const odooAdapter: ERPAdapter = {
       'Authorization': `Bearer ${token}`,
     };
 
-    // Extract the database name from credentials (used in JSON-RPC calls)
-    const db = credentials.scope || 'odoo';
-
     for (const entity of entities) {
       try {
         const modelMap: Record<string, string> = {
@@ -1081,47 +1078,43 @@ const odooAdapter: ERPAdapter = {
         };
         const model = modelMap[entity] || entity;
 
-        // Odoo 18 JSON-RPC call to search_read via /jsonrpc
+        // Build domain filters for Odoo 18 search_read
         const domainFilters: [string, string, unknown][] = [];
         if (entity === 'customers') domainFilters.push(['customer_rank', '>', 0]);
         if (entity === 'suppliers' || entity === 'vendors') domainFilters.push(['supplier_rank', '>', 0]);
         if (entity === 'invoices') domainFilters.push(['move_type', 'in', ['out_invoice', 'in_invoice']]);
 
+        // Use Odoo 18 /web/dataset/call_kw endpoint with Bearer token auth
+        // This is compatible with OAuth2 tokens, unlike raw /jsonrpc execute_kw
+        // which requires session-based (db, uid, password) authentication
         const rpcPayload = {
           jsonrpc: '2.0',
           method: 'call',
           params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              db,
-              credentials.clientId,
-              token,
-              model,
-              'search_read',
-              [domainFilters],
-              { limit: 1000 },
-            ],
+            model,
+            method: 'search_read',
+            args: [domainFilters],
+            kwargs: { limit: 1000 },
           },
           id: Date.now(),
         };
 
-        const resp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
+        const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw/${model}/search_read`, {
           method: 'POST',
           headers,
           body: JSON.stringify(rpcPayload),
         });
 
         if (resp.ok) {
-          const data = await resp.json() as { result?: Record<string, unknown>[]; error?: { message?: string } };
+          const data = await resp.json() as { result?: { records?: Record<string, unknown>[]; length?: number } | Record<string, unknown>[]; error?: { message?: string; data?: { message?: string } } };
           if (data.error) {
             result.recordsFailed++;
-            result.errors.push(`${entity}: ${data.error.message || 'RPC error'}`);
+            result.errors.push(`${entity}: ${data.error.data?.message || data.error.message || 'RPC error'}`);
           } else {
-            const rawRecords = data.result || [];
-            const count = rawRecords.length;
+            const records = Array.isArray(data.result) ? data.result : (data.result?.records || []);
+            const count = records.length;
             result.recordsSynced += count;
-            result.entities.push({ type: entity, count, records: rawRecords as Record<string, unknown>[] });
+            result.entities.push({ type: entity, count, records: records as Record<string, unknown>[] });
           }
         } else {
           result.recordsFailed++;
