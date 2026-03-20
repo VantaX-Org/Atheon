@@ -17,6 +17,7 @@ const industries: { value: IndustryVertical; label: string }[] = [
   { value: 'logistics', label: 'Logistics' },
   { value: 'technology', label: 'Technology' },
   { value: 'manufacturing', label: 'Manufacturing' },
+  { value: 'retail', label: 'Retail' },
 ];
 
 const severityColors: Record<string, string> = {

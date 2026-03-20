@@ -4,7 +4,7 @@
 
 // --- Platform Identity ---
 export type AtheonLayer = 'apex' | 'pulse' | 'catalysts' | 'mind' | 'memory';
-export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing';
+export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing' | 'retail';
 
 // --- Auth & Tenancy ---
 export interface User {
@@ -201,7 +201,9 @@ export type CatalystClusterType =
   // Technology
   | 'tech-devops' | 'tech-security' | 'tech-product' | 'tech-customer-success'
   // Manufacturing
-  | 'mfg-production' | 'mfg-quality' | 'mfg-maintenance' | 'mfg-energy';
+  | 'mfg-production' | 'mfg-quality' | 'mfg-maintenance' | 'mfg-energy'
+  // Retail
+  | 'retail-pos' | 'retail-inventory' | 'retail-cx' | 'retail-supply-chain' | 'retail-pricing' | 'retail-ops' | 'retail-ecommerce';
 
 export type AutonomyTier = 'read-only' | 'assisted' | 'transactional';
 
