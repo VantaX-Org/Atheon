@@ -631,7 +631,7 @@ const marketingCSS = `
   .mk5-nav-links { display: none; }
   .mk5-hero { padding: 0 2rem 4rem; }
   .mk5-manifesto { padding: 8rem 2rem; }
-  .mk5-layers, .mk5-comp, .mk5-int, .mk5-ethos { padding-left: 2rem; padding-right: 2rem; }
+  .mk5-layers, .mk5-comp, .mk5-int, .mk5-ind, .mk5-feat, .mk5-ethos { padding-left: 2rem; padding-right: 2rem; }
   .mk5-layer-block { grid-template-columns: 1fr; }
   .mk5-layer-num { font-size: 4rem; }
   .mk5-stats { grid-template-columns: 1fr 1fr; }
