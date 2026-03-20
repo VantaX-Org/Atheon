@@ -9,7 +9,7 @@ import { seedSampleCompany } from './seed-sample-company';
 import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v26';
+export const MIGRATION_VERSION = 'v27';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -283,6 +283,13 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     await db.prepare("INSERT OR IGNORE INTO users (id, tenant_id, email, name, role, password_hash, permissions, status) VALUES ('protea-user-7','protea','intern@protea-mfg.co.za','Naledi Mahlangu','viewer','','[\"dashboard.read\"]','active')").run();
   } catch (err) {
     result.errors.push(`Seed users: ${(err as Error).message}`);
+  }
+
+  // ── Ensure Odoo ERP adapter exists (added after initial seed) ──
+  try {
+    await db.prepare("INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES ('erp-odoo','Odoo ERP','Odoo','18.0','JSON-RPC/REST','available','[\"JSON-RPC 2.0\",\"REST API v2\",\"XML-RPC\",\"ORM API\"]','[\"OAuth 2.0\",\"API Key\",\"Session Auth\"]')").run();
+  } catch (err) {
+    result.errors.push(`Seed Odoo adapter: ${(err as Error).message}`);
   }
 
   // ── Seed Data ──
