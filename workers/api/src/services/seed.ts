@@ -86,7 +86,7 @@ export async function seedDatabase(db: D1Database) {
   ];
 
   for (const a of adapters) {
-    await db.prepare('INSERT INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    await db.prepare('INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(a.id, a.name, a.system, a.version, a.protocol, a.status, a.operations, a.auth_methods).run();
   }
 
