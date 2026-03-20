@@ -396,6 +396,134 @@ const marketingCSS = `
   text-transform: uppercase; color: var(--slate);
 }
 
+/* INDUSTRY SOLUTIONS */
+.mk5-ind { padding: 10rem 3.5rem; position: relative; }
+.mk5-ind::before {
+  content: '03'; position: absolute; top: 4rem; left: 3.5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
+  color: var(--sage); opacity: .4;
+}
+.mk5-ind-header { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; margin-bottom: 5rem; }
+.mk5-ind-header h2 {
+  font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 4vw, 4rem);
+  font-weight: 400; line-height: 1.1;
+}
+.mk5-ind-header p { font-size: 1rem; font-weight: 300; line-height: 1.9; color: var(--chalk); align-self: end; }
+.mk5-ind-featured {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line);
+  margin-bottom: 4rem;
+}
+.mk5-ind-featured-main {
+  background: var(--abyss); padding: 4rem 3rem; position: relative;
+  border-left: 3px solid var(--sage); transition: all .5s;
+}
+.mk5-ind-featured-main:hover { background: var(--deep); }
+.mk5-ind-featured-badge {
+  display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: .5rem;
+  letter-spacing: .3em; text-transform: uppercase; color: var(--void);
+  background: var(--sage); padding: .3rem .8rem; margin-bottom: 1.5rem;
+}
+.mk5-ind-featured-title {
+  font-family: 'Instrument Serif', serif; font-size: 2.2rem; font-weight: 400;
+  line-height: 1.2; margin-bottom: 1rem;
+}
+.mk5-ind-featured-desc {
+  font-size: .95rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  margin-bottom: 2rem;
+}
+.mk5-ind-featured-caps {
+  display: flex; flex-wrap: wrap; gap: .5rem;
+}
+.mk5-ind-featured-cap {
+  padding: .4rem 1rem; font-size: .7rem; font-weight: 500; letter-spacing: .05em;
+  border: 1px solid var(--sage); color: var(--sage); background: var(--sage-d);
+}
+.mk5-ind-featured-stats {
+  background: var(--abyss); padding: 4rem 3rem;
+  display: flex; flex-direction: column; justify-content: center; gap: 2.5rem;
+}
+.mk5-ind-stat-row {
+  display: flex; align-items: baseline; gap: 1rem;
+}
+.mk5-ind-stat-num {
+  font-family: 'Instrument Serif', serif; font-size: 3rem; font-weight: 400;
+  line-height: 1; color: var(--sage-b);
+}
+.mk5-ind-stat-label {
+  font-size: .85rem; font-weight: 300; color: var(--chalk); line-height: 1.4;
+}
+.mk5-ind-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
+}
+.mk5-ind-card {
+  background: var(--abyss); padding: 3rem 2.5rem; transition: all .5s; position: relative;
+}
+.mk5-ind-card:hover { background: var(--deep); }
+.mk5-ind-card::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+  background: transparent; transition: background .4s;
+}
+.mk5-ind-card:hover::before { background: var(--sage); }
+.mk5-ind-card-icon {
+  font-size: 1.4rem; margin-bottom: 1.5rem; opacity: .4;
+}
+.mk5-ind-card-name {
+  font-family: 'Instrument Serif', serif; font-size: 1.5rem; font-weight: 400;
+  margin-bottom: .5rem;
+}
+.mk5-ind-card-desc {
+  font-size: .85rem; font-weight: 300; line-height: 1.8; color: var(--chalk);
+  margin-bottom: 1.5rem;
+}
+.mk5-ind-card-cats {
+  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .15em;
+  color: var(--slate); line-height: 1.8;
+}
+
+/* FEATURES DEEP-DIVE */
+.mk5-feat { padding: 10rem 3.5rem; border-top: 1px solid var(--line); position: relative; }
+.mk5-feat::before {
+  content: '04'; position: absolute; top: 4rem; left: 3.5rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6rem; letter-spacing: .3em;
+  color: var(--sage); opacity: .4;
+}
+.mk5-feat-header { margin-bottom: 5rem; }
+.mk5-feat-header h2 {
+  font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 4vw, 4rem);
+  font-weight: 400; line-height: 1.1; margin-bottom: 1.5rem;
+}
+.mk5-feat-header p { font-size: 1rem; font-weight: 300; line-height: 1.9; color: var(--chalk); max-width: 600px; }
+.mk5-feat-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line);
+}
+.mk5-feat-item {
+  background: var(--abyss); padding: 3.5rem 3rem; transition: all .5s;
+}
+.mk5-feat-item:hover { background: var(--deep); }
+.mk5-feat-item-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: .55rem; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--sage); margin-bottom: 1rem;
+}
+.mk5-feat-item-title {
+  font-family: 'Instrument Serif', serif; font-size: 1.6rem; font-weight: 400;
+  margin-bottom: 1rem;
+}
+.mk5-feat-item-desc {
+  font-size: .9rem; font-weight: 300; line-height: 1.9; color: var(--chalk);
+  margin-bottom: 1.5rem;
+}
+.mk5-feat-item-bullets {
+  list-style: none; padding: 0; margin: 0;
+}
+.mk5-feat-item-bullets li {
+  font-size: .8rem; font-weight: 300; color: var(--chalk); padding: .3rem 0;
+  padding-left: 1.2rem; position: relative;
+}
+.mk5-feat-item-bullets li::before {
+  content: ''; position: absolute; left: 0; top: .7rem;
+  width: 5px; height: 1px; background: var(--sage);
+}
+
 /* ETHOS */
 .mk5-ethos { padding: 10rem 3.5rem; border-top: 1px solid var(--line); }
 .mk5-ethos-grid {
@@ -493,6 +621,10 @@ const marketingCSS = `
   .mk5-int-grid { grid-template-columns: repeat(3, 1fr); }
   .mk5-comp-header { grid-template-columns: 1fr; }
   .mk5-ethos-grid { grid-template-columns: 1fr; }
+  .mk5-ind-header { grid-template-columns: 1fr; }
+  .mk5-ind-featured { grid-template-columns: 1fr; }
+  .mk5-ind-grid { grid-template-columns: 1fr; }
+  .mk5-feat-grid { grid-template-columns: 1fr; }
 }
 @media(max-width: 768px) {
   .mk5-nav { padding: 1.5rem 2rem; }
@@ -772,11 +904,28 @@ export function MarketingPage() {
     { icon: "\u25C7", name: "Dynamics 365", type: "ERP + CRM" },
     { icon: "\u25C6", name: "Sage 300", type: "ERP" },
     { icon: "\u25C6", name: "SYSPRO", type: "ERP" },
-    { icon: "\u25C7", name: "Odoo", type: "ERP" },
+    { icon: "\u25C7", name: "Odoo 18", type: "ERP" },
+    { icon: "\u25C6", name: "Oracle Fusion", type: "ERP" },
+    { icon: "\u25C6", name: "NetSuite", type: "ERP" },
+    { icon: "\u25C6", name: "QuickBooks", type: "Accounting" },
     { icon: "\u25CB", name: "SuccessFactors", type: "HCM" },
     { icon: "\u25CB", name: "Salesforce", type: "CRM" },
     { icon: "\u25CB", name: "Xero", type: "Accounting" },
+    { icon: "\u25CB", name: "Workday", type: "HCM" },
     { icon: "\u2750", name: "REST APIs", type: "Custom" },
+    { icon: "\u2750", name: "Webhooks", type: "Custom" },
+  ];
+
+  const industrySolutions = [
+    { icon: "\u25C6", name: "Mining & Steel", desc: "Equipment health, safety compliance, ore processing, and environmental monitoring", catalysts: "9 catalysts \u00B7 45 sub-catalysts" },
+    { icon: "\u25C7", name: "Healthcare", desc: "Patient flow, clinical compliance, medical billing, pharmacy, and staffing intelligence", catalysts: "8 catalysts \u00B7 42 sub-catalysts" },
+    { icon: "\u25C6", name: "FMCG", desc: "Trade promotion, distributor management, shelf intelligence, and product launch", catalysts: "7 catalysts \u00B7 35 sub-catalysts" },
+    { icon: "\u25C6", name: "Manufacturing", desc: "Production optimization, quality control, predictive maintenance, and energy management", catalysts: "7 catalysts \u00B7 36 sub-catalysts" },
+    { icon: "\u25C7", name: "Agriculture", desc: "Crop intelligence, irrigation, quality assurance, and fresh produce market access", catalysts: "8 catalysts \u00B7 38 sub-catalysts" },
+    { icon: "\u25C6", name: "Logistics", desc: "Route optimization, fleet maintenance, driver management, and customs compliance", catalysts: "7 catalysts \u00B7 35 sub-catalysts" },
+    { icon: "\u25C7", name: "Technology & SaaS", desc: "DevOps, security posture, product analytics, customer success, and revenue ops", catalysts: "8 catalysts \u00B7 40 sub-catalysts" },
+    { icon: "\u25C6", name: "Financial Services", desc: "Risk management, regulatory compliance, customer intelligence, and operations", catalysts: "5 catalysts \u00B7 28 sub-catalysts" },
+    { icon: "\u25CB", name: "General", desc: "Cross-industry baseline for finance, procurement, supply chain, HR, and sales", catalysts: "5 catalysts \u00B7 23 sub-catalysts" },
   ];
 
   return (
@@ -792,6 +941,8 @@ export function MarketingPage() {
         </a>
         <div className="mk5-nav-links">
           <a href="#layers">Architecture</a>
+          <a href="#industries">Industries</a>
+          <a href="#features">Features</a>
           <a href="#compare">Compare</a>
           <a href="#ethos">Ethos</a>
           <a href="/login" className="mk5-nav-cta" style={{ marginRight: '0.5rem' }}>
@@ -993,7 +1144,7 @@ export function MarketingPage() {
           <div className="mk5-stat-label">Pre-Built Agents</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd2">
-          <div className="mk5-stat-num"><span className="accent">6</span></div>
+          <div className="mk5-stat-num"><span className="accent">12</span></div>
           <div className="mk5-stat-label">ERP Connectors</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd3">
@@ -1052,7 +1203,7 @@ export function MarketingPage() {
           <div className="mk5-cc cp">M365</div>
           <div className="mk5-cc cp">SFDC</div>
           <div className="mk5-cc cp">Custom</div>
-          <div className="mk5-cc ca">6 ERPs</div>
+          <div className="mk5-cc ca">12 ERPs</div>
 
           <div className="mk5-cc rl">Organisation Health Score</div>
           <div className="mk5-cc cn">&mdash;</div>
@@ -1081,6 +1232,174 @@ export function MarketingPage() {
               <div className="mk5-int-type">{item.type}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* INDUSTRY SOLUTIONS */}
+      <section className="mk5-ind" id="industries">
+        <div className="mk5-ind-header">
+          <h2 className="mk5-reveal">Purpose-built for<br />your industry.</h2>
+          <p className="mk5-reveal">
+            Every industry has unique operational DNA. Atheon ships with pre-configured
+            catalyst clusters, sub-catalysts, and domain models for each vertical&nbsp;&mdash;
+            so you deploy intelligence, not configuration.
+          </p>
+        </div>
+
+        {/* FEATURED: RETAIL */}
+        <div className="mk5-ind-featured mk5-reveal">
+          <div className="mk5-ind-featured-main">
+            <div className="mk5-ind-featured-badge">New &mdash; Retail Industry Solution</div>
+            <div className="mk5-ind-featured-title">Retail Intelligence,<br />End to End.</div>
+            <p className="mk5-ind-featured-desc">
+              From POS transaction analytics and basket analysis to inventory replenishment,
+              dynamic pricing, loyalty intelligence, and e-commerce conversion optimisation.
+              Nine catalyst clusters purpose-built for modern retail operations&nbsp;&mdash;
+              from single-store to multi-format enterprise.
+            </p>
+            <div className="mk5-ind-featured-caps">
+              {["POS Intelligence", "Inventory & Merchandise", "Customer Experience", "Dynamic Pricing", "Store Operations", "E-Commerce", "Supply Chain", "Workforce", "Finance"].map((c) => (
+                <span key={c} className="mk5-ind-featured-cap">{c}</span>
+              ))}
+            </div>
+          </div>
+          <div className="mk5-ind-featured-stats">
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num">9</div>
+              <div className="mk5-ind-stat-label">Catalyst clusters covering<br />every retail domain</div>
+            </div>
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num">43</div>
+              <div className="mk5-ind-stat-label">Pre-built sub-catalysts<br />ready to deploy</div>
+            </div>
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num">5</div>
+              <div className="mk5-ind-stat-label">Autonomy tiers from<br />read-only to transactional</div>
+            </div>
+          </div>
+        </div>
+
+        {/* OTHER INDUSTRIES */}
+        <div className="mk5-ind-grid mk5-reveal">
+          {industrySolutions.map((ind) => (
+            <div key={ind.name} className="mk5-ind-card">
+              <div className="mk5-ind-card-icon">{ind.icon}</div>
+              <div className="mk5-ind-card-name">{ind.name}</div>
+              <p className="mk5-ind-card-desc">{ind.desc}</p>
+              <div className="mk5-ind-card-cats">{ind.catalysts}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FEATURES DEEP-DIVE */}
+      <section className="mk5-feat" id="features">
+        <div className="mk5-feat-header mk5-reveal">
+          <h2>Every feature, built<br />for enterprise.</h2>
+          <p>
+            Atheon isn&rsquo;t a collection of point solutions. Every capability is integrated
+            into the three-layer architecture&nbsp;&mdash; governed, auditable, and correlated.
+          </p>
+        </div>
+        <div className="mk5-feat-grid">
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">ERP Integration</div>
+            <div className="mk5-feat-item-title">12 native ERP connectors</div>
+            <p className="mk5-feat-item-desc">
+              Pre-built adapters for every major ERP system, updated to the latest API versions.
+              OAuth 2.0, JWT Bearer, and token-based authentication. Bi-directional sync with
+              configurable frequency.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>SAP S/4HANA (OData V4, 2025 FPS01)</li>
+              <li>Salesforce (REST v66.0, Spring &rsquo;26)</li>
+              <li>Oracle Fusion (REST 26A)</li>
+              <li>Dynamics 365 (OData v4, 10.0.42)</li>
+              <li>NetSuite (REST/SuiteTalk 2026.1)</li>
+              <li>Odoo 18 (JSON-RPC 2.0 + REST API)</li>
+              <li>QuickBooks, Xero, Sage, Workday, SYSPRO</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Catalyst Engine</div>
+            <div className="mk5-feat-item-title">Industry-trained catalyst clusters</div>
+            <p className="mk5-feat-item-desc">
+              Pre-configured catalyst templates for 10 industry verticals. Each cluster ships with
+              domain-specific sub-catalysts, scheduling options, and autonomy tier controls.
+              Deploy in minutes, not months.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>10 industry verticals with purpose-built templates</li>
+              <li>70+ catalyst clusters across all industries</li>
+              <li>350+ sub-catalysts with enable/disable control</li>
+              <li>Configurable schedules: manual, daily, weekly, monthly</li>
+              <li>Three autonomy tiers: read-only, assisted, transactional</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Executive Layer</div>
+            <div className="mk5-feat-item-title">Organisation health score</div>
+            <p className="mk5-feat-item-desc">
+              A single, living metric that synthesises signals from every department, every
+              catalyst, and every agent into executive clarity. Natural language queries,
+              predictive alerts, and auto-generated board summaries.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Composite health score across all departments</li>
+              <li>NLP chat interface for natural language queries</li>
+              <li>Predictive risk alerts with confidence scoring</li>
+              <li>Auto-generated PDF board reports</li>
+              <li>Scenario modelling and what-if analysis</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Governance & Trust</div>
+            <div className="mk5-feat-item-title">Full audit trail and RBAC</div>
+            <p className="mk5-feat-item-desc">
+              Every agent action is logged. Every escalation is routed through governance layers.
+              Role-based access control, SSO integration, and tenant isolation ensure enterprise
+              security at every level.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Immutable audit log for every action and decision</li>
+              <li>RBAC with 8 role levels from viewer to superadmin</li>
+              <li>Azure AD SSO and SAML 2.0 integration</li>
+              <li>Multi-tenant isolation with per-tenant encryption</li>
+              <li>SaaS, on-premise, and hybrid deployment models</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Operational Intelligence</div>
+            <div className="mk5-feat-item-title">Cross-department correlation</div>
+            <p className="mk5-feat-item-desc">
+              The layer that separates Atheon from agents and copilots. Real-time anomaly
+              detection, process mining, and recommendation engine that correlates signals
+              across every operational boundary.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Real-time anomaly detection with root cause analysis</li>
+              <li>Department-level dashboards with drill-down</li>
+              <li>Process mining and bottleneck identification</li>
+              <li>Confidence-scored recommendations</li>
+              <li>Cross-department correlation engine</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Knowledge & Memory</div>
+            <div className="mk5-feat-item-title">Enterprise knowledge graph</div>
+            <p className="mk5-feat-item-desc">
+              Every entity, relationship, and decision is mapped into a living knowledge graph.
+              Vector-powered semantic search, citation tracking, and context-aware retrieval
+              ensure every answer is grounded in your data.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Entity-relationship knowledge graph</li>
+              <li>Vector-powered semantic search (Vectorize)</li>
+              <li>Citation tracking with source attribution</li>
+              <li>Contextual memory across chat sessions</li>
+              <li>RAG pipeline with enterprise data grounding</li>
+            </ul>
+          </div>
         </div>
       </section>
 

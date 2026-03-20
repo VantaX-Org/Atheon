@@ -59,6 +59,11 @@ const INDUSTRY_CATALYSTS: Record<string, Array<{ name: string; domain: string; d
     { name: 'Engineering Operations', domain: 'operations', description: 'Sprint velocity, incident response, infrastructure costs' },
     { name: 'Customer Success', domain: 'sales', description: 'NPS tracking, usage analytics, expansion revenue' },
   ],
+  retail: [
+    { name: 'POS Intelligence', domain: 'retail-pos', description: 'POS analytics, basket analysis, shrinkage detection, peak hour forecasting' },
+    { name: 'Inventory & Merchandise', domain: 'retail-inventory', description: 'Stock optimization, replenishment automation, merchandise planning' },
+    { name: 'Customer Experience', domain: 'retail-cx', description: 'Loyalty analytics, customer segmentation, personalized promotions' },
+  ],
   general: [
     { name: 'Finance', domain: 'finance', description: 'General ledger analysis, cash flow forecasting, budget variance' },
     { name: 'Operations', domain: 'operations', description: 'Process efficiency, resource utilization, compliance monitoring' },
