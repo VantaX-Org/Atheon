@@ -26,7 +26,7 @@ const helpTopics = [
   {
     icon: Database,
     title: "ERP Integration",
-    content: "Connect to SAP, Salesforce, Xero, Sage, Pastel, and more via the ERP Adapters page. The Canonical API provides unified access across all connected systems.",
+    content: "Connect to SAP, Salesforce, Xero, Sage, Pastel, Odoo, and more via the ERP Adapters page. The Canonical API provides unified access across all connected systems.",
   },
   {
     icon: MessageCircle,

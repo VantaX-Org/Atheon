@@ -38,7 +38,7 @@ const steps = [
   {
     icon: Database,
     title: "ERP Integration",
-    description: "Connect to SAP, Salesforce, Xero, Sage, Pastel, and more. The canonical API normalises data across all systems.",
+    description: "Connect to SAP, Salesforce, Xero, Sage, Pastel, Odoo, and more. The canonical API normalises data across all systems.",
     detail: "Set up connections in ERP Adapters, then use the Canonical API for unified data access.",
   },
 ];
