@@ -65,6 +65,7 @@ export async function seedSampleCompany(db: D1Database) {
     { id: 'erp-sage-intacct', name: 'Sage Intacct', system: 'Sage', version: 'R1 2026', protocol: 'REST/XML', status: 'available', operations: '["REST API","XML Gateway","Web Services","Smart Events"]', auth_methods: '["API Key","Session Auth","OAuth 2.0"]' },
     { id: 'erp-sage-300', name: 'Sage 300 (Accpac)', system: 'Sage', version: '2026', protocol: 'REST/SOAP', status: 'available', operations: '["REST API","SOAP","Views API","Macros"]', auth_methods: '["API Key","Session Auth"]' },
     { id: 'erp-sage-x3', name: 'Sage X3', system: 'Sage', version: 'V12', protocol: 'REST/SOAP', status: 'available', operations: '["REST API","SOAP Web Services","Syracuse","Batch Server"]', auth_methods: '["OAuth 2.0","Basic Auth"]' },
+    { id: 'erp-odoo', name: 'Odoo ERP', system: 'Odoo', version: '18.0', protocol: 'JSON-RPC/REST', status: 'available', operations: '["JSON-RPC 2.0","REST API v2","XML-RPC","ORM API"]', auth_methods: '["OAuth 2.0","API Key","Session Auth"]' },
   ];
   for (const a of newAdapters) {
     await db.prepare('INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
