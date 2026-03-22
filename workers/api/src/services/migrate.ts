@@ -9,7 +9,7 @@ import { seedSampleCompany } from './seed-sample-company';
 import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v27';
+export const MIGRATION_VERSION = 'v28';
 
 /** Result of a migration run */
 export interface MigrationResult {

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppBindings } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { cleanupTenantData } from '../services/tenant-cleanup';
+import { MIGRATION_VERSION } from '../services/migrate';
 
 const tenants = new Hono<AppBindings>();
 
@@ -223,6 +224,11 @@ tenants.post('/:id/reset', async (c) => {
 
   // Use comprehensive tenant-cleanup service (handles 30+ tables in dependency order)
   const result = await cleanupTenantData(c.env.DB, id, true); // preserveUsers=true
+
+  // Invalidate migration cache so seeds re-run on next request
+  try {
+    await c.env.CACHE.delete(`db:migrated:${MIGRATION_VERSION}`);
+  } catch { /* non-fatal */ }
 
   // Log the reset action in audit
   try {
