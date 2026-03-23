@@ -992,7 +992,10 @@ const quickbooksAdapter: ERPAdapter = {
   },
 };
 
-// ── Odoo Adapter (JSON-RPC / XML-RPC compatible) ──
+// ── Odoo Adapter (Odoo 18 — JSON-RPC via /jsonrpc endpoint) ──
+// Uses /jsonrpc which does NOT require session cookies, unlike /web/dataset/call_kw.
+// Auth: service "common" → authenticate returns uid
+// Data: service "object" → execute_kw with (db, uid, password, model, method, args, kwargs)
 const odooAdapter: ERPAdapter = {
   name: 'Odoo',
 
@@ -1003,25 +1006,26 @@ const odooAdapter: ERPAdapter = {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
-    const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
+    // Authenticate via /jsonrpc "common" service (no session cookie needed)
+    const resp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0', method: 'call', id: 1,
         params: {
-          model: 'res.users', method: 'authenticate',
+          service: 'common', method: 'authenticate',
           args: [credentials.apiKey, credentials.username, credentials.password, {}],
-          kwargs: {},
         },
       }),
     });
     if (!resp.ok) throw new Error(`Odoo auth failed: ${resp.status}`);
     const data = await resp.json() as {
-      result?: number; error?: { message: string }
+      result?: number | false; error?: { message: string; data?: { message: string } }
     };
-    if (!data.result) throw new Error(
-      `Odoo auth failed: ${data.error?.message || 'Invalid credentials'}`
+    if (data.error) throw new Error(
+      `Odoo auth failed: ${data.error.data?.message || data.error.message || 'RPC error'}`
     );
+    if (!data.result) throw new Error('Odoo auth failed: Invalid credentials or database');
     return {
       access_token: String(data.result),  // Odoo uid
       token_type: 'odoo-jsonrpc',
@@ -1030,22 +1034,51 @@ const odooAdapter: ERPAdapter = {
     };
   },
 
-  async testConnection(credentials: ERPCredentials, token: string) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async testConnection(credentials: ERPCredentials, _token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/web/webclient/version_info`, {
+      // Step 1: Check server reachability via version_info
+      const versionResp = await fetch(`${credentials.baseUrl}/web/webclient/version_info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
       });
-      if (resp.ok) {
-        const data = await resp.json() as { result?: { server_version?: string } };
-        return {
-          connected: true,
-          version: data.result?.server_version || '17.0',
-          message: `Connected to Odoo JSON-RPC API (uid: ${token})`,
-        };
+      if (!versionResp.ok) {
+        return { connected: false, message: `Connection failed: HTTP ${versionResp.status}` };
       }
-      return { connected: false, message: `Connection failed: ${resp.status}` };
+      const versionData = await versionResp.json() as { result?: { server_version?: string } };
+      const version = versionData.result?.server_version || 'unknown';
+
+      // Step 2: Verify auth credentials via /jsonrpc common.authenticate
+      const authResp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call', id: 1,
+          params: {
+            service: 'common', method: 'authenticate',
+            args: [credentials.apiKey, credentials.username, credentials.password, {}],
+          },
+        }),
+      });
+      if (!authResp.ok) {
+        return { connected: false, message: `Auth check failed: HTTP ${authResp.status}` };
+      }
+      const authData = await authResp.json() as {
+        result?: number | false; error?: { message: string; data?: { message: string } }
+      };
+      if (authData.error) {
+        return { connected: false, message: `Odoo error: ${authData.error.data?.message || authData.error.message}` };
+      }
+      if (!authData.result) {
+        return { connected: false, message: 'Authentication failed: invalid credentials or database name' };
+      }
+
+      return {
+        connected: true,
+        version,
+        message: `Connected to Odoo ${version} (uid: ${authData.result})`,
+      };
     } catch (err) {
       return { connected: false, message: `Connection error: ${(err as Error).message}` };
     }
@@ -1056,6 +1089,7 @@ const odooAdapter: ERPAdapter = {
     const result: SyncResult = { recordsSynced: 0, recordsFailed: 0, duration: 0, entities: [], errors: [] };
     const uid = parseInt(token);
     const dbName = credentials.apiKey || '';
+    const password = credentials.password || '';
     if (!uid || !dbName) {
       result.errors.push('Missing uid or db_name — re-authenticate');
       result.duration = Date.now() - start;
@@ -1112,27 +1146,31 @@ const odooAdapter: ERPAdapter = {
         continue;
       }
       try {
-        const resp = await fetch(`${credentials.baseUrl}/web/dataset/call_kw`, {
+        // Use /jsonrpc with execute_kw (no session cookie needed)
+        const resp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             jsonrpc: '2.0', method: 'call', id: 1,
             params: {
-              model: cfg.model, method: 'search_read',
-              args: [cfg.domain],
-              kwargs: { fields: cfg.fields, limit: 1000,
-                        context: { uid, lang: 'en_US' } },
+              service: 'object', method: 'execute_kw',
+              args: [
+                dbName, uid, password,
+                cfg.model, 'search_read',
+                [cfg.domain],
+                { fields: cfg.fields, limit: 1000 },
+              ],
             },
           }),
         });
         if (resp.ok) {
           const data = await resp.json() as {
             result?: Record<string, unknown>[];
-            error?: { message: string };
+            error?: { message: string; data?: { message: string } };
           };
           if (data.error) {
             result.recordsFailed++;
-            result.errors.push(`${entity}: ${data.error.message}`);
+            result.errors.push(`${entity}: ${data.error.data?.message || data.error.message}`);
             continue;
           }
           const records = data.result || [];

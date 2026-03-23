@@ -353,7 +353,10 @@ erp.post('/sync/:connection_id', async (c) => {
       return c.json({ error: 'No access token or credentials configured' }, 400);
     }
 
-    const entities = (config.sync_entities as string[]) || ['accounts', 'contacts'];
+    const defaultEntities = (conn.adapter_system as string).toLowerCase() === 'odoo'
+      ? ['customers', 'suppliers', 'invoices', 'sales_orders', 'purchase_orders', 'products', 'employees', 'gl_accounts']
+      : ['accounts', 'contacts'];
+    const entities = (config.sync_entities as string[]) || defaultEntities;
     const result = await adapter.syncData(credentials, decryptedToken, entities);
 
     // 3.12: Write synced records to canonical tables (with Vectorize + AI for RAG embedding)
