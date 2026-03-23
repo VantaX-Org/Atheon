@@ -273,6 +273,10 @@ export const api = {
       request<{ correlations: CorrelationItem[]; total: number }>(`/api/pulse/correlations${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     summary: (tenantId?: string, industry?: string) =>
       request<PulseSummary>(`/api/pulse/summary${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    refresh: (tenantId?: string) =>
+      request<{ refreshed: boolean; processFlows?: number; metricsGenerated?: number; catalystActions?: number; message?: string }>(`/api/pulse/refresh${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    catalystRuns: (tenantId?: string, catalyst?: string) =>
+      request<{ runs: CatalystRunItem[]; summary: CatalystRunSummary[]; total: number }>(`/api/pulse/catalyst-runs${qs({ tenant_id: tenantId, catalyst })}`),
   },
 
   catalysts: {
@@ -694,6 +698,32 @@ export interface PulseSummary {
   totalMetrics: number;
   statusBreakdown: { green: number; amber: number; red: number };
   openAnomalies: number;
+}
+
+export interface CatalystRunItem {
+  id: string;
+  clusterId: string;
+  catalystName: string;
+  action: string;
+  status: string;
+  confidence: number;
+  inputData: Record<string, unknown> | null;
+  outputData: Record<string, unknown> | null;
+  reasoning: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  needsHumanReview: boolean;
+}
+
+export interface CatalystRunSummary {
+  catalystName: string;
+  totalRuns: number;
+  completed: number;
+  exceptions: number;
+  pending: number;
+  avgConfidence: number;
+  successRate: number;
 }
 
 export type DataSourceType = 'erp' | 'email' | 'cloud_storage' | 'upload' | 'custom_system';
