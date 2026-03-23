@@ -220,13 +220,36 @@ erp.post('/connections', async (c) => {
 erp.put('/connections/:id', async (c) => {
   const tenantId = getTenantId(c);
   const id = c.req.param('id');
-  const body = await c.req.json<{ status?: string; sync_frequency?: string }>();
+  const body = await c.req.json<{ status?: string; sync_frequency?: string; name?: string; config?: Record<string, unknown> }>();
 
   const updates: string[] = [];
   const values: unknown[] = [];
   if (body.status) { updates.push('status = ?'); values.push(body.status); }
   if (body.sync_frequency) { updates.push('sync_frequency = ?'); values.push(body.sync_frequency); }
+  if (body.name) { updates.push('name = ?'); values.push(body.name); }
   if (body.status === 'connected') { updates.push('last_sync = datetime(\'now\')'); }
+
+  // Phase 1.1: Update encrypted config if provided
+  if (body.config && Object.keys(body.config).length > 0) {
+    // Read existing config and merge
+    const conn = await c.env.DB.prepare('SELECT encrypted_config, config FROM erp_connections WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
+    if (!conn) return c.json({ error: 'Connection not found' }, 404);
+
+    let existingConfig: Record<string, unknown> = {};
+    const encCfg = conn.encrypted_config as string | null;
+    if (encCfg && isEncrypted(encCfg)) {
+      const decrypted = await decrypt(encCfg, c.env.ENCRYPTION_KEY);
+      existingConfig = decrypted ? JSON.parse(decrypted) : {};
+    } else {
+      existingConfig = JSON.parse(conn.config as string || '{}');
+    }
+
+    const mergedConfig = { ...existingConfig, ...body.config };
+    const encryptedBlob = await encrypt(JSON.stringify(mergedConfig), c.env.ENCRYPTION_KEY);
+    updates.push('encrypted_config = ?');
+    values.push(encryptedBlob);
+    updates.push("config = '{}'");
+  }
 
   if (updates.length > 0) {
     values.push(id, tenantId);

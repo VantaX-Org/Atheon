@@ -5,7 +5,7 @@
  *   - Available Adapters (ERP adapters catalog)
  *   - Canonical Data Schema (unified API endpoints + data model)
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import type { ERPAdapter, ERPConnection, CanonicalEndpoint } from "@/lib/api";
 import {
   Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
   Activity, Loader2, X, AlertCircle, Code, Layers, Globe, Play,
+  Settings, Trash2, Wifi, Eye, EyeOff, Shield, Key,
 } from "lucide-react";
 import { IconERP_SAP, IconERP_Cloud, IconERP_Generic, IconERP_Odoo } from "@/components/icons/AtheonIcons";
 import { useAppStore } from "@/stores/appStore";
@@ -38,6 +39,135 @@ const domainColor: Record<string, string> = {
   hr: 'text-accent', sales: 'text-pink-600', inventory: 'text-accent', crm: 'text-orange-400',
 };
 
+/* -- Credential field definitions per auth method -- */
+interface CredField {
+  key: string;
+  label: string;
+  placeholder: string;
+  type: 'text' | 'password' | 'url';
+  required?: boolean;
+}
+
+const AUTH_FIELD_MAP: Record<string, CredField[]> = {
+  'OAuth 2.0': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Client ID', placeholder: 'Enter OAuth client ID', type: 'text', required: true },
+    { key: 'client_secret', label: 'Client Secret', placeholder: 'Enter OAuth client secret', type: 'password', required: true },
+    { key: 'auth_url', label: 'Auth URL (optional)', placeholder: 'https://auth.example.com/authorize', type: 'url' },
+    { key: 'token_url', label: 'Token URL (optional)', placeholder: 'https://auth.example.com/token', type: 'url' },
+    { key: 'scope', label: 'Scope (optional)', placeholder: 'read write', type: 'text' },
+  ],
+  'API Key': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'api_key', label: 'API Key', placeholder: 'Enter your API key', type: 'password', required: true },
+  ],
+  'Session Auth': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'username', label: 'Username', placeholder: 'Enter username', type: 'text', required: true },
+    { key: 'password', label: 'Password', placeholder: 'Enter password', type: 'password', required: true },
+    { key: 'api_key', label: 'Database Name (if applicable)', placeholder: 'e.g. mycompany_db', type: 'text' },
+  ],
+  'Basic Auth': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'username', label: 'Username', placeholder: 'Enter username', type: 'text', required: true },
+    { key: 'password', label: 'Password', placeholder: 'Enter password', type: 'password', required: true },
+  ],
+  'JWT Bearer': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Client ID', placeholder: 'Enter client ID', type: 'text', required: true },
+    { key: 'client_secret', label: 'Private Key / Secret', placeholder: 'Enter private key or secret', type: 'password', required: true },
+    { key: 'token_url', label: 'Token URL (optional)', placeholder: 'https://auth.example.com/token', type: 'url' },
+  ],
+  'Azure AD OAuth': [
+    { key: 'base_url', label: 'Dynamics 365 URL', placeholder: 'https://your-org.crm.dynamics.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Application (Client) ID', placeholder: 'Enter Azure AD app client ID', type: 'text', required: true },
+    { key: 'client_secret', label: 'Client Secret', placeholder: 'Enter Azure AD client secret', type: 'password', required: true },
+    { key: 'auth_url', label: 'Authority URL', placeholder: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize', type: 'url' },
+    { key: 'token_url', label: 'Token URL', placeholder: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token', type: 'url' },
+    { key: 'scope', label: 'Scope', placeholder: 'https://your-org.crm.dynamics.com/.default', type: 'text' },
+  ],
+  'Service Principal': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Service Principal ID', placeholder: 'Enter service principal client ID', type: 'text', required: true },
+    { key: 'client_secret', label: 'Service Principal Secret', placeholder: 'Enter service principal secret', type: 'password', required: true },
+  ],
+  'Token-Based Auth': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Consumer Key', placeholder: 'Enter consumer key', type: 'text', required: true },
+    { key: 'client_secret', label: 'Consumer Secret', placeholder: 'Enter consumer secret', type: 'password', required: true },
+    { key: 'api_key', label: 'Token ID', placeholder: 'Enter token ID', type: 'text', required: true },
+    { key: 'password', label: 'Token Secret', placeholder: 'Enter token secret', type: 'password', required: true },
+  ],
+  'X.509 Certificate': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Certificate CN / ID', placeholder: 'Enter certificate identifier', type: 'text', required: true },
+    { key: 'client_secret', label: 'Certificate Key (PEM)', placeholder: 'Paste certificate private key', type: 'password', required: true },
+  ],
+  'SNC': [
+    { key: 'base_url', label: 'SAP Host', placeholder: 'https://sap-ecc.example.com', type: 'url', required: true },
+    { key: 'username', label: 'SAP User', placeholder: 'Enter SAP username', type: 'text', required: true },
+    { key: 'password', label: 'SAP Password', placeholder: 'Enter SAP password', type: 'password', required: true },
+    { key: 'client_id', label: 'SNC Partner Name (optional)', placeholder: 'p:CN=...', type: 'text' },
+  ],
+  'SAML': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'SAML Issuer', placeholder: 'Enter SAML issuer', type: 'text', required: true },
+    { key: 'client_secret', label: 'SAML Certificate', placeholder: 'Paste SAML certificate', type: 'password', required: true },
+  ],
+  'X.509': [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'client_id', label: 'Certificate CN / ID', placeholder: 'Enter certificate identifier', type: 'text', required: true },
+    { key: 'client_secret', label: 'Certificate Key (PEM)', placeholder: 'Paste certificate private key', type: 'password', required: true },
+  ],
+};
+
+function getCredentialFields(_authMethods: string[], selectedAuth: string): CredField[] {
+  const fields = AUTH_FIELD_MAP[selectedAuth];
+  if (fields) return fields;
+  return [
+    { key: 'base_url', label: 'Base URL', placeholder: 'https://your-instance.example.com', type: 'url', required: true },
+    { key: 'api_key', label: 'API Key', placeholder: 'Enter API key', type: 'password' },
+    { key: 'username', label: 'Username', placeholder: 'Enter username', type: 'text' },
+    { key: 'password', label: 'Password', placeholder: 'Enter password', type: 'password' },
+  ];
+}
+
+/* -- Credential input component -- */
+function CredentialInput({ field, value, onChange }: { field: CredField; value: string; onChange: (v: string) => void }) {
+  const [showSecret, setShowSecret] = useState(false);
+  const isSecret = field.type === 'password';
+
+  return (
+    <div>
+      <label className="text-xs t-muted flex items-center gap-1">
+        {isSecret && <Shield size={10} className="text-amber-400" />}
+        {field.label}
+        {field.required && <span className="text-red-400">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary pr-9"
+          type={isSecret && !showSecret ? 'password' : 'text'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          autoComplete="off"
+        />
+        {isSecret && (
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+            onClick={() => setShowSecret(!showSecret)}
+            title={showSecret ? 'Hide' : 'Show'}
+          >
+            {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function IntegrationsPage() {
   const { activeTab, setActiveTab } = useTabState('connections');
   const user = useAppStore((s) => s.user);
@@ -47,6 +177,8 @@ export function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
   const [connectForm, setConnectForm] = useState({ adapterId: '', name: '', syncFrequency: 'daily' });
+  const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
+  const [selectedAuth, setSelectedAuth] = useState('');
   const [syncing, setSyncing] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [showLogs, setShowLogs] = useState<string | null>(null);
@@ -56,18 +188,43 @@ export function IntegrationsPage() {
   const [tryResult, setTryResult] = useState<{ endpointId: string; status: number; data: unknown } | null>(null);
   const [tryLoading, setTryLoading] = useState(false);
 
+  // Configure modal state
+  const [configureConn, setConfigureConn] = useState<ERPConnection | null>(null);
+  const [configCredentials, setConfigCredentials] = useState<Record<string, string>>({});
+  const [configAuth, setConfigAuth] = useState('');
+  const [configName, setConfigName] = useState('');
+  const [configSyncFreq, setConfigSyncFreq] = useState('');
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+
+  // Test connection state
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; connected: boolean; message?: string } | null>(null);
+
+  // Delete state
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const refreshConnections = useCallback(async () => {
+    try {
+      const c = await api.erp.connections();
+      setConnections(c.connections);
+    } catch { /* ignore */ }
+  }, []);
+
   const handleSync = async (connectionId: string) => {
     setSyncing(connectionId);
     setActionError(null);
     try {
       await api.erp.sync(connectionId);
-      const c = await api.erp.connections();
-      setConnections(c.connections);
+      await refreshConnections();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Sync failed');
     }
     setSyncing(null);
   };
+
+  const selectedAdapter = adapters.find(a => a.id === connectForm.adapterId);
 
   const handleConnect = async () => {
     if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
@@ -78,16 +235,22 @@ export function IntegrationsPage() {
     setConnecting(true);
     setConnectError(null);
     try {
+      const config: Record<string, string> = {};
+      for (const [k, v] of Object.entries(credentialValues)) {
+        if (v.trim()) config[k] = v.trim();
+      }
       await api.erp.createConnection({
         adapter_id: connectForm.adapterId,
         name: connectForm.name.trim(),
         sync_frequency: connectForm.syncFrequency,
         tenant_id: user.tenantId,
+        config,
       });
-      const c = await api.erp.connections();
-      setConnections(c.connections);
+      await refreshConnections();
       setShowConnect(false);
       setConnectForm({ adapterId: '', name: '', syncFrequency: 'daily' });
+      setCredentialValues({});
+      setSelectedAuth('');
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Connection failed');
     }
@@ -95,9 +258,71 @@ export function IntegrationsPage() {
   };
 
   const handleAdapterConnect = (adapterId: string, adapterName: string) => {
+    const adapter = adapters.find(a => a.id === adapterId);
     setConnectForm({ adapterId, name: adapterName + ' Connection', syncFrequency: 'daily' });
+    setCredentialValues({});
+    setSelectedAuth(adapter?.authMethods?.[0] || '');
     setConnectError(null);
     setShowConnect(true);
+  };
+
+  const handleTestConnection = async (connectionId: string) => {
+    setTesting(connectionId);
+    setTestResult(null);
+    try {
+      const result = await api.erp.testConnection(connectionId);
+      setTestResult({ id: connectionId, ...result });
+    } catch (err) {
+      setTestResult({ id: connectionId, connected: false, message: err instanceof Error ? err.message : 'Test failed' });
+    }
+    setTesting(null);
+  };
+
+  const handleDelete = async (connectionId: string) => {
+    setDeleting(connectionId);
+    try {
+      await api.erp.deleteConnection(connectionId);
+      await refreshConnections();
+      setConfirmDelete(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Delete failed');
+    }
+    setDeleting(null);
+  };
+
+  const openConfigure = (conn: ERPConnection) => {
+    const adapter = adapters.find(a => a.id === conn.adapterId);
+    setConfigureConn(conn);
+    setConfigName(conn.name);
+    setConfigSyncFreq(conn.syncFrequency);
+    setConfigAuth(adapter?.authMethods?.[0] || '');
+    setConfigCredentials({});
+    setConfigError(null);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configureConn) return;
+    setConfigSaving(true);
+    setConfigError(null);
+    try {
+      const config: Record<string, string> = {};
+      for (const [k, v] of Object.entries(configCredentials)) {
+        if (v.trim()) config[k] = v.trim();
+      }
+      const updates: Record<string, unknown> = {};
+      if (configName.trim() && configName.trim() !== configureConn.name) updates.name = configName.trim();
+      if (configSyncFreq && configSyncFreq !== configureConn.syncFrequency) updates.sync_frequency = configSyncFreq;
+      if (Object.keys(config).length > 0) updates.config = config;
+
+      if (Object.keys(updates).length > 0) {
+        await api.erp.updateConnection(configureConn.id, updates);
+        await refreshConnections();
+      }
+      setConfigureConn(null);
+    } catch (err) {
+      setConfigError(err instanceof Error ? err.message : 'Save failed');
+    }
+    setConfigSaving(false);
   };
 
   useEffect(() => {
@@ -130,6 +355,15 @@ export function IntegrationsPage() {
     { id: 'schema', label: 'Canonical Data Schema', icon: <Layers size={14} />, count: endpoints.length },
   ];
 
+  const connectCredFields = selectedAdapter && selectedAuth
+    ? getCredentialFields(selectedAdapter.authMethods, selectedAuth)
+    : [];
+
+  const configAdapter = configureConn ? adapters.find(a => a.id === configureConn.adapterId) : null;
+  const configCredFields = configAdapter && configAuth
+    ? getCredentialFields(configAdapter.authMethods, configAuth)
+    : [];
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -142,7 +376,7 @@ export function IntegrationsPage() {
             <p className="text-sm t-muted">Connected systems, adapters, and canonical data schema</p>
           </div>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setShowConnect(true)} title="Connect a new ERP system">
+        <Button variant="primary" size="sm" onClick={() => { setShowConnect(true); setSelectedAuth(''); setCredentialValues({}); }} title="Connect a new ERP system">
           <Plus size={14} /> Connect System
         </Button>
       </div>
@@ -155,25 +389,32 @@ export function IntegrationsPage() {
         </div>
       )}
 
-      {/* Connect Modal */}
+      {/* Connect System Modal */}
       {showConnect && (
         <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+          <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold t-primary">Connect System</h3>
+              <h3 className="text-lg font-semibold t-primary flex items-center gap-2"><Plug size={18} className="text-accent" /> Connect System</h3>
               <button onClick={() => { setShowConnect(false); setConnectError(null); }} className="text-gray-400 hover:text-gray-300" title="Close"><X size={18} /></button>
             </div>
+
             <div className="space-y-3">
               <div>
                 <label className="text-xs t-muted">ERP Adapter</label>
-                <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={connectForm.adapterId} onChange={e => setConnectForm(p => ({ ...p, adapterId: e.target.value }))}>
+                <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={connectForm.adapterId} onChange={e => {
+                  const adapterId = e.target.value;
+                  const adapter = adapters.find(a => a.id === adapterId);
+                  setConnectForm(p => ({ ...p, adapterId }));
+                  setSelectedAuth(adapter?.authMethods?.[0] || '');
+                  setCredentialValues({});
+                }}>
                   <option value="">Select an adapter...</option>
                   {adapters.map(a => <option key={a.id} value={a.id}>{a.name} ({a.system})</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs t-muted">Connection Name</label>
-                <input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={connectForm.name} onChange={e => setConnectForm(p => ({ ...p, name: e.target.value }))} placeholder="Production SAP" />
+                <input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={connectForm.name} onChange={e => setConnectForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Production SAP, Customer ABC Odoo" />
               </div>
               <div>
                 <label className="text-xs t-muted">Sync Frequency</label>
@@ -185,7 +426,41 @@ export function IntegrationsPage() {
                 </select>
               </div>
             </div>
-            <p className="text-[10px] text-gray-400">OAuth authentication will be initiated after connection setup.</p>
+
+            {selectedAdapter && (
+              <div className="space-y-3 pt-2 border-t border-[var(--border-card)]">
+                <div className="flex items-center gap-2">
+                  <Key size={14} className="text-accent" />
+                  <span className="text-sm font-medium t-primary">Connection Credentials</span>
+                </div>
+
+                {selectedAdapter.authMethods.length > 1 && (
+                  <div>
+                    <label className="text-xs t-muted">Authentication Method</label>
+                    <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={selectedAuth} onChange={e => { setSelectedAuth(e.target.value); setCredentialValues({}); }}>
+                      {selectedAdapter.authMethods.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                )}
+                {selectedAdapter.authMethods.length === 1 && (
+                  <p className="text-xs t-muted">Auth: <span className="text-accent font-medium">{selectedAdapter.authMethods[0]}</span></p>
+                )}
+
+                {connectCredFields.map(field => (
+                  <CredentialInput
+                    key={field.key}
+                    field={field}
+                    value={credentialValues[field.key] || ''}
+                    onChange={v => setCredentialValues(prev => ({ ...prev, [field.key]: v }))}
+                  />
+                ))}
+
+                <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                  <Shield size={10} /> Credentials are encrypted before storage. You can also configure them later.
+                </p>
+              </div>
+            )}
+
             {connectError && (
               <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2"><AlertCircle size={14} /> {connectError}</div>
             )}
@@ -193,6 +468,104 @@ export function IntegrationsPage() {
               <Button variant="secondary" size="sm" onClick={() => { setShowConnect(false); setConnectError(null); }}>Cancel</Button>
               <Button variant="primary" size="sm" onClick={handleConnect} disabled={!connectForm.adapterId || !connectForm.name.trim() || connecting}>
                 {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />} Connect
+              </Button>
+            </div>
+          </div>
+        </div></Portal>
+      )}
+
+      {/* Configure Connection Modal */}
+      {configureConn && (
+        <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-lg space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold t-primary flex items-center gap-2"><Settings size={18} className="text-accent" /> Configure Connection</h3>
+              <button onClick={() => { setConfigureConn(null); setConfigError(null); }} className="text-gray-400 hover:text-gray-300" title="Close"><X size={18} /></button>
+            </div>
+
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-card)] flex items-center justify-center">
+                {(() => { const SysIcon = systemIconMap[configureConn.adapterSystem] || IconERP_Generic; return <SysIcon size={16} />; })()}
+              </div>
+              <div>
+                <p className="text-sm font-medium t-primary">{configureConn.adapterName}</p>
+                <p className="text-xs t-muted">{configureConn.adapterProtocol}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs t-muted">Connection Name</label>
+                <input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={configName} onChange={e => setConfigName(e.target.value)} placeholder="Connection name" />
+              </div>
+              <div>
+                <label className="text-xs t-muted">Sync Frequency</label>
+                <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={configSyncFreq} onChange={e => setConfigSyncFreq(e.target.value)}>
+                  <option value="realtime">Real-time</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+            </div>
+
+            {configAdapter && (
+              <div className="space-y-3 pt-2 border-t border-[var(--border-card)]">
+                <div className="flex items-center gap-2">
+                  <Key size={14} className="text-accent" />
+                  <span className="text-sm font-medium t-primary">Update Credentials</span>
+                </div>
+
+                {configAdapter.authMethods.length > 1 && (
+                  <div>
+                    <label className="text-xs t-muted">Authentication Method</label>
+                    <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary" value={configAuth} onChange={e => { setConfigAuth(e.target.value); setConfigCredentials({}); }}>
+                      {configAdapter.authMethods.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                )}
+                {configAdapter.authMethods.length === 1 && (
+                  <p className="text-xs t-muted">Auth: <span className="text-accent font-medium">{configAdapter.authMethods[0]}</span></p>
+                )}
+
+                {configCredFields.map(field => (
+                  <CredentialInput
+                    key={field.key}
+                    field={field}
+                    value={configCredentials[field.key] || ''}
+                    onChange={v => setConfigCredentials(prev => ({ ...prev, [field.key]: v }))}
+                  />
+                ))}
+
+                <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                  <Shield size={10} /> Leave fields blank to keep existing values. New values are encrypted before storage.
+                </p>
+              </div>
+            )}
+
+            {configError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2"><AlertCircle size={14} /> {configError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => { setConfigureConn(null); setConfigError(null); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleSaveConfig} disabled={configSaving}>
+                {configSaving ? <Loader2 size={14} className="animate-spin" /> : <Settings size={14} />} Save Configuration
+              </Button>
+            </div>
+          </div>
+        </div></Portal>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-lg font-semibold t-primary">Delete Connection</h3>
+            <p className="text-sm t-muted">Are you sure you want to delete this connection? This will remove all configuration and sync history. This action cannot be undone.</p>
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+              <Button variant="primary" size="sm" className="!bg-red-500 hover:!bg-red-600" onClick={() => handleDelete(confirmDelete)} disabled={deleting === confirmDelete}>
+                {deleting === confirmDelete ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete
               </Button>
             </div>
           </div>
@@ -276,12 +649,32 @@ export function IntegrationsPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-3">
+                  {testResult && testResult.id === conn.id && (
+                    <div className={`mt-3 p-3 rounded-lg border text-sm flex items-center gap-2 animate-fadeIn ${
+                      testResult.connected
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/10 border-red-500/20 text-red-400'
+                    }`}>
+                      {testResult.connected ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                      {testResult.connected ? 'Connection successful' : `Connection failed${testResult.message ? ': ' + testResult.message : ''}`}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button variant="secondary" size="sm" onClick={() => openConfigure(conn)} title="Configure connection credentials and settings">
+                      <Settings size={12} /> Configure
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => handleTestConnection(conn.id)} disabled={testing === conn.id} title="Test connection to the remote system">
+                      {testing === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Wifi size={12} />} Test Connection
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={() => handleSync(conn.id)} disabled={syncing === conn.id} title="Trigger a manual data sync now">
                       {syncing === conn.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync Now
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setShowLogs(showLogs === conn.id ? null : conn.id)} title="View sync activity logs">
                       <Activity size={12} /> {showLogs === conn.id ? 'Hide Logs' : 'View Logs'}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300" onClick={() => setConfirmDelete(conn.id)} title="Delete this connection">
+                      <Trash2 size={12} /> Delete
                     </Button>
                   </div>
 
@@ -300,7 +693,6 @@ export function IntegrationsPage() {
           )}
         </TabPanel>
       )}
-
       {/* Tab: Available Adapters */}
       {activeTab === 'adapters' && (
         <TabPanel>
@@ -357,7 +749,6 @@ export function IntegrationsPage() {
       {activeTab === 'schema' && (
         <TabPanel>
           <div className="space-y-6">
-            {/* Data Model */}
             <div>
               <h3 className="text-sm font-semibold t-primary mb-3 flex items-center gap-2"><Layers size={14} className="text-accent" /> Canonical Data Model</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -388,7 +779,6 @@ export function IntegrationsPage() {
               </div>
             </div>
 
-            {/* API Endpoints */}
             <div>
               <h3 className="text-sm font-semibold t-primary mb-3 flex items-center gap-2"><Code size={14} className="text-accent" /> API Endpoints ({endpoints.length})</h3>
               <div className="space-y-3">

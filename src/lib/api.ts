@@ -383,6 +383,10 @@ export const api = {
       request<{ connections: ERPConnection[]; total: number }>(`/api/erp/connections${qs({ tenant_id: tenantId })}`),
     createConnection: (data: Record<string, unknown>) =>
       request<{ id: string; status: string }>('/api/erp/connections', { method: 'POST', body: JSON.stringify(data) }),
+    updateConnection: (id: string, data: Record<string, unknown>) =>
+      request<{ success: boolean }>(`/api/erp/connections/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteConnection: (id: string) =>
+      request<{ success: boolean }>(`/api/erp/connections/${id}`, { method: 'DELETE' }),
     testConnection: (id: string) =>
       request<{ connected: boolean; message?: string }>(`/api/erp/connections/${id}/test`, { method: 'POST' }),
     canonical: (domain?: string) => {
