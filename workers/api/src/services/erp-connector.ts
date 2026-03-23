@@ -1025,13 +1025,39 @@ async function tcpFetch(
   const port = parseInt(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
   const path = parsed.pathname + parsed.search;
   const method = init.method || 'GET';
+  const useTls = parsed.protocol === 'https:';
 
   // Dynamically import cloudflare:sockets — only available in Workers runtime
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { connect } = await import('cloudflare:sockets' as any) as { connect: (addr: { hostname: string; port: number }, opts?: { allowHalfOpen?: boolean }) => { readable: ReadableStream; writable: WritableStream; closed: Promise<void> } };
+  const { connect } = await import('cloudflare:sockets' as any) as {
+    connect: (
+      addr: { hostname: string; port: number },
+      opts?: { secureTransport?: string; allowHalfOpen?: boolean },
+    ) => {
+      readable: ReadableStream;
+      writable: WritableStream;
+      opened: Promise<{ remoteAddress: string | null; localAddress: string | null }>;
+      closed: Promise<void>;
+    }
+  };
 
-  // allowHalfOpen: keep readable open after writable closes (TCP half-close)
-  const socket = connect({ hostname, port }, { allowHalfOpen: true });
+  const socket = connect(
+    { hostname, port },
+    useTls ? { secureTransport: 'on' } : undefined,
+  );
+
+  // Wait for the TCP connection to be established
+  try {
+    await socket.opened;
+  } catch (err) {
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => `TCP connect failed: ${err}`,
+      json: async () => ({ error: `connect failed: ${err}` }),
+    };
+  }
+
   const writer = socket.writable.getWriter();
   const encoder = new TextEncoder();
 
@@ -1052,31 +1078,44 @@ async function tcpFetch(
   }
   reqStr += '\r\n';
 
-  // Send headers
-  await writer.write(encoder.encode(reqStr));
-  // Send body separately if present
-  if (bodyBytes) {
-    await writer.write(bodyBytes);
-  }
-  // Signal we're done writing (TCP half-close sends FIN)
+  // Send full request (headers + body) in one write
+  const fullReq = bodyBytes
+    ? concatUint8Arrays([encoder.encode(reqStr), bodyBytes])
+    : encoder.encode(reqStr);
+  await writer.write(fullReq);
   await writer.close();
 
-  // Read full response — server will close connection after sending response
+  // Read full response — race against socket.closed to catch errors
   const reader = socket.readable.getReader();
   const chunks: Uint8Array[] = [];
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+  } catch (readErr) {
+    // If we got some data before the error, try to use it
+    if (chunks.length === 0) {
+      return {
+        ok: false, status: 0, statusText: '',
+        headers: {},
+        text: async () => `TCP read error: ${readErr}`,
+        json: async () => ({ error: `read error: ${readErr}` }),
+      };
+    }
   }
 
   const combined = concatUint8Arrays(chunks);
   if (combined.byteLength === 0) {
+    // Try to get close reason
+    let closeErr = '';
+    try { await socket.closed; } catch (e) { closeErr = String(e); }
     return {
       ok: false, status: 0, statusText: '',
       headers: {},
-      text: async () => 'TCP: empty response (connection closed without data)',
-      json: async () => ({ error: 'empty response' }),
+      text: async () => `TCP: empty response (0 bytes received)${closeErr ? '. Close error: ' + closeErr : ''}`,
+      json: async () => ({ error: 'empty response', closeError: closeErr }),
     };
   }
 
@@ -1094,12 +1133,11 @@ async function tcpFetch(
   const statusText = statusMatch ? statusMatch[2] : '';
 
   if (status === 0) {
-    // Failed to parse — return raw response for debugging
     return {
       ok: false, status: 0, statusText: '',
       headers: {},
-      text: async () => `TCP: unparseable response (${combined.byteLength} bytes): ${raw.slice(0, 300)}`,
-      json: async () => ({ error: 'unparseable', raw: raw.slice(0, 300) }),
+      text: async () => `TCP: unparseable response (${combined.byteLength} bytes): ${raw.slice(0, 500)}`,
+      json: async () => ({ error: 'unparseable', raw: raw.slice(0, 500) }),
     };
   }
 

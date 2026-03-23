@@ -871,4 +871,65 @@ erp.get('/data/summary', async (c) => {
   });
 });
 
+// ── TCP connectivity debug endpoint (temporary, for diagnosing raw IP issues) ──
+erp.get('/tcp-debug', async (c) => {
+  const host = c.req.query('host') || '35.179.93.223';
+  const port = parseInt(c.req.query('port') || '8069');
+  const steps: string[] = [];
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { connect } = await import('cloudflare:sockets' as any) as {
+      connect: (
+        addr: { hostname: string; port: number },
+      ) => {
+        readable: ReadableStream;
+        writable: WritableStream;
+        opened: Promise<unknown>;
+        closed: Promise<void>;
+      }
+    };
+    steps.push('1. cloudflare:sockets imported OK');
+
+    const socket = connect({ hostname: host, port });
+    steps.push('2. connect() called');
+
+    await socket.opened;
+    steps.push('3. socket.opened resolved — TCP connection established');
+
+    const writer = socket.writable.getWriter();
+    const encoder = new TextEncoder();
+    const req = `GET /web/database/list HTTP/1.0\r\nHost: ${host}:${port}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 2\r\n\r\n{}`;
+    await writer.write(encoder.encode(req));
+    steps.push('4. HTTP request written');
+
+    await writer.close();
+    steps.push('5. writer.close() called');
+
+    const reader = socket.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) { chunks.push(value); totalBytes += value.byteLength; }
+    }
+    steps.push(`6. Read complete: ${totalBytes} bytes in ${chunks.length} chunks`);
+
+    if (totalBytes > 0) {
+      const decoder = new TextDecoder();
+      const allBytes = new Uint8Array(totalBytes);
+      let off = 0;
+      for (const ch of chunks) { allBytes.set(ch, off); off += ch.byteLength; }
+      const raw = decoder.decode(allBytes);
+      steps.push(`7. Response preview: ${raw.slice(0, 500)}`);
+    }
+
+    return c.json({ success: true, steps });
+  } catch (err) {
+    steps.push(`ERROR: ${err}`);
+    return c.json({ success: false, steps, error: String(err) });
+  }
+});
+
 export default erp;
