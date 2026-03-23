@@ -27,7 +27,9 @@ export function IAMPage() {
  const [creatingPolicy, setCreatingPolicy] = useState(false);
  const [policyForm, setPolicyForm] = useState({ name: '', description: '', type: 'rbac' });
 
- const tenantId = useAppStore((s) => s.user?.tenantId) || 'vantax';
+ const activeTenantId = useAppStore((s) => s.activeTenantId);
+ const userTenantId = useAppStore((s) => s.user?.tenantId);
+ const tenantId = activeTenantId || userTenantId || '';
 
  const handleCreatePolicy = async () => {
  if (!policyForm.name.trim() || creatingPolicy) return;

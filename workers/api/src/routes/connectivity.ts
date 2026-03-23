@@ -21,7 +21,7 @@ const connectivity = new Hono<AppBindings>();
 const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
 function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
   const auth = c.get('auth') as AuthContext | undefined;
-  const defaultTenantId = auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   if (CROSS_TENANT_ROLES.has(auth?.role || '')) {
     return c.req.query('tenant_id') || defaultTenantId;
   }

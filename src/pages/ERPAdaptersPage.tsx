@@ -19,6 +19,7 @@ const systemIconMap: Record<string, React.FC<{ size?: number }>> = {
 export function ERPAdaptersPage({ embedded }: { embedded?: boolean } = {}) {
  const { activeTab, setActiveTab } = useTabState('adapters');
  const user = useAppStore((s) => s.user);
+ const activeTenantId = useAppStore((s) => s.activeTenantId);
  const [adapters, setAdapters] = useState<ERPAdapter[]>([]);
  const [connections, setConnections] = useState<ERPConnection[]>([]);
  const [loading, setLoading] = useState(true);
@@ -45,7 +46,8 @@ export function ERPAdaptersPage({ embedded }: { embedded?: boolean } = {}) {
 
  const handleConnect = async () => {
  if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
- if (!user?.tenantId) {
+ const effectiveTenantId = activeTenantId || user?.tenantId;
+ if (!effectiveTenantId) {
  setConnectError('Unable to determine tenant. Please log in again.');
  return;
  }
@@ -56,7 +58,7 @@ export function ERPAdaptersPage({ embedded }: { embedded?: boolean } = {}) {
  adapter_id: connectForm.adapterId,
  name: connectForm.name.trim(),
  sync_frequency: connectForm.syncFrequency,
- tenant_id: user.tenantId});
+ tenant_id: effectiveTenantId});
  const c = await api.erp.connections();
  setConnections(c.connections);
  setShowConnect(false);
