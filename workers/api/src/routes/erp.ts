@@ -317,11 +317,11 @@ erp.post('/sync/:connection_id', async (c) => {
   }
   const adapter = getERPAdapter(conn.adapter_system as string);
 
-  if (adapter && config.access_token) {
-    // Decrypt tokens for use
-    const decryptedToken = isEncrypted(config.access_token as string)
-      ? (await decrypt(config.access_token as string, c.env.ENCRYPTION_KEY)) || ''
-      : config.access_token as string;
+  if (adapter) {
+    // Decrypt stored credentials
+    const decryptedPassword = config.password && isEncrypted(config.password as string)
+      ? (await decrypt(config.password as string, c.env.ENCRYPTION_KEY)) || ''
+      : (config.password as string) || '';
     const decryptedSecret = config.client_secret && isEncrypted(config.client_secret as string)
       ? (await decrypt(config.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
       : (config.client_secret as string) || '';
@@ -331,7 +331,28 @@ erp.post('/sync/:connection_id', async (c) => {
       clientId: (config.client_id as string) || '',
       clientSecret: decryptedSecret,
       baseUrl: (config.base_url as string) || '',
+      username: (config.username as string) || '',
+      password: decryptedPassword,
+      apiKey: (config.api_key as string) || '',
     };
+
+    let decryptedToken = '';
+    if (config.access_token) {
+      decryptedToken = isEncrypted(config.access_token as string)
+        ? (await decrypt(config.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+        : config.access_token as string;
+    } else if (credentials.username && credentials.password && credentials.baseUrl) {
+      // Session-based auth (e.g. Odoo): authenticate on-the-fly
+      try {
+        const tokenResp = await adapter.exchangeToken(credentials, '');
+        decryptedToken = tokenResp.access_token;
+      } catch (err) {
+        return c.json({ error: `Authentication failed: ${(err as Error).message}` }, 401);
+      }
+    } else {
+      return c.json({ error: 'No access token or credentials configured' }, 400);
+    }
+
     const entities = (config.sync_entities as string[]) || ['accounts', 'contacts'];
     const result = await adapter.syncData(credentials, decryptedToken, entities);
 
@@ -394,14 +415,10 @@ erp.post('/connections/:id/test', async (c) => {
     return c.json({ connected: false, message: `No adapter found for system: ${conn.adapter_system}` });
   }
 
-  if (!testConfig.access_token) {
-    return c.json({ connected: false, message: 'No access token configured. Complete OAuth flow first.' });
-  }
-
-  // Decrypt tokens for use
-  const decryptedToken = isEncrypted(testConfig.access_token as string)
-    ? (await decrypt(testConfig.access_token as string, c.env.ENCRYPTION_KEY)) || ''
-    : testConfig.access_token as string;
+  // Decrypt stored credentials
+  const decryptedPassword = testConfig.password && isEncrypted(testConfig.password as string)
+    ? (await decrypt(testConfig.password as string, c.env.ENCRYPTION_KEY)) || ''
+    : (testConfig.password as string) || '';
   const decryptedSecret = testConfig.client_secret && isEncrypted(testConfig.client_secret as string)
     ? (await decrypt(testConfig.client_secret as string, c.env.ENCRYPTION_KEY)) || ''
     : (testConfig.client_secret as string) || '';
@@ -410,7 +427,27 @@ erp.post('/connections/:id/test', async (c) => {
     clientId: (testConfig.client_id as string) || '',
     clientSecret: decryptedSecret,
     baseUrl: (testConfig.base_url as string) || '',
+    username: (testConfig.username as string) || '',
+    password: decryptedPassword,
+    apiKey: (testConfig.api_key as string) || '',
   };
+
+  let decryptedToken = '';
+  if (testConfig.access_token) {
+    decryptedToken = isEncrypted(testConfig.access_token as string)
+      ? (await decrypt(testConfig.access_token as string, c.env.ENCRYPTION_KEY)) || ''
+      : testConfig.access_token as string;
+  } else if (credentials.username && credentials.password && credentials.baseUrl) {
+    // Session-based auth (e.g. Odoo): authenticate on-the-fly
+    try {
+      const tokenResp = await adapter.exchangeToken(credentials, '');
+      decryptedToken = tokenResp.access_token;
+    } catch (err) {
+      return c.json({ connected: false, message: `Authentication failed: ${(err as Error).message}` });
+    }
+  } else {
+    return c.json({ connected: false, message: 'No access token or credentials configured. Complete OAuth flow or provide credentials.' });
+  }
 
   const result = await adapter.testConnection(credentials, decryptedToken);
 
