@@ -1083,9 +1083,12 @@ async function tcpFetch(
     ? concatUint8Arrays([encoder.encode(reqStr), bodyBytes])
     : encoder.encode(reqStr);
   await writer.write(fullReq);
-  await writer.close();
+  // Do NOT call writer.close() — Cloudflare Workers TCP sockets close both
+  // sides despite allowHalfOpen. Instead, release the lock and let the server
+  // close the connection after sending its response (Connection: close header).
+  writer.releaseLock();
 
-  // Read full response — race against socket.closed to catch errors
+  // Read full response — server closes connection after responding
   const reader = socket.readable.getReader();
   const chunks: Uint8Array[] = [];
   try {
