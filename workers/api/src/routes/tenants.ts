@@ -343,6 +343,13 @@ tenants.delete('/:id', async (c) => {
   const tenant = await c.env.DB.prepare('SELECT id, name FROM tenants WHERE id = ?').bind(id).first();
   if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
 
+  // Record deletion so seed functions don't re-create this tenant
+  try {
+    await c.env.DB.prepare(
+      'INSERT OR IGNORE INTO deleted_tenants (tenant_id) VALUES (?)'
+    ).bind(id).run();
+  } catch { /* table may not exist pre-v29 — non-fatal */ }
+
   // Delete all tenant data from all tables (same as reset but also deletes users)
   const result = await cleanupTenantData(c.env.DB, id, false); // preserveUsers=false
 

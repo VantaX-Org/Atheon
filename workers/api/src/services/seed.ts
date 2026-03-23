@@ -3,6 +3,12 @@ export async function seedDatabase(db: D1Database) {
   const existing = await db.prepare('SELECT COUNT(*) as count FROM tenants').first<{ count: number }>();
   if (existing && existing.count > 0) return;
 
+  // Check if any of the core tenants were intentionally deleted — don't re-seed if so
+  try {
+    const deleted = await db.prepare("SELECT tenant_id FROM deleted_tenants WHERE tenant_id IN ('vantax','freshco','deepmine','medilife','acme')").first();
+    if (deleted) return;
+  } catch { /* table may not exist yet — continue with seeding */ }
+
   // Seed Tenants
   const tenants = [
     { id: 'vantax', name: 'Vanta X', slug: 'vantax', industry: 'general', plan: 'enterprise', status: 'active', deployment_model: 'saas', region: 'af-south-1' },
