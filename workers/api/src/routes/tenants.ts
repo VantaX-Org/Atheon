@@ -266,11 +266,105 @@ tenants.post('/:id/reset', async (c) => {
   return c.json({ success: true, deletedRows: result.totalRowsDeleted, tablesCleared: result.tablesCleared.length });
 });
 
-// DELETE /api/tenants/:id
+// POST /api/tenants/:id/archive - Archive a company (keep data, mark inactive)
+tenants.post('/:id/archive', async (c) => {
+  const id = c.req.param('id');
+
+  const tenant = await c.env.DB.prepare('SELECT id, name, status FROM tenants WHERE id = ?').bind(id).first();
+  if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
+  if (tenant.status === 'archived') return c.json({ error: 'Tenant is already archived' }, 400);
+
+  // Mark tenant as archived
+  await c.env.DB.prepare(
+    "UPDATE tenants SET status = 'archived', updated_at = datetime('now') WHERE id = ?"
+  ).bind(id).run();
+
+  // Deactivate all catalyst clusters
+  const clusterResult = await c.env.DB.prepare(
+    "UPDATE catalyst_clusters SET status = 'inactive' WHERE tenant_id = ? AND status = 'active'"
+  ).bind(id).run();
+  const clustersDeactivated = clusterResult.meta?.changes || 0;
+
+  // Suspend all agent deployments
+  const agentResult = await c.env.DB.prepare(
+    "UPDATE agent_deployments SET status = 'suspended' WHERE tenant_id = ? AND status IN ('running', 'active', 'deploying')"
+  ).bind(id).run();
+  const agentsDeactivated = agentResult.meta?.changes || 0;
+
+  // Audit log
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), id, 'company.archived', 'admin', 'tenant',
+      JSON.stringify({ tenantName: tenant.name, clustersDeactivated, agentsDeactivated }),
+      'success'
+    ).run();
+  } catch { /* non-fatal */ }
+
+  return c.json({ success: true, clustersDeactivated, agentsDeactivated });
+});
+
+// POST /api/tenants/:id/unarchive - Restore an archived company
+tenants.post('/:id/unarchive', async (c) => {
+  const id = c.req.param('id');
+
+  const tenant = await c.env.DB.prepare('SELECT id, name, status FROM tenants WHERE id = ?').bind(id).first();
+  if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
+  if (tenant.status !== 'archived') return c.json({ error: 'Tenant is not archived' }, 400);
+
+  // Restore tenant to active
+  await c.env.DB.prepare(
+    "UPDATE tenants SET status = 'active', updated_at = datetime('now') WHERE id = ?"
+  ).bind(id).run();
+
+  // Audit log
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), id, 'company.unarchived', 'admin', 'tenant',
+      JSON.stringify({ tenantName: tenant.name }),
+      'success'
+    ).run();
+  } catch { /* non-fatal */ }
+
+  return c.json({ success: true });
+});
+
+// DELETE /api/tenants/:id - Permanently delete a company and ALL its data
 tenants.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('UPDATE tenants SET status = ? WHERE id = ?').bind('suspended', id).run();
-  return c.json({ success: true });
+
+  const tenant = await c.env.DB.prepare('SELECT id, name FROM tenants WHERE id = ?').bind(id).first();
+  if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
+
+  // Delete all tenant data from all tables (same as reset but also deletes users)
+  const result = await cleanupTenantData(c.env.DB, id, false); // preserveUsers=false
+
+  // Delete users (including admins)
+  try {
+    const del = await c.env.DB.prepare('DELETE FROM users WHERE tenant_id = ?').bind(id).run();
+    result.totalRowsDeleted += del.meta?.changes || 0;
+  } catch { /* non-fatal */ }
+
+  // Delete tenant entitlements
+  try {
+    const del = await c.env.DB.prepare('DELETE FROM tenant_entitlements WHERE tenant_id = ?').bind(id).run();
+    result.totalRowsDeleted += del.meta?.changes || 0;
+  } catch { /* non-fatal */ }
+
+  // Delete the tenant record itself
+  try {
+    await c.env.DB.prepare('DELETE FROM tenants WHERE id = ?').bind(id).run();
+    result.totalRowsDeleted += 1;
+  } catch { /* non-fatal */ }
+
+  return c.json({
+    success: true,
+    deletedRows: result.totalRowsDeleted,
+    tablesCleared: result.tablesCleared.length + 2, // +2 for tenant_entitlements and tenants
+  });
 });
 
 export default tenants;

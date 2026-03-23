@@ -9,7 +9,7 @@ import type { Tenant, IAMUser, CatalystIndustryTemplate, CatalystClusterTemplate
 import {
  Building2, Cloud, Server, GitBranch, Users, Bot, Shield,
  ChevronDown, ChevronUp, CheckCircle, XCircle, Plus, Layers, Loader2, X,
- Zap, ToggleLeft, ToggleRight, Database, Mail, HardDrive, Upload, Settings, Trash2, ArrowLeft, AlertCircle
+ Zap, ToggleLeft, ToggleRight, Database, Mail, HardDrive, Upload, Settings, Trash2, ArrowLeft, AlertCircle, Archive, ArchiveRestore
 } from "lucide-react";
 import { IconCheck, IconCross } from "@/components/icons/AtheonIcons";
 
@@ -29,6 +29,7 @@ const statusBadge = (status: string) => {
  if (status === 'active') return <Badge variant="success">{status}</Badge>;
  if (status === 'provisioning') return <Badge variant="warning">{status}</Badge>;
  if (status === 'suspended') return <Badge variant="danger">{status}</Badge>;
+ if (status === 'archived') return <Badge variant="default">archived</Badge>;
  return <Badge variant="default">{status}</Badge>;
 };
 
@@ -77,6 +78,16 @@ export function TenantsPage() {
  const [resetting, setResetting] = useState(false);
  const [resetResult, setResetResult] = useState<{ deletedRows: number; tablesCleared: number } | null>(null);
  const [resetConfirmText, setResetConfirmText] = useState('');
+
+ // Delete Company modal state
+ const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+ const [deleting, setDeleting] = useState(false);
+ const [deleteResult, setDeleteResult] = useState<{ deletedRows: number; tablesCleared: number } | null>(null);
+ const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+ // Archive Company modal state
+ const [showArchiveConfirm, setShowArchiveConfirm] = useState<string | null>(null);
+ const [archiving, setArchiving] = useState(false);
 
  // Edit Entitlements modal state
  const [showEditEntitlements, setShowEditEntitlements] = useState<string | null>(null);
@@ -265,6 +276,43 @@ export function TenantsPage() {
    setResetResult({ deletedRows: res.deletedRows, tablesCleared: res.tablesCleared });
   } catch { /* silent */ }
   setResetting(false);
+ };
+
+ // Delete Company handler
+ const handleDeleteCompany = async () => {
+  if (!showDeleteConfirm || deleting) return;
+  const tenant = tenants.find(t => t.id === showDeleteConfirm);
+  if (!tenant || deleteConfirmText !== tenant.name) return;
+  setDeleting(true);
+  try {
+   const res = await api.tenants.delete(showDeleteConfirm);
+   setDeleteResult({ deletedRows: res.deletedRows, tablesCleared: res.tablesCleared });
+   // Remove from local list
+   setTenants(prev => prev.filter(t => t.id !== showDeleteConfirm));
+  } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to delete company'); }
+  setDeleting(false);
+ };
+
+ // Archive Company handler
+ const handleArchiveCompany = async () => {
+  if (!showArchiveConfirm || archiving) return;
+  setArchiving(true);
+  try {
+   await api.tenants.archive(showArchiveConfirm);
+   const res = await api.tenants.list();
+   setTenants(res.tenants);
+   setShowArchiveConfirm(null);
+  } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to archive company'); }
+  setArchiving(false);
+ };
+
+ // Unarchive Company handler
+ const handleUnarchiveCompany = async (tenantId: string) => {
+  try {
+   await api.tenants.unarchive(tenantId);
+   const res = await api.tenants.list();
+   setTenants(res.tenants);
+  } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to restore company'); }
  };
 
  // Edit Entitlements handler
@@ -525,6 +573,12 @@ export function TenantsPage() {
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openManageCatalysts(tenant.id); }} title="Manage catalyst clusters, deploy new ones, and configure data sources"><Bot size={12} /> Manage Catalysts</Button>
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openEditEntitlements(tenant); }} title="Edit plan entitlements and feature access"><Layers size={12} /> Edit Entitlements</Button>
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowResetConfirm(tenant.id); setResetResult(null); setResetConfirmText(''); }} title="Reset company — delete all insights and start fresh" className="!text-red-500 !border-red-500/30 hover:!bg-red-500/10"><Trash2 size={12} /> Reset Company</Button>
+ {tenant.status === 'archived' ? (
+ <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleUnarchiveCompany(tenant.id); }} title="Restore this archived company to active status" className="!text-emerald-500 !border-emerald-500/30 hover:!bg-emerald-500/10"><ArchiveRestore size={12} /> Restore</Button>
+ ) : (
+ <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowArchiveConfirm(tenant.id); }} title="Archive company — keep data but mark inactive" className="!text-amber-500 !border-amber-500/30 hover:!bg-amber-500/10"><Archive size={12} /> Archive</Button>
+ )}
+ <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(tenant.id); setDeleteResult(null); setDeleteConfirmText(''); }} title="Permanently delete company and ALL data" className="!text-red-600 !border-red-600/30 hover:!bg-red-600/10"><Trash2 size={12} /> Delete Company</Button>
  </div>
  </div>
  )}
@@ -1240,6 +1294,114 @@ export function TenantsPage() {
  >
  {resetting ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Trash2 size={14} className="inline mr-1" />}
  Reset Company
+ </button>
+ </div>
+ </>
+ )}
+ </div>
+ </div></Portal>
+ )}
+
+ {/* Archive Company Confirmation Modal */}
+ {showArchiveConfirm && (
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4">
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+ <Archive size={20} className="text-amber-500" />
+ </div>
+ <div>
+ <h3 className="text-lg font-semibold t-primary">Archive Company</h3>
+ <p className="text-sm t-muted">Data will be preserved but company will be inactive</p>
+ </div>
+ </div>
+ <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+ <p className="text-sm t-primary">This will:</p>
+ <ul className="text-xs t-muted mt-2 space-y-1 list-disc list-inside">
+ <li>Set the company status to <strong>archived</strong></li>
+ <li>Deactivate all catalyst clusters</li>
+ <li>Suspend all running agent deployments</li>
+ </ul>
+ <p className="text-xs t-muted mt-2">All data is preserved and the company can be restored later.</p>
+ </div>
+ <div className="flex gap-3 pt-1">
+ <Button variant="secondary" size="sm" onClick={() => setShowArchiveConfirm(null)} title="Cancel archive">Cancel</Button>
+ <button
+ onClick={handleArchiveCompany}
+ disabled={archiving}
+ className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-amber-500 text-white hover:bg-amber-600"
+ title="Archive this company"
+ >
+ {archiving ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Archive size={14} className="inline mr-1" />}
+ Archive Company
+ </button>
+ </div>
+ </div>
+ </div></Portal>
+ )}
+
+ {/* Delete Company Confirmation Modal */}
+ {showDeleteConfirm && (
+ <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+ <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4">
+ {deleteResult ? (
+ <>
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+ <CheckCircle size={20} className="text-emerald-500" />
+ </div>
+ <div>
+ <h3 className="text-lg font-semibold t-primary">Company Deleted</h3>
+ <p className="text-sm t-muted">{deleteResult.deletedRows} rows deleted across {deleteResult.tablesCleared} tables</p>
+ </div>
+ </div>
+ <p className="text-xs t-muted">The company and all associated data have been permanently removed.</p>
+ <Button variant="primary" size="sm" onClick={() => { setShowDeleteConfirm(null); setDeleteResult(null); }} title="Close delete confirmation">Done</Button>
+ </>
+ ) : (
+ <>
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+ <Trash2 size={20} className="text-red-600" />
+ </div>
+ <div>
+ <h3 className="text-lg font-semibold t-primary">Delete Company</h3>
+ <p className="text-sm t-muted">This action is permanent and cannot be undone</p>
+ </div>
+ </div>
+ <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+ <p className="text-sm t-primary">This will permanently delete:</p>
+ <ul className="text-xs t-muted mt-2 space-y-1 list-disc list-inside">
+ <li>The company record and entitlements</li>
+ <li>All users and their access</li>
+ <li>All catalyst clusters and agent deployments</li>
+ <li>All health scores, briefings, scenarios, and risks</li>
+ <li>All process metrics, anomalies, and correlations</li>
+ <li>All ERP connections and sync data</li>
+ <li>All audit logs and governance data</li>
+ </ul>
+ <p className="text-xs text-red-400 mt-2 font-medium">This cannot be reversed. Consider archiving instead if you want to preserve data.</p>
+ </div>
+ <div>
+ <label className="text-xs t-muted block mb-1">Type the company name to confirm: <strong className="t-primary">{tenants.find(t => t.id === showDeleteConfirm)?.name}</strong></label>
+ <input
+ className="w-full px-3 py-2 rounded-lg border text-sm"
+ style={{ background: 'var(--bg-input)', borderColor: 'var(--border-card)', color: 'var(--text-primary)' }}
+ value={deleteConfirmText}
+ onChange={e => setDeleteConfirmText(e.target.value)}
+ placeholder="Company name..."
+ />
+ </div>
+ <div className="flex gap-3 pt-1">
+ <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(null)} title="Cancel delete">Cancel</Button>
+ <button
+ onClick={handleDeleteCompany}
+ disabled={deleting || deleteConfirmText !== (tenants.find(t => t.id === showDeleteConfirm)?.name || '')}
+ className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700"
+ title="Permanently delete this company and all data"
+ >
+ {deleting ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Trash2 size={14} className="inline mr-1" />}
+ Delete Permanently
  </button>
  </div>
  </>
