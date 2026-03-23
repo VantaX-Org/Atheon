@@ -3,6 +3,7 @@ import type { AppBindings } from '../types';
 import { generateToken, verifyToken, hashPassword, verifyPassword } from '../middleware/auth';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
+import { sendOrQueueEmail, getPasswordResetEmailTemplate } from '../services/email';
 
 const auth = new Hono<AppBindings>();
 
@@ -90,14 +91,12 @@ auth.post('/register', async (c) => {
     userId, email: body.email, tenantId: tenant.id,
   }), { expirationTtl: 86400 });
 
-  // Queue verification email
+  // Send verification email immediately via MS Graph (falls back to queue)
   const verifyUrl = `https://atheon.vantax.co.za/verify-email?token=${verificationToken}`;
-  await c.env.DB.prepare(
-    'INSERT INTO email_queue (id, tenant_id, recipients, subject, html_body, text_body, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-  ).bind(
-    crypto.randomUUID(), tenant.id, JSON.stringify([body.email]),
-    'Atheon\u2122 \u2014 Verify Your Email',
-    `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
+  await sendOrQueueEmail(c.env.DB, {
+    to: [body.email],
+    subject: 'Atheon\u2122 \u2014 Verify Your Email',
+    htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
       <h2 style="color:#0ea5e9;">Welcome to Atheon\u2122</h2>
       <p>Hi ${body.name},</p>
       <p>Please verify your email address to activate your account:</p>
@@ -108,9 +107,9 @@ auth.post('/register', async (c) => {
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
       <p style="color:#9ca3af;font-size:12px;">Atheon\u2122 Enterprise Intelligence Platform</p>
     </div>`,
-    `Verify your email: ${verifyUrl}\nThis link expires in 24 hours.`,
-    'pending',
-  ).run().catch((err) => { console.error('Phase 1.3: failed to queue verification email:', err); });
+    textBody: `Verify your email: ${verifyUrl}\nThis link expires in 24 hours.`,
+    tenantId: tenant.id as string,
+  }, c.env).catch((err) => { console.error('Phase 1.3: failed to send verification email:', err); });
 
   const token = await generateToken({
     sub: userId,
@@ -497,29 +496,16 @@ auth.post('/forgot-password', async (c) => {
       tenantId: user.tenant_id,
     }), { expirationTtl: 3600 });
 
-    // Queue email for sending
+    // Send password reset email immediately via MS Graph (falls back to queue)
     const resetUrl = `https://atheon.vantax.co.za/reset-password?token=${resetToken}`;
-    await c.env.DB.prepare(
-      'INSERT INTO email_queue (id, tenant_id, recipients, subject, html_body, text_body, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-    ).bind(
-      crypto.randomUUID(),
-      user.tenant_id,
-      JSON.stringify([user.email]),
-      'Atheon™ — Password Reset Request',
-      `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
-        <h2 style="color:#0ea5e9;">Atheon™ Password Reset</h2>
-        <p>Hi ${user.name},</p>
-        <p>We received a request to reset your password. Click the button below to set a new password:</p>
-        <p style="text-align:center;margin:24px 0;">
-          <a href="${resetUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>
-        </p>
-        <p style="color:#666;font-size:13px;">This link expires in 1 hour. If you didn't request this, ignore this email.</p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-        <p style="color:#9ca3af;font-size:12px;">Atheon™ Enterprise Intelligence Platform</p>
-      </div>`,
-      `Reset your Atheon password: ${resetUrl}\nThis link expires in 1 hour.`,
-      'pending',
-    ).run().catch((err) => { console.error('BUG-23: failed to queue forgot-password email:', err); });
+    const { html, text } = getPasswordResetEmailTemplate(user.name as string, resetUrl);
+    await sendOrQueueEmail(c.env.DB, {
+      to: [user.email as string],
+      subject: 'Atheon™ — Password Reset Request',
+      htmlBody: html,
+      textBody: text,
+      tenantId: user.tenant_id as string,
+    }, c.env).catch((err) => { console.error('BUG-23: failed to send forgot-password email:', err); });
 
     // Audit log
     await c.env.DB.prepare(
@@ -952,21 +938,19 @@ auth.post('/resend-verification', async (c) => {
     }), { expirationTtl: 86400 });
 
     const verifyUrl = `https://atheon.vantax.co.za/verify-email?token=${verificationToken}`;
-    await c.env.DB.prepare(
-      'INSERT INTO email_queue (id, tenant_id, recipients, subject, html_body, text_body, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-    ).bind(
-      crypto.randomUUID(), user.tenant_id, JSON.stringify([user.email]),
-      'Atheon\u2122 \u2014 Verify Your Email',
-      `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
+    await sendOrQueueEmail(c.env.DB, {
+      to: [user.email as string],
+      subject: 'Atheon\u2122 \u2014 Verify Your Email',
+      htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
         <h2 style="color:#0ea5e9;">Email Verification</h2>
         <p>Hi ${user.name},</p>
         <p>Click below to verify your email:</p>
         <p style="text-align:center;margin:24px 0;"><a href="${verifyUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a></p>
         <p style="color:#666;font-size:13px;">This link expires in 24 hours.</p>
       </div>`,
-      `Verify your email: ${verifyUrl}`,
-      'pending',
-    ).run().catch((err) => { console.error('Phase 1.3: failed to queue resend verification email:', err); });
+      textBody: `Verify your email: ${verifyUrl}`,
+      tenantId: user.tenant_id as string,
+    }, c.env).catch((err) => { console.error('Phase 1.3: failed to send resend verification email:', err); });
   }
 
   // Always return success (don't reveal if user exists)
