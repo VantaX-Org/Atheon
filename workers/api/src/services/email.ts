@@ -91,7 +91,7 @@ function badge(label: string, bgColor: string, textColor = '#fff'): string {
   return `<span style="display:inline-block;background:${bgColor};color:${textColor};padding:4px 14px;border-radius:9999px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">${label}</span>`;
 }
 
-function statBox(label: string, value: string | number, valueColor = BRAND.text): string {
+function statBox(label: string, value: string | number, valueColor: string = BRAND.text): string {
   return `<div style="background:${BRAND.credBg};border-radius:10px;padding:14px 16px;flex:1;text-align:center;border:1px solid rgba(245,197,66,0.06)"><p style="color:${BRAND.muted};font-size:11px;margin:0;text-transform:uppercase;letter-spacing:0.5px">${label}</p><p style="color:${valueColor};font-size:22px;font-weight:700;margin:6px 0 0">${value}</p></div>`;
 }
 

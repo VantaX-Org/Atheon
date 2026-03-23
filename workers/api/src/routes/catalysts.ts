@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { AppBindings, AuthContext } from '../types';
+import type { AppBindings, AuthContext, Env } from '../types';
 import { executeTask, approveAction, rejectAction } from '../services/catalyst-engine';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst-templates';
@@ -2387,7 +2387,7 @@ catalysts.get('/execution-stats', async (c) => {
  */
 async function sendHitlNotification(
   db: D1Database,
-  env: Record<string, unknown>,
+  env: Env,
   tenantId: string,
   clusterId: string,
   notificationType: 'approval_needed' | 'exception' | 'escalation' | 'completion',
@@ -2479,7 +2479,7 @@ async function sendHitlNotification(
     htmlBody: template.html,
     textBody: template.text,
     tenantId,
-  }, env as never).catch(err => console.error('HITL email send failed:', err));
+  }, env).catch(err => console.error('HITL email send failed:', err));
 }
 
 /**
@@ -2487,7 +2487,7 @@ async function sendHitlNotification(
  */
 async function sendRunResultsEmail(
   db: D1Database,
-  env: Record<string, unknown>,
+  env: Env,
   tenantId: string,
   clusterId: string,
   catalystName: string,
@@ -2539,7 +2539,7 @@ async function sendRunResultsEmail(
     htmlBody: template.html,
     textBody: template.text,
     tenantId,
-  }, env as never).catch(err => console.error('Run results email failed:', err));
+  }, env).catch(err => console.error('Run results email failed:', err));
 }
 
 // GET /api/catalysts/hitl-config - Get HITL config for a cluster (optionally filtered by sub_catalyst)
