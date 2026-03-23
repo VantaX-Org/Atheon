@@ -429,6 +429,8 @@ export function CatalystsPage() {
  const [analyticsLoading, setAnalyticsLoading] = useState(false);
  const [analyticsCluster, setAnalyticsCluster] = useState('all');
  const [expandedAnalyticsRun, setExpandedAnalyticsRun] = useState<string | null>(null);
+ const [runDetailActions, setRunDetailActions] = useState<Record<string, Array<{ id: string; action: string; status: string; confidence: number; assignedTo?: string; processingTimeMs?: number; createdAt: string }>>>({});
+ const [runDetailLoading, setRunDetailLoading] = useState<string | null>(null);
 
  const loadHitlConfigs = async () => {
    setHitlLoading(true);
@@ -1581,6 +1583,59 @@ export function CatalystsPage() {
          <span>Min: <span className="font-medium t-primary">{(run.confidence.min * 100).toFixed(0)}%</span></span>
          <span>Max: <span className="font-medium t-primary">{(run.confidence.max * 100).toFixed(0)}%</span></span>
        </div>
+     </div>
+
+     {/* Per-Run Transaction Detail */}
+     <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+       <div className="flex items-center justify-between mb-2">
+         <h5 className="text-xs font-semibold t-primary flex items-center gap-1"><ScrollText size={12} className="text-accent" /> Transaction Detail</h5>
+         {!runDetailActions[run.runId] && (
+           <Button variant="secondary" size="sm" onClick={async (e) => {
+             e.stopPropagation();
+             setRunDetailLoading(run.runId);
+             try {
+               const res = await api.catalysts.runAnalyticsDetail(run.runId);
+               setRunDetailActions(prev => ({ ...prev, [run.runId]: res.actions }));
+             } catch { /* failed */ }
+             setRunDetailLoading(null);
+           }}>
+             {runDetailLoading === run.runId ? <Loader2 size={10} className="animate-spin" /> : <Eye size={10} />} Load Items
+           </Button>
+         )}
+       </div>
+       {runDetailLoading === run.runId && (
+         <div className="flex items-center justify-center py-4">
+           <Loader2 className="w-4 h-4 text-accent animate-spin" />
+           <span className="text-xs t-muted ml-2">Loading transaction items...</span>
+         </div>
+       )}
+       {runDetailActions[run.runId] && runDetailActions[run.runId].length === 0 && (
+         <p className="text-xs t-muted text-center py-3">No individual action items recorded for this run.</p>
+       )}
+       {runDetailActions[run.runId] && runDetailActions[run.runId].length > 0 && (
+         <div className="space-y-1 max-h-[300px] overflow-y-auto">
+           <div className="grid grid-cols-12 gap-2 text-[9px] t-muted uppercase tracking-wider font-semibold pb-1 border-b border-[var(--border-card)] sticky top-0 bg-[var(--bg-secondary)]">
+             <span className="col-span-4">Action</span>
+             <span className="col-span-2">Status</span>
+             <span className="col-span-2 text-right">Confidence</span>
+             <span className="col-span-2">Assigned To</span>
+             <span className="col-span-2 text-right">Time</span>
+           </div>
+           {runDetailActions[run.runId].map((item) => (
+             <div key={item.id} className="grid grid-cols-12 gap-2 items-center py-1.5 border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)]/50 rounded px-1">
+               <span className="col-span-4 text-xs t-secondary truncate" title={item.action}>{item.action}</span>
+               <span className="col-span-2">
+                 <Badge variant={item.status === 'completed' || item.status === 'approved' ? 'success' : item.status === 'exception' || item.status === 'failed' || item.status === 'rejected' ? 'danger' : item.status === 'escalated' ? 'warning' : 'info'} size="sm">{item.status}</Badge>
+               </span>
+               <span className={`col-span-2 text-xs font-medium text-right ${item.confidence >= 0.8 ? 'text-emerald-400' : item.confidence >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+                 {(item.confidence * 100).toFixed(0)}%
+               </span>
+               <span className="col-span-2 text-[10px] t-muted truncate">{item.assignedTo || '—'}</span>
+               <span className="col-span-2 text-[10px] t-muted text-right">{item.processingTimeMs ? `${(item.processingTimeMs / 1000).toFixed(1)}s` : '—'}</span>
+             </div>
+           ))}
+         </div>
+       )}
      </div>
 
      {run.insights.length > 0 && (
