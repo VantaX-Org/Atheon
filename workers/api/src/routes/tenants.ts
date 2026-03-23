@@ -103,7 +103,11 @@ tenants.post('/', async (c) => {
     return c.json({ error: 'Invalid input', details: errors }, 400);
   }
 
-  const id = crypto.randomUUID();
+  // Use slug as tenant id — the entire codebase (JWT tenant_id, FK references,
+  // getTenantId helpers, frontend localStorage) identifies tenants by slug.
+  // Using a UUID here would break FK constraints when other tables reference
+  // tenants(id) via the slug stored in the JWT.
+  const id = body.slug;
   await c.env.DB.prepare(
     'INSERT INTO tenants (id, name, slug, industry, plan, deployment_model, region) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(id, body.name, body.slug, body.industry || 'general', body.plan || 'starter', body.deploymentModel || 'saas', body.region || 'af-south-1').run();

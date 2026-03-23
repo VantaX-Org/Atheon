@@ -111,6 +111,9 @@ export function ApexPage() {
  sparkline: [val.score - 6, val.score - 4, val.score - 3, val.score - 2, val.score - 1, val.score]}))
  : [];
 
+ // Detect if tenant has any real data
+ const hasData = !!(health?.calculatedAt) || risks.length > 0 || !!briefing || scenarios.length > 0;
+
  const tabs = [
  { id: 'health', label: 'Business Health', icon: <Crown size={14} /> },
  { id: 'briefing', label: 'Leadership Summary', icon: <FileText size={14} /> },
@@ -122,6 +125,25 @@ export function ApexPage() {
  return (
  <div className="flex items-center justify-center h-96">
  <Loader2 className="w-8 h-8 text-accent animate-spin" />
+ </div>
+ );
+ }
+
+ if (!hasData) {
+ return (
+ <div className="space-y-6 animate-fadeIn">
+ <div>
+ <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Apex</h1>
+ <p className="text-sm t-muted mt-1">Your strategic overview — insights that matter, when they matter</p>
+ </div>
+ <Card>
+ <div className="flex flex-col items-center justify-center py-16 text-center">
+ <Crown className="w-12 h-12 t-muted mb-4 opacity-30" />
+ <p className="text-sm font-medium t-primary">No data yet</p>
+ <p className="text-xs t-muted mt-1">Connect an ERP system and run a sync to populate executive intelligence,</p>
+ <p className="text-xs t-muted">or use the Catalysts page to generate insights.</p>
+ </div>
+ </Card>
  </div>
  );
  }

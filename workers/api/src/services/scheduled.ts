@@ -175,6 +175,16 @@ async function recalculateHealthScore(db: D1Database, tenantId: string): Promise
     "SELECT COUNT(*) as count FROM anomalies WHERE tenant_id = ? AND status = 'open'"
   ).bind(tenantId).first<{ count: number }>();
 
+  // Skip health score generation for tenants with no underlying data.
+  // New/empty tenants should have blank dashboards until real data is synced.
+  const hasMetrics = metrics.results.length > 0;
+  const hasRisks = risks.results.length > 0;
+  const hasActiveCatalysts = (catalysts?.count || 0) > 0;
+  const hasAnomalies = (anomalies?.count || 0) > 0;
+  if (!hasMetrics && !hasRisks && !hasActiveCatalysts && !hasAnomalies) {
+    return; // No data to score — keep dashboard blank
+  }
+
   // Calculate dimension scores
   const metricMap: Record<string, number> = {};
   for (const m of metrics.results) {
@@ -183,28 +193,45 @@ async function recalculateHealthScore(db: D1Database, tenantId: string): Promise
   const totalMetrics = (metricMap['green'] || 0) + (metricMap['amber'] || 0) + (metricMap['red'] || 0);
   const operationalScore = totalMetrics > 0
     ? Math.round(((metricMap['green'] || 0) * 100 + (metricMap['amber'] || 0) * 50) / totalMetrics)
-    : 75;
+    : null;
 
   const riskMap: Record<string, number> = {};
   for (const r of risks.results) {
     riskMap[r.severity as string] = r.count as number;
   }
   const riskPenalty = (riskMap['critical'] || 0) * 20 + (riskMap['high'] || 0) * 10 + (riskMap['medium'] || 0) * 5 + (riskMap['low'] || 0) * 2;
-  const riskScore = Math.max(0, 100 - riskPenalty);
+  const riskScore = hasRisks ? Math.max(0, 100 - riskPenalty) : null;
 
-  const catalystScore = catalysts?.avg_success ?? 75;
+  const catalystScore = (catalysts?.avg_success != null && hasActiveCatalysts) ? (catalysts.avg_success as number) : null;
   const anomalyPenalty = (anomalies?.count || 0) * 5;
-  const processScore = Math.max(0, 100 - anomalyPenalty);
+  const processScore = hasAnomalies ? Math.max(0, 100 - anomalyPenalty) : null;
 
-  // Weighted composite
-  const overall = Math.round(operationalScore * 0.3 + riskScore * 0.25 + catalystScore * 0.25 + processScore * 0.2);
+  // Weighted composite — only include dimensions that have actual data,
+  // normalizing weights so they sum to 1.0. This avoids penalizing tenants
+  // with partial data (e.g. only risks exist → score based solely on risk dimension).
+  const dimensionWeights: Array<{ score: number; weight: number }> = [];
+  if (operationalScore != null) dimensionWeights.push({ score: operationalScore, weight: 0.3 });
+  if (riskScore != null) dimensionWeights.push({ score: riskScore, weight: 0.25 });
+  if (catalystScore != null) dimensionWeights.push({ score: catalystScore, weight: 0.25 });
+  if (processScore != null) dimensionWeights.push({ score: processScore, weight: 0.2 });
+  const totalWeight = dimensionWeights.reduce((sum, d) => sum + d.weight, 0);
+  const overall = totalWeight > 0
+    ? Math.round(dimensionWeights.reduce((sum, d) => sum + d.score * (d.weight / totalWeight), 0))
+    : 0;
 
-  const dimensions = {
-    operational: { score: operationalScore, trend: operationalScore >= 70 ? 'improving' : 'declining' },
-    risk: { score: riskScore, trend: riskScore >= 70 ? 'stable' : 'declining' },
-    catalyst: { score: Math.round(catalystScore), trend: catalystScore >= 70 ? 'improving' : 'stable' },
-    process: { score: processScore, trend: processScore >= 80 ? 'stable' : 'declining' },
-  };
+  const dimensions: Record<string, { score: number; trend: string }> = {};
+  if (operationalScore != null) {
+    dimensions.operational = { score: operationalScore, trend: operationalScore >= 70 ? 'improving' : 'declining' };
+  }
+  if (riskScore != null) {
+    dimensions.risk = { score: riskScore, trend: riskScore >= 70 ? 'stable' : 'declining' };
+  }
+  if (catalystScore != null) {
+    dimensions.catalyst = { score: Math.round(catalystScore), trend: catalystScore >= 70 ? 'improving' : 'stable' };
+  }
+  if (processScore != null) {
+    dimensions.process = { score: processScore, trend: processScore >= 80 ? 'stable' : 'declining' };
+  }
 
   await db.prepare(
     'INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
@@ -226,6 +253,9 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollama
     'SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
   ).bind(tenantId).first();
 
+  // Skip briefing generation for tenants with no health data (new/empty tenants)
+  if (!health) return;
+
   const activeRisks = await db.prepare(
     "SELECT title, severity, category, impact_value FROM risk_alerts WHERE tenant_id = ? AND status = 'active' ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END LIMIT 5"
   ).bind(tenantId).all();
@@ -239,7 +269,7 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollama
   ).bind(tenantId).all();
 
   // Build briefing content
-  const overallScore = (health?.overall_score as number) || 75;
+  const overallScore = (health.overall_score as number) || 0;
   const dims = health?.dimensions ? JSON.parse(health.dimensions as string) : {};
 
   const risks = activeRisks.results.map((r: Record<string, unknown>) =>
