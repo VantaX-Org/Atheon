@@ -217,6 +217,12 @@ export const api = {
       request<{ success: boolean }>(`/api/tenants/${id}/entitlements`, { method: 'PUT', body: JSON.stringify(data) }),
     reset: (id: string) =>
       request<{ success: boolean; deletedRows: number; tablesCleared: number }>(`/api/tenants/${id}/reset`, { method: 'POST' }),
+    delete: (id: string) =>
+      request<{ success: boolean; deletedRows: number; tablesCleared: number }>(`/api/tenants/${id}`, { method: 'DELETE' }),
+    archive: (id: string) =>
+      request<{ success: boolean; clustersDeactivated: number; agentsDeactivated: number }>(`/api/tenants/${id}/archive`, { method: 'POST' }),
+    unarchive: (id: string) =>
+      request<{ success: boolean }>(`/api/tenants/${id}/unarchive`, { method: 'POST' }),
   },
 
   iam: {
