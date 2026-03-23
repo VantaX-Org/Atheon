@@ -3,6 +3,7 @@ import type { AppBindings, AuthContext } from '../types';
 import { executeTask, approveAction, rejectAction } from '../services/catalyst-engine';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst-templates';
+import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -2012,6 +2013,20 @@ catalysts.put('/actions/:id/approve', async (c) => {
   const body = await c.req.json<{ approved_by?: string }>();
 
   const result = await approveAction(id, body.approved_by || 'system', c.env.DB, c.env.CACHE);
+
+  // Send completion notification to HITL-configured users
+  try {
+    const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(id).first();
+    if (action) {
+      await sendHitlNotification(c.env.DB, c.env, action.tenant_id as string, action.cluster_id as string, 'completion', {
+        catalystName: action.catalyst_name as string,
+        action: action.action as string,
+        status: 'approved',
+        confidence: action.confidence as number || 0,
+      });
+    }
+  } catch (err) { console.error('HITL approve notification failed (non-critical):', err); }
+
   return c.json(result);
 });
 
@@ -2021,6 +2036,21 @@ catalysts.put('/actions/:id/reject', async (c) => {
   const body = await c.req.json<{ approved_by?: string; reason?: string }>();
 
   const result = await rejectAction(id, body.approved_by || 'system', body.reason || '', c.env.DB, c.env.CACHE);
+
+  // Send exception notification to HITL-configured users
+  try {
+    const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(id).first();
+    if (action) {
+      await sendHitlNotification(c.env.DB, c.env, action.tenant_id as string, action.cluster_id as string, 'exception', {
+        catalystName: action.catalyst_name as string,
+        action: action.action as string,
+        status: 'rejected',
+        confidence: action.confidence as number || 0,
+        reason: body.reason,
+      });
+    }
+  } catch (err) { console.error('HITL reject notification failed (non-critical):', err); }
+
   return c.json(result);
 });
 
@@ -2348,4 +2378,693 @@ catalysts.get('/execution-stats', async (c) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HITL (Human-in-the-Loop) Configuration & Notification Endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Look up HITL config for a cluster and send email notifications to assigned users.
+ */
+async function sendHitlNotification(
+  db: D1Database,
+  env: Record<string, unknown>,
+  tenantId: string,
+  clusterId: string,
+  notificationType: 'approval_needed' | 'exception' | 'escalation' | 'completion',
+  details: { catalystName: string; action: string; status: string; confidence: number; reason?: string; subCatalystName?: string },
+): Promise<void> {
+  // Try sub-catalyst-level config first, then fall back to cluster-level
+  let config: Record<string, unknown> | null = null;
+  if (details.subCatalystName) {
+    config = await db.prepare(
+      'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+    ).bind(tenantId, clusterId, details.subCatalystName).first();
+  }
+  if (!config) {
+    config = await db.prepare(
+      'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = \'\'\')'
+    ).bind(tenantId, clusterId).first();
+  }
+  if (!config) return;
+
+  // Determine which user IDs to notify based on type
+  let userIds: string[] = [];
+  if (notificationType === 'approval_needed' && config.notify_on_approval_needed) {
+    userIds = JSON.parse(config.validator_user_ids as string || '[]');
+  } else if (notificationType === 'exception' && config.notify_on_exception) {
+    userIds = JSON.parse(config.exception_handler_user_ids as string || '[]');
+  } else if (notificationType === 'escalation' && config.notify_on_exception) {
+    userIds = JSON.parse(config.escalation_user_ids as string || '[]');
+    if (userIds.length === 0) userIds = JSON.parse(config.exception_handler_user_ids as string || '[]');
+  } else if (notificationType === 'completion' && config.notify_on_completion) {
+    // Notify all configured users on completion
+    const validators = JSON.parse(config.validator_user_ids as string || '[]') as string[];
+    const handlers = JSON.parse(config.exception_handler_user_ids as string || '[]') as string[];
+    const escalation = JSON.parse(config.escalation_user_ids as string || '[]') as string[];
+    userIds = [...new Set([...validators, ...handlers, ...escalation])];
+  }
+
+  if (userIds.length === 0) return;
+
+  // Look up user emails
+  const placeholders = userIds.map(() => '?').join(',');
+  const users = await db.prepare(
+    `SELECT id, email, name FROM users WHERE id IN (${placeholders}) AND tenant_id = ?`
+  ).bind(...userIds, tenantId).all();
+
+  const emails = users.results.map(u => u.email as string).filter(Boolean);
+  if (emails.length === 0) return;
+
+  const dashboardUrl = 'https://atheon.vantax.co.za/pulse';
+
+  // Build email based on type
+  let subject: string;
+  let template: { html: string; text: string };
+
+  if (notificationType === 'approval_needed') {
+    subject = `[Atheon] Approval Required — ${details.catalystName}`;
+    template = getApprovalEmailTemplate(
+      details.catalystName, details.action, details.confidence,
+      details.reason || 'Action requires human validation before proceeding.',
+      dashboardUrl,
+    );
+  } else if (notificationType === 'escalation') {
+    subject = `[Atheon] Escalation — ${details.catalystName}`;
+    template = getEscalationEmailTemplate(
+      details.catalystName, details.action, 'L1',
+      details.reason || 'Action escalated for review.',
+      dashboardUrl,
+    );
+  } else if (notificationType === 'exception') {
+    subject = `[Atheon] Exception — ${details.catalystName}`;
+    template = getEscalationEmailTemplate(
+      details.catalystName, details.action, 'Exception',
+      details.reason || 'An exception occurred during execution.',
+      dashboardUrl,
+    );
+  } else {
+    // completion — use run results template
+    subject = `[Atheon] Run Complete — ${details.catalystName}`;
+    template = getRunResultsEmailTemplate(
+      details.catalystName,
+      { total: 1, completed: details.status === 'approved' || details.status === 'completed' ? 1 : 0, exceptions: details.status === 'failed' || details.status === 'rejected' ? 1 : 0, escalated: details.status === 'escalated' ? 1 : 0, pending: 0 },
+      [{ action: details.action, status: details.status, confidence: details.confidence }],
+      dashboardUrl,
+    );
+  }
+
+  await sendOrQueueEmail(db, {
+    to: emails,
+    subject,
+    htmlBody: template.html,
+    textBody: template.text,
+    tenantId,
+  }, env as never).catch(err => console.error('HITL email send failed:', err));
+}
+
+/**
+ * Send batch run result emails for a catalyst cluster.
+ */
+async function sendRunResultsEmail(
+  db: D1Database,
+  env: Record<string, unknown>,
+  tenantId: string,
+  clusterId: string,
+  catalystName: string,
+  actions: Array<{ action: string; status: string; confidence: number }>,
+  subCatalystName?: string,
+): Promise<void> {
+  // Try sub-catalyst-level config first, then fall back to cluster-level
+  let config: Record<string, unknown> | null = null;
+  if (subCatalystName) {
+    config = await db.prepare(
+      'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+    ).bind(tenantId, clusterId, subCatalystName).first();
+  }
+  if (!config) {
+    config = await db.prepare(
+      'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = \'\'\')'
+    ).bind(tenantId, clusterId).first();
+  }
+  if (!config || !config.notify_on_completion) return;
+
+  // Collect all configured users
+  const validators = JSON.parse(config.validator_user_ids as string || '[]') as string[];
+  const handlers = JSON.parse(config.exception_handler_user_ids as string || '[]') as string[];
+  const escalation = JSON.parse(config.escalation_user_ids as string || '[]') as string[];
+  const allUserIds = [...new Set([...validators, ...handlers, ...escalation])];
+  if (allUserIds.length === 0) return;
+
+  const placeholders = allUserIds.map(() => '?').join(',');
+  const users = await db.prepare(
+    `SELECT email FROM users WHERE id IN (${placeholders}) AND tenant_id = ?`
+  ).bind(...allUserIds, tenantId).all();
+  const emails = users.results.map(u => u.email as string).filter(Boolean);
+  if (emails.length === 0) return;
+
+  const summary = {
+    total: actions.length,
+    completed: actions.filter(a => a.status === 'completed' || a.status === 'approved').length,
+    exceptions: actions.filter(a => a.status === 'failed' || a.status === 'exception' || a.status === 'rejected').length,
+    escalated: actions.filter(a => a.status === 'escalated' || a.status === 'pending_approval').length,
+    pending: actions.filter(a => a.status === 'pending').length,
+  };
+
+  const dashboardUrl = 'https://atheon.vantax.co.za/pulse';
+  const template = getRunResultsEmailTemplate(catalystName, summary, actions.slice(0, 20), dashboardUrl);
+
+  await sendOrQueueEmail(db, {
+    to: emails,
+    subject: `[Atheon] Run Report — ${catalystName} (${summary.total} actions)`,
+    htmlBody: template.html,
+    textBody: template.text,
+    tenantId,
+  }, env as never).catch(err => console.error('Run results email failed:', err));
+}
+
+// GET /api/catalysts/hitl-config - Get HITL config for a cluster (optionally filtered by sub_catalyst)
+catalysts.get('/hitl-config', async (c) => {
+  const tenantId = getTenantId(c);
+  const clusterId = c.req.query('cluster_id');
+  const subCatalystName = c.req.query('sub_catalyst_name');
+
+  if (clusterId) {
+    // If sub_catalyst_name is specified, look for that specific config
+    let config: Record<string, unknown> | null = null;
+    if (subCatalystName) {
+      config = await c.env.DB.prepare(
+        'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+      ).bind(tenantId, clusterId, subCatalystName).first();
+    } else {
+      config = await c.env.DB.prepare(
+        'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = \'\'\')'
+      ).bind(tenantId, clusterId).first();
+    }
+
+    if (!config) {
+      // Also return all sub-catalyst configs for this cluster
+      const subConfigs = await c.env.DB.prepare(
+        'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? ORDER BY sub_catalyst_name'
+      ).bind(tenantId, clusterId).all();
+
+      if (subConfigs.results.length === 0) return c.json({ config: null, subConfigs: [] });
+
+      const allIds = [...new Set(subConfigs.results.flatMap((r: Record<string, unknown>) => [
+        ...JSON.parse(r.validator_user_ids as string || '[]') as string[],
+        ...JSON.parse(r.exception_handler_user_ids as string || '[]') as string[],
+        ...JSON.parse(r.escalation_user_ids as string || '[]') as string[],
+      ]))];
+
+      const userMap: Record<string, { email: string; name: string }> = {};
+      if (allIds.length > 0) {
+        const ph = allIds.map(() => '?').join(',');
+        const users = await c.env.DB.prepare(
+          `SELECT id, email, name FROM users WHERE id IN (${ph})`
+        ).bind(...allIds).all();
+        for (const u of users.results) {
+          userMap[u.id as string] = { email: u.email as string, name: u.name as string };
+        }
+      }
+
+      return c.json({
+        config: null,
+        subConfigs: subConfigs.results.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          tenantId: r.tenant_id,
+          clusterId: r.cluster_id,
+          subCatalystName: r.sub_catalyst_name || null,
+          domain: r.domain,
+          validatorUserIds: JSON.parse(r.validator_user_ids as string || '[]'),
+          exceptionHandlerUserIds: JSON.parse(r.exception_handler_user_ids as string || '[]'),
+          escalationUserIds: JSON.parse(r.escalation_user_ids as string || '[]'),
+          notifyOnCompletion: !!r.notify_on_completion,
+          notifyOnException: !!r.notify_on_exception,
+          notifyOnApprovalNeeded: !!r.notify_on_approval_needed,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        })),
+        users: userMap,
+      });
+    }
+
+    // Resolve user names for the IDs
+    const allIds = [...new Set([
+      ...JSON.parse(config.validator_user_ids as string || '[]') as string[],
+      ...JSON.parse(config.exception_handler_user_ids as string || '[]') as string[],
+      ...JSON.parse(config.escalation_user_ids as string || '[]') as string[],
+    ])];
+
+    const userMap: Record<string, { email: string; name: string }> = {};
+    if (allIds.length > 0) {
+      const ph = allIds.map(() => '?').join(',');
+      const users = await c.env.DB.prepare(
+        `SELECT id, email, name FROM users WHERE id IN (${ph})`
+      ).bind(...allIds).all();
+      for (const u of users.results) {
+        userMap[u.id as string] = { email: u.email as string, name: u.name as string };
+      }
+    }
+
+    // Also fetch sub-catalyst configs for this cluster
+    const subConfigs = await c.env.DB.prepare(
+      'SELECT * FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name IS NOT NULL AND sub_catalyst_name != \'\'\' ORDER BY sub_catalyst_name'
+    ).bind(tenantId, clusterId).all();
+
+    return c.json({
+      config: {
+        id: config.id,
+        tenantId: config.tenant_id,
+        clusterId: config.cluster_id,
+        subCatalystName: config.sub_catalyst_name || null,
+        domain: config.domain,
+        validatorUserIds: JSON.parse(config.validator_user_ids as string || '[]'),
+        exceptionHandlerUserIds: JSON.parse(config.exception_handler_user_ids as string || '[]'),
+        escalationUserIds: JSON.parse(config.escalation_user_ids as string || '[]'),
+        notifyOnCompletion: !!config.notify_on_completion,
+        notifyOnException: !!config.notify_on_exception,
+        notifyOnApprovalNeeded: !!config.notify_on_approval_needed,
+        createdAt: config.created_at,
+        updatedAt: config.updated_at,
+        users: userMap,
+      },
+      subConfigs: subConfigs.results.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        tenantId: r.tenant_id,
+        clusterId: r.cluster_id,
+        subCatalystName: r.sub_catalyst_name || null,
+        domain: r.domain,
+        validatorUserIds: JSON.parse(r.validator_user_ids as string || '[]'),
+        exceptionHandlerUserIds: JSON.parse(r.exception_handler_user_ids as string || '[]'),
+        escalationUserIds: JSON.parse(r.escalation_user_ids as string || '[]'),
+        notifyOnCompletion: !!r.notify_on_completion,
+        notifyOnException: !!r.notify_on_exception,
+        notifyOnApprovalNeeded: !!r.notify_on_approval_needed,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
+    });
+  }
+
+  // List all configs for tenant
+  const results = await c.env.DB.prepare(
+    'SELECT h.*, cc.name as cluster_name FROM catalyst_hitl_config h LEFT JOIN catalyst_clusters cc ON h.cluster_id = cc.id WHERE h.tenant_id = ? ORDER BY h.cluster_id, h.sub_catalyst_name'
+  ).bind(tenantId).all();
+
+  return c.json({
+    configs: results.results.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      tenantId: r.tenant_id,
+      clusterId: r.cluster_id,
+      subCatalystName: r.sub_catalyst_name || null,
+      clusterName: r.cluster_name,
+      domain: r.domain,
+      validatorUserIds: JSON.parse(r.validator_user_ids as string || '[]'),
+      exceptionHandlerUserIds: JSON.parse(r.exception_handler_user_ids as string || '[]'),
+      escalationUserIds: JSON.parse(r.escalation_user_ids as string || '[]'),
+      notifyOnCompletion: !!r.notify_on_completion,
+      notifyOnException: !!r.notify_on_exception,
+      notifyOnApprovalNeeded: !!r.notify_on_approval_needed,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+    total: results.results.length,
+  });
+});
+
+// PUT /api/catalysts/hitl-config - Create or update HITL config (cluster-level or sub-catalyst-level)
+catalysts.put('/hitl-config', async (c) => {
+  const tenantId = getTenantId(c);
+  const body = await c.req.json<{
+    cluster_id: string;
+    sub_catalyst_name?: string;
+    domain?: string;
+    validator_user_ids?: string[];
+    exception_handler_user_ids?: string[];
+    escalation_user_ids?: string[];
+    notify_on_completion?: boolean;
+    notify_on_exception?: boolean;
+    notify_on_approval_needed?: boolean;
+  }>();
+
+  if (!body.cluster_id) return c.json({ error: 'cluster_id is required' }, 400);
+
+  // Verify cluster exists
+  const cluster = await c.env.DB.prepare(
+    'SELECT id, domain FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+  ).bind(body.cluster_id, tenantId).first();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const subName = body.sub_catalyst_name || null;
+
+  // Check if config exists (cluster-level or sub-catalyst-level)
+  let existing: Record<string, unknown> | null;
+  if (subName) {
+    existing = await c.env.DB.prepare(
+      'SELECT id FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+    ).bind(tenantId, body.cluster_id, subName).first();
+  } else {
+    existing = await c.env.DB.prepare(
+      'SELECT id FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = \'\'\')'
+    ).bind(tenantId, body.cluster_id).first();
+  }
+
+  const validatorIds = JSON.stringify(body.validator_user_ids || []);
+  const exceptionIds = JSON.stringify(body.exception_handler_user_ids || []);
+  const escalationIds = JSON.stringify(body.escalation_user_ids || []);
+  const domain = body.domain || (cluster.domain as string) || 'general';
+
+  if (existing) {
+    await c.env.DB.prepare(
+      'UPDATE catalyst_hitl_config SET validator_user_ids = ?, exception_handler_user_ids = ?, escalation_user_ids = ?, notify_on_completion = ?, notify_on_exception = ?, notify_on_approval_needed = ?, domain = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(
+      validatorIds, exceptionIds, escalationIds,
+      body.notify_on_completion ? 1 : 0,
+      body.notify_on_exception !== false ? 1 : 0,
+      body.notify_on_approval_needed !== false ? 1 : 0,
+      domain,
+      existing.id,
+    ).run();
+    return c.json({ id: existing.id, updated: true });
+  }
+
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    'INSERT INTO catalyst_hitl_config (id, tenant_id, cluster_id, sub_catalyst_name, domain, validator_user_ids, exception_handler_user_ids, escalation_user_ids, notify_on_completion, notify_on_exception, notify_on_approval_needed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    id, tenantId, body.cluster_id, subName, domain,
+    validatorIds, exceptionIds, escalationIds,
+    body.notify_on_completion ? 1 : 0,
+    body.notify_on_exception !== false ? 1 : 0,
+    body.notify_on_approval_needed !== false ? 1 : 0,
+  ).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, 'catalyst.hitl_config.created', 'catalysts', body.cluster_id,
+    JSON.stringify({ sub_catalyst: subName, validators: body.validator_user_ids?.length || 0, exception_handlers: body.exception_handler_user_ids?.length || 0, escalation: body.escalation_user_ids?.length || 0 }),
+    'success',
+  ).run().catch(() => {});
+
+  return c.json({ id, created: true }, 201);
+});
+
+// DELETE /api/catalysts/hitl-config/:clusterId - Remove HITL config (optionally for a specific sub-catalyst)
+catalysts.delete('/hitl-config/:clusterId', async (c) => {
+  const tenantId = getTenantId(c);
+  const clusterId = c.req.param('clusterId');
+  const subCatalystName = c.req.query('sub_catalyst_name');
+
+  if (subCatalystName) {
+    await c.env.DB.prepare(
+      'DELETE FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+    ).bind(tenantId, clusterId, subCatalystName).run();
+  } else {
+    await c.env.DB.prepare(
+      'DELETE FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ?'
+    ).bind(tenantId, clusterId).run();
+  }
+
+  return c.json({ success: true });
+});
+
+// POST /api/catalysts/send-run-report - Send run results email to HITL-configured users
+catalysts.post('/send-run-report', async (c) => {
+  const tenantId = getTenantId(c);
+  const body = await c.req.json<{ cluster_id: string; catalyst_name?: string }>();
+
+  if (!body.cluster_id) return c.json({ error: 'cluster_id is required' }, 400);
+
+  // Fetch recent actions for this cluster
+  const actions = await c.env.DB.prepare(
+    'SELECT action, status, confidence FROM catalyst_actions WHERE tenant_id = ? AND cluster_id = ? ORDER BY created_at DESC LIMIT 100'
+  ).bind(tenantId, body.cluster_id).all();
+
+  const actionList = actions.results.map((a: Record<string, unknown>) => ({
+    action: a.action as string,
+    status: a.status as string,
+    confidence: a.confidence as number || 0,
+  }));
+
+  // Get cluster name
+  const cluster = await c.env.DB.prepare(
+    'SELECT name FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+  ).bind(body.cluster_id, tenantId).first();
+
+  const catalystName = body.catalyst_name || (cluster?.name as string) || 'Catalyst';
+
+  await sendRunResultsEmail(c.env.DB, c.env, tenantId, body.cluster_id, catalystName, actionList);
+
+  return c.json({ success: true, actionCount: actionList.length, message: `Run report sent for ${catalystName}` });
+});
+
+// POST /api/catalysts/actions/:id/assign - Assign a user to an action
+catalysts.put('/actions/:id/assign', async (c) => {
+  const id = c.req.param('id');
+  const tenantId = getTenantId(c);
+  const body = await c.req.json<{ assigned_to: string }>();
+
+  if (!body.assigned_to) return c.json({ error: 'assigned_to is required' }, 400);
+
+  // Verify user exists
+  const user = await c.env.DB.prepare(
+    'SELECT id, email, name FROM users WHERE id = ? AND tenant_id = ?'
+  ).bind(body.assigned_to, tenantId).first();
+  if (!user) return c.json({ error: 'User not found' }, 404);
+
+  const action = await c.env.DB.prepare(
+    'SELECT * FROM catalyst_actions WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!action) return c.json({ error: 'Action not found' }, 404);
+
+  await c.env.DB.prepare(
+    'UPDATE catalyst_actions SET assigned_to = ? WHERE id = ?'
+  ).bind(body.assigned_to, id).run();
+
+  // Send notification email to the assigned user
+  const status = action.status as string;
+  if (status === 'pending_approval' || status === 'escalated') {
+    try {
+      await sendHitlNotification(c.env.DB, c.env, tenantId, action.cluster_id as string, 'approval_needed', {
+        catalystName: action.catalyst_name as string,
+        action: action.action as string,
+        status,
+        confidence: action.confidence as number || 0,
+      });
+    } catch (err) { console.error('Assign notification failed:', err); }
+  }
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, 'catalyst.action.assigned', 'catalysts', id,
+    JSON.stringify({ assigned_to: body.assigned_to, user_email: user.email, action_status: status }),
+    'success',
+  ).run().catch(() => {});
+
+  return c.json({ success: true, assignedTo: body.assigned_to, userName: user.name, userEmail: user.email });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Run Analytics & Insights Endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /api/catalysts/run-analytics - Record analytics for a catalyst run
+catalysts.post('/run-analytics', async (c) => {
+  const tenantId = getTenantId(c);
+  const body = await c.req.json<{
+    cluster_id: string;
+    sub_catalyst_name?: string;
+    run_id?: string;
+    actions: Array<{ action: string; status: string; confidence: number; processing_time_ms?: number }>;
+  }>();
+
+  if (!body.cluster_id || !body.actions?.length) return c.json({ error: 'cluster_id and actions are required' }, 400);
+
+  const runId = body.run_id || crypto.randomUUID();
+  const actions = body.actions;
+
+  const completed = actions.filter(a => a.status === 'completed' || a.status === 'approved').length;
+  const exceptions = actions.filter(a => a.status === 'failed' || a.status === 'exception' || a.status === 'rejected').length;
+  const escalated = actions.filter(a => a.status === 'escalated' || a.status === 'pending_approval').length;
+  const pending = actions.filter(a => a.status === 'pending').length;
+  const autoApproved = actions.filter(a => a.status === 'auto_approved' || (a.status === 'completed' && a.confidence >= 0.95)).length;
+
+  const confidences = actions.map(a => a.confidence).filter(c => c > 0);
+  const avgConf = confidences.length > 0 ? confidences.reduce((s, c) => s + c, 0) / confidences.length : 0;
+  const minConf = confidences.length > 0 ? Math.min(...confidences) : 0;
+  const maxConf = confidences.length > 0 ? Math.max(...confidences) : 0;
+
+  // Confidence distribution buckets: 0-20%, 20-40%, 40-60%, 60-80%, 80-100%
+  const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
+  for (const conf of confidences) {
+    const pct = conf * 100;
+    if (pct < 20) dist['0-20']++;
+    else if (pct < 40) dist['20-40']++;
+    else if (pct < 60) dist['40-60']++;
+    else if (pct < 80) dist['60-80']++;
+    else dist['80-100']++;
+  }
+
+  const totalMs = actions.reduce((s, a) => s + (a.processing_time_ms || 0), 0);
+
+  // Generate insights
+  const insights: string[] = [];
+  if (avgConf > 0.9) insights.push('High overall confidence — most items processed automatically.');
+  if (avgConf < 0.5) insights.push('Low overall confidence — consider reviewing data quality or mappings.');
+  if (exceptions > actions.length * 0.2) insights.push(`Exception rate is high (${((exceptions / actions.length) * 100).toFixed(0)}%). Review exception patterns for automation opportunities.`);
+  if (escalated > 0) insights.push(`${escalated} item(s) escalated for human review.`);
+  if (autoApproved > actions.length * 0.8) insights.push(`${((autoApproved / actions.length) * 100).toFixed(0)}% auto-approved — high automation rate.`);
+  if (minConf < 0.3 && maxConf > 0.9) insights.push('Wide confidence spread — some items may need manual review while others auto-process.');
+
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id, tenantId, body.cluster_id, body.sub_catalyst_name || null, runId,
+    totalMs, actions.length, completed, exceptions, escalated, pending, autoApproved,
+    Math.round(avgConf * 1000) / 1000, Math.round(minConf * 1000) / 1000, Math.round(maxConf * 1000) / 1000,
+    JSON.stringify(dist), 'completed', JSON.stringify(insights),
+  ).run();
+
+  return c.json({
+    id, runId, status: 'completed',
+    summary: { total: actions.length, completed, exceptions, escalated, pending, autoApproved },
+    confidence: { avg: avgConf, min: minConf, max: maxConf, distribution: dist },
+    insights, durationMs: totalMs,
+  });
+});
+
+// GET /api/catalysts/run-analytics - Get run analytics for a cluster
+catalysts.get('/run-analytics', async (c) => {
+  const tenantId = getTenantId(c);
+  const clusterId = c.req.query('cluster_id');
+  const subCatalystName = c.req.query('sub_catalyst_name');
+  const limit = parseInt(c.req.query('limit') || '20');
+
+  let query: string;
+  let bindings: unknown[];
+
+  if (clusterId && subCatalystName) {
+    query = 'SELECT ra.*, cc.name as cluster_name FROM catalyst_run_analytics ra LEFT JOIN catalyst_clusters cc ON ra.cluster_id = cc.id WHERE ra.tenant_id = ? AND ra.cluster_id = ? AND ra.sub_catalyst_name = ? ORDER BY ra.created_at DESC LIMIT ?';
+    bindings = [tenantId, clusterId, subCatalystName, limit];
+  } else if (clusterId) {
+    query = 'SELECT ra.*, cc.name as cluster_name FROM catalyst_run_analytics ra LEFT JOIN catalyst_clusters cc ON ra.cluster_id = cc.id WHERE ra.tenant_id = ? AND ra.cluster_id = ? ORDER BY ra.created_at DESC LIMIT ?';
+    bindings = [tenantId, clusterId, limit];
+  } else {
+    query = 'SELECT ra.*, cc.name as cluster_name FROM catalyst_run_analytics ra LEFT JOIN catalyst_clusters cc ON ra.cluster_id = cc.id WHERE ra.tenant_id = ? ORDER BY ra.created_at DESC LIMIT ?';
+    bindings = [tenantId, limit];
+  }
+
+  const results = await c.env.DB.prepare(query).bind(...bindings).all();
+
+  // Aggregate stats
+  const runs = results.results.map((r: Record<string, unknown>) => ({
+    id: r.id,
+    runId: r.run_id,
+    clusterId: r.cluster_id,
+    clusterName: r.cluster_name,
+    subCatalystName: r.sub_catalyst_name || null,
+    startedAt: r.started_at,
+    completedAt: r.completed_at,
+    durationMs: r.duration_ms,
+    status: r.status,
+    summary: {
+      total: r.total_items,
+      completed: r.completed_items,
+      exceptions: r.exception_items,
+      escalated: r.escalated_items,
+      pending: r.pending_items,
+      autoApproved: r.auto_approved_items,
+    },
+    confidence: {
+      avg: r.avg_confidence,
+      min: r.min_confidence,
+      max: r.max_confidence,
+      distribution: JSON.parse(r.confidence_distribution as string || '{}'),
+    },
+    insights: JSON.parse(r.insights as string || '[]'),
+  }));
+
+  // Overall aggregation
+  const totalRuns = runs.length;
+  const totalItems = runs.reduce((s, r) => s + (r.summary.total as number), 0);
+  const totalCompleted = runs.reduce((s, r) => s + (r.summary.completed as number), 0);
+  const totalExceptions = runs.reduce((s, r) => s + (r.summary.exceptions as number), 0);
+  const totalEscalated = runs.reduce((s, r) => s + (r.summary.escalated as number), 0);
+  const avgConfOverall = runs.length > 0 ? runs.reduce((s, r) => s + (r.confidence.avg as number), 0) / runs.length : 0;
+  const automationRate = totalItems > 0 ? (totalCompleted / totalItems) * 100 : 0;
+
+  return c.json({
+    runs,
+    aggregate: {
+      totalRuns,
+      totalItems,
+      totalCompleted,
+      totalExceptions,
+      totalEscalated,
+      avgConfidence: Math.round(avgConfOverall * 1000) / 1000,
+      automationRate: Math.round(automationRate * 10) / 10,
+    },
+  });
+});
+
+// GET /api/catalysts/run-analytics/:runId - Get a single run's analytics
+catalysts.get('/run-analytics/:runId', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const analytics = await c.env.DB.prepare(
+    'SELECT ra.*, cc.name as cluster_name FROM catalyst_run_analytics ra LEFT JOIN catalyst_clusters cc ON ra.cluster_id = cc.id WHERE ra.tenant_id = ? AND (ra.run_id = ? OR ra.id = ?)'
+  ).bind(tenantId, runId, runId).first();
+
+  if (!analytics) return c.json({ error: 'Run analytics not found' }, 404);
+
+  // Also fetch the individual actions for this run
+  const actions = await c.env.DB.prepare(
+    'SELECT id, action, status, confidence, assigned_to, processing_time_ms, created_at FROM catalyst_actions WHERE tenant_id = ? AND run_id = ? ORDER BY created_at DESC LIMIT 200'
+  ).bind(tenantId, analytics.run_id as string).all();
+
+  return c.json({
+    analytics: {
+      id: analytics.id,
+      runId: analytics.run_id,
+      clusterId: analytics.cluster_id,
+      clusterName: analytics.cluster_name,
+      subCatalystName: analytics.sub_catalyst_name || null,
+      startedAt: analytics.started_at,
+      completedAt: analytics.completed_at,
+      durationMs: analytics.duration_ms,
+      status: analytics.status,
+      summary: {
+        total: analytics.total_items,
+        completed: analytics.completed_items,
+        exceptions: analytics.exception_items,
+        escalated: analytics.escalated_items,
+        pending: analytics.pending_items,
+        autoApproved: analytics.auto_approved_items,
+      },
+      confidence: {
+        avg: analytics.avg_confidence,
+        min: analytics.min_confidence,
+        max: analytics.max_confidence,
+        distribution: JSON.parse(analytics.confidence_distribution as string || '{}'),
+      },
+      insights: JSON.parse(analytics.insights as string || '[]'),
+    },
+    actions: actions.results.map((a: Record<string, unknown>) => ({
+      id: a.id,
+      action: a.action,
+      status: a.status,
+      confidence: a.confidence,
+      assignedTo: a.assigned_to,
+      processingTimeMs: a.processing_time_ms,
+      createdAt: a.created_at,
+    })),
+  });
+});
+
+export { sendHitlNotification, sendRunResultsEmail };
 export default catalysts;

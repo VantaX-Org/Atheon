@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult } from "@/lib/api";
+import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate } from "@/lib/api";
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
  Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle,
- ScrollText, ArrowUpRight, MessageSquare, Cog, Link2, Sparkles, BarChart3, Activity
+ ScrollText, ArrowUpRight, MessageSquare, Cog, Link2, Sparkles, BarChart3, Activity, Users
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -405,6 +405,113 @@ export function CatalystsPage() {
  setTogglingSubCatalyst(null);
  };
 
+
+ // HITL Permissions state
+ const [hitlConfigs, setHitlConfigs] = useState<HitlConfigListItem[]>([]);
+ const [hitlUsers, setHitlUsers] = useState<IAMUser[]>([]);
+ const [hitlUsersMap, setHitlUsersMap] = useState<Record<string, { email: string; name: string }>>({});
+ const [hitlLoading, setHitlLoading] = useState(false);
+ const [hitlSaving, setHitlSaving] = useState(false);
+ const [hitlError, setHitlError] = useState<string | null>(null);
+ const [hitlEditCluster, setHitlEditCluster] = useState('');
+ const [hitlEditSub, setHitlEditSub] = useState('');
+ const [hitlValidators, setHitlValidators] = useState<string[]>([]);
+ const [hitlExceptionHandlers, setHitlExceptionHandlers] = useState<string[]>([]);
+ const [hitlEscalation, setHitlEscalation] = useState<string[]>([]);
+ const [hitlNotifyCompletion, setHitlNotifyCompletion] = useState(false);
+ const [hitlNotifyException, setHitlNotifyException] = useState(true);
+ const [hitlNotifyApproval, setHitlNotifyApproval] = useState(true);
+ const [showHitlModal, setShowHitlModal] = useState(false);
+
+ // Run Analytics state
+ const [runAnalytics, setRunAnalytics] = useState<RunAnalytics[]>([]);
+ const [runAggregate, setRunAggregate] = useState<RunAnalyticsAggregate | null>(null);
+ const [analyticsLoading, setAnalyticsLoading] = useState(false);
+ const [analyticsCluster, setAnalyticsCluster] = useState('all');
+ const [expandedAnalyticsRun, setExpandedAnalyticsRun] = useState<string | null>(null);
+
+ const loadHitlConfigs = async () => {
+   setHitlLoading(true);
+   try {
+     const [configRes, usersRes] = await Promise.allSettled([
+       api.catalysts.hitlConfig(),
+       api.iam.users(),
+     ]);
+     if (configRes.status === 'fulfilled') {
+       setHitlConfigs(configRes.value.configs || []);
+       if (configRes.value.users) setHitlUsersMap(configRes.value.users);
+     }
+     if (usersRes.status === 'fulfilled') setHitlUsers(usersRes.value.users);
+   } catch { /* failed */ }
+   setHitlLoading(false);
+ };
+
+ const loadRunAnalytics = async () => {
+   setAnalyticsLoading(true);
+   try {
+     const clusterParam = analyticsCluster !== 'all' ? analyticsCluster : undefined;
+     const res = await api.catalysts.runAnalytics(clusterParam, undefined, 50);
+     setRunAnalytics(res.runs);
+     setRunAggregate(res.aggregate);
+   } catch { /* failed */ }
+   setAnalyticsLoading(false);
+ };
+
+ const openHitlEdit = (clusterId: string, subName: string) => {
+   setHitlEditCluster(clusterId);
+   setHitlEditSub(subName);
+   const existing = hitlConfigs.find(c => c.clusterId === clusterId && (c.subCatalystName || '') === subName);
+   if (existing) {
+     setHitlValidators(existing.validatorUserIds || []);
+     setHitlExceptionHandlers(existing.exceptionHandlerUserIds || []);
+     setHitlEscalation(existing.escalationUserIds || []);
+     setHitlNotifyCompletion(existing.notifyOnCompletion);
+     setHitlNotifyException(existing.notifyOnException);
+     setHitlNotifyApproval(existing.notifyOnApprovalNeeded);
+   } else {
+     setHitlValidators([]);
+     setHitlExceptionHandlers([]);
+     setHitlEscalation([]);
+     setHitlNotifyCompletion(false);
+     setHitlNotifyException(true);
+     setHitlNotifyApproval(true);
+   }
+   setHitlError(null);
+   setShowHitlModal(true);
+ };
+
+ const handleSaveHitl = async () => {
+   if (hitlSaving) return;
+   setHitlSaving(true);
+   setHitlError(null);
+   try {
+     const cluster = clusters.find(c => c.id === hitlEditCluster);
+     await api.catalysts.saveHitlConfig({
+       cluster_id: hitlEditCluster,
+       sub_catalyst_name: hitlEditSub || undefined,
+       domain: cluster?.domain || 'general',
+       validator_user_ids: hitlValidators,
+       exception_handler_user_ids: hitlExceptionHandlers,
+       escalation_user_ids: hitlEscalation,
+       notify_on_completion: hitlNotifyCompletion,
+       notify_on_exception: hitlNotifyException,
+       notify_on_approval_needed: hitlNotifyApproval,
+     });
+     await loadHitlConfigs();
+     setShowHitlModal(false);
+   } catch (err) {
+     setHitlError(err instanceof Error ? err.message : 'Failed to save HITL config');
+   }
+   setHitlSaving(false);
+ };
+
+ const handleDeleteHitl = async (clusterId: string, subName?: string) => {
+   try {
+     await api.catalysts.deleteHitlConfig(clusterId, subName || undefined);
+     await loadHitlConfigs();
+   } catch { /* failed */ }
+ };
+
  // Schedule configuration state
  const [showScheduleConfig, setShowScheduleConfig] = useState(false);
  const [schedClusterId, setSchedClusterId] = useState('');
@@ -628,6 +735,13 @@ export function CatalystsPage() {
  setEscalatingAction(null);
  };
 
+
+ useEffect(() => {
+   if (activeTab === 'hitl-permissions') loadHitlConfigs();
+   if (activeTab === 'run-analytics') loadRunAnalytics();
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [activeTab, analyticsCluster]);
+
  // Auto-load execution logs when tab is activated
  useEffect(() => {
  if (activeTab === 'execution-logs') {
@@ -641,7 +755,9 @@ export function CatalystsPage() {
  { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
  { id: 'execution-logs', label: 'Execution Logs', icon: <ScrollText size={14} /> },
  { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
- ...(isAdmin ? [{ id: 'governance', label: 'Governance', icon: <Shield size={14} /> }] : []),
+  ...(isAdmin ? [{ id: 'hitl-permissions', label: 'HITL Permissions', icon: <Users size={14} /> }] : []),
+  { id: 'run-analytics', label: 'Run Analytics', icon: <BarChart3 size={14} /> },
+  ...(isAdmin ? [{ id: 'governance', label: 'Governance', icon: <Shield size={14} /> }] : []),
  ];
 
  if (loading) {
@@ -1246,6 +1362,246 @@ export function CatalystsPage() {
  </Card>
  );
  })}
+ </div>
+ </TabPanel>
+ )}
+
+ {activeTab === 'hitl-permissions' && (
+ <TabPanel>
+ <div className="space-y-4">
+ <div className="flex items-center justify-between">
+ <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
+ <Users size={18} className="text-accent" /> HITL Permission Assignments
+ </h3>
+ <p className="text-xs t-muted">{hitlConfigs.length} configuration{hitlConfigs.length !== 1 ? 's' : ''} active</p>
+ </div>
+
+ {hitlLoading && (
+ <div className="flex items-center justify-center py-8">
+ <Loader2 className="w-6 h-6 text-accent animate-spin" />
+ </div>
+ )}
+
+ {!hitlLoading && clusters.length > 0 && (
+ <div className="space-y-4">
+ {clusters.map(cluster => {
+   const clusterConfigs = hitlConfigs.filter(c => c.clusterId === cluster.id);
+   const clusterLevelConfig = clusterConfigs.find(c => !c.subCatalystName);
+   return (
+   <Card key={cluster.id}>
+   <div className="flex items-center justify-between mb-3">
+     <div className="flex items-center gap-2">
+       <Bot size={16} className="text-accent" />
+       <h4 className="text-sm font-semibold t-primary">{cluster.name}</h4>
+       <Badge variant="outline" size="sm">{cluster.domain}</Badge>
+     </div>
+     <Button variant="secondary" size="sm" onClick={() => openHitlEdit(cluster.id, '')}>
+       <Settings size={12} /> {clusterLevelConfig ? 'Edit' : 'Configure'} Cluster Default
+     </Button>
+   </div>
+
+   {clusterLevelConfig && (
+   <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 mb-3">
+     <p className="text-[10px] t-muted uppercase tracking-wider mb-2">Cluster Default Assignments</p>
+     <div className="grid grid-cols-3 gap-3 text-xs">
+       <div>
+         <span className="text-emerald-400 font-medium">Validators:</span>
+         <p className="t-secondary mt-0.5">{clusterLevelConfig.validatorUserIds.length > 0 ? clusterLevelConfig.validatorUserIds.map(id => hitlUsersMap[id]?.email || id).join(', ') : 'None'}</p>
+       </div>
+       <div>
+         <span className="text-amber-400 font-medium">Exception Handlers:</span>
+         <p className="t-secondary mt-0.5">{clusterLevelConfig.exceptionHandlerUserIds.length > 0 ? clusterLevelConfig.exceptionHandlerUserIds.map(id => hitlUsersMap[id]?.email || id).join(', ') : 'None'}</p>
+       </div>
+       <div>
+         <span className="text-red-400 font-medium">Escalation:</span>
+         <p className="t-secondary mt-0.5">{clusterLevelConfig.escalationUserIds.length > 0 ? clusterLevelConfig.escalationUserIds.map(id => hitlUsersMap[id]?.email || id).join(', ') : 'None'}</p>
+       </div>
+     </div>
+   </div>
+   )}
+
+   {cluster.subCatalysts && cluster.subCatalysts.length > 0 && (
+   <div className="space-y-2">
+     <p className="text-[10px] t-muted uppercase tracking-wider">Sub-Catalyst Overrides</p>
+     {cluster.subCatalysts.map((sub: SubCatalyst) => {
+       const subConfig = clusterConfigs.find(c => c.subCatalystName === sub.name);
+       return (
+       <div key={sub.name} className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+         <div className="flex items-center gap-2 min-w-0">
+           <div className={`w-2 h-2 rounded-full ${sub.enabled ? 'bg-emerald-400' : 'bg-gray-400'}`} />
+           <span className="text-xs font-medium t-primary truncate">{sub.name}</span>
+           {subConfig && <Badge variant="success" size="sm">Custom</Badge>}
+         </div>
+         <div className="flex items-center gap-2">
+           {subConfig && (
+             <button onClick={() => handleDeleteHitl(cluster.id, sub.name)} className="text-xs text-red-400 hover:text-red-300">
+               <Trash2 size={12} />
+             </button>
+           )}
+           <Button variant="secondary" size="sm" onClick={() => openHitlEdit(cluster.id, sub.name)}>
+             <Users size={10} /> {subConfig ? 'Edit' : 'Assign'}
+           </Button>
+         </div>
+       </div>
+       );
+     })}
+   </div>
+   )}
+   </Card>
+   );
+ })}
+ </div>
+ )}
+
+ {!hitlLoading && clusters.length === 0 && (
+ <div className="text-center py-12 text-gray-500">
+ <Users size={32} className="mx-auto mb-2 opacity-50" />
+ <p className="text-sm">No catalyst clusters configured</p>
+ <p className="text-xs t-muted mt-1">Deploy a catalyst cluster first, then assign HITL permissions.</p>
+ </div>
+ )}
+ </div>
+ </TabPanel>
+ )}
+
+ {activeTab === 'run-analytics' && (
+ <TabPanel>
+ <div className="space-y-4">
+ <div className="flex items-center justify-between">
+ <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
+ <BarChart3 size={18} className="text-accent" /> Run Analytics & Insights
+ </h3>
+ <div className="flex items-center gap-2">
+   <select
+     className="px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-xs t-primary"
+     value={analyticsCluster}
+     onChange={e => setAnalyticsCluster(e.target.value)}
+   >
+     <option value="all">All Clusters</option>
+     {clusters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+   </select>
+   <Button variant="secondary" size="sm" onClick={loadRunAnalytics}>
+     <Loader2 size={12} className={analyticsLoading ? 'animate-spin' : ''} /> Refresh
+   </Button>
+ </div>
+ </div>
+
+ {analyticsLoading && (
+ <div className="flex items-center justify-center py-8">
+ <Loader2 className="w-6 h-6 text-accent animate-spin" />
+ </div>
+ )}
+
+ {!analyticsLoading && runAggregate && (
+ <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Total Runs</p><p className="text-xl font-bold t-primary mt-1">{runAggregate.totalRuns}</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Items Processed</p><p className="text-xl font-bold t-primary mt-1">{runAggregate.totalItems}</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Completed</p><p className="text-xl font-bold text-emerald-400 mt-1">{runAggregate.totalCompleted}</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Exceptions</p><p className="text-xl font-bold text-red-400 mt-1">{runAggregate.totalExceptions}</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Escalated</p><p className="text-xl font-bold text-amber-400 mt-1">{runAggregate.totalEscalated}</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Avg Confidence</p><p className="text-xl font-bold text-blue-400 mt-1">{(runAggregate.avgConfidence * 100).toFixed(0)}%</p></div></Card>
+   <Card variant="black"><div className="text-center"><p className="text-[10px] t-muted uppercase tracking-wider">Automation Rate</p><p className="text-xl font-bold text-accent mt-1">{(runAggregate.automationRate * 100).toFixed(0)}%</p></div></Card>
+ </div>
+ )}
+
+ {!analyticsLoading && runAnalytics.length === 0 && (
+ <div className="text-center py-12 text-gray-500">
+ <BarChart3 size={32} className="mx-auto mb-2 opacity-50" />
+ <p className="text-sm">No run analytics yet</p>
+ <p className="text-xs t-muted mt-1">Execute a catalyst to generate analytics data.</p>
+ </div>
+ )}
+
+ {!analyticsLoading && runAnalytics.length > 0 && (
+ <div className="space-y-3">
+ {runAnalytics.map(run => {
+   const isExp = expandedAnalyticsRun === run.id;
+   return (
+   <Card key={run.id} hover onClick={() => setExpandedAnalyticsRun(isExp ? null : run.id)} className={isExp ? 'border-accent/20' : ''}>
+   <div className="flex items-start justify-between">
+     <div>
+       <div className="flex items-center gap-2">
+         <h4 className="text-sm font-semibold t-primary">{run.clusterName || run.clusterId}</h4>
+         {run.subCatalystName && <Badge variant="outline" size="sm">{run.subCatalystName}</Badge>}
+       </div>
+       <p className="text-xs t-muted mt-0.5">Run {run.runId.slice(0, 8)} &mdash; {new Date(run.startedAt).toLocaleString()}</p>
+     </div>
+     <div className="flex items-center gap-2">
+       <Badge variant={run.status === 'completed' ? 'success' : run.status === 'running' ? 'info' : 'warning'}>{run.status}</Badge>
+       {run.durationMs && <span className="text-xs t-muted">{(run.durationMs / 1000).toFixed(1)}s</span>}
+       {isExp ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+     </div>
+   </div>
+
+   <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-3">
+     <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+       <span className="text-[9px] t-muted">Total</span>
+       <p className="text-sm font-bold t-primary">{run.summary.total}</p>
+     </div>
+     <div className="text-center p-2 rounded bg-emerald-500/5 border border-emerald-500/20">
+       <span className="text-[9px] text-emerald-400">Completed</span>
+       <p className="text-sm font-bold text-emerald-400">{run.summary.completed}</p>
+     </div>
+     <div className="text-center p-2 rounded bg-red-500/5 border border-red-500/20">
+       <span className="text-[9px] text-red-400">Exceptions</span>
+       <p className="text-sm font-bold text-red-400">{run.summary.exceptions}</p>
+     </div>
+     <div className="text-center p-2 rounded bg-amber-500/5 border border-amber-500/20">
+       <span className="text-[9px] text-amber-400">Escalated</span>
+       <p className="text-sm font-bold text-amber-400">{run.summary.escalated}</p>
+     </div>
+     <div className="text-center p-2 rounded bg-blue-500/5 border border-blue-500/20">
+       <span className="text-[9px] text-blue-400">Pending</span>
+       <p className="text-sm font-bold text-blue-400">{run.summary.pending}</p>
+     </div>
+     <div className="text-center p-2 rounded bg-accent/5 border border-accent/20">
+       <span className="text-[9px] text-accent">Auto-Approved</span>
+       <p className="text-sm font-bold text-accent">{run.summary.autoApproved}</p>
+     </div>
+   </div>
+
+   {isExp && (
+   <div className="mt-4 space-y-3 animate-fadeIn">
+     <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+       <h5 className="text-xs font-semibold t-primary mb-2">Confidence Distribution</h5>
+       <div className="flex items-end gap-1 h-16">
+         {Object.entries(run.confidence.distribution).map(([bucket, count]) => {
+           const maxCount = Math.max(...Object.values(run.confidence.distribution), 1);
+           const height = (count / maxCount) * 100;
+           return (
+             <div key={bucket} className="flex-1 flex flex-col items-center gap-1">
+               <div className="w-full rounded-t bg-accent/30" style={{ height: `${Math.max(height, 4)}%` }} />
+               <span className="text-[8px] t-muted">{bucket}</span>
+             </div>
+           );
+         })}
+       </div>
+       <div className="flex justify-between mt-2 text-[10px] t-muted">
+         <span>Avg: <span className="font-medium t-primary">{(run.confidence.avg * 100).toFixed(0)}%</span></span>
+         <span>Min: <span className="font-medium t-primary">{(run.confidence.min * 100).toFixed(0)}%</span></span>
+         <span>Max: <span className="font-medium t-primary">{(run.confidence.max * 100).toFixed(0)}%</span></span>
+       </div>
+     </div>
+
+     {run.insights.length > 0 && (
+     <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+       <h5 className="text-xs font-semibold t-primary mb-2 flex items-center gap-1"><Sparkles size={12} className="text-accent" /> AI Insights</h5>
+       <ul className="space-y-1">
+         {run.insights.map((insight, i) => (
+           <li key={i} className="text-xs t-secondary flex items-start gap-1.5">
+             <span className="text-accent mt-0.5">&bull;</span> {insight}
+           </li>
+         ))}
+       </ul>
+     </div>
+     )}
+   </div>
+   )}
+   </Card>
+   );
+ })}
+ </div>
+ )}
  </div>
  </TabPanel>
  )}
@@ -2044,6 +2400,79 @@ export function CatalystsPage() {
  <Button variant="secondary" size="sm" onClick={() => setShowFieldMappingConfig(false)}>Cancel</Button>
  <Button variant="primary" size="sm" onClick={handleSaveFieldMappings} disabled={fmSaving}>
  {fmSaving ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Save Mappings
+ </Button>
+ </div>
+ </div>
+ </div></Portal>
+ )}
+
+ {/* HITL Permission Assignment Modal */}
+ {showHitlModal && (
+ <Portal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowHitlModal(false)}>
+ <div className="bg-[var(--bg-card)] border border-[var(--border-card)] rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+ <div className="flex items-center justify-between mb-4">
+ <div className="flex items-center gap-2">
+ <Users className="w-5 h-5 text-accent" />
+ <h3 className="text-lg font-semibold t-primary">
+   {hitlEditSub ? `Assign Users \u2014 ${hitlEditSub}` : 'Cluster Default Permissions'}
+ </h3>
+ </div>
+ <button onClick={() => setShowHitlModal(false)} className="text-gray-400 hover:text-gray-200"><X size={18} /></button>
+ </div>
+
+ {hitlEditSub && (
+ <p className="text-xs t-muted mb-4">Override cluster-level defaults for this specific sub-catalyst.</p>
+ )}
+
+ <div className="space-y-4">
+ <div>
+ <label className="text-xs font-medium text-emerald-400 block mb-1.5">Validators (approve actions)</label>
+ <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
+   value={hitlValidators} onChange={e => setHitlValidators(Array.from(e.target.selectedOptions, o => o.value))}>
+   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+ </select>
+ </div>
+
+ <div>
+ <label className="text-xs font-medium text-amber-400 block mb-1.5">Exception Handlers</label>
+ <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
+   value={hitlExceptionHandlers} onChange={e => setHitlExceptionHandlers(Array.from(e.target.selectedOptions, o => o.value))}>
+   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+ </select>
+ </div>
+
+ <div>
+ <label className="text-xs font-medium text-red-400 block mb-1.5">Escalation Contacts</label>
+ <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
+   value={hitlEscalation} onChange={e => setHitlEscalation(Array.from(e.target.selectedOptions, o => o.value))}>
+   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+ </select>
+ </div>
+
+ <div className="space-y-2 pt-2 border-t border-[var(--border-card)]">
+ <p className="text-xs font-medium t-secondary">Email Notifications</p>
+ <label className="flex items-center gap-2 text-xs t-secondary cursor-pointer">
+   <input type="checkbox" checked={hitlNotifyCompletion} onChange={e => setHitlNotifyCompletion(e.target.checked)} className="rounded" /> Notify on run completion
+ </label>
+ <label className="flex items-center gap-2 text-xs t-secondary cursor-pointer">
+   <input type="checkbox" checked={hitlNotifyException} onChange={e => setHitlNotifyException(e.target.checked)} className="rounded" /> Notify on exceptions
+ </label>
+ <label className="flex items-center gap-2 text-xs t-secondary cursor-pointer">
+   <input type="checkbox" checked={hitlNotifyApproval} onChange={e => setHitlNotifyApproval(e.target.checked)} className="rounded" /> Notify when approval needed
+ </label>
+ </div>
+ </div>
+
+ {hitlError && (
+ <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">
+ <AlertTriangle size={14} /> {hitlError}
+ </div>
+ )}
+
+ <div className="flex justify-end gap-3 pt-4">
+ <Button variant="secondary" size="sm" onClick={() => setShowHitlModal(false)}>Cancel</Button>
+ <Button variant="primary" size="sm" onClick={handleSaveHitl} disabled={hitlSaving}>
+   {hitlSaving ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} Save Permissions
  </Button>
  </div>
  </div>

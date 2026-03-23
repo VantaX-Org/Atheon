@@ -9,7 +9,7 @@ import { seedSampleCompany } from './seed-sample-company';
 import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v29';
+export const MIGRATION_VERSION = 'v30';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -77,6 +77,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL, key_prefix TEXT, permissions TEXT NOT NULL DEFAULT '["read"]', last_used TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT);
     CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), token_hash TEXT NOT NULL, ip_address TEXT, user_agent TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS deleted_tenants (tenant_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS catalyst_hitl_config (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT, domain TEXT NOT NULL, validator_user_ids TEXT NOT NULL DEFAULT '[]', exception_handler_user_ids TEXT NOT NULL DEFAULT '[]', escalation_user_ids TEXT NOT NULL DEFAULT '[]', notify_on_completion INTEGER NOT NULL DEFAULT 0, notify_on_exception INTEGER NOT NULL DEFAULT 1, notify_on_approval_needed INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name));
+    CREATE TABLE IF NOT EXISTS catalyst_run_analytics (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT, run_id TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, duration_ms INTEGER, total_items INTEGER NOT NULL DEFAULT 0, completed_items INTEGER NOT NULL DEFAULT 0, exception_items INTEGER NOT NULL DEFAULT 0, escalated_items INTEGER NOT NULL DEFAULT 0, pending_items INTEGER NOT NULL DEFAULT 0, auto_approved_items INTEGER NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, min_confidence REAL NOT NULL DEFAULT 0, max_confidence REAL NOT NULL DEFAULT 0, confidence_distribution TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'running', insights TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -125,6 +127,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)',
     'CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)',
     'CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_hitl_config_tenant ON catalyst_hitl_config(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_hitl_config_cluster ON catalyst_hitl_config(cluster_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_actions_assigned ON catalyst_actions(tenant_id, assigned_to)',
   ];
 
   for (const idx of indexes) {
@@ -251,6 +256,14 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'tenants', column: 'max_storage_gb', definition: 'INTEGER NOT NULL DEFAULT 10' },
     { table: 'tenant_entitlements', column: 'api_calls_used', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { table: 'tenant_entitlements', column: 'storage_used_gb', definition: 'REAL NOT NULL DEFAULT 0' },
+    // Phase 7: HITL user assignment
+    { table: 'catalyst_actions', column: 'assigned_to', definition: 'TEXT' },
+    { table: 'catalyst_actions', column: 'notification_sent', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    // Phase 8: Sub-catalyst HITL permissions
+    { table: 'catalyst_hitl_config', column: 'sub_catalyst_name', definition: 'TEXT' },
+    // Phase 9: Run analytics
+    { table: 'catalyst_actions', column: 'run_id', definition: 'TEXT' },
+    { table: 'catalyst_actions', column: 'processing_time_ms', definition: 'INTEGER' },
   ];
 
   for (const col of selfHealColumns) {

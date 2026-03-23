@@ -354,6 +354,24 @@ export const api = {
       request<{ success: boolean; status: string; escalationLevel: string }>(`/api/catalysts/actions/${actionId}/escalate`, {
         method: 'PUT', body: JSON.stringify({ escalation_notes: notes, escalated_to: escalateTo }),
       }),
+    assignAction: (actionId: string, assignedTo: string) =>
+      request<{ success: boolean; assignedTo: string; userName: string; userEmail: string }>(`/api/catalysts/actions/${actionId}/assign`, {
+        method: 'PUT', body: JSON.stringify({ assigned_to: assignedTo }),
+      }),
+    hitlConfig: (clusterId?: string, tenantId?: string, subCatalystName?: string) =>
+      request<{ config?: HitlConfig | null; configs?: HitlConfigListItem[]; subConfigs?: HitlConfigListItem[]; users?: Record<string, { email: string; name: string }> }>(`/api/catalysts/hitl-config${qs({ cluster_id: clusterId, tenant_id: tenantId, sub_catalyst_name: subCatalystName })}`),
+    saveHitlConfig: (data: { cluster_id: string; sub_catalyst_name?: string; domain?: string; validator_user_ids?: string[]; exception_handler_user_ids?: string[]; escalation_user_ids?: string[]; notify_on_completion?: boolean; notify_on_exception?: boolean; notify_on_approval_needed?: boolean }) =>
+      request<{ id: string; created?: boolean; updated?: boolean }>('/api/catalysts/hitl-config', { method: 'PUT', body: JSON.stringify(data) }),
+    deleteHitlConfig: (clusterId: string, subCatalystName?: string) =>
+      request<{ success: boolean }>(`/api/catalysts/hitl-config/${clusterId}${qs({ sub_catalyst_name: subCatalystName })}`, { method: 'DELETE' }),
+    sendRunReport: (clusterId: string, catalystName?: string) =>
+      request<{ success: boolean; actionCount: number; message: string }>('/api/catalysts/send-run-report', { method: 'POST', body: JSON.stringify({ cluster_id: clusterId, catalyst_name: catalystName }) }),
+    runAnalytics: (clusterId?: string, subCatalystName?: string, limit?: number) =>
+      request<{ runs: RunAnalytics[]; aggregate: RunAnalyticsAggregate }>(`/api/catalysts/run-analytics${qs({ cluster_id: clusterId, sub_catalyst_name: subCatalystName, limit: limit?.toString() })}`),
+    runAnalyticsDetail: (runId: string) =>
+      request<{ analytics: RunAnalytics; actions: Array<{ id: string; action: string; status: string; confidence: number; assignedTo?: string; processingTimeMs?: number; createdAt: string }> }>(`/api/catalysts/run-analytics/${runId}`),
+    recordRunAnalytics: (data: { cluster_id: string; sub_catalyst_name?: string; run_id?: string; actions: Array<{ action: string; status: string; confidence: number; processing_time_ms?: number }> }) =>
+      request<{ id: string; runId: string; status: string; summary: { total: number; completed: number; exceptions: number; escalated: number; pending: number; autoApproved: number }; confidence: { avg: number; min: number; max: number; distribution: Record<string, number> }; insights: string[]; durationMs: number }>('/api/catalysts/run-analytics', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   memory: {
@@ -711,6 +729,7 @@ export interface CatalystRunItem {
   outputData: Record<string, unknown> | null;
   reasoning: string | null;
   approvedBy: string | null;
+  assignedTo?: { validators?: string[]; exceptionHandlers?: string[]; escalation?: string[] } | null;
   createdAt: string;
   completedAt: string | null;
   needsHumanReview: boolean;
@@ -864,6 +883,77 @@ export interface GovernanceData {
   approved: number;
   rejected: number;
   clusterAutonomy: { domain: string; autonomyTier: string; trustScore: number }[];
+}
+
+export interface HitlConfig {
+  id: string;
+  tenantId: string;
+  clusterId: string;
+  subCatalystName?: string | null;
+  domain: string;
+  validatorUserIds: string[];
+  exceptionHandlerUserIds: string[];
+  escalationUserIds: string[];
+  notifyOnCompletion: boolean;
+  notifyOnException: boolean;
+  notifyOnApprovalNeeded: boolean;
+  createdAt: string;
+  updatedAt: string;
+  users: Record<string, { email: string; name: string }>;
+}
+
+export interface HitlConfigListItem {
+  id: string;
+  tenantId: string;
+  clusterId: string;
+  subCatalystName?: string | null;
+  clusterName: string;
+  domain: string;
+  validatorUserIds: string[];
+  exceptionHandlerUserIds: string[];
+  escalationUserIds: string[];
+  notifyOnCompletion: boolean;
+  notifyOnException: boolean;
+  notifyOnApprovalNeeded: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RunAnalytics {
+  id: string;
+  runId: string;
+  clusterId: string;
+  clusterName?: string;
+  subCatalystName?: string | null;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  status: string;
+  summary: {
+    total: number;
+    completed: number;
+    exceptions: number;
+    escalated: number;
+    pending: number;
+    autoApproved: number;
+  };
+  confidence: {
+    avg: number;
+    min: number;
+    max: number;
+    distribution: Record<string, number>;
+  };
+  insights: string[];
+}
+
+export interface RunAnalyticsAggregate {
+  totalRuns: number;
+  totalItems: number;
+  totalCompleted: number;
+  totalExceptions: number;
+  totalEscalated: number;
+  avgConfidence: number;
+  automationRate: number;
 }
 
 export interface GraphEntity {

@@ -1665,6 +1665,42 @@ export function PulsePage() {
                               </div>
                             )}
 
+                            {/* Assigned Users */}
+                            {run.assignedTo && (run.assignedTo.validators?.length || run.assignedTo.exceptionHandlers?.length || run.assignedTo.escalation?.length) ? (
+                              <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <UserCheck className="w-4 h-4 text-accent" />
+                                  <h4 className="text-sm font-semibold t-primary">Assigned Users</h4>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                  {run.assignedTo.validators && run.assignedTo.validators.length > 0 && (
+                                    <div>
+                                      <span className="text-emerald-400 font-medium block mb-1">Validators</span>
+                                      {run.assignedTo.validators.map((u, i) => (
+                                        <p key={i} className="t-secondary">{u}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {run.assignedTo.exceptionHandlers && run.assignedTo.exceptionHandlers.length > 0 && (
+                                    <div>
+                                      <span className="text-amber-400 font-medium block mb-1">Exception Handlers</span>
+                                      {run.assignedTo.exceptionHandlers.map((u, i) => (
+                                        <p key={i} className="t-secondary">{u}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {run.assignedTo.escalation && run.assignedTo.escalation.length > 0 && (
+                                    <div>
+                                      <span className="text-red-400 font-medium block mb-1">Escalation</span>
+                                      {run.assignedTo.escalation.map((u, i) => (
+                                        <p key={i} className="t-secondary">{u}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : null}
+
                             {/* Footer */}
                             <div className="flex items-center gap-4 text-[10px] t-muted">
                               <span>Created: {new Date(run.createdAt).toLocaleString()}</span>
