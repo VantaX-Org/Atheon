@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, getTenantOverride } from "@/lib/api";
 import type { CanonicalEndpoint } from "@/lib/api";
 import { Code, Layers, ArrowRight, Globe, BookOpen, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAppStore } from "@/stores/appStore";
 
 const methodColor: Record<string, string> = {
  GET: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -30,6 +31,8 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  const [tryingEndpoint, setTryingEndpoint] = useState<string | null>(null);
  const [tryResult, setTryResult] = useState<{ endpointId: string; status: number; data: unknown } | null>(null);
  const [tryLoading, setTryLoading] = useState(false);
+ const user = useAppStore((s) => s.user);
+ const activeTenantId = useAppStore((s) => s.activeTenantId);
 
  useEffect(() => {
  async function load() {
@@ -129,7 +132,7 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  setTryLoading(true);
  setTryResult(null);
  const apiUrl = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
- fetch(`${apiUrl}${ep.path}?tenant_id=vantax`, {
+ fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
  headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` }})
  .then(async (res) => {
  const data = await res.json().catch(() => ({}));

@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, getTenantOverride } from "@/lib/api";
 import type { ERPAdapter, ERPConnection, CanonicalEndpoint } from "@/lib/api";
 import {
   Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
@@ -171,6 +171,7 @@ function CredentialInput({ field, value, onChange }: { field: CredField; value: 
 export function IntegrationsPage() {
   const { activeTab, setActiveTab } = useTabState('connections');
   const user = useAppStore((s) => s.user);
+  const activeTenantId = useAppStore((s) => s.activeTenantId);
   const [adapters, setAdapters] = useState<ERPAdapter[]>([]);
   const [connections, setConnections] = useState<ERPConnection[]>([]);
   const [endpoints, setEndpoints] = useState<CanonicalEndpoint[]>([]);
@@ -228,7 +229,8 @@ export function IntegrationsPage() {
 
   const handleConnect = async () => {
     if (!connectForm.adapterId || !connectForm.name.trim() || connecting) return;
-    if (!user?.tenantId) {
+    const effectiveTenantId = activeTenantId || user?.tenantId;
+    if (!effectiveTenantId) {
       setConnectError('Unable to determine tenant. Please log in again.');
       return;
     }
@@ -243,7 +245,7 @@ export function IntegrationsPage() {
         adapter_id: connectForm.adapterId,
         name: connectForm.name.trim(),
         sync_frequency: connectForm.syncFrequency,
-        tenant_id: user.tenantId,
+        tenant_id: effectiveTenantId,
         config,
       });
       await refreshConnections();
@@ -810,7 +812,7 @@ export function IntegrationsPage() {
                                   setTryLoading(true);
                                   setTryResult(null);
                                   const apiUrl = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
-                                  fetch(`${apiUrl}${ep.path}?tenant_id=${user?.tenantId || 'vantax'}`, {
+                                  fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
                                     headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` },
                                   })
                                     .then(async (res) => {

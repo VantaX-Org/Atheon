@@ -423,7 +423,7 @@ function safeJsonParse(value: unknown): unknown {
 const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
 function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
   const auth = c.get('auth') as AuthContext | undefined;
-  const defaultTenantId = auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   if (CROSS_TENANT_ROLES.has(auth?.role || '')) {
     return c.req.query('tenant_id') || defaultTenantId;
   }
@@ -433,7 +433,7 @@ function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: str
 // GET /api/catalysts/clusters
 catalysts.get('/clusters', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
-  const defaultTenantId = auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
   const results = await c.env.DB.prepare(
     'SELECT * FROM catalyst_clusters WHERE tenant_id = ? ORDER BY domain ASC'
@@ -462,7 +462,7 @@ catalysts.get('/clusters', async (c) => {
 catalysts.get('/clusters/:id', async (c) => {
   const id = c.req.param('id');
   const auth = c.get('auth') as AuthContext | undefined;
-  const defaultTenantId = auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
 
   // BUG-26: Enforce tenant ownership on cluster reads
@@ -1961,7 +1961,7 @@ catalysts.get('/actions', async (c) => {
 // POST /api/catalysts/actions - Submit action through execution engine
 catalysts.post('/actions', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
-  const defaultTenantId = auth?.tenantId || 'vantax';
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
   const { data: body, errors } = await getValidatedJsonBody<{
     cluster_id: string; catalyst_name: string; action: string;
