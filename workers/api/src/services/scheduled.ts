@@ -405,6 +405,17 @@ async function refreshProcessMining(
 
   if (actions.results.length === 0) return; // No catalyst runs — nothing to mine
 
+  // Pre-read existing catalyst-engine metric statuses BEFORE Phase 2 overwrites them
+  // (needed by Phase 5 to detect status transitions correctly)
+  const existingStatuses = new Map<string, string>();
+  const existingMetricRows = await db.prepare(
+    "SELECT id, status FROM process_metrics WHERE tenant_id = ? AND source_system = 'catalyst-engine'"
+  ).bind(tenantId).all();
+  for (const row of existingMetricRows.results) {
+    const r = row as Record<string, unknown>;
+    existingStatuses.set(r.id as string, r.status as string);
+  }
+
   // Group actions by catalyst name (each catalyst = a process flow)
   const catalystGroups: Record<string, Array<Record<string, unknown>>> = {};
   for (const a of actions.results) {
@@ -498,7 +509,7 @@ async function refreshProcessMining(
 
     await db.prepare(
       `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
-       VALUES (?, ?, ?, ?, '%', ?, 80, 60, 50, ?, 'catalyst-engine', datetime('now'))
+       VALUES (?, ?, ?, ?, '%', ?, 80, 80, 60, ?, 'catalyst-engine', datetime('now'))
        ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status,
          trend = excluded.trend, measured_at = excluded.measured_at`
     ).bind(metricId, tenantId, `${catalystName} Success Rate`, successRate, metricStatus, JSON.stringify(trend.reverse())).run();
@@ -512,7 +523,7 @@ async function refreshProcessMining(
 
     await db.prepare(
       `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
-       VALUES (?, ?, ?, ?, '%', ?, 20, 40, 50, '[]', 'catalyst-engine', datetime('now'))
+       VALUES (?, ?, ?, ?, '%', ?, 20, 20, 40, '[]', 'catalyst-engine', datetime('now'))
        ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
     ).bind(exceptionMetricId, tenantId, `${catalystName} Exception Rate`, exceptionRate, excStatus).run();
 
@@ -621,7 +632,7 @@ async function refreshProcessMining(
     const green = row.threshold_green as number;
     const amber = row.threshold_amber as number;
     const red = row.threshold_red as number;
-    const previousStatus = row.current_status as string;
+    const previousStatus = existingStatuses.get(row.id as string) || (row.current_status as string);
 
     let status = 'green';
     if (green > red) {

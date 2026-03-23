@@ -255,7 +255,7 @@ pulse.post('/refresh', async (c) => {
 
     await c.env.DB.prepare(
       `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
-       VALUES (?, ?, ?, ?, '%', ?, 80, 60, 50, '[]', 'catalyst-engine', datetime('now'))
+       VALUES (?, ?, ?, ?, '%', ?, 80, 80, 60, '[]', 'catalyst-engine', datetime('now'))
        ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
     ).bind(metricId, tenantId, `${catalystName} Success Rate`, successRate, metricStatus).run();
     metricsCreated++;
@@ -269,7 +269,7 @@ pulse.post('/refresh', async (c) => {
 
     await c.env.DB.prepare(
       `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
-       VALUES (?, ?, ?, ?, '%', ?, 20, 40, 50, '[]', 'catalyst-engine', datetime('now'))
+       VALUES (?, ?, ?, ?, '%', ?, 20, 20, 40, '[]', 'catalyst-engine', datetime('now'))
        ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
     ).bind(excMetricId, tenantId, `${catalystName} Exception Rate`, exceptionRate, excStatus).run();
     metricsCreated++;
