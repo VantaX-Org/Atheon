@@ -240,6 +240,18 @@ const agricultureClusters: CatalystTemplate[] = [
       { name: 'Payroll Integration', enabled: false, description: 'Piece-rate and hourly payroll calculation automation' },
     ],
   },
+  {
+    name: 'Procurement Catalyst', domain: 'procurement',
+    description: 'Seed, fertilizer, and equipment procurement, supplier management',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Input Procurement', enabled: true, description: 'Seed, fertilizer, and chemical purchasing and price comparison' },
+      { name: 'Supplier Management', enabled: true, description: 'Agricultural input supplier performance tracking and scoring' },
+      { name: 'Equipment Purchasing', enabled: true, description: 'Farm machinery sourcing, leasing, and total cost of ownership analysis' },
+      { name: 'Contract Farming', enabled: false, description: 'Buyer contract management and compliance for off-take agreements' },
+      { name: 'Cooperative Buying', enabled: true, description: 'Cooperative bulk purchasing coordination for volume discounts' },
+    ],
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -340,6 +352,30 @@ const healthcareClusters: CatalystTemplate[] = [
       { name: 'Vendor Evaluation', enabled: true, description: 'Supplier quality, delivery, and pricing scorecarding' },
       { name: 'Contract Compliance', enabled: true, description: 'Supplier contract SLA monitoring and penalty tracking' },
       { name: 'Group Purchasing', enabled: false, description: 'Multi-clinic bulk purchasing coordination for volume discounts' },
+    ],
+  },
+  {
+    name: 'Healthcare Sales & Revenue Catalyst', domain: 'sales',
+    description: 'Patient acquisition, referral management, and service line growth',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Referral Management', enabled: true, description: 'GP and specialist referral tracking and relationship management' },
+      { name: 'Service Line Analytics', enabled: true, description: 'Revenue and volume analysis per clinical service line' },
+      { name: 'Patient Acquisition', enabled: true, description: 'New patient source tracking and marketing ROI measurement' },
+      { name: 'Corporate Health Contracts', enabled: false, description: 'Employer health program sales pipeline and contract management' },
+      { name: 'Medical Aid Negotiations', enabled: true, description: 'Tariff negotiation tracking and medical aid relationship management' },
+    ],
+  },
+  {
+    name: 'Healthcare Supply Chain Catalyst', domain: 'supply-chain',
+    description: 'End-to-end medical supply chain from order to bedside delivery',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Demand Planning', enabled: true, description: 'Patient volume-driven medical supply demand forecasting' },
+      { name: 'Inventory Optimization', enabled: true, description: 'Par level management and automated replenishment for wards' },
+      { name: 'Distribution Management', enabled: true, description: 'Multi-facility supply distribution and inter-facility transfers' },
+      { name: 'Expiry Management', enabled: true, description: 'FEFO tracking and near-expiry product redistribution' },
+      { name: 'Emergency Stock', enabled: false, description: 'Critical supply buffer management and emergency sourcing protocols' },
     ],
   },
 ];
@@ -657,6 +693,18 @@ const manufacturingClusters: CatalystTemplate[] = [
       { name: 'Customer Portal', enabled: false, description: 'Self-service order tracking and invoice access' },
     ],
   },
+  {
+    name: 'Procurement Catalyst', domain: 'procurement',
+    description: 'Raw material purchasing, supplier management, and sourcing optimization',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Supplier Management', enabled: true, description: 'Vendor qualification, performance rating, and relationship management' },
+      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and multi-level approval workflows' },
+      { name: 'Strategic Sourcing', enabled: true, description: 'Sourcing event management and competitive bidding coordination' },
+      { name: 'Spend Analytics', enabled: false, description: 'Category-level spend analysis and savings opportunity identification' },
+      { name: 'Supplier Risk', enabled: true, description: 'Supplier financial health monitoring and supply disruption risk scoring' },
+    ],
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -818,6 +866,30 @@ const fmcgClusters: CatalystTemplate[] = [
       { name: 'Incentive Calculation', enabled: false, description: 'Commission and bonus calculation automation' },
     ],
   },
+  {
+    name: 'Procurement Catalyst', domain: 'procurement',
+    description: 'Raw material sourcing, co-packer management, and packaging procurement',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Ingredient Sourcing', enabled: true, description: 'Raw material supplier qualification and price benchmarking' },
+      { name: 'Co-Packer Management', enabled: true, description: 'Third-party manufacturer performance tracking and quality compliance' },
+      { name: 'Packaging Procurement', enabled: true, description: 'Packaging material sourcing and minimum order quantity optimization' },
+      { name: 'Contract Management', enabled: false, description: 'Supplier contract lifecycle management and renewal tracking' },
+      { name: 'Spend Analytics', enabled: true, description: 'Category-level procurement spend analysis and savings identification' },
+    ],
+  },
+  {
+    name: 'Sales & Key Accounts Catalyst', domain: 'sales',
+    description: 'Retailer relationship management, key account planning, and order management',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Key Account Management', enabled: true, description: 'Major retailer relationship tracking and joint business planning' },
+      { name: 'Order Management', enabled: true, description: 'Customer order processing, allocation, and delivery coordination' },
+      { name: 'Pricing Management', enabled: true, description: 'Price list management, RSP compliance, and margin protection' },
+      { name: 'Category Management', enabled: true, description: 'Category captain analytics and retailer category recommendations' },
+      { name: 'Tender Response', enabled: false, description: 'Retailer tender and listing application automation' },
+    ],
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -930,6 +1002,30 @@ const retailClusters: CatalystTemplate[] = [
       { name: 'Search Analytics', enabled: true, description: 'Site search performance, zero-result tracking, and synonym management' },
       { name: 'Marketplace Sync', enabled: false, description: 'Inventory and pricing sync across Takealot, Amazon, and other marketplaces' },
       { name: 'Fulfillment Optimization', enabled: true, description: 'Ship-from-store vs DC routing optimization for online orders' },
+    ],
+  },
+  {
+    name: 'Procurement & Buying Catalyst', domain: 'procurement',
+    description: 'Merchandise buying, supplier negotiations, and import management',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Buying Planning', enabled: true, description: 'Open-to-buy budget management and category buying plans' },
+      { name: 'Supplier Negotiations', enabled: true, description: 'Supplier cost negotiation tracking and rebate management' },
+      { name: 'Import Management', enabled: true, description: 'International sourcing, shipping, and customs clearance tracking' },
+      { name: 'Private Label Sourcing', enabled: false, description: 'Own-brand product development and supplier qualification' },
+      { name: 'Vendor Onboarding', enabled: true, description: 'New supplier registration, compliance checks, and setup automation' },
+    ],
+  },
+  {
+    name: 'Sales & Revenue Catalyst', domain: 'sales',
+    description: 'Revenue tracking, channel management, and customer acquisition',
+    autonomy_tier: 'assisted',
+    sub_catalysts: [
+      { name: 'Revenue Analytics', enabled: true, description: 'Store, channel, and category revenue tracking and forecasting' },
+      { name: 'Channel Management', enabled: true, description: 'Omnichannel revenue attribution and channel mix optimization' },
+      { name: 'Franchise Sales', enabled: true, description: 'Franchise recruitment pipeline and new store performance tracking' },
+      { name: 'B2B Sales', enabled: false, description: 'Corporate and wholesale customer account management' },
+      { name: 'Gift Card & Voucher', enabled: true, description: 'Gift card program management, liability tracking, and redemption analytics' },
     ],
   },
 ];
