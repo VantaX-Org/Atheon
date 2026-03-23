@@ -164,6 +164,202 @@ pulse.get('/correlations', async (c) => {
   return c.json({ correlations: formatted, total: formatted.length, limit: formatted.length, offset: 0 });
 });
 
+// POST /api/pulse/refresh — On-demand process mining refresh from catalyst runs
+pulse.post('/refresh', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
+
+  // Count catalyst actions for this tenant
+  const actionCount = await c.env.DB.prepare(
+    'SELECT COUNT(*) as count FROM catalyst_actions WHERE tenant_id = ?'
+  ).bind(tenantId).first<{ count: number }>();
+
+  if (!actionCount || actionCount.count === 0) {
+    return c.json({ refreshed: false, message: 'No catalyst runs found. Run a catalyst first to generate process mining data.' });
+  }
+
+  // Group catalyst actions by catalyst_name to build process flows
+  const actions = await c.env.DB.prepare(
+    'SELECT catalyst_name, status, confidence, input_data, output_data, created_at, completed_at FROM catalyst_actions WHERE tenant_id = ? ORDER BY created_at DESC'
+  ).bind(tenantId).all();
+
+  const catalystGroups: Record<string, Array<Record<string, unknown>>> = {};
+  for (const a of actions.results) {
+    const row = a as Record<string, unknown>;
+    const name = row.catalyst_name as string;
+    if (!catalystGroups[name]) catalystGroups[name] = [];
+    catalystGroups[name].push(row);
+  }
+
+  let flowsCreated = 0;
+  let metricsCreated = 0;
+
+  for (const [catalystName, runs] of Object.entries(catalystGroups)) {
+    const flowId = `pf-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    const completed = runs.filter(r => r.status === 'completed');
+    const exceptions = runs.filter(r => r.status === 'exception');
+    const pending = runs.filter(r => r.status === 'pending');
+    const total = runs.length;
+    const conformanceRate = total > 0 ? Math.round((completed.length / total) * 100) : 100;
+    const uniqueActions = new Set(runs.map(r => r.status as string));
+
+    // Avg duration
+    let avgDuration = 0;
+    const durationsMs: number[] = [];
+    for (const r of completed) {
+      if (r.completed_at && r.created_at) {
+        const diff = new Date(r.completed_at as string).getTime() - new Date(r.created_at as string).getTime();
+        if (diff > 0) durationsMs.push(diff);
+      }
+    }
+    if (durationsMs.length > 0) {
+      avgDuration = Math.round(durationsMs.reduce((s, d) => s + d, 0) / durationsMs.length / 1000);
+    }
+
+    // Bottlenecks from exceptions
+    const bottlenecks: string[] = [];
+    for (const r of exceptions.slice(0, 5)) {
+      try {
+        const output = JSON.parse(r.output_data as string || '{}');
+        if (output.exception_type) {
+          bottlenecks.push(`${output.exception_type}: ${output.exception_detail || 'Requires review'}`);
+        }
+      } catch { /* skip */ }
+    }
+    if (exceptions.length > 0 && bottlenecks.length === 0) {
+      bottlenecks.push(`${exceptions.length} action(s) escalated for human review`);
+    }
+
+    const steps = JSON.stringify([
+      { name: 'Received', count: total },
+      { name: 'Processing', count: pending.length },
+      { name: 'Completed', count: completed.length },
+      { name: 'Escalated', count: exceptions.length },
+    ]);
+
+    await c.env.DB.prepare(
+      `INSERT INTO process_flows (id, tenant_id, name, steps, variants, avg_duration, conformance_rate, bottlenecks, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET steps = excluded.steps, variants = excluded.variants,
+         avg_duration = excluded.avg_duration, conformance_rate = excluded.conformance_rate,
+         bottlenecks = excluded.bottlenecks`
+    ).bind(flowId, tenantId, catalystName, steps, uniqueActions.size, avgDuration, conformanceRate, JSON.stringify(bottlenecks)).run();
+    flowsCreated++;
+
+    // Success rate metric
+    const metricId = `pm-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    const successRate = total > 0 ? Math.round((completed.length / total) * 100) : 100;
+    let metricStatus = 'green';
+    if (successRate < 60) metricStatus = 'red';
+    else if (successRate < 80) metricStatus = 'amber';
+
+    await c.env.DB.prepare(
+      `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
+       VALUES (?, ?, ?, ?, '%', ?, 80, 60, 50, '[]', 'catalyst-engine', datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
+    ).bind(metricId, tenantId, `${catalystName} Success Rate`, successRate, metricStatus).run();
+    metricsCreated++;
+
+    // Exception rate metric
+    const excMetricId = `pm-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-exc`;
+    const exceptionRate = total > 0 ? Math.round((exceptions.length / total) * 100) : 0;
+    let excStatus = 'green';
+    if (exceptionRate > 40) excStatus = 'red';
+    else if (exceptionRate > 20) excStatus = 'amber';
+
+    await c.env.DB.prepare(
+      `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
+       VALUES (?, ?, ?, ?, '%', ?, 20, 40, 50, '[]', 'catalyst-engine', datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
+    ).bind(excMetricId, tenantId, `${catalystName} Exception Rate`, exceptionRate, excStatus).run();
+    metricsCreated++;
+  }
+
+  return c.json({ refreshed: true, processFlows: flowsCreated, metricsGenerated: metricsCreated, catalystActions: actionCount.count });
+});
+
+// GET /api/pulse/catalyst-runs — Transaction-level reporting for catalyst runs
+pulse.get('/catalyst-runs', async (c) => {
+  const tenantId = getTenantId(c);
+  const { limit, offset } = getPagination(c);
+  const catalystFilter = c.req.query('catalyst');
+
+  let query = 'SELECT id, cluster_id, catalyst_name, action, status, confidence, input_data, output_data, reasoning, approved_by, created_at, completed_at FROM catalyst_actions WHERE tenant_id = ?';
+  const binds: unknown[] = [tenantId];
+
+  if (catalystFilter) {
+    query += ' AND catalyst_name = ?';
+    binds.push(catalystFilter);
+  }
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  binds.push(limit, offset);
+
+  const results = await c.env.DB.prepare(query).bind(...binds).all();
+
+  // Get total count
+  let countQuery = 'SELECT COUNT(*) as count FROM catalyst_actions WHERE tenant_id = ?';
+  const countBinds: unknown[] = [tenantId];
+  if (catalystFilter) {
+    countQuery += ' AND catalyst_name = ?';
+    countBinds.push(catalystFilter);
+  }
+  const countResult = await c.env.DB.prepare(countQuery).bind(...countBinds).first<{ count: number }>();
+
+  // Get summary stats per catalyst
+  const summaryQuery = await c.env.DB.prepare(
+    `SELECT catalyst_name,
+       COUNT(*) as total_runs,
+       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+       SUM(CASE WHEN status = 'exception' THEN 1 ELSE 0 END) as exceptions,
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+       AVG(confidence) as avg_confidence
+     FROM catalyst_actions WHERE tenant_id = ? GROUP BY catalyst_name ORDER BY total_runs DESC`
+  ).bind(tenantId).all();
+
+  const runs = results.results.map((r: Record<string, unknown>) => {
+    let inputData = null;
+    let outputData = null;
+    try { inputData = JSON.parse(r.input_data as string || 'null'); } catch { /* skip */ }
+    try { outputData = JSON.parse(r.output_data as string || 'null'); } catch { /* skip */ }
+
+    return {
+      id: r.id,
+      clusterId: r.cluster_id,
+      catalystName: r.catalyst_name,
+      action: r.action,
+      status: r.status,
+      confidence: r.confidence,
+      inputData,
+      outputData,
+      reasoning: r.reasoning,
+      approvedBy: r.approved_by,
+      createdAt: r.created_at,
+      completedAt: r.completed_at,
+      needsHumanReview: r.status === 'exception' || r.status === 'pending',
+    };
+  });
+
+  const summary = summaryQuery.results.map((s: Record<string, unknown>) => ({
+    catalystName: s.catalyst_name,
+    totalRuns: s.total_runs,
+    completed: s.completed,
+    exceptions: s.exceptions,
+    pending: s.pending,
+    avgConfidence: Math.round((s.avg_confidence as number || 0) * 100) / 100,
+    successRate: (s.total_runs as number) > 0
+      ? Math.round(((s.completed as number) / (s.total_runs as number)) * 100)
+      : 0,
+  }));
+
+  return c.json({
+    runs,
+    summary,
+    total: countResult?.count || runs.length,
+    limit,
+    offset,
+  });
+});
+
 // GET /api/pulse/summary (aggregated overview)
 pulse.get('/summary', async (c) => {
   const tenantId = getTenantId(c);

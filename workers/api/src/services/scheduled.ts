@@ -389,18 +389,233 @@ async function autoPopulateMemory(db: D1Database, tenantId: string): Promise<voi
 
 /**
  * 3.9: Process Mining Refresh
- * Recalculates process flow conformance rates and detects new anomalies
- * 5.4: Enqueues catalyst tasks when metrics transition to red
+ * Dynamically builds process flows, metrics, anomalies, and correlations
+ * from catalyst_actions data — every catalyst domain becomes a process flow
+ * with transaction-level reporting (completed vs escalated vs pending).
+ * 5.4: Enqueues catalyst tasks when metrics transition to red.
  */
 async function refreshProcessMining(
   db: D1Database, tenantId: string, queue?: Queue<CatalystQueueMessage>
 ): Promise<void> {
-  // Recalculate metric statuses based on thresholds
-  const metrics = await db.prepare(
+  // ── Phase 1: Build process flows from catalyst actions ──
+  // Group catalyst actions by catalyst_name to form process flows
+  const actions = await db.prepare(
+    'SELECT catalyst_name, status, confidence, input_data, output_data, created_at, completed_at FROM catalyst_actions WHERE tenant_id = ? ORDER BY created_at DESC'
+  ).bind(tenantId).all();
+
+  if (actions.results.length === 0) return; // No catalyst runs — nothing to mine
+
+  // Group actions by catalyst name (each catalyst = a process flow)
+  const catalystGroups: Record<string, Array<Record<string, unknown>>> = {};
+  for (const a of actions.results) {
+    const row = a as Record<string, unknown>;
+    const name = row.catalyst_name as string;
+    if (!catalystGroups[name]) catalystGroups[name] = [];
+    catalystGroups[name].push(row);
+  }
+
+  // Build/update process flows for each catalyst domain
+  for (const [catalystName, runs] of Object.entries(catalystGroups)) {
+    const flowId = `pf-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+    const completed = runs.filter(r => r.status === 'completed');
+    const exceptions = runs.filter(r => r.status === 'exception');
+    const pending = runs.filter(r => r.status === 'pending');
+    const total = runs.length;
+
+    // Conformance = completed / total (exceptions and pending lower conformance)
+    const conformanceRate = total > 0 ? Math.round((completed.length / total) * 100) : 100;
+
+    // Variants = distinct action patterns within this catalyst
+    const uniqueActions = new Set(runs.map(r => r.status as string));
+    const variants = uniqueActions.size;
+
+    // Avg duration from created_at to completed_at for completed runs
+    let avgDuration = 0;
+    const durationsMs: number[] = [];
+    for (const r of completed) {
+      if (r.completed_at && r.created_at) {
+        const diff = new Date(r.completed_at as string).getTime() - new Date(r.created_at as string).getTime();
+        if (diff > 0) durationsMs.push(diff);
+      }
+    }
+    if (durationsMs.length > 0) {
+      avgDuration = Math.round(durationsMs.reduce((s, d) => s + d, 0) / durationsMs.length / 1000); // seconds
+    }
+
+    // Bottlenecks = exception reasons extracted from output_data
+    const bottlenecks: string[] = [];
+    for (const r of exceptions.slice(0, 5)) {
+      try {
+        const output = JSON.parse(r.output_data as string || '{}');
+        if (output.exception_type) {
+          bottlenecks.push(`${output.exception_type}: ${output.exception_detail || 'Requires review'}`);
+        }
+      } catch { /* skip unparseable */ }
+    }
+    if (exceptions.length > 0 && bottlenecks.length === 0) {
+      bottlenecks.push(`${exceptions.length} action(s) escalated for human review`);
+    }
+
+    // Steps = the lifecycle stages of this catalyst process
+    const steps = JSON.stringify([
+      { name: 'Received', count: total },
+      { name: 'Processing', count: pending.length },
+      { name: 'Completed', count: completed.length },
+      { name: 'Escalated', count: exceptions.length },
+    ]);
+
+    // Upsert the process flow
+    await db.prepare(
+      `INSERT INTO process_flows (id, tenant_id, name, steps, variants, avg_duration, conformance_rate, bottlenecks, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET steps = excluded.steps, variants = excluded.variants,
+         avg_duration = excluded.avg_duration, conformance_rate = excluded.conformance_rate,
+         bottlenecks = excluded.bottlenecks`
+    ).bind(flowId, tenantId, catalystName, steps, variants, avgDuration, conformanceRate, JSON.stringify(bottlenecks)).run();
+
+    // ── Phase 2: Generate process metrics from catalyst runs ──
+    const metricId = `pm-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+    // Success rate metric for this catalyst
+    const successRate = total > 0 ? Math.round((completed.length / total) * 100) : 100;
+    let metricStatus = 'green';
+    if (successRate < 60) metricStatus = 'red';
+    else if (successRate < 80) metricStatus = 'amber';
+
+    // Build trend from last 6 data points (most recent runs)
+    const recentRuns = runs.slice(0, Math.min(6, runs.length));
+    const trend: number[] = [];
+    let runningCompleted = completed.length;
+    let runningTotal = total;
+    for (const r of recentRuns) {
+      if (runningTotal > 0) {
+        trend.push(Math.round((runningCompleted / runningTotal) * 100));
+      }
+      if (r.status === 'completed') runningCompleted--;
+      runningTotal--;
+    }
+
+    await db.prepare(
+      `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
+       VALUES (?, ?, ?, ?, '%', ?, 80, 60, 50, ?, 'catalyst-engine', datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status,
+         trend = excluded.trend, measured_at = excluded.measured_at`
+    ).bind(metricId, tenantId, `${catalystName} Success Rate`, successRate, metricStatus, JSON.stringify(trend.reverse())).run();
+
+    // Exception rate metric
+    const exceptionMetricId = `pm-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-exc`;
+    const exceptionRate = total > 0 ? Math.round((exceptions.length / total) * 100) : 0;
+    let excStatus = 'green';
+    if (exceptionRate > 40) excStatus = 'red';
+    else if (exceptionRate > 20) excStatus = 'amber';
+
+    await db.prepare(
+      `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at)
+       VALUES (?, ?, ?, ?, '%', ?, 20, 40, 50, '[]', 'catalyst-engine', datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status, measured_at = excluded.measured_at`
+    ).bind(exceptionMetricId, tenantId, `${catalystName} Exception Rate`, exceptionRate, excStatus).run();
+
+    // ── Phase 3: Detect anomalies from exception patterns ──
+    if (exceptionRate > 30 && exceptions.length >= 2) {
+      const anomalyId = `anom-${tenantId.substring(0, 8)}-${catalystName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      const expectedRate = 10; // baseline expected exception rate
+      const deviation = Math.round(((exceptionRate - expectedRate) / expectedRate) * 100);
+
+      // Extract hypothesis from recent exception outputs
+      let hypothesis = `${catalystName} has a ${exceptionRate}% exception rate (${exceptions.length} of ${total} runs). `;
+      const exceptionTypes: Record<string, number> = {};
+      for (const r of exceptions) {
+        try {
+          const output = JSON.parse(r.output_data as string || '{}');
+          const etype = output.exception_type as string || 'unknown';
+          exceptionTypes[etype] = (exceptionTypes[etype] || 0) + 1;
+        } catch { /* skip */ }
+      }
+      const topTypes = Object.entries(exceptionTypes).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      if (topTypes.length > 0) {
+        hypothesis += `Top exception types: ${topTypes.map(([t, c]) => `${t} (${c}x)`).join(', ')}.`;
+      }
+
+      await db.prepare(
+        `INSERT INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET actual_value = excluded.actual_value, deviation = excluded.deviation,
+           hypothesis = excluded.hypothesis`
+      ).bind(
+        anomalyId, tenantId, `${catalystName} Exception Rate`,
+        exceptionRate > 50 ? 'critical' : 'high',
+        expectedRate, exceptionRate, deviation, hypothesis
+      ).run();
+    }
+  }
+
+  // ── Phase 4: Generate cross-system correlation events ──
+  // Look for catalyst actions that span different source systems
+  const systemActions = await db.prepare(
+    "SELECT catalyst_name, input_data, output_data, status, created_at FROM catalyst_actions WHERE tenant_id = ? AND input_data IS NOT NULL ORDER BY created_at DESC LIMIT 100"
+  ).bind(tenantId).all();
+
+  const systemEvents: Array<{ catalyst: string; system: string; status: string; time: string }> = [];
+  for (const a of systemActions.results) {
+    const row = a as Record<string, unknown>;
+    try {
+      const input = JSON.parse(row.input_data as string || '{}');
+      const sourceSystem = input.source_system || input.sourceSystem || input.system || '';
+      if (sourceSystem) {
+        systemEvents.push({
+          catalyst: row.catalyst_name as string,
+          system: sourceSystem as string,
+          status: row.status as string,
+          time: row.created_at as string,
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  // Find correlations between different systems (e.g., ERP exception → downstream impact)
+  const systemPairs = new Map<string, { source: string; sourceEvent: string; target: string; targetImpact: string; count: number }>();
+  for (let i = 0; i < systemEvents.length - 1; i++) {
+    for (let j = i + 1; j < Math.min(i + 5, systemEvents.length); j++) {
+      const a = systemEvents[i];
+      const b = systemEvents[j];
+      if (a.system !== b.system && a.status === 'exception') {
+        const key = `${a.system}->${b.system}`;
+        const existing = systemPairs.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          systemPairs.set(key, {
+            source: a.system,
+            sourceEvent: `${a.catalyst} exception`,
+            target: b.system,
+            targetImpact: `${b.catalyst} ${b.status}`,
+            count: 1,
+          });
+        }
+      }
+    }
+  }
+
+  for (const [key, pair] of systemPairs) {
+    if (pair.count < 2) continue; // Need at least 2 occurrences for a meaningful correlation
+    const corrId = `ce-${tenantId.substring(0, 8)}-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+    const confidence = Math.min(0.95, 0.5 + pair.count * 0.1);
+
+    await db.prepare(
+      `INSERT INTO correlation_events (id, tenant_id, source_system, source_event, target_system, target_impact, confidence, lag_days, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET confidence = excluded.confidence, source_event = excluded.source_event,
+         target_impact = excluded.target_impact`
+    ).bind(corrId, tenantId, pair.source, pair.sourceEvent, pair.target, pair.targetImpact, confidence).run();
+  }
+
+  // ── Phase 5: Recalculate existing metric statuses + trigger alerts ──
+  const existingMetrics = await db.prepare(
     'SELECT id, name, value, status as current_status, threshold_green, threshold_amber, threshold_red, source_system FROM process_metrics WHERE tenant_id = ? AND threshold_red IS NOT NULL'
   ).bind(tenantId).all();
 
-  for (const m of metrics.results) {
+  for (const m of existingMetrics.results) {
     const row = m as Record<string, unknown>;
     const value = row.value as number;
     const green = row.threshold_green as number;
@@ -410,22 +625,21 @@ async function refreshProcessMining(
 
     let status = 'green';
     if (green > red) {
-      // Higher is better
       if (value < red) status = 'red';
       else if (value < amber) status = 'amber';
     } else {
-      // Lower is better
       if (value > red) status = 'red';
       else if (value > amber) status = 'amber';
     }
 
-    await db.prepare('UPDATE process_metrics SET status = ?, measured_at = datetime(\'now\') WHERE id = ?')
-      .bind(status, row.id).run();
+    if (status !== previousStatus) {
+      await db.prepare("UPDATE process_metrics SET status = ?, measured_at = datetime('now') WHERE id = ?")
+        .bind(status, row.id).run();
+    }
 
     // 5.4: Event-driven trigger — enqueue catalyst task when metric goes red
     if (status === 'red' && previousStatus !== 'red' && queue) {
       try {
-        // Find a relevant catalyst cluster to handle this metric
         const cluster = await db.prepare(
           "SELECT id, name, autonomy_tier, trust_score FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active' ORDER BY trust_score DESC LIMIT 1"
         ).bind(tenantId).first();
@@ -454,7 +668,6 @@ async function refreshProcessMining(
           });
         }
 
-        // Also create a notification for the metric going red
         await db.prepare(
           "INSERT INTO notifications (id, tenant_id, type, title, message, severity, created_at) VALUES (?, ?, 'metric_alert', ?, ?, 'high', datetime('now'))"
         ).bind(

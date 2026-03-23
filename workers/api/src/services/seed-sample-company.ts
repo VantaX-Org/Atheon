@@ -402,6 +402,9 @@ export async function seedSampleCompany(db: D1Database) {
   ];
 
   for (const r of risks) {
+    await db.prepare(
+      'INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, financial_impact, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'active\', datetime(\'now\'))'
+    ).bind(r.id, 'protea', r.title, r.desc, r.severity, r.cat, r.prob, r.impact).run();
   }
 
   // ── Executive Briefing ──
@@ -418,6 +421,9 @@ export async function seedSampleCompany(db: D1Database) {
   ];
 
   for (const m of metrics) {
+    await db.prepare(
+      'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+    ).bind(m.id, 'protea', m.name, m.value, m.unit, m.status, m.tg, m.ta, m.tr, m.trend, m.source).run();
   }
 
   // ── Anomalies ──
@@ -428,6 +434,9 @@ export async function seedSampleCompany(db: D1Database) {
   ];
 
   for (const a of anomalies) {
+    await db.prepare(
+      'INSERT INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'open\', datetime(\'now\'))'
+    ).bind(a.id, 'protea', a.metric, a.severity, a.expected, a.actual, a.deviation, a.hypothesis).run();
   }
 
   // ── Catalyst Clusters ──
@@ -512,6 +521,19 @@ export async function seedSampleCompany(db: D1Database) {
   }
 
   // ── Process Flows ──
+  const processFlows = [
+    { id: 'pf-protea-1', name: 'Order-to-Cash', steps: JSON.stringify([{name:'Order Received',count:623},{name:'Credit Check',count:612},{name:'Picking & Packing',count:598},{name:'Dispatch',count:580},{name:'Invoice Generated',count:580},{name:'Payment Received',count:545}]), variants: 4, avg_duration: 502000, conformance_rate: 87.5, bottlenecks: JSON.stringify(['Credit Check: 11 orders delayed >24h','Dispatch: Load shedding causing 2-day backlog']) },
+    { id: 'pf-protea-2', name: 'Procure-to-Pay', steps: JSON.stringify([{name:'PR Created',count:412},{name:'PO Generated',count:398},{name:'GRN Received',count:385},{name:'Invoice Matched',count:370},{name:'Payment Released',count:358}]), variants: 3, avg_duration: 864000, conformance_rate: 86.9, bottlenecks: JSON.stringify(['Invoice Matched: 18.4% variance on Nampak POs']) },
+    { id: 'pf-protea-3', name: 'Invoice Reconciliation', steps: JSON.stringify([{name:'Invoice Received',count:234},{name:'3-Way Match',count:234},{name:'Matched',count:198},{name:'Escalated',count:36}]), variants: 2, avg_duration: 11520, conformance_rate: 84.6, bottlenecks: JSON.stringify(['3-Way Match: 15.4% fail rate — amount mismatches and missing POs']) },
+    { id: 'pf-protea-4', name: 'Production Planning', steps: JSON.stringify([{name:'Demand Forecast',count:289},{name:'MRP Run',count:289},{name:'Production Order',count:275},{name:'Shop Floor Execution',count:245},{name:'Quality Check',count:240},{name:'Finished Goods',count:232}]), variants: 5, avg_duration: 1728000, conformance_rate: 80.3, bottlenecks: JSON.stringify(['Shop Floor Execution: Load shedding reducing output 30%','Quality Check: Reject rate up 2.1% due to power interruptions']) },
+  ];
+
+  for (const pf of processFlows) {
+    await db.prepare(
+      'INSERT INTO process_flows (id, tenant_id, name, steps, variants, avg_duration, conformance_rate, bottlenecks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+    ).bind(pf.id, 'protea', pf.name, pf.steps, pf.variants, pf.avg_duration, pf.conformance_rate, pf.bottlenecks).run();
+  }
+
   // ── Correlation Events ──
   const correlations = [
     { id: 'ce-protea-1', source_sys: 'Eskom', source_evt: 'Load shedding Stage 4+', target_sys: 'SAP PP', target_impact: 'Production output -30%', confidence: 0.97, lag: 0 },
@@ -521,6 +543,9 @@ export async function seedSampleCompany(db: D1Database) {
   ];
 
   for (const c of correlations) {
+    await db.prepare(
+      'INSERT INTO correlation_events (id, tenant_id, source_system, source_event, target_system, target_impact, confidence, lag_days, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+    ).bind(c.id, 'protea', c.source_sys, c.source_evt, c.target_sys, c.target_impact, c.confidence, c.lag).run();
   }
 
   // ── Scenarios ──

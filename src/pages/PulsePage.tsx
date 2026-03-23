@@ -236,9 +236,30 @@ export function PulsePage() {
       ]);
       if (m.status === 'fulfilled') setMetrics(m.value.metrics);
       if (a.status === 'fulfilled') setAnomalies(a.value.anomalies);
-      if (p.status === 'fulfilled') setProcesses(p.value.processes);
       if (co.status === 'fulfilled') setCorrelations(co.value.correlations);
       if (s.status === 'fulfilled') setSummary(s.value);
+
+      // Auto-refresh process mining from catalyst runs if no processes exist yet
+      const hasProcesses = p.status === 'fulfilled' && p.value.processes.length > 0;
+      if (hasProcesses) {
+        setProcesses(p.value.processes);
+      } else {
+        try {
+          const refreshResult = await api.pulse.refresh();
+          if (refreshResult.refreshed) {
+            // Re-fetch processes and metrics after refresh
+            const [newP, newM, newS] = await Promise.allSettled([
+              api.pulse.processes(undefined, ind),
+              api.pulse.metrics(undefined, ind),
+              api.pulse.summary(undefined, ind),
+            ]);
+            if (newP.status === 'fulfilled') setProcesses(newP.value.processes);
+            if (newM.status === 'fulfilled') setMetrics(newM.value.metrics);
+            if (newS.status === 'fulfilled') setSummary(newS.value);
+          }
+        } catch { /* refresh failed — show empty state */ }
+      }
+
       setLoading(false);
     }
     load();
