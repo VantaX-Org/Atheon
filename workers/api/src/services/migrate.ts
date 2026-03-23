@@ -9,7 +9,7 @@ import { seedSampleCompany } from './seed-sample-company';
 import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v28';
+export const MIGRATION_VERSION = 'v29';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -285,11 +285,33 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     result.errors.push(`Seed users: ${(err as Error).message}`);
   }
 
-  // ── Ensure Odoo ERP adapter exists (added after initial seed) ──
+  // ── Ensure all ERP adapters exist (INSERT OR IGNORE prevents duplicates) ──
   try {
-    await db.prepare("INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES ('erp-odoo','Odoo ERP','Odoo','18.0','JSON-RPC/REST','available','[\"JSON-RPC 2.0\",\"REST API v2\",\"XML-RPC\",\"ORM API\"]','[\"OAuth 2.0\",\"API Key\",\"Session Auth\"]')").run();
+    const adapters = [
+      { id: 'erp-sap-s4', name: 'SAP S/4HANA', system: 'SAP', version: '2025 FPS01', protocol: 'OData V4', operations: '["RFC","BAPI","OData V4","CDS Views","IDoc"]', auth_methods: '["OAuth 2.0","X.509 Certificate","Basic Auth"]' },
+      { id: 'erp-sap-ecc', name: 'SAP ECC 6.0', system: 'SAP', version: 'EHP8', protocol: 'RFC/BAPI', operations: '["RFC","BAPI","IDoc","ALE"]', auth_methods: '["SNC","Basic Auth"]' },
+      { id: 'erp-oracle', name: 'Oracle Fusion Cloud', system: 'Oracle', version: '26A', protocol: 'REST', operations: '["REST API","SOAP","BI Publisher","OTBI"]', auth_methods: '["OAuth 2.0","JWT Bearer"]' },
+      { id: 'erp-d365', name: 'Microsoft Dynamics 365', system: 'Dynamics365', version: '10.0.42', protocol: 'OData v4', operations: '["OData","Custom API","Power Automate","Dataverse"]', auth_methods: '["Azure AD OAuth","Service Principal"]' },
+      { id: 'erp-sf', name: 'Salesforce', system: 'Salesforce', version: 'Spring 26', protocol: 'REST/SOAP', operations: '["REST API v66.0","Bulk API 2.0","Pub/Sub API","Metadata API"]', auth_methods: '["OAuth 2.0","JWT Bearer","SAML"]' },
+      { id: 'erp-wd', name: 'Workday', system: 'Workday', version: '2025R2', protocol: 'REST/SOAP', operations: '["REST API","SOAP API v45.2","RaaS","EIB","WQL"]', auth_methods: '["OAuth 2.0","X.509","API Key"]' },
+      { id: 'erp-ns', name: 'NetSuite', system: 'NetSuite', version: '2026.1', protocol: 'REST/SuiteTalk', operations: '["REST API","SuiteTalk SOAP","SuiteQL","RESTlets"]', auth_methods: '["OAuth 2.0","Token-Based Auth"]' },
+      { id: 'erp-sage', name: 'Sage Intacct', system: 'Sage', version: 'R1 2026', protocol: 'REST/XML', operations: '["REST API","XML Gateway","Web Services"]', auth_methods: '["API Key","Session Auth"]' },
+      { id: 'erp-xero', name: 'Xero', system: 'Xero', version: '2.0', protocol: 'REST', operations: '["REST API","Webhooks","Bank Feeds","Payroll API"]', auth_methods: '["OAuth 2.0"]' },
+      { id: 'erp-sage-bc', name: 'Sage Business Cloud Accounting', system: 'Sage', version: 'v3.1', protocol: 'REST', operations: '["REST API","Webhooks","Banking","Reporting"]', auth_methods: '["OAuth 2.0"]' },
+      { id: 'erp-sage-pastel', name: 'Sage Pastel Partner', system: 'Pastel', version: '2026.1', protocol: 'REST/SDK', operations: '["REST API v2","SDK Integration","DDE","ODBC"]', auth_methods: '["API Key","Session Auth","Username/Password"]' },
+      { id: 'erp-sage-50', name: 'Sage 50cloud Pastel', system: 'Pastel', version: '2026', protocol: 'REST/SDK', operations: '["REST API v2","SDK","Pastel Connector","CSV Import"]', auth_methods: '["API Key","OAuth 2.0"]' },
+      { id: 'erp-sage-intacct', name: 'Sage Intacct', system: 'Sage', version: 'R1 2026', protocol: 'REST/XML', operations: '["REST API","XML Gateway","Web Services","Smart Events"]', auth_methods: '["API Key","Session Auth","OAuth 2.0"]' },
+      { id: 'erp-sage-300', name: 'Sage 300 (Accpac)', system: 'Sage', version: '2026', protocol: 'REST/SOAP', operations: '["REST API","SOAP","Views API","Macros"]', auth_methods: '["API Key","Session Auth"]' },
+      { id: 'erp-sage-x3', name: 'Sage X3', system: 'Sage', version: 'V12', protocol: 'REST/SOAP', operations: '["REST API","SOAP Web Services","Syracuse","Batch Server"]', auth_methods: '["OAuth 2.0","Basic Auth"]' },
+      { id: 'erp-odoo', name: 'Odoo ERP', system: 'Odoo', version: '18.0', protocol: 'JSON-RPC/REST', operations: '["JSON-RPC 2.0","REST API v2","XML-RPC","ORM API"]', auth_methods: '["OAuth 2.0","API Key","Session Auth"]' },
+    ];
+    for (const a of adapters) {
+      await db.prepare(
+        "INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, 'available', ?, ?)"
+      ).bind(a.id, a.name, a.system, a.version, a.protocol, a.operations, a.auth_methods).run();
+    }
   } catch (err) {
-    result.errors.push(`Seed Odoo adapter: ${(err as Error).message}`);
+    result.errors.push(`Seed ERP adapters: ${(err as Error).message}`);
   }
 
   // ── Seed Data ──
