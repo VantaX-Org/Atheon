@@ -13,7 +13,7 @@ import {
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
-  UserCheck, FileWarning, RefreshCw, List, ScrollText
+  UserCheck, FileWarning, RefreshCw, List
 } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
 
@@ -231,8 +231,6 @@ export function PulsePage() {
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [runsLoading, setRunsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [pulseRunActions, setPulseRunActions] = useState<Record<string, Array<{ id: string; action: string; status: string; confidence: number; assignedTo?: string; processingTimeMs?: number; createdAt: string }>>>({});
-  const [pulseRunActionLoading, setPulseRunActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -1666,65 +1664,6 @@ export function PulsePage() {
                                 <span className="text-sm text-emerald-400">Approved by: <span className="font-medium">{run.approvedBy}</span></span>
                               </div>
                             )}
-
-                            {/* Per-Run Transaction Detail */}
-                            <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <ScrollText className="w-4 h-4 text-accent" />
-                                  <h4 className="text-sm font-semibold t-primary">Transaction Detail</h4>
-                                </div>
-                                {!pulseRunActions[run.id] && (
-                                  <button
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      setPulseRunActionLoading(run.id);
-                                      try {
-                                        const res = await api.catalysts.actions(undefined, run.clusterId);
-                                        setPulseRunActions(prev => ({ ...prev, [run.id]: res.actions.map((a: { id: string; action: string; status: string; confidence: number; approvedBy?: string; createdAt: string }) => ({ id: a.id, action: a.action, status: a.status, confidence: a.confidence || 0, assignedTo: a.approvedBy, createdAt: a.createdAt })) }));
-                                      } catch { /* failed */ }
-                                      setPulseRunActionLoading(null);
-                                    }}
-                                    className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-                                  >
-                                    {pulseRunActionLoading === run.id ? <Loader2 size={10} className="animate-spin" /> : <Eye size={10} />} Load Items
-                                  </button>
-                                )}
-                              </div>
-                              {pulseRunActionLoading === run.id && (
-                                <div className="flex items-center justify-center py-4">
-                                  <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                                  <span className="text-xs t-muted ml-2">Loading transaction items...</span>
-                                </div>
-                              )}
-                              {pulseRunActions[run.id] && pulseRunActions[run.id].length === 0 && (
-                                <p className="text-xs t-muted text-center py-3">No individual action items recorded for this run.</p>
-                              )}
-                              {pulseRunActions[run.id] && pulseRunActions[run.id].length > 0 && (
-                                <div className="space-y-1 max-h-[300px] overflow-y-auto">
-                                  <div className="grid grid-cols-12 gap-2 text-[9px] t-muted uppercase tracking-wider font-semibold pb-1 border-b border-[var(--border-card)] sticky top-0 bg-[var(--bg-secondary)]">
-                                    <span className="col-span-4">Action</span>
-                                    <span className="col-span-2">Status</span>
-                                    <span className="col-span-2 text-right">Confidence</span>
-                                    <span className="col-span-2">Assigned To</span>
-                                    <span className="col-span-2 text-right">Created</span>
-                                  </div>
-                                  {pulseRunActions[run.id].map((item) => (
-                                    <div key={item.id} className="grid grid-cols-12 gap-2 items-center py-1.5 border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)]/50 rounded px-1">
-                                      <span className="col-span-4 text-xs t-secondary truncate" title={item.action}>{item.action}</span>
-                                      <span className="col-span-2">
-                                        <Badge variant={item.status === 'completed' || item.status === 'approved' ? 'success' : item.status === 'exception' || item.status === 'failed' || item.status === 'rejected' ? 'danger' : item.status === 'escalated' ? 'warning' : 'info'} size="sm">{item.status}</Badge>
-                                      </span>
-                                      <span className={`col-span-2 text-xs font-medium text-right ${item.confidence >= 0.8 ? 'text-emerald-400' : item.confidence >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
-                                        {(item.confidence * 100).toFixed(0)}%
-                                      </span>
-                                      <span className="col-span-2 text-[10px] t-muted truncate">{item.assignedTo || '—'}</span>
-                                      <span className="col-span-2 text-[10px] t-muted text-right">{new Date(item.createdAt).toLocaleDateString()}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
 
                             {/* Assigned Users */}
                             {run.assignedTo && (run.assignedTo.validators?.length || run.assignedTo.exceptionHandlers?.length || run.assignedTo.escalation?.length) ? (
