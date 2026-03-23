@@ -1028,33 +1028,40 @@ async function tcpFetch(
 
   // Dynamically import cloudflare:sockets — only available in Workers runtime
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { connect } = await import('cloudflare:sockets' as any) as { connect: (addr: { hostname: string; port: number }) => { readable: ReadableStream; writable: WritableStream; closed: Promise<void> } };
+  const { connect } = await import('cloudflare:sockets' as any) as { connect: (addr: { hostname: string; port: number }, opts?: { allowHalfOpen?: boolean }) => { readable: ReadableStream; writable: WritableStream; closed: Promise<void> } };
 
-  const socket = connect({ hostname, port });
+  // allowHalfOpen: keep readable open after writable closes (TCP half-close)
+  const socket = connect({ hostname, port }, { allowHalfOpen: true });
   const writer = socket.writable.getWriter();
   const encoder = new TextEncoder();
 
-  // Build HTTP/1.1 request
+  // Build HTTP/1.0 request (Odoo's Werkzeug returns HTTP/1.0)
   const headers: Record<string, string> = {
     Host: hostname + (port !== 80 && port !== 443 ? `:${port}` : ''),
     Connection: 'close',
     ...init.headers,
   };
-  if (init.body && !headers['Content-Length']) {
-    headers['Content-Length'] = String(encoder.encode(init.body).byteLength);
+  const bodyBytes = init.body ? encoder.encode(init.body) : null;
+  if (bodyBytes && !headers['Content-Length']) {
+    headers['Content-Length'] = String(bodyBytes.byteLength);
   }
 
-  let reqStr = `${method} ${path} HTTP/1.1\r\n`;
+  let reqStr = `${method} ${path} HTTP/1.0\r\n`;
   for (const [k, v] of Object.entries(headers)) {
     reqStr += `${k}: ${v}\r\n`;
   }
   reqStr += '\r\n';
-  if (init.body) reqStr += init.body;
 
+  // Send headers
   await writer.write(encoder.encode(reqStr));
+  // Send body separately if present
+  if (bodyBytes) {
+    await writer.write(bodyBytes);
+  }
+  // Signal we're done writing (TCP half-close sends FIN)
   await writer.close();
 
-  // Read full response
+  // Read full response — server will close connection after sending response
   const reader = socket.readable.getReader();
   const chunks: Uint8Array[] = [];
   for (;;) {
@@ -1063,8 +1070,18 @@ async function tcpFetch(
     if (value) chunks.push(value);
   }
 
+  const combined = concatUint8Arrays(chunks);
+  if (combined.byteLength === 0) {
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => 'TCP: empty response (connection closed without data)',
+      json: async () => ({ error: 'empty response' }),
+    };
+  }
+
   const decoder = new TextDecoder();
-  const raw = decoder.decode(concatUint8Arrays(chunks));
+  const raw = decoder.decode(combined);
 
   // Parse HTTP response
   const headerEnd = raw.indexOf('\r\n\r\n');
@@ -1075,6 +1092,16 @@ async function tcpFetch(
   const statusMatch = statusLine.match(/HTTP\/[\d.]+ (\d+)\s*(.*)/);
   const status = statusMatch ? parseInt(statusMatch[1]) : 0;
   const statusText = statusMatch ? statusMatch[2] : '';
+
+  if (status === 0) {
+    // Failed to parse — return raw response for debugging
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => `TCP: unparseable response (${combined.byteLength} bytes): ${raw.slice(0, 300)}`,
+      json: async () => ({ error: 'unparseable', raw: raw.slice(0, 300) }),
+    };
+  }
 
   const respHeaders: Record<string, string> = {};
   for (const line of headerLines) {
