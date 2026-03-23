@@ -441,13 +441,9 @@ erp.post('/connections/:id/test', async (c) => {
       ? (await decrypt(testConfig.access_token as string, c.env.ENCRYPTION_KEY)) || ''
       : testConfig.access_token as string;
   } else if (credentials.username && credentials.password && credentials.baseUrl) {
-    // Session-based auth (e.g. Odoo): authenticate on-the-fly
-    try {
-      const tokenResp = await adapter.exchangeToken(credentials, '');
-      decryptedToken = tokenResp.access_token;
-    } catch (err) {
-      return c.json({ connected: false, message: `Authentication failed: ${(err as Error).message}` });
-    }
+    // Session-based auth (e.g. Odoo): pass credentials directly to testConnection
+    // which handles its own authentication internally — no need to call exchangeToken first
+    decryptedToken = '';
   } else {
     return c.json({ connected: false, message: 'No access token or credentials configured. Complete OAuth flow or provide credentials.' });
   }

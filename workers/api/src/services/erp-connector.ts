@@ -1018,7 +1018,10 @@ const odooAdapter: ERPAdapter = {
         },
       }),
     });
-    if (!resp.ok) throw new Error(`Odoo auth failed: ${resp.status}`);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`Odoo auth failed: HTTP ${resp.status} — ${body.slice(0, 200) || 'no response body'}`);
+    }
     const data = await resp.json() as {
       result?: number | false; error?: { message: string; data?: { message: string } }
     };
@@ -1044,7 +1047,8 @@ const odooAdapter: ERPAdapter = {
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
       });
       if (!versionResp.ok) {
-        return { connected: false, message: `Connection failed: HTTP ${versionResp.status}` };
+        const body = await versionResp.text().catch(() => '');
+        return { connected: false, message: `Connection failed: HTTP ${versionResp.status} — ${body.slice(0, 200) || 'no response body'}` };
       }
       const versionData = await versionResp.json() as { result?: { server_version?: string } };
       const version = versionData.result?.server_version || 'unknown';
@@ -1062,7 +1066,8 @@ const odooAdapter: ERPAdapter = {
         }),
       });
       if (!authResp.ok) {
-        return { connected: false, message: `Auth check failed: HTTP ${authResp.status}` };
+        const body = await authResp.text().catch(() => '');
+        return { connected: false, message: `Auth check failed: HTTP ${authResp.status} — ${body.slice(0, 200) || 'no response body'}` };
       }
       const authData = await authResp.json() as {
         result?: number | false; error?: { message: string; data?: { message: string } }
