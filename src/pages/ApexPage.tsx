@@ -112,7 +112,7 @@ export function ApexPage() {
  : [];
 
  // Detect if tenant has any real data
- const hasData = !!(health?.overall) || risks.length > 0 || !!briefing || scenarios.length > 0;
+ const hasData = !!(health?.calculatedAt) || risks.length > 0 || !!briefing || scenarios.length > 0;
 
  const tabs = [
  { id: 'health', label: 'Business Health', icon: <Crown size={14} /> },
