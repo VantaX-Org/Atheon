@@ -306,9 +306,13 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
       { id: 'erp-odoo', name: 'Odoo ERP', system: 'Odoo', version: '18.0', protocol: 'JSON-RPC/REST', operations: '["JSON-RPC 2.0","REST API v2","XML-RPC","ORM API"]', auth_methods: '["OAuth 2.0","API Key","Session Auth"]' },
     ];
     for (const a of adapters) {
-      await db.prepare(
-        "INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, 'available', ?, ?)"
-      ).bind(a.id, a.name, a.system, a.version, a.protocol, a.operations, a.auth_methods).run();
+      try {
+        await db.prepare(
+          "INSERT OR IGNORE INTO erp_adapters (id, name, system, version, protocol, status, operations, auth_methods) VALUES (?, ?, ?, ?, ?, 'available', ?, ?)"
+        ).bind(a.id, a.name, a.system, a.version, a.protocol, a.operations, a.auth_methods).run();
+      } catch (err) {
+        result.errors.push(`Seed ERP adapter ${a.id}: ${(err as Error).message}`);
+      }
     }
   } catch (err) {
     result.errors.push(`Seed ERP adapters: ${(err as Error).message}`);
