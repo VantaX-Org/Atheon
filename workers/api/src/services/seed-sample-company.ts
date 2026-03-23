@@ -15,6 +15,12 @@ export async function seedSampleCompany(db: D1Database) {
   const existing = await db.prepare('SELECT id FROM tenants WHERE id = ?').bind('protea').first();
   if (existing) return;
 
+  // Don't re-seed if the tenant was intentionally deleted
+  try {
+    const wasDeleted = await db.prepare('SELECT tenant_id FROM deleted_tenants WHERE tenant_id = ?').bind('protea').first();
+    if (wasDeleted) return;
+  } catch { /* table may not exist yet — continue with seeding */ }
+
   // ── Tenant ──
   await db.prepare(
     'INSERT INTO tenants (id, name, slug, industry, plan, status, deployment_model, region) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
