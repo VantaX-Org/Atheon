@@ -193,28 +193,45 @@ async function recalculateHealthScore(db: D1Database, tenantId: string): Promise
   const totalMetrics = (metricMap['green'] || 0) + (metricMap['amber'] || 0) + (metricMap['red'] || 0);
   const operationalScore = totalMetrics > 0
     ? Math.round(((metricMap['green'] || 0) * 100 + (metricMap['amber'] || 0) * 50) / totalMetrics)
-    : 0;
+    : null;
 
   const riskMap: Record<string, number> = {};
   for (const r of risks.results) {
     riskMap[r.severity as string] = r.count as number;
   }
   const riskPenalty = (riskMap['critical'] || 0) * 20 + (riskMap['high'] || 0) * 10 + (riskMap['medium'] || 0) * 5 + (riskMap['low'] || 0) * 2;
-  const riskScore = Math.max(0, 100 - riskPenalty);
+  const riskScore = hasRisks ? Math.max(0, 100 - riskPenalty) : null;
 
-  const catalystScore = catalysts?.avg_success ?? 0;
+  const catalystScore = (catalysts?.avg_success != null && hasActiveCatalysts) ? (catalysts.avg_success as number) : null;
   const anomalyPenalty = (anomalies?.count || 0) * 5;
-  const processScore = Math.max(0, 100 - anomalyPenalty);
+  const processScore = hasAnomalies ? Math.max(0, 100 - anomalyPenalty) : null;
 
-  // Weighted composite
-  const overall = Math.round(operationalScore * 0.3 + riskScore * 0.25 + catalystScore * 0.25 + processScore * 0.2);
+  // Weighted composite — only include dimensions that have actual data,
+  // normalizing weights so they sum to 1.0. This avoids penalizing tenants
+  // with partial data (e.g. only risks exist → score based solely on risk dimension).
+  const dimensionWeights: Array<{ score: number; weight: number }> = [];
+  if (operationalScore != null) dimensionWeights.push({ score: operationalScore, weight: 0.3 });
+  if (riskScore != null) dimensionWeights.push({ score: riskScore, weight: 0.25 });
+  if (catalystScore != null) dimensionWeights.push({ score: catalystScore, weight: 0.25 });
+  if (processScore != null) dimensionWeights.push({ score: processScore, weight: 0.2 });
+  const totalWeight = dimensionWeights.reduce((sum, d) => sum + d.weight, 0);
+  const overall = totalWeight > 0
+    ? Math.round(dimensionWeights.reduce((sum, d) => sum + d.score * (d.weight / totalWeight), 0))
+    : 0;
 
-  const dimensions = {
-    operational: { score: operationalScore, trend: operationalScore >= 70 ? 'improving' : 'declining' },
-    risk: { score: riskScore, trend: riskScore >= 70 ? 'stable' : 'declining' },
-    catalyst: { score: Math.round(catalystScore), trend: catalystScore >= 70 ? 'improving' : 'stable' },
-    process: { score: processScore, trend: processScore >= 80 ? 'stable' : 'declining' },
-  };
+  const dimensions: Record<string, { score: number; trend: string }> = {};
+  if (operationalScore != null) {
+    dimensions.operational = { score: operationalScore, trend: operationalScore >= 70 ? 'improving' : 'declining' };
+  }
+  if (riskScore != null) {
+    dimensions.risk = { score: riskScore, trend: riskScore >= 70 ? 'stable' : 'declining' };
+  }
+  if (catalystScore != null) {
+    dimensions.catalyst = { score: Math.round(catalystScore), trend: catalystScore >= 70 ? 'improving' : 'stable' };
+  }
+  if (processScore != null) {
+    dimensions.process = { score: processScore, trend: processScore >= 80 ? 'stable' : 'declining' };
+  }
 
   await db.prepare(
     'INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at) VALUES (?, ?, ?, ?, datetime(\'now\'))'
