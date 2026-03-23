@@ -992,6 +992,236 @@ const quickbooksAdapter: ERPAdapter = {
   },
 };
 
+// ── TCP-based HTTP fetch for raw IP addresses ──
+// Cloudflare Workers fetch() cannot reach raw IP addresses (error 1003).
+// This helper uses the Workers TCP socket API (connect from cloudflare:sockets)
+// to send a plain HTTP/1.1 request over a TCP connection, bypassing the CDN.
+const IP_REGEX = /^(\d{1,3}\.){3}\d{1,3}$/;
+
+function isRawIpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return IP_REGEX.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+interface TcpFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
+async function tcpFetch(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<TcpFetchResponse> {
+  const parsed = new URL(url);
+  const hostname = parsed.hostname;
+  const port = parseInt(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+  const path = parsed.pathname + parsed.search;
+  const method = init.method || 'GET';
+  const useTls = parsed.protocol === 'https:';
+
+  // Dynamically import cloudflare:sockets — only available in Workers runtime
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { connect } = await import('cloudflare:sockets' as any) as {
+    connect: (
+      addr: { hostname: string; port: number },
+      opts?: { secureTransport?: string; allowHalfOpen?: boolean },
+    ) => {
+      readable: ReadableStream;
+      writable: WritableStream;
+      opened: Promise<{ remoteAddress: string | null; localAddress: string | null }>;
+      closed: Promise<void>;
+    }
+  };
+
+  const socket = connect(
+    { hostname, port },
+    useTls ? { secureTransport: 'on' } : undefined,
+  );
+
+  // Wait for the TCP connection to be established
+  try {
+    await socket.opened;
+  } catch (err) {
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => `TCP connect failed: ${err}`,
+      json: async () => ({ error: `connect failed: ${err}` }),
+    };
+  }
+
+  const writer = socket.writable.getWriter();
+  const encoder = new TextEncoder();
+
+  // Build HTTP/1.0 request (Odoo's Werkzeug returns HTTP/1.0)
+  const headers: Record<string, string> = {
+    Host: hostname + (port !== 80 && port !== 443 ? `:${port}` : ''),
+    Connection: 'close',
+    ...init.headers,
+  };
+  const bodyBytes = init.body ? encoder.encode(init.body) : null;
+  if (bodyBytes && !headers['Content-Length']) {
+    headers['Content-Length'] = String(bodyBytes.byteLength);
+  }
+
+  let reqStr = `${method} ${path} HTTP/1.0\r\n`;
+  for (const [k, v] of Object.entries(headers)) {
+    reqStr += `${k}: ${v}\r\n`;
+  }
+  reqStr += '\r\n';
+
+  // Send full request (headers + body) in one write
+  const fullReq = bodyBytes
+    ? concatUint8Arrays([encoder.encode(reqStr), bodyBytes])
+    : encoder.encode(reqStr);
+  await writer.write(fullReq);
+  // Do NOT call writer.close() — Cloudflare Workers TCP sockets close both
+  // sides despite allowHalfOpen. Instead, release the lock and let the server
+  // close the connection after sending its response (Connection: close header).
+  writer.releaseLock();
+
+  // Read full response — server closes connection after responding
+  const reader = socket.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+  } catch (readErr) {
+    // If we got some data before the error, try to use it
+    if (chunks.length === 0) {
+      return {
+        ok: false, status: 0, statusText: '',
+        headers: {},
+        text: async () => `TCP read error: ${readErr}`,
+        json: async () => ({ error: `read error: ${readErr}` }),
+      };
+    }
+  }
+
+  const combined = concatUint8Arrays(chunks);
+  if (combined.byteLength === 0) {
+    // Try to get close reason
+    let closeErr = '';
+    try { await socket.closed; } catch (e) { closeErr = String(e); }
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => `TCP: empty response (0 bytes received)${closeErr ? '. Close error: ' + closeErr : ''}`,
+      json: async () => ({ error: 'empty response', closeError: closeErr }),
+    };
+  }
+
+  const decoder = new TextDecoder();
+  const raw = decoder.decode(combined);
+
+  // Parse HTTP response
+  const headerEnd = raw.indexOf('\r\n\r\n');
+  const headerSection = headerEnd >= 0 ? raw.slice(0, headerEnd) : raw;
+  const bodyRaw = headerEnd >= 0 ? raw.slice(headerEnd + 4) : '';
+
+  const [statusLine, ...headerLines] = headerSection.split('\r\n');
+  const statusMatch = statusLine.match(/HTTP\/[\d.]+ (\d+)\s*(.*)/);
+  const status = statusMatch ? parseInt(statusMatch[1]) : 0;
+  const statusText = statusMatch ? statusMatch[2] : '';
+
+  if (status === 0) {
+    return {
+      ok: false, status: 0, statusText: '',
+      headers: {},
+      text: async () => `TCP: unparseable response (${combined.byteLength} bytes): ${raw.slice(0, 500)}`,
+      json: async () => ({ error: 'unparseable', raw: raw.slice(0, 500) }),
+    };
+  }
+
+  const respHeaders: Record<string, string> = {};
+  for (const line of headerLines) {
+    const idx = line.indexOf(':');
+    if (idx > 0) {
+      respHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+    }
+  }
+
+  // Handle chunked transfer encoding
+  let bodyText = bodyRaw;
+  if (respHeaders['transfer-encoding']?.includes('chunked')) {
+    bodyText = decodeChunked(bodyRaw);
+  }
+
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    headers: respHeaders,
+    text: async () => bodyText,
+    json: async () => JSON.parse(bodyText),
+  };
+}
+
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((sum, a) => sum + a.byteLength, 0);
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.byteLength;
+  }
+  return result;
+}
+
+function decodeChunked(raw: string): string {
+  let result = '';
+  let pos = 0;
+  while (pos < raw.length) {
+    const lineEnd = raw.indexOf('\r\n', pos);
+    if (lineEnd < 0) break;
+    const sizeStr = raw.slice(pos, lineEnd).trim();
+    const size = parseInt(sizeStr, 16);
+    if (isNaN(size) || size === 0) break;
+    pos = lineEnd + 2;
+    result += raw.slice(pos, pos + size);
+    pos += size + 2; // skip chunk data + \r\n
+  }
+  return result;
+}
+
+/** Fetch wrapper that uses TCP sockets for raw IP URLs (CF Workers limitation) */
+async function cfFetch(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<TcpFetchResponse> {
+  if (isRawIpUrl(url)) {
+    return tcpFetch(url, init);
+  }
+  // For domain-based URLs, use the standard fetch API
+  const resp = await fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    body: init.body,
+  });
+  const respText = await resp.text();
+  const respHeaders: Record<string, string> = {};
+  resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+  return {
+    ok: resp.ok,
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: respHeaders,
+    text: async () => respText,
+    json: async () => JSON.parse(respText),
+  };
+}
+
 // ── Odoo Adapter (Odoo 18 — JSON-RPC via /jsonrpc endpoint) ──
 // Uses /jsonrpc which does NOT require session cookies, unlike /web/dataset/call_kw.
 // Auth: service "common" → authenticate returns uid
@@ -1007,7 +1237,8 @@ const odooAdapter: ERPAdapter = {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     // Authenticate via /jsonrpc "common" service (no session cookie needed)
-    const resp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
+    // Uses cfFetch to support raw IP addresses (CF Workers error 1003 workaround)
+    const resp = await cfFetch(`${credentials.baseUrl}/jsonrpc`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1041,7 +1272,8 @@ const odooAdapter: ERPAdapter = {
   async testConnection(credentials: ERPCredentials, _token: string) {
     try {
       // Step 1: Check server reachability via version_info
-      const versionResp = await fetch(`${credentials.baseUrl}/web/webclient/version_info`, {
+      // Uses cfFetch to support raw IP addresses (CF Workers error 1003 workaround)
+      const versionResp = await cfFetch(`${credentials.baseUrl}/web/webclient/version_info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
@@ -1054,7 +1286,7 @@ const odooAdapter: ERPAdapter = {
       const version = versionData.result?.server_version || 'unknown';
 
       // Step 2: Verify auth credentials via /jsonrpc common.authenticate
-      const authResp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
+      const authResp = await cfFetch(`${credentials.baseUrl}/jsonrpc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1152,7 +1384,8 @@ const odooAdapter: ERPAdapter = {
       }
       try {
         // Use /jsonrpc with execute_kw (no session cookie needed)
-        const resp = await fetch(`${credentials.baseUrl}/jsonrpc`, {
+        // Uses cfFetch to support raw IP addresses (CF Workers error 1003 workaround)
+        const resp = await cfFetch(`${credentials.baseUrl}/jsonrpc`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
