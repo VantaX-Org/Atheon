@@ -171,6 +171,8 @@ erp.get('/connections', async (c) => {
     if (safeConfig.client_secret) safeConfig.client_secret = '***';
     if (safeConfig.access_token) safeConfig.access_token = '***';
     if (safeConfig.refresh_token) safeConfig.refresh_token = '***';
+    if (safeConfig.password) safeConfig.password = '***';
+    if (safeConfig.api_key) safeConfig.api_key = '***';
 
     return {
       id: conn.id,
