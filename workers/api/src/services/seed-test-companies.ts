@@ -26,7 +26,7 @@ export async function seedTestCompanies(db: D1Database) {
 
   // Don't re-seed if any test tenant was intentionally deleted
   try {
-    const wasDeleted = await db.prepare("SELECT tenant_id FROM deleted_tenants WHERE tenant_id IN ('highveld','greenleaf','medibridge','bluepeak','novatech','kapstadt')").first();
+    const wasDeleted = await db.prepare("SELECT tenant_id FROM deleted_tenants WHERE tenant_id IN ('highveld','greenleaf','medibridge','bluepeak','novatech','protea','kapstadt')").first();
     if (wasDeleted) return;
   } catch { /* table may not exist yet — continue with seeding */ }
 
