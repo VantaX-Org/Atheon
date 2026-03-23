@@ -6,13 +6,14 @@ import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary } from "@/lib/api";
+import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import {
   Activity, AlertTriangle, GitBranch, Link2, ArrowRight, Loader2,
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
-  BarChart3, Gauge, Search, Filter, AlertCircle, Workflow
+  BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
+  UserCheck, FileWarning, RefreshCw, List
 } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
 
@@ -223,6 +224,14 @@ export function PulsePage() {
   const [anomalyFilter, setAnomalyFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
   const [metricSearch, setMetricSearch] = useState('');
 
+  // Catalyst runs state
+  const [catalystRuns, setCatalystRuns] = useState<CatalystRunItem[]>([]);
+  const [catalystSummary, setCatalystSummary] = useState<CatalystRunSummary[]>([]);
+  const [catalystFilter, setCatalystFilter] = useState<string>('all');
+  const [expandedRun, setExpandedRun] = useState<string | null>(null);
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -284,11 +293,52 @@ export function PulsePage() {
   const filteredAnomalies = anomalies
     .filter(a => anomalyFilter === 'all' || a.severity === anomalyFilter);
 
+  // Load catalyst runs when tab is selected
+  useEffect(() => {
+    if (activeTab !== 'catalyst-runs') return;
+    async function loadRuns() {
+      setRunsLoading(true);
+      try {
+        const filterParam = catalystFilter !== 'all' ? catalystFilter : undefined;
+        const data = await api.pulse.catalystRuns(undefined, filterParam);
+        setCatalystRuns(data.runs);
+        setCatalystSummary(data.summary);
+      } catch { /* failed */ }
+      setRunsLoading(false);
+    }
+    loadRuns();
+  }, [activeTab, catalystFilter]);
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await api.pulse.refresh();
+      const ind = industry !== 'general' ? industry : undefined;
+      const [newP, newM, newS] = await Promise.allSettled([
+        api.pulse.processes(undefined, ind),
+        api.pulse.metrics(undefined, ind),
+        api.pulse.summary(undefined, ind),
+      ]);
+      if (newP.status === 'fulfilled') setProcesses(newP.value.processes);
+      if (newM.status === 'fulfilled') setMetrics(newM.value.metrics);
+      if (newS.status === 'fulfilled') setSummary(newS.value);
+      // Also refresh catalyst runs if on that tab
+      if (activeTab === 'catalyst-runs') {
+        const filterParam = catalystFilter !== 'all' ? catalystFilter : undefined;
+        const data = await api.pulse.catalystRuns(undefined, filterParam);
+        setCatalystRuns(data.runs);
+        setCatalystSummary(data.summary);
+      }
+    } catch { /* failed */ }
+    setRefreshing(false);
+  };
+
   const tabs = [
     { id: 'dashboard', label: 'Operations Dashboard', icon: <Gauge size={14} /> },
     { id: 'monitoring', label: 'Live Monitoring', icon: <Activity size={14} />, count: metrics.length || undefined },
     { id: 'anomalies', label: 'Anomaly Detection', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
     { id: 'processes', label: 'Process Mining', icon: <GitBranch size={14} /> },
+    { id: 'catalyst-runs', label: 'Catalyst Runs', icon: <Play size={14} />, count: catalystSummary.reduce((s, c) => s + (c.exceptions || 0), 0) || undefined },
     { id: 'correlations', label: 'Cross-System Correlations', icon: <Link2 size={14} /> },
   ];
 
@@ -317,7 +367,19 @@ export function PulsePage() {
         <p className="text-sm t-muted mt-1">Process Intelligence — real-time operational monitoring, anomaly detection & process mining</p>
       </div>
 
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <div className="flex items-center gap-3">
+        <div className="flex-1 overflow-x-auto">
+          <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
+        <button
+          onClick={handleManualRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-all disabled:opacity-50 flex-shrink-0"
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Refreshing...' : 'Refresh Mining'}
+        </button>
+      </div>
 
       {/* ══════════════════════════════════════════════════════
           TAB 1: Operations Dashboard
@@ -1272,6 +1334,355 @@ export function PulsePage() {
           </div>
         </TabPanel>
       )}
+      {/* ══════════════════════════════════════════════════════
+          TAB 6: Catalyst Runs — Transaction-Level Reporting
+          ══════════════════════════════════════════════════════ */}
+      {activeTab === 'catalyst-runs' && (
+        <TabPanel>
+          {/* Summary Cards */}
+          {catalystSummary.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <Card variant="black">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                    <Play className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold t-primary">{catalystSummary.reduce((s, c) => s + (c.totalRuns as number || 0), 0)}</p>
+                    <p className="text-xs t-muted">Total Runs</p>
+                  </div>
+                </div>
+              </Card>
+              <Card variant="black">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-emerald-400">{catalystSummary.reduce((s, c) => s + (c.completed as number || 0), 0)}</p>
+                    <p className="text-xs t-muted">Completed</p>
+                  </div>
+                </div>
+              </Card>
+              <Card variant="black">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                    <FileWarning className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-red-400">{catalystSummary.reduce((s, c) => s + (c.exceptions as number || 0), 0)}</p>
+                    <p className="text-xs t-muted">Exceptions</p>
+                  </div>
+                </div>
+              </Card>
+              <Card variant="black">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <UserCheck className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-amber-400">{catalystSummary.reduce((s, c) => s + (c.pending as number || 0), 0)}</p>
+                    <p className="text-xs t-muted">Pending Review</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Per-Catalyst Summary Table */}
+          {catalystSummary.length > 0 && (
+            <Card variant="black" className="mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-semibold t-primary">Catalyst Performance Summary</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border-card)]">
+                      <th className="text-left py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Catalyst</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Total</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Completed</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Exceptions</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Pending</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Avg Confidence</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold t-muted uppercase tracking-wider">Success Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catalystSummary.map((cat) => (
+                      <tr
+                        key={cat.catalystName}
+                        className="border-b border-[var(--border-card)] hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                        onClick={() => setCatalystFilter(catalystFilter === cat.catalystName ? 'all' : cat.catalystName)}
+                      >
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${cat.successRate >= 80 ? 'bg-emerald-400' : cat.successRate >= 60 ? 'bg-amber-400' : 'bg-red-400'}`} />
+                            <span className={`font-medium ${catalystFilter === cat.catalystName ? 'text-accent' : 't-primary'}`}>{cat.catalystName}</span>
+                          </div>
+                        </td>
+                        <td className="text-center py-2.5 px-3 t-secondary">{cat.totalRuns}</td>
+                        <td className="text-center py-2.5 px-3 text-emerald-400">{cat.completed}</td>
+                        <td className="text-center py-2.5 px-3 text-red-400">{cat.exceptions}</td>
+                        <td className="text-center py-2.5 px-3 text-amber-400">{cat.pending}</td>
+                        <td className="text-center py-2.5 px-3">
+                          <span className={`font-medium ${cat.avgConfidence >= 0.8 ? 'text-emerald-400' : cat.avgConfidence >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+                            {(cat.avgConfidence * 100).toFixed(0)}%
+                          </span>
+                        </td>
+                        <td className="text-center py-2.5 px-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-16 h-1.5 rounded-full overflow-hidden bg-[var(--bg-card-solid)]">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${cat.successRate}%`,
+                                  background: cat.successRate >= 80 ? '#10b981' : cat.successRate >= 60 ? '#f59e0b' : '#ef4444',
+                                }}
+                              />
+                            </div>
+                            <span className={`text-xs font-medium ${cat.successRate >= 80 ? 'text-emerald-400' : cat.successRate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                              {cat.successRate}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Filter Bar */}
+          <div className="flex items-center gap-2 mb-4">
+            <Filter size={14} className="text-gray-400" />
+            <button
+              onClick={() => setCatalystFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                catalystFilter === 'all'
+                  ? 'bg-accent/20 text-accent border border-accent/30'
+                  : 'bg-[var(--bg-secondary)] border border-[var(--border-card)] t-muted hover:border-gray-400'
+              }`}
+            >
+              All Catalysts
+            </button>
+            {catalystSummary.map(cat => (
+              <button
+                key={cat.catalystName}
+                onClick={() => setCatalystFilter(catalystFilter === cat.catalystName ? 'all' : cat.catalystName)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  catalystFilter === cat.catalystName
+                    ? 'bg-accent/20 text-accent border border-accent/30'
+                    : 'bg-[var(--bg-secondary)] border border-[var(--border-card)] t-muted hover:border-gray-400'
+                }`}
+              >
+                {cat.catalystName}
+              </button>
+            ))}
+            <span className="text-xs t-muted ml-auto">
+              {catalystRuns.length} run{catalystRuns.length !== 1 ? 's' : ''}
+              {catalystFilter !== 'all' && ` for ${catalystFilter}`}
+            </span>
+          </div>
+
+          {/* Run List */}
+          {runsLoading ? (
+            <div className="flex items-center justify-center h-48">
+              <Loader2 className="w-8 h-8 text-accent animate-spin" />
+            </div>
+          ) : catalystRuns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <List className="w-10 h-10 t-muted mb-3 opacity-30" />
+              <p className="text-sm t-muted">No catalyst runs found{catalystFilter !== 'all' ? ` for ${catalystFilter}` : ''}.</p>
+              <p className="text-xs t-muted mt-1">Execute a catalyst to generate run data.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {catalystRuns.map((run) => {
+                const isExpanded = expandedRun === run.id;
+                const statusColors: Record<string, string> = {
+                  completed: 'text-emerald-400 bg-emerald-500/10',
+                  exception: 'text-red-400 bg-red-500/10',
+                  pending: 'text-amber-400 bg-amber-500/10',
+                  running: 'text-blue-400 bg-blue-500/10',
+                };
+                const statusIcons: Record<string, typeof CheckCircle2> = {
+                  completed: CheckCircle2,
+                  exception: XCircle,
+                  pending: Clock,
+                  running: Activity,
+                };
+                const StatusIcon = statusIcons[run.status] || AlertCircle;
+                const colorClass = statusColors[run.status] || 'text-gray-400 bg-gray-500/10';
+
+                return (
+                  <Card
+                    key={run.id}
+                    hover
+                    onClick={() => setExpandedRun(isExpanded ? null : run.id)}
+                    className={isExpanded ? 'border-accent/20' : ''}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass.split(' ')[1]}`}>
+                        <StatusIcon className={`w-5 h-5 ${colorClass.split(' ')[0]}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="text-base font-semibold t-primary">{run.catalystName}</h3>
+                            <p className="text-xs t-muted mt-0.5">{run.action}</p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge variant={run.status === 'completed' ? 'success' : run.status === 'exception' ? 'danger' : 'warning'}>
+                              {run.status}
+                            </Badge>
+                            {run.needsHumanReview && (
+                              <Badge variant="warning">
+                                <UserCheck size={10} className="mr-1" />
+                                HITL
+                              </Badge>
+                            )}
+                            <span className={`text-xs font-medium ${run.confidence >= 0.8 ? 'text-emerald-400' : run.confidence >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+                              {(run.confidence * 100).toFixed(0)}%
+                            </span>
+                            {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                          </div>
+                        </div>
+
+                        {/* Quick Stats Row */}
+                        <div className="flex items-center gap-4 mt-2 text-xs t-muted">
+                          <span className="flex items-center gap-1">
+                            <Clock size={10} />
+                            {new Date(run.createdAt).toLocaleString()}
+                          </span>
+                          {run.completedAt && (
+                            <span className="flex items-center gap-1">
+                              <Zap size={10} />
+                              {Math.round((new Date(run.completedAt).getTime() - new Date(run.createdAt).getTime()) / 1000)}s
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Expanded Details */}
+                        {isExpanded && (
+                          <div className="mt-4 space-y-4 animate-fadeIn">
+                            {/* Run Details Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <span className="text-[10px] t-muted uppercase tracking-wider">Status</span>
+                                <p className={`text-lg font-bold mt-0.5 capitalize ${colorClass.split(' ')[0]}`}>{run.status}</p>
+                              </div>
+                              <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <span className="text-[10px] t-muted uppercase tracking-wider">Confidence</span>
+                                <p className={`text-lg font-bold mt-0.5 ${run.confidence >= 0.8 ? 'text-emerald-400' : run.confidence >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+                                  {(run.confidence * 100).toFixed(0)}%
+                                </p>
+                              </div>
+                              <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <span className="text-[10px] t-muted uppercase tracking-wider">Duration</span>
+                                <p className="text-lg font-bold t-primary mt-0.5">
+                                  {run.completedAt
+                                    ? `${Math.round((new Date(run.completedAt).getTime() - new Date(run.createdAt).getTime()) / 1000)}s`
+                                    : 'In progress'}
+                                </p>
+                              </div>
+                              <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <span className="text-[10px] t-muted uppercase tracking-wider">Review</span>
+                                <p className={`text-lg font-bold mt-0.5 ${run.needsHumanReview ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  {run.needsHumanReview ? 'Required' : 'Auto'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Confidence Gauge */}
+                            <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                              <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Decision Confidence</h5>
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 h-3 rounded-full overflow-hidden" style={{ background: 'var(--bg-card-solid)' }}>
+                                  <div className="h-full rounded-full transition-all duration-700" style={{
+                                    width: `${run.confidence * 100}%`,
+                                    background: run.confidence >= 0.8 ? 'linear-gradient(90deg, #10b981, #059669)' : run.confidence >= 0.6 ? 'linear-gradient(90deg, #f59e0b, #d97706)' : 'linear-gradient(90deg, #ef4444, #dc2626)',
+                                  }} />
+                                </div>
+                                <span className="text-xs font-bold t-primary w-10 text-right">{(run.confidence * 100).toFixed(0)}%</span>
+                              </div>
+                            </div>
+
+                            {/* Input Data */}
+                            {run.inputData && Object.keys(run.inputData).length > 0 && (
+                              <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <ArrowRight className="w-4 h-4 text-accent" />
+                                  <h4 className="text-sm font-semibold t-primary">Input Data</h4>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {Object.entries(run.inputData).slice(0, 10).map(([key, value]) => (
+                                    <div key={key} className="flex items-start gap-2 p-2 rounded bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+                                      <span className="text-[10px] t-muted uppercase tracking-wider min-w-[80px]">{key}</span>
+                                      <span className="text-xs t-secondary break-all">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Output Data / Results */}
+                            {run.outputData && Object.keys(run.outputData).length > 0 && (
+                              <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Target className="w-4 h-4 text-accent" />
+                                  <h4 className="text-sm font-semibold t-primary">Output / Results</h4>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {Object.entries(run.outputData).slice(0, 10).map(([key, value]) => (
+                                    <div key={key} className="flex items-start gap-2 p-2 rounded bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+                                      <span className="text-[10px] t-muted uppercase tracking-wider min-w-[80px]">{key}</span>
+                                      <span className="text-xs t-secondary break-all">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Reasoning */}
+                            {run.reasoning && (
+                              <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Lightbulb className="w-4 h-4 text-accent" />
+                                  <h4 className="text-sm font-semibold t-primary">AI Reasoning</h4>
+                                </div>
+                                <p className="text-sm t-muted leading-relaxed">{run.reasoning}</p>
+                              </div>
+                            )}
+
+                            {/* Approval Info */}
+                            {run.approvedBy && (
+                              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                                <UserCheck className="w-4 h-4 text-emerald-400" />
+                                <span className="text-sm text-emerald-400">Approved by: <span className="font-medium">{run.approvedBy}</span></span>
+                              </div>
+                            )}
+
+                            {/* Footer */}
+                            <div className="flex items-center gap-4 text-[10px] t-muted">
+                              <span>Created: {new Date(run.createdAt).toLocaleString()}</span>
+                              {run.completedAt && <span>Completed: {new Date(run.completedAt).toLocaleString()}</span>}
+                              <span className="font-mono">{run.id.substring(0, 8)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabPanel>
+      )}
+
     </div>
   );
 }
