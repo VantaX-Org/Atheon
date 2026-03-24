@@ -7,12 +7,12 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { HealthScore, Briefing, Risk, ScenarioItem } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
- Plus, ChevronRight, ChevronLeft, Trash2
+ Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight
 } from "lucide-react";
 
 
@@ -37,6 +37,8 @@ export function ApexPage() {
  const [loading, setLoading] = useState(true);
  const [creatingScenario, setCreatingScenario] = useState(false);
  const [actionError, setActionError] = useState<string | null>(null);
+ // A1-4: Health history for sparkline + delta
+ const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
 
  // Scenario Builder Modal state
  const [showScenarioBuilder, setShowScenarioBuilder] = useState(false);
@@ -90,13 +92,14 @@ export function ApexPage() {
  useEffect(() => {
  async function load() {
  setLoading(true);
- const [h, b, r, s] = await Promise.allSettled([
- api.apex.health(), api.apex.briefing(), api.apex.risks(), api.apex.scenarios(),
+ const [h, b, r, s, hh] = await Promise.allSettled([
+ api.apex.health(), api.apex.briefing(), api.apex.risks(), api.apex.scenarios(), api.apex.healthHistory(),
  ]);
  if (h.status === 'fulfilled') setHealth(h.value);
  if (b.status === 'fulfilled') setBriefing(b.value);
  if (r.status === 'fulfilled') setRisks(r.value.risks);
  if (s.status === 'fulfilled') setScenarios(s.value.scenarios);
+ if (hh.status === 'fulfilled') setHealthHistory(hh.value);
  setLoading(false);
  }
  load();
@@ -171,10 +174,15 @@ export function ApexPage() {
  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
  <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
  <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
- {health?.calculatedAt && (
- <div className="flex items-center gap-2 mt-4">
- {trendIcon('up')}
- <span className="text-sm text-emerald-400">+2.3 points (7d)</span>
+ {health?.calculatedAt && healthHistory && (
+ <div className="flex flex-col items-center gap-2 mt-4">
+ {healthHistory.history.length > 1 && (
+ <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
+ )}
+ <div className="flex items-center gap-2">
+ {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
+ <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
+ </div>
  </div>
  )}
  {!health?.calculatedAt && overallScore === 0 && (
@@ -233,7 +241,40 @@ export function ApexPage() {
  <Badge variant="info">Today</Badge>
  </div>
  {briefing?.summary ? (
+ <>
  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{briefing.summary}</p>
+ {/* A2: Data-driven briefing summary cards */}
+ {(briefing.healthDelta !== null || briefing.redMetricCount !== null || briefing.anomalyCount !== null || briefing.activeRiskCount !== null) && (
+ <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+ {briefing.healthDelta !== null && (
+ <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <span className="text-[10px] t-muted uppercase tracking-wider">Health Delta</span>
+ <p className={`text-lg font-bold mt-0.5 ${(briefing.healthDelta ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+ {(briefing.healthDelta ?? 0) > 0 ? '+' : ''}{briefing.healthDelta} pts
+ </p>
+ </div>
+ )}
+ {briefing.redMetricCount !== null && (
+ <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <span className="text-[10px] t-muted uppercase tracking-wider">RED Metrics</span>
+ <p className={`text-lg font-bold mt-0.5 ${(briefing.redMetricCount ?? 0) > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{briefing.redMetricCount}</p>
+ </div>
+ )}
+ {briefing.anomalyCount !== null && (
+ <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <span className="text-[10px] t-muted uppercase tracking-wider">Anomalies</span>
+ <p className={`text-lg font-bold mt-0.5 ${(briefing.anomalyCount ?? 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>{briefing.anomalyCount}</p>
+ </div>
+ )}
+ {briefing.activeRiskCount !== null && (
+ <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <span className="text-[10px] t-muted uppercase tracking-wider">Active Risks</span>
+ <p className={`text-lg font-bold mt-0.5 ${(briefing.activeRiskCount ?? 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>{briefing.activeRiskCount}</p>
+ </div>
+ )}
+ </div>
+ )}
+ </>
  ) : (
  <div className="flex flex-col items-center justify-center py-8 text-center">
  <FileText className="w-10 h-10 t-muted mb-3 opacity-30" />
@@ -436,6 +477,21 @@ export function ApexPage() {
  ))}
  </div>
  </div>
+
+ {/* A4-3: Source Attribution — drill-through link */}
+ {risk.subCatalystName && risk.clusterId && (
+ <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+ <button
+ onClick={(e) => { e.stopPropagation(); window.location.href = `/catalysts?cluster=${risk.clusterId}&sub=${encodeURIComponent(risk.subCatalystName!)}&ops=1`; }}
+ className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 transition-colors"
+ >
+ <Link2 size={12} />
+ <span>Source: <span className="font-medium">{risk.subCatalystName}</span></span>
+ {risk.sourceRunId && <span className="t-muted">· Run {risk.sourceRunId.slice(0, 8)}</span>}
+ <ArrowRight size={10} />
+ </button>
+ </div>
+ )}
 
  {/* Status Footer */}
  <div className="flex items-center justify-between pt-2">

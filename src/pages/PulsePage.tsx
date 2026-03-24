@@ -674,6 +674,21 @@ export function PulsePage() {
                           {metric.sourceSystem && <span>Source: {metric.sourceSystem}</span>}
                           {metric.measuredAt && <span>Last measured: {new Date(metric.measuredAt).toLocaleString()}</span>}
                         </div>
+
+                        {/* P1-3 / A4-2: Source Attribution — clickable link to CatalystsPage ops panel */}
+                        {metric.subCatalystName && metric.clusterId && (
+                          <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); window.location.href = `/catalysts?cluster=${metric.clusterId}&sub=${encodeURIComponent(metric.subCatalystName!)}&ops=1`; }}
+                              className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 transition-colors"
+                            >
+                              <Link2 size={12} />
+                              <span>Source: <span className="font-medium">{metric.subCatalystName}</span></span>
+                              {metric.sourceRunId && <span className="t-muted">· Run {metric.sourceRunId.slice(0, 8)}</span>}
+                              <ArrowRight size={10} />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* What This Means */}

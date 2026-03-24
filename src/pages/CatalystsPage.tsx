@@ -379,6 +379,20 @@ export function CatalystsPage() {
  setDsSaving(false);
  };
 
+ // A4-1: URL parameter drill-through — open ops panel from Pulse/Apex source links
+ useEffect(() => {
+ const params = new URLSearchParams(window.location.search);
+ const clusterParam = params.get('cluster');
+ const subParam = params.get('sub');
+ const opsParam = params.get('ops');
+ if (clusterParam && subParam && opsParam === '1') {
+  // Find cluster name from ID (will be set after clusters load)
+  setOpsPanel({ clusterId: clusterParam, clusterName: clusterParam, subName: subParam });
+  // Clean URL params without reload
+  window.history.replaceState({}, '', window.location.pathname);
+ }
+ }, []);
+
  useEffect(() => {
  async function load() {
  setLoading(true);
@@ -386,7 +400,16 @@ export function CatalystsPage() {
  const [c, a, g] = await Promise.allSettled([
  api.catalysts.clusters(undefined, ind), api.catalysts.actions(undefined, undefined, ind), api.catalysts.governance(undefined, ind),
  ]);
- if (c.status === 'fulfilled') setClusters(c.value.clusters);
+ if (c.status === 'fulfilled') {
+  setClusters(c.value.clusters);
+  // A4-1: Update ops panel cluster name after clusters load
+  if (opsPanel) {
+   const cluster = c.value.clusters.find((cl: ClusterItem) => cl.id === opsPanel.clusterId);
+   if (cluster && opsPanel.clusterName === opsPanel.clusterId) {
+    setOpsPanel({ ...opsPanel, clusterName: cluster.name });
+   }
+  }
+ }
  if (a.status === 'fulfilled') setActions(a.value.actions);
  if (g.status === 'fulfilled') setGovernance(g.value);
  setLoading(false);

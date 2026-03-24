@@ -259,7 +259,10 @@ export const api = {
     scenarios: (tenantId?: string, industry?: string) =>
       request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     createScenario: (data: Record<string, unknown>) =>
-      request<{ id: string; results: Record<string, unknown> }>('/api/apex/scenarios', { method: 'POST', body: JSON.stringify(data) }),
+      request<{ id: string; results: Record<string, unknown>; context?: Record<string, unknown> }>('/api/apex/scenarios', { method: 'POST', body: JSON.stringify(data) }),
+    // A1-3: Health score history
+    healthHistory: (tenantId?: string, limit?: number) =>
+      request<HealthHistoryResponse>(`/api/apex/health/history${qs({ tenant_id: tenantId, limit: limit?.toString() })}`),
   },
 
   pulse: {
@@ -673,6 +676,11 @@ export interface Briefing {
   kpiMovements: { kpi: string; movement: string; period: string }[];
   decisionsNeeded: string[];
   generatedAt: string;
+  // A2: Data-driven briefing fields
+  healthDelta: number | null;
+  redMetricCount: number | null;
+  anomalyCount: number | null;
+  activeRiskCount: number | null;
 }
 
 export interface Risk {
@@ -687,6 +695,10 @@ export interface Risk {
   recommendedActions: string[];
   status: string;
   detectedAt: string;
+  // A4-3: Source attribution for drill-through
+  sourceRunId: string | null;
+  clusterId: string | null;
+  subCatalystName: string | null;
 }
 
 export interface ScenarioItem {
@@ -696,8 +708,25 @@ export interface ScenarioItem {
   inputQuery: string;
   variables: string[];
   results: Record<string, unknown>;
+  context?: Record<string, unknown>;
   status: string;
   createdAt: string;
+}
+
+// A1-3: Health score history
+export interface HealthHistoryItem {
+  id: string;
+  overallScore: number;
+  dimensions: Record<string, unknown>;
+  sourceRunId: string | null;
+  catalystName: string | null;
+  recordedAt: string;
+}
+export interface HealthHistoryResponse {
+  history: HealthHistoryItem[];
+  delta: number;
+  deltaLabel: string;
+  total: number;
 }
 
 export interface Metric {
@@ -710,6 +739,10 @@ export interface Metric {
   trend: number[];
   sourceSystem: string | null;
   measuredAt: string;
+  // P1-3: Source attribution
+  subCatalystName: string | null;
+  sourceRunId: string | null;
+  clusterId: string | null;
 }
 
 export interface AnomalyItem {
@@ -736,13 +769,20 @@ export interface ProcessItem {
 
 export interface CorrelationItem {
   id: string;
+  metricA: string;
+  metricB: string;
   sourceSystem: string;
   sourceEvent: string;
   targetSystem: string;
   targetImpact: string;
+  correlationType: string;
   confidence: number;
+  lagHours: number;
   lagDays: number;
+  description: string;
   detectedAt: string;
+  sourceRunId: string | null;
+  clusterId: string | null;
 }
 
 export interface PulseSummary {

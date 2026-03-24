@@ -625,8 +625,9 @@ export async function recalculateKpis(
         }
       }
 
-      // Worst-status rollup: update sub_catalyst_kpis.status to worst across all KPI values
-      if (worstStatus !== status) {
+      // Worst-status rollup: only escalate (worsen) the status, never downgrade
+      const severityOrder: Record<string, number> = { green: 0, amber: 1, red: 2 };
+      if ((severityOrder[worstStatus] || 0) > (severityOrder[status] || 0)) {
         await db.prepare('UPDATE sub_catalyst_kpis SET status = ?, updated_at = ? WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?')
           .bind(worstStatus, now, tenantId, clusterId, subName).run();
       }
