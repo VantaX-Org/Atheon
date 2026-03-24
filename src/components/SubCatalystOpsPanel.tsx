@@ -241,7 +241,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     setSavingThresholds(true);
     try {
       const res = await api.catalysts.updateSubCatalystThresholds(clusterId, subCatalystName, thresholds);
-      if (res.kpis) setKpis(res.kpis as KpisResponse);
+      if (res.kpis) setKpis(res.kpis as unknown as KpisResponse);
     } catch (err) { console.error('saveThresholds failed:', err); }
     setSavingThresholds(false);
   };
