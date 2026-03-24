@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, API_URL } from "@/lib/api";
 import type {
-  SubCatalystRun, SubCatalystRunDetail, SubCatalystKpis,
+  SubCatalystRun, SubCatalystRunDetail,
   SubCatalystRunItemsResponse,
   SubCatalystRunComparison, RunComment,
   KpisResponse, KpiDefinitionItem, KpiDefinitionRow,
@@ -54,9 +54,6 @@ const fmtDate = (d?: string) => {
   return new Date(d).toLocaleString();
 };
 
-const parseTrend = (s: string): number[] => {
-  try { return JSON.parse(s); } catch { return []; }
-};
 
 function MiniSparkline({ data, color = '#60a5fa' }: { data: number[]; color?: string }) {
   if (!data.length) return <span className="text-xs text-white/30">No data</span>;
@@ -244,7 +241,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     setSavingThresholds(true);
     try {
       const res = await api.catalysts.updateSubCatalystThresholds(clusterId, subCatalystName, thresholds);
-      if (res.kpis) setKpis(res.kpis);
+      if (res.kpis) setKpis(res.kpis as KpisResponse);
     } catch (err) { console.error('saveThresholds failed:', err); }
     setSavingThresholds(false);
   };
@@ -755,7 +752,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
             <div className="text-sm font-medium text-white/80">KPI Definitions ({kpiDefs.length})</div>
             <p className="text-xs text-white/40">Edit thresholds and enable/disable individual KPIs per sub-catalyst.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={handleResetDefs} disabled={resettingDefs}>
+          <Button size="sm" variant="ghost" onClick={handleResetDefs} disabled={resettingDefs}>
             {resettingDefs ? <Loader2 size={14} className="animate-spin mr-1" /> : <RotateCcw size={14} className="mr-1" />}
             Reset to Defaults
           </Button>
