@@ -2509,29 +2509,56 @@ export function CatalystsPage() {
  <p className="text-xs t-muted mb-4">Override cluster-level defaults for this specific sub-catalyst.</p>
  )}
 
- <div className="space-y-4">
+  <div className="space-y-4">
  <div>
  <label className="text-xs font-medium text-emerald-400 block mb-1.5">Validators (approve actions)</label>
- <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
-   value={hitlValidators} onChange={e => setHitlValidators(Array.from(e.target.selectedOptions, o => o.value))}>
-   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
- </select>
+ <div className="w-full rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-h-[120px] overflow-y-auto p-1">
+   {hitlUsers.length === 0 && <p className="text-xs t-muted p-2">No users available</p>}
+   {hitlUsers.map(u => (
+     <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-emerald-500/5 cursor-pointer">
+       <input type="checkbox" className="rounded border-emerald-500/40 text-emerald-500" checked={hitlValidators.includes(u.id)} onChange={e => {
+         if (e.target.checked) setHitlValidators(prev => [...prev, u.id]);
+         else setHitlValidators(prev => prev.filter(id => id !== u.id));
+       }} />
+       <span className="text-xs t-primary">{u.name}</span>
+       <span className="text-[10px] t-muted ml-auto">{u.email}</span>
+     </label>
+   ))}
+ </div>
  </div>
 
  <div>
  <label className="text-xs font-medium text-amber-400 block mb-1.5">Exception Handlers</label>
- <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
-   value={hitlExceptionHandlers} onChange={e => setHitlExceptionHandlers(Array.from(e.target.selectedOptions, o => o.value))}>
-   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
- </select>
+ <div className="w-full rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-h-[120px] overflow-y-auto p-1">
+   {hitlUsers.length === 0 && <p className="text-xs t-muted p-2">No users available</p>}
+   {hitlUsers.map(u => (
+     <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-amber-500/5 cursor-pointer">
+       <input type="checkbox" className="rounded border-amber-500/40 text-amber-500" checked={hitlExceptionHandlers.includes(u.id)} onChange={e => {
+         if (e.target.checked) setHitlExceptionHandlers(prev => [...prev, u.id]);
+         else setHitlExceptionHandlers(prev => prev.filter(id => id !== u.id));
+       }} />
+       <span className="text-xs t-primary">{u.name}</span>
+       <span className="text-[10px] t-muted ml-auto">{u.email}</span>
+     </label>
+   ))}
+ </div>
  </div>
 
  <div>
  <label className="text-xs font-medium text-red-400 block mb-1.5">Escalation Contacts</label>
- <select multiple className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary min-h-[80px]"
-   value={hitlEscalation} onChange={e => setHitlEscalation(Array.from(e.target.selectedOptions, o => o.value))}>
-   {hitlUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
- </select>
+ <div className="w-full rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-h-[120px] overflow-y-auto p-1">
+   {hitlUsers.length === 0 && <p className="text-xs t-muted p-2">No users available</p>}
+   {hitlUsers.map(u => (
+     <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-red-500/5 cursor-pointer">
+       <input type="checkbox" className="rounded border-red-500/40 text-red-500" checked={hitlEscalation.includes(u.id)} onChange={e => {
+         if (e.target.checked) setHitlEscalation(prev => [...prev, u.id]);
+         else setHitlEscalation(prev => prev.filter(id => id !== u.id));
+       }} />
+       <span className="text-xs t-primary">{u.name}</span>
+       <span className="text-[10px] t-muted ml-auto">{u.email}</span>
+     </label>
+   ))}
+ </div>
  </div>
 
  <div className="space-y-2 pt-2 border-t border-[var(--border-card)]">

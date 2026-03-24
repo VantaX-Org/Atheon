@@ -11,9 +11,20 @@ const catalysts = new Hono<AppBindings>();
 
 /**
  * Write an execution log entry.
+ * When status is 'running', inserts a new row.
+ * When status is 'completed'/'failed', updates the existing 'running' row for the same step
+ * (falls back to INSERT if no running row exists).
  */
 async function writeLog(db: D1Database, tenantId: string, actionId: string, stepNumber: number, stepName: string, status: string, detail: string, durationMs?: number): Promise<void> {
   try {
+    if (status !== 'running') {
+      // Try to update an existing 'running' row for this step
+      const updated = await db.prepare(
+        'UPDATE execution_logs SET status = ?, detail = ?, duration_ms = ? WHERE tenant_id = ? AND action_id = ? AND step_number = ? AND step_name = ? AND status = ?'
+      ).bind(status, detail, durationMs ?? null, tenantId, actionId, stepNumber, stepName, 'running').run();
+      if (updated.meta.changes && updated.meta.changes > 0) return;
+    }
+    // Insert new row (either 'running' status, or fallback if no running row to update)
     await db.prepare(
       'INSERT INTO execution_logs (id, tenant_id, action_id, step_number, step_name, status, detail, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), tenantId, actionId, stepNumber, stepName, status, detail, durationMs ?? null).run();
@@ -1480,11 +1491,43 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
   }
 
   // ── Record run in sub_catalyst_runs + items (Phase 4) ──
+  let runId: string | undefined;
   try {
-    const runId = await recordRun(c.env.DB, targetTenant, clusterId, subName, result, 'manual');
+    runId = await recordRun(c.env.DB, targetTenant, clusterId, subName, result, 'manual');
     (result as Record<string, unknown>).run_id = runId;
   } catch (err) {
     console.error('recordRun failed:', err);
+  }
+
+  // ── Auto-populate catalyst_run_analytics from the execution result ──
+  try {
+    const summary = result.summary;
+    const totalItems = summary.matched + summary.unmatched_source + summary.unmatched_target + summary.discrepancies;
+    const completedItems = summary.matched;
+    const exceptionItems = (result as Record<string, unknown>).exceptions_raised as number || 0;
+    const escalatedItems = 0;
+    const pendingItems = 0;
+    const autoApprovedItems = summary.matched;
+    const matchRate = totalItems > 0 ? summary.matched / totalItems : 0;
+    const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
+    if (matchRate > 0) dist['80-100'] = completedItems;
+    if (exceptionItems > 0) dist['0-20'] = exceptionItems;
+    const insights: string[] = [];
+    if (matchRate >= 0.9) insights.push(`High match rate (${(matchRate * 100).toFixed(0)}%) — most items processed automatically.`);
+    if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
+    if (summary.discrepancies > 0) insights.push(`${summary.discrepancies} discrepancy(ies) detected — review and resolve.`);
+    if (summary.unmatched_source > 0) insights.push(`${summary.unmatched_source} unmatched source record(s) need attention.`);
+    const analyticsId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      analyticsId, targetTenant, clusterId, subName, runId || result.id,
+      result.duration_ms, totalItems, completedItems, exceptionItems, escalatedItems, pendingItems, autoApprovedItems,
+      Math.round(matchRate * 1000) / 1000, 0, matchRate > 0 ? 1 : 0,
+      JSON.stringify(dist), result.status, JSON.stringify(insights),
+    ).run();
+  } catch (err) {
+    console.error('auto run-analytics insert failed:', err);
   }
 
   // Always return 200 so the client can read the detailed result (status field indicates success/failure)
@@ -2426,25 +2469,39 @@ catalysts.get('/execution-logs', async (c) => {
   const binds: unknown[] = [tenantId];
 
   if (actionId) {
-    query = 'SELECT * FROM execution_logs WHERE tenant_id = ? AND action_id = ? ORDER BY step_number ASC LIMIT ?';
-    binds.push(actionId, limit);
+    query = 'SELECT * FROM execution_logs WHERE tenant_id = ? AND action_id = ? ORDER BY step_number ASC, created_at DESC LIMIT ?';
+    binds.push(actionId, limit * 3);
   } else {
     query = 'SELECT * FROM execution_logs WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?';
-    binds.push(limit);
+    binds.push(limit * 3);
   }
 
   try {
     const results = await c.env.DB.prepare(query).bind(...binds).all();
-    const logs = results.results.map((r: Record<string, unknown>) => ({
-      id: r.id,
-      actionId: r.action_id,
-      stepNumber: r.step_number,
-      stepName: r.step_name,
-      status: r.status,
-      detail: r.detail,
-      durationMs: r.duration_ms,
-      createdAt: r.created_at,
+    const allLogs = results.results.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      actionId: r.action_id as string,
+      stepNumber: r.step_number as number,
+      stepName: r.step_name as string,
+      status: r.status as string,
+      detail: r.detail as string,
+      durationMs: r.duration_ms as number | null,
+      createdAt: r.created_at as string,
     }));
+    // Deduplicate: keep only the final status per (action_id, step_number, step_name).
+    // If a 'completed'/'failed' row exists, prefer it over 'running'.
+    const seen = new Map<string, typeof allLogs[number]>();
+    for (const log of allLogs) {
+      const key = `${log.actionId}:${log.stepNumber}:${log.stepName}`;
+      const existing = seen.get(key);
+      if (!existing) { seen.set(key, log); continue; }
+      // Prefer completed/failed over running/pending
+      const finalStatuses = new Set(['completed', 'failed']);
+      if (finalStatuses.has(log.status) && !finalStatuses.has(existing.status)) {
+        seen.set(key, log);
+      }
+    }
+    const logs = [...seen.values()].slice(0, limit);
     return c.json({ logs, total: logs.length });
   } catch (err) {
     console.error('execution-logs query failed:', err);
