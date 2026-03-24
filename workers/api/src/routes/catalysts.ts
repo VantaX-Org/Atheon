@@ -289,18 +289,31 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     }
   } catch (err) { console.error('generateInsights: failed to read existing health data:', err); }
 
-  // Data-driven: derive dimension scores from recent catalyst run results
+  // Data-driven: derive dimension scores from the specific catalyst run (scoped to sourceRunId or clusterId)
   let latestRunConfidence = 0;
   let latestRunSuccess = 0;
   let latestRunTotal = 0;
+  let latestRunDiscrepancies = 0;
   try {
-    const recentRun = await db.prepare(
-      'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1'
-    ).bind(tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    let recentRun: { avg_confidence: number; source_record_count: number; matched: number; discrepancies: number } | null = null;
+    if (sourceRunId) {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
+      ).bind(sourceRunId, tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    } else if (clusterId) {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? AND cluster_id = ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId, clusterId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    } else {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    }
     if (recentRun) {
       latestRunConfidence = recentRun.avg_confidence ?? 0;
       latestRunTotal = recentRun.source_record_count ?? 0;
       latestRunSuccess = recentRun.matched ?? 0;
+      latestRunDiscrepancies = recentRun.discrepancies ?? 0;
     }
   } catch { /* table may not exist yet */ }
 
@@ -350,8 +363,8 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   // Data-driven risk: derive severity from run success rate
   const successRate = latestRunTotal > 0 ? latestRunSuccess / latestRunTotal : 1;
   const riskSeverity = successRate < 0.7 ? 'high' : successRate < 0.9 ? 'medium' : 'low';
-  // Impact proportional to discrepancy volume
-  const discrepancyCount = latestRunTotal - latestRunSuccess;
+  // Impact proportional to actual discrepancy count (matched records with field-level differences)
+  const discrepancyCount = latestRunDiscrepancies;
   const riskImpact = riskSeverity === 'high' ? discrepancyCount * 5000 : riskSeverity === 'medium' ? discrepancyCount * 2000 : discrepancyCount * 500;
   const riskTitle = friendlyRiskTitle(riskSeverity, domain);
   const riskDesc = friendlyRiskDescription(riskSeverity, domain, catalystName);
@@ -2461,7 +2474,7 @@ catalysts.post('/manual-execute', async (c) => {
   // Generate Apex/Pulse insights from catalyst execution (pass actionId for execution logs)
   const clusterDomain = (cluster.domain as string) || 'finance';
   try {
-    await generateInsightsForTenant(c.env.DB, tenantId, catalystName, clusterDomain, actionId);
+    await generateInsightsForTenant(c.env.DB, tenantId, catalystName, clusterDomain, actionId, undefined, clusterId, undefined);
   } catch (err) {
     console.error('Insight generation failed (non-critical):', err);
   }
