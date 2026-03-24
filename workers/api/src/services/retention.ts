@@ -19,6 +19,13 @@ const RETENTION_TABLES = [
   { table: 'email_queue', dateColumn: 'created_at' },
   { table: 'execution_logs', dateColumn: 'created_at' },
   { table: 'catalyst_actions', dateColumn: 'created_at' },
+  // Spec 7: Additional date-stamped tables for retention purge
+  { table: 'sub_catalyst_runs', dateColumn: 'started_at' },
+  { table: 'sub_catalyst_run_items', dateColumn: 'created_at' },
+  { table: 'sub_catalyst_kpi_values', dateColumn: 'recorded_at' },
+  { table: 'run_comments', dateColumn: 'created_at' },
+  { table: 'health_score_history', dateColumn: 'recorded_at' },
+  { table: 'catalyst_run_analytics', dateColumn: 'created_at' },
 ] as const;
 
 /**

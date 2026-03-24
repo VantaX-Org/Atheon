@@ -7,7 +7,7 @@ import { useAppStore } from "@/stores/appStore";
 import type { AccentColor } from "@/stores/appStore";
 import { api } from "@/lib/api";
 import {
- Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy
+ Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2
 } from "lucide-react";
 
 interface NotificationPref {
@@ -377,6 +377,45 @@ export function SettingsPage() {
    )}
    {apiKeyError && <div className="text-xs p-2 rounded bg-red-500/10 text-red-400">{apiKeyError}</div>}
    <p className="text-[10px] text-gray-400">Include as <code className="text-accent">X-API-Key</code> header in your requests.</p>
+ </div>
+ </Card>
+
+ {/* Spec 7 POPIA-3: Data & Privacy */}
+ <Card>
+ <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
+ <Shield className="w-4 h-4 text-accent" /> Data &amp; Privacy (POPIA)
+ </h3>
+ <div className="space-y-4">
+   <div className="p-3 rounded-lg" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
+     <p className="text-xs font-medium t-primary mb-1">Information Officer</p>
+     <p className="text-xs t-muted">Reshigan Naidoo — reshigan@vantax.co.za</p>
+     <p className="text-xs t-muted">In terms of POPIA (Protection of Personal Information Act), you have the right to access and delete your personal data.</p>
+   </div>
+   <div className="flex gap-3">
+     <Button variant="secondary" size="sm" title="Request a copy of all your personal data" onClick={async () => {
+       try {
+         const res = await api.tenants.dataExport();
+         const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+         const url = URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = url; a.download = `atheon-data-export-${new Date().toISOString().slice(0,10)}.json`;
+         a.click(); URL.revokeObjectURL(url);
+       } catch (err) { alert(err instanceof Error ? err.message : 'Export failed'); }
+     }}>
+       <Download size={14} /> Request My Data
+     </Button>
+     <Button variant="danger" size="sm" title="Permanently delete all your personal data" onClick={async () => {
+       if (!confirm('This will permanently erase your personal data. This action cannot be undone. Continue?')) return;
+       if (!confirm('Are you absolutely sure? All your data will be permanently deleted.')) return;
+       try {
+         await api.tenants.dataErasure();
+         alert('Your data has been erased. You will be redirected to the login page.');
+         window.location.href = '/login';
+       } catch (err) { alert(err instanceof Error ? err.message : 'Erasure failed'); }
+     }}>
+       <Trash2 size={14} /> Delete My Data
+     </Button>
+   </div>
  </div>
  </Card>
 
