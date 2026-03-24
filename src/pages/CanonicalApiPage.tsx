@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api, getTenantOverride } from "@/lib/api";
+import { api, getTenantOverride, API_URL } from "@/lib/api";
 import type { CanonicalEndpoint } from "@/lib/api";
 import { Code, Layers, ArrowRight, Globe, BookOpen, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -131,7 +131,7 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  setTryingEndpoint(ep.id);
  setTryLoading(true);
  setTryResult(null);
- const apiUrl = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
+ const apiUrl = API_URL;
  fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
  headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` }})
  .then(async (res) => {

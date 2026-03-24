@@ -6,11 +6,11 @@ import { ragQuery } from '../services/vectorize';
 
 const mind = new Hono<AppBindings>();
 
-// Model tier configurations — Ollama Cloud (Reshigan/atheon) with Workers AI fallback
+// Model tier configurations — Atheon proprietary models with Workers AI fallback
 const MODEL_TIERS: Record<string, { name: string; model: string; ollamaModel: string; fallbackModel: string; maxTokens: number; description: string }> = {
-  'tier-1': { name: 'Atheon Edge', model: 'Reshigan/atheon', ollamaModel: 'Reshigan/atheon', fallbackModel: '@cf/meta/llama-3.1-8b-instruct', maxTokens: 2048, description: 'Fast inference via Atheon custom model for queries and classification' },
-  'tier-2': { name: 'Atheon Mind', model: 'Reshigan/atheon', ollamaModel: 'Reshigan/atheon', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Domain-tuned Atheon model for complex enterprise analysis and reasoning' },
-  'tier-3': { name: 'Atheon Apex', model: 'Reshigan/atheon', ollamaModel: 'Reshigan/atheon', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Multi-step reasoning via Atheon model for scenario modelling and strategic planning' },
+  'tier-1': { name: 'Atheon Edge', model: 'atheon-edge-v1', ollamaModel: 'atheon-edge-v1', fallbackModel: '@cf/meta/llama-3.1-8b-instruct', maxTokens: 2048, description: 'Fast inference for queries and classification' },
+  'tier-2': { name: 'Atheon Mind', model: 'atheon-mind-v1', ollamaModel: 'atheon-mind-v1', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Domain-tuned model for complex enterprise analysis and reasoning' },
+  'tier-3': { name: 'Atheon Apex', model: 'atheon-apex-v1', ollamaModel: 'atheon-apex-v1', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Multi-step reasoning for scenario modelling and strategic planning' },
 };
 
 // Industry LoRA adapters
@@ -218,15 +218,7 @@ mind.post('/query', async (c) => {
 
 // Fallback response when Workers AI is unavailable
 function generateFallbackResponse(query: string): string {
-  const q = query.toLowerCase();
-  if (q.includes('revenue') || q.includes('financial') || q.includes('profit')) {
-    return `**Revenue Performance**: Current quarter revenue tracking 3.9% above forecast at R847M. Gross margin at 34.2% (target: 35%). Cash position: R42.3M. DSO at 38 days.\n\n*Note: This is a cached response. Workers AI is temporarily unavailable.*`;
-  } else if (q.includes('supply') || q.includes('logistics') || q.includes('otif')) {
-    return `**Supply Chain Summary**: OTIF at 87.3% (target: 95%). Root cause: Durban port congestion (+340% dwell time). Recommended: Activate Cape Town alternative routing.\n\n*Note: Cached response — Workers AI temporarily unavailable.*`;
-  } else if (q.includes('risk')) {
-    return `**Risk Summary**: 2 critical, 1 high risk active. Total exposure: R12.3M. Top risk: Durban Port Congestion (R2.3M, 87% probability).\n\n*Note: Cached response — Workers AI temporarily unavailable.*`;
-  }
-  return `Business health score: 78/100. 5 active catalyst clusters. 3 risk alerts active. All ERP integrations operational.\n\n*Note: Cached response — Workers AI temporarily unavailable.*`;
+  return `I'm unable to process your query right now because the AI inference engine is temporarily unavailable. Please try again in a few minutes.\n\n**Your query**: "${query}"\n\n*The AI service will automatically reconnect. If this persists, contact your administrator.*`;
 }
 
 // GET /api/mind/models
@@ -240,17 +232,7 @@ mind.get('/models', async (c) => {
       id: key,
       ...val,
     })),
-    trainingPipeline: {
-      preTraining: { status: 'completed', progress: 100, dataset: '847B tokens' },
-      domainFineTuning: { status: 'active', progress: 78, currentEpoch: 3, totalEpochs: 5 },
-      rlhf: { status: 'scheduled', progress: 0 },
-      evaluation: {
-        mmlu: 82.4,
-        humaneval: 71.2,
-        domainAccuracy: 94.7,
-        hallucination_rate: 2.1,
-      },
-    },
+    trainingPipeline: null,
   });
 });
 

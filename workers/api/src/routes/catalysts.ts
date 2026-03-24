@@ -289,10 +289,44 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     }
   } catch (err) { console.error('generateInsights: failed to read existing health data:', err); }
 
-  // Only generate new scores for the affected dimensions
+  // Data-driven: derive dimension scores from the specific catalyst run (scoped to sourceRunId or clusterId)
+  let latestRunConfidence = 0;
+  let latestRunSuccess = 0;
+  let latestRunTotal = 0;
+  let latestRunDiscrepancies = 0;
+  try {
+    let recentRun: { avg_confidence: number; source_record_count: number; matched: number; discrepancies: number } | null = null;
+    if (sourceRunId) {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
+      ).bind(sourceRunId, tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    } else if (clusterId) {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? AND cluster_id = ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId, clusterId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    } else {
+      recentRun = await db.prepare(
+        'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
+    }
+    if (recentRun) {
+      latestRunConfidence = recentRun.avg_confidence ?? 0;
+      latestRunTotal = recentRun.source_record_count ?? 0;
+      latestRunSuccess = recentRun.matched ?? 0;
+      latestRunDiscrepancies = recentRun.discrepancies ?? 0;
+    }
+  } catch { /* table may not exist yet */ }
+
   for (const dim of affectedDimensions) {
-    const score = Math.floor(60 + Math.random() * 35);
-    const delta = Math.round((Math.random() * 10 - 3) * 10) / 10;
+    // Base score from success rate (matched/total), then avg_confidence as tiebreaker; fallback to 75 if no runs yet
+    const successRate = latestRunTotal > 0 ? latestRunSuccess / latestRunTotal : 0;
+    const baseScore = latestRunTotal > 0
+      ? Math.round((latestRunConfidence > 0 ? (successRate * 0.7 + latestRunConfidence * 0.3) : successRate) * 100)
+      : 75;
+    // Clamp between 40 and 100
+    const score = Math.max(40, Math.min(100, baseScore));
+    const prevScore = existingDimensions[dim]?.score ?? score;
+    const delta = Math.round((score - prevScore) * 10) / 10;
     const trend = delta > 0.5 ? 'improving' : delta < -0.5 ? 'declining' : 'stable';
     existingDimensions[dim] = { score, trend, delta };
   }
@@ -329,9 +363,12 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   // Step 3: Risk Alert — with source attribution (P1)
   const t2 = Date.now();
   await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'running', `Scanning ${domainLabel} for ${categoryLabel.toLowerCase()} risk indicators...`, 0);
-  const riskRand = Math.random();
-  const riskSeverity = riskRand > 0.6 ? 'high' : riskRand > 0.4 ? 'medium' : 'low';
-  const riskImpact = riskSeverity === 'high' ? Math.floor(500000 + Math.random() * 500000) : riskSeverity === 'medium' ? Math.floor(200000 + Math.random() * 300000) : Math.floor(50000 + Math.random() * 100000);
+  // Data-driven risk: derive severity from run success rate
+  const successRate = latestRunTotal > 0 ? latestRunSuccess / latestRunTotal : 1;
+  const riskSeverity = successRate < 0.7 ? 'high' : successRate < 0.9 ? 'medium' : 'low';
+  // Impact proportional to actual discrepancy count (matched records with field-level differences)
+  const discrepancyCount = latestRunDiscrepancies;
+  const riskImpact = riskSeverity === 'high' ? discrepancyCount * 5000 : riskSeverity === 'medium' ? discrepancyCount * 2000 : discrepancyCount * 500;
   const riskTitle = friendlyRiskTitle(riskSeverity, domain);
   const riskDesc = friendlyRiskDescription(riskSeverity, domain, catalystName);
   try {
@@ -340,7 +377,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     ).bind(
       crypto.randomUUID(), tenantId,
       riskTitle, riskDesc,
-      riskSeverity, riskCategory, Math.round((0.3 + Math.random() * 0.5) * 100) / 100,
+      riskSeverity, riskCategory, Math.round(Math.max(0.1, 1 - successRate) * 100) / 100,
       riskImpact, 'ZAR',
       JSON.stringify([`Review ${domainLabel} findings and assess exposure`, `Assign a remediation owner from the ${categoryLabel} team`, `Schedule a follow-up review within 14 days`]),
       'active', now,
@@ -422,10 +459,13 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   // Step 5: Process Metrics — with source attribution (P1) and real trends (P2)
   const t4 = Date.now();
   await writeLog(db, tenantId, logId, step, 'Process Metrics', 'running', `Capturing ${domainLabel} performance metrics...`, 0);
+  // Data-driven process metrics from actual run results
+  const throughputValue = latestRunTotal > 0 ? latestRunTotal : 0;
+  const errorRateValue = latestRunTotal > 0 ? Math.round((1 - successRate) * 100 * 100) / 100 : 0;
   const processMetrics = [
-    { name: `${domainLabel} — Throughput`, value: Math.floor(80 + Math.random() * 20), unit: 'tps', status: 'green' as const },
-    { name: `${domainLabel} — Response Time`, value: Math.floor(50 + Math.random() * 150), unit: 'ms', status: Math.random() > 0.5 ? 'amber' as const : 'green' as const },
-    { name: `${domainLabel} — Error Rate`, value: Math.round(Math.random() * 5 * 100) / 100, unit: '%', status: Math.random() > 0.8 ? 'red' as const : 'green' as const },
+    { name: `${domainLabel} — Throughput`, value: throughputValue, unit: 'records', status: (throughputValue > 50 ? 'green' : throughputValue > 10 ? 'amber' : 'red') as 'green' | 'amber' | 'red' },
+    { name: `${domainLabel} — Success Rate`, value: Math.round(successRate * 100 * 100) / 100, unit: '%', status: (successRate >= 0.95 ? 'green' : successRate >= 0.8 ? 'amber' : 'red') as 'green' | 'amber' | 'red' },
+    { name: `${domainLabel} — Error Rate`, value: errorRateValue, unit: '%', status: (errorRateValue <= 2 ? 'green' : errorRateValue <= 10 ? 'amber' : 'red') as 'green' | 'amber' | 'red' },
   ];
   // Clean up any old-format metrics for this domain (pre-friendly-label format)
   try {
@@ -468,11 +508,12 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domain} throughput`).run();
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domainLabel} throughput`).run();
   } catch (err) { console.error('generateInsights: anomalies cleanup failed:', err); }
-  // Only insert anomaly ~40% of the time
-  if (Math.random() < 0.4) {
+  // Data-driven anomaly detection: only flag if error rate exceeds 10% or throughput drops significantly
+  const anomalyTriggered = errorRateValue > 10 || (throughputValue > 0 && throughputValue < 10);
+  if (anomalyTriggered) {
     try {
       const expected = 100;
-      const actual = Math.round(expected * (1 + (Math.random() * 0.4 - 0.1)));
+      const actual = latestRunTotal > 0 ? Math.round(successRate * 100) : expected;
       const deviation = Math.round((actual - expected) / expected * 100 * 10) / 10;
       await db.prepare(
         'INSERT INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -2436,7 +2477,7 @@ catalysts.post('/manual-execute', async (c) => {
   // Generate Apex/Pulse insights from catalyst execution (pass actionId for execution logs)
   const clusterDomain = (cluster.domain as string) || 'finance';
   try {
-    await generateInsightsForTenant(c.env.DB, tenantId, catalystName, clusterDomain, actionId);
+    await generateInsightsForTenant(c.env.DB, tenantId, catalystName, clusterDomain, actionId, undefined, clusterId, undefined);
   } catch (err) {
     console.error('Insight generation failed (non-critical):', err);
   }
