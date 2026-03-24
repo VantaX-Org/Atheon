@@ -318,8 +318,11 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   } catch { /* table may not exist yet */ }
 
   for (const dim of affectedDimensions) {
-    // Base score from run confidence (0-100), fallback to 75 if no runs yet
-    const baseScore = latestRunConfidence > 0 ? Math.round(latestRunConfidence * 100) : 75;
+    // Base score from success rate (matched/total), then avg_confidence as tiebreaker; fallback to 75 if no runs yet
+    const successRate = latestRunTotal > 0 ? latestRunSuccess / latestRunTotal : 0;
+    const baseScore = latestRunTotal > 0
+      ? Math.round((latestRunConfidence > 0 ? (successRate * 0.7 + latestRunConfidence * 0.3) : successRate) * 100)
+      : 75;
     // Clamp between 40 and 100
     const score = Math.max(40, Math.min(100, baseScore));
     const prevScore = existingDimensions[dim]?.score ?? score;

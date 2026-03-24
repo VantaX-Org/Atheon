@@ -54,7 +54,7 @@ export function MindPage() {
 
  const evaluationMetrics = [
  { name: 'Avg Latency', value: stats?.avgLatencyMs || 0, target: 500, unit: 'ms', inverse: true },
- { name: 'Total Queries', value: stats?.totalQueries || 0, target: 100 },
+ { name: 'Total Queries', value: stats?.totalQueries || 0, target: 100, unit: ' queries' },
  { name: 'Total Tokens', value: stats?.totalTokens || 0, target: 10000, unit: ' tokens' },
  ];
 
@@ -162,7 +162,7 @@ export function MindPage() {
  <div className="text-[10px] text-gray-400 mt-1">Target: {metric.target}{metric.unit || '%'}</div>
  <Progress
  value={metric.inverse ? metric.target - metric.value + metric.target : metric.value}
- max={metric.inverse ? metric.target * 2 : 100}
+ max={metric.inverse ? metric.target * 2 : metric.target || 100}
  color={passing ? 'emerald' : 'amber'}
  size="sm"
  className="mt-2"
