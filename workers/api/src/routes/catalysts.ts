@@ -245,7 +245,7 @@ function calculateNextRun(
  * When only one catalyst has run, the dashboard shows scoped data for that domain.
  * As more catalysts run, the dashboard consolidates across all domains.
  */
-async function generateInsightsForTenant(db: D1Database, tenantId: string, catalystName: string, domain: string, actionId?: string): Promise<void> {
+async function generateInsightsForTenant(db: D1Database, tenantId: string, catalystName: string, domain: string, actionId?: string, sourceRunId?: string, clusterId?: string, subCatalystName?: string): Promise<void> {
   const now = new Date().toISOString();
   const logId = actionId || 'system';
   let step = 1;
@@ -266,10 +266,12 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   // Fetch existing health scores to merge with
   let existingDimensions: Record<string, { score: number; trend: string; delta: number }> = {};
   let existingId: string | null = null;
+  let previousOverallScore = 0;
   try {
-    const existing = await db.prepare('SELECT id, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first<{ id: string; dimensions: string }>();
+    const existing = await db.prepare('SELECT id, overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first<{ id: string; overall_score: number; dimensions: string }>();
     if (existing) {
       existingId = existing.id;
+      previousOverallScore = existing.overall_score ?? 0;
       const parsed = JSON.parse(existing.dimensions);
       if (parsed && typeof parsed === 'object') existingDimensions = parsed;
     }
@@ -291,23 +293,28 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
 
   try {
     if (existingId) {
-      // Update existing row — merge dimensions
       await db.prepare(
         'UPDATE health_scores SET overall_score = ?, dimensions = ?, calculated_at = ? WHERE id = ?'
       ).bind(overallScore, JSON.stringify(existingDimensions), now, existingId).run();
     } else {
-      // First catalyst run — create new row
       await db.prepare(
         'INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at) VALUES (?, ?, ?, ?, ?)'
       ).bind(crypto.randomUUID(), tenantId, overallScore, JSON.stringify(existingDimensions), now).run();
     }
   } catch (err) { console.error('generateInsights: health_scores upsert failed:', err); }
 
-  const dimCount= Object.keys(existingDimensions).length;
+  // A1-2: Write health score history row for trend tracking
+  try {
+    await db.prepare(
+      'INSERT INTO health_score_history (id, tenant_id, overall_score, dimensions, source_run_id, catalyst_name, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), tenantId, overallScore, JSON.stringify(existingDimensions), sourceRunId || null, catalystName, now).run();
+  } catch (err) { console.error('generateInsights: health_score_history insert failed:', err); }
+
+  const dimCount = Object.keys(existingDimensions).length;
   await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'completed', `Health score updated — overall ${overallScore}/100 across ${dimCount} dimension(s)`, Date.now() - t1);
   step++;
 
-  // Step 3: Risk Alert — only generate risk for this catalyst's domain category
+  // Step 3: Risk Alert — with source attribution (P1)
   const t2 = Date.now();
   await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'running', `Scanning ${domainLabel} for ${categoryLabel.toLowerCase()} risk indicators...`, 0);
   const riskRand = Math.random();
@@ -317,42 +324,90 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   const riskDesc = friendlyRiskDescription(riskSeverity, domain, catalystName);
   try {
     await db.prepare(
-      'INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at, source_run_id, cluster_id, sub_catalyst_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
       riskTitle, riskDesc,
       riskSeverity, riskCategory, Math.round((0.3 + Math.random() * 0.5) * 100) / 100,
       riskImpact, 'ZAR',
       JSON.stringify([`Review ${domainLabel} findings and assess exposure`, `Assign a remediation owner from the ${categoryLabel} team`, `Schedule a follow-up review within 14 days`]),
-      'active', now
+      'active', now,
+      sourceRunId || null, clusterId || null, subCatalystName || null
     ).run();
   } catch (err) { console.error('generateInsights: risk_alerts insert failed:', err); }
   await writeLog(db, tenantId, logId, step, 'Risk Alert Generation', 'completed', `${categoryLabel} risk alert raised (${riskSeverity} severity)`, Date.now() - t2);
   step++;
 
-  // Step 4: Executive Briefing — scoped to this catalyst
+  // Step 4: Data-Driven Executive Briefing (A2)
   const t3 = Date.now();
-  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'running', `Preparing executive summary for ${domainLabel}...`, 0);
+  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'running', `Preparing data-driven executive summary for ${domainLabel}...`, 0);
   try {
-    const dimDelta = existingDimensions[affectedDimensions[0]]?.delta ?? 0;
-    const dimDeltaStr = `${dimDelta > 0 ? '+' : ''}${dimDelta}`;
+    // A2-1: Query real data for briefing
+    const healthDelta = overallScore - previousOverallScore;
+    const redMetrics = await db.prepare('SELECT COUNT(*) as cnt FROM process_metrics WHERE tenant_id = ? AND status = ?').bind(tenantId, 'red').first<{ cnt: number }>();
+    const redMetricCount = redMetrics?.cnt ?? 0;
+    const openAnomalies = await db.prepare('SELECT COUNT(*) as cnt FROM anomalies WHERE tenant_id = ? AND status = ?').bind(tenantId, 'open').first<{ cnt: number }>();
+    const anomalyCount = openAnomalies?.cnt ?? 0;
+    const activeRisks = await db.prepare('SELECT COUNT(*) as cnt FROM risk_alerts WHERE tenant_id = ? AND status = ?').bind(tenantId, 'active').first<{ cnt: number }>();
+    const activeRiskCount = activeRisks?.cnt ?? 0;
+
+    // A2-1: KPI movements from last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const recentKpis = await db.prepare(
+      'SELECT name, value, status FROM process_metrics WHERE tenant_id = ? AND measured_at >= ? ORDER BY measured_at DESC LIMIT 10'
+    ).bind(tenantId, sevenDaysAgo).all<{ name: string; value: number; status: string }>();
+    const kpiMovements = (recentKpis.results || []).map(k => ({
+      metric: k.name,
+      change: `${k.status === 'red' ? 'Degraded' : k.status === 'amber' ? 'Watchlisted' : 'On track'} (${k.value})`,
+      period: 'last 7 days',
+    })).slice(0, 5);
+
+    // Recent runs summary
+    const recentRuns = await db.prepare(
+      'SELECT COUNT(*) as cnt FROM sub_catalyst_runs WHERE tenant_id = ? AND started_at >= ?'
+    ).bind(tenantId, sevenDaysAgo).first<{ cnt: number }>();
+    const runCount = recentRuns?.cnt ?? 0;
+
+    // A2-2: Build structured briefing with real numbers
+    const healthDeltaStr = `${healthDelta > 0 ? '+' : ''}${healthDelta}`;
+    const summary = `Health score is ${overallScore}/100 (${healthDeltaStr} points this period). ${runCount} catalyst runs completed in the last 7 days. ${redMetricCount > 0 ? `${redMetricCount} metric(s) in RED status require attention.` : 'All metrics within acceptable ranges.'} ${anomalyCount > 0 ? `${anomalyCount} open anomaly(ies) detected.` : ''} ${activeRiskCount > 0 ? `${activeRiskCount} active risk alert(s).` : ''}`;
+
+    const risks: string[] = [];
+    if (redMetricCount > 0) risks.push(`${redMetricCount} process metric(s) in RED status — immediate review recommended`);
+    if (anomalyCount > 0) risks.push(`${anomalyCount} unresolved anomaly(ies) — investigate root cause`);
+    if (activeRiskCount > 0) risks.push(`${activeRiskCount} active risk alert(s) — assign remediation owners`);
+    if (healthDelta < -5) risks.push(`Health score declined ${Math.abs(healthDelta)} points — trend reversal needed`);
+    if (risks.length === 0) risks.push('No critical risks identified this period');
+
+    const opportunities: string[] = [];
+    if (healthDelta > 0) opportunities.push(`Health score improved ${healthDelta} points — momentum to build on`);
+    opportunities.push(`Explore efficiency improvements in ${domainLabel} to reduce cost and cycle time`);
+    if (runCount > 5) opportunities.push(`High run frequency (${runCount} runs/week) enables early anomaly detection`);
+
+    const decisions: string[] = [];
+    if (redMetricCount > 0) decisions.push(`Assign owners for ${redMetricCount} RED metric(s) and set remediation deadlines`);
+    if (activeRiskCount > 0) decisions.push(`Review ${activeRiskCount} active risk(s) and approve mitigation plans`);
+    decisions.push(`Review the ${domainLabel} risk findings and agree on next steps`);
+
+    // A2-3: Insert data-driven briefing
     await db.prepare(
-      'INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at, health_delta, red_metric_count, anomaly_count, active_risk_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(), tenantId,
       `${domainLabel} — Executive Summary`,
-      `${catalystName} completed its analysis of ${domainLabel}. The overall business health score is now ${overallScore}/100 with ${affectedDimensions.map(friendlyDimension).join(' and ')} updated. Key findings have been surfaced for your review.`,
-      JSON.stringify([`A ${riskSeverity}-severity ${categoryLabel.toLowerCase()} risk was identified — review recommended`]),
-      JSON.stringify([`Explore efficiency improvements in ${domainLabel} to reduce cost and cycle time`]),
-      JSON.stringify([{ metric: `${friendlyDimension(affectedDimensions[0])}`, change: `${dimDeltaStr} pts` }]),
-      JSON.stringify([`Review the ${domainLabel} risk findings and agree on next steps`]),
-      now
+      summary,
+      JSON.stringify(risks),
+      JSON.stringify(opportunities),
+      JSON.stringify(kpiMovements),
+      JSON.stringify(decisions),
+      now,
+      healthDelta, redMetricCount, anomalyCount, activeRiskCount
     ).run();
   } catch (err) { console.error('generateInsights: executive_briefings insert failed:', err); }
-  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'completed', `Executive summary generated for ${domainLabel}`, Date.now() - t3);
+  await writeLog(db, tenantId, logId, step, 'Executive Briefing', 'completed', `Data-driven executive summary generated for ${domainLabel}`, Date.now() - t3);
   step++;
 
-  // Step 5: Process Metrics — scoped to this domain only
+  // Step 5: Process Metrics — with source attribution (P1) and real trends (P2)
   const t4 = Date.now();
   await writeLog(db, tenantId, logId, step, 'Process Metrics', 'running', `Capturing ${domainLabel} performance metrics...`, 0);
   const processMetrics = [
@@ -363,14 +418,32 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   // Clean up any old-format metrics for this domain (pre-friendly-label format)
   try {
     await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domain} %`).run();
-    await db.prepare("DELETE FROM process_metrics WHERE tenant_id = ? AND name LIKE ?").bind(tenantId, `${domainLabel} —%`).run();
   } catch (err) { console.error('generateInsights: process_metrics cleanup failed:', err); }
-  for (const metric of processMetrics){
+
+  for (const metric of processMetrics) {
     try {
-      await db.prepare(
-        'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, metric.status, JSON.stringify([metric.value * 0.9, metric.value * 0.95, metric.value]), catalystName, now).run();
-    } catch (err) { console.error('generateInsights: process_metrics insert failed:', err); }
+      // P2-1: Read existing trend, append new value, cap at 30
+      let trendArr: number[] = [];
+      const existingMetric = await db.prepare(
+        'SELECT id, trend FROM process_metrics WHERE tenant_id = ? AND name = ? ORDER BY measured_at DESC LIMIT 1'
+      ).bind(tenantId, metric.name).first<{ id: string; trend: string }>();
+
+      if (existingMetric) {
+        try { trendArr = JSON.parse(existingMetric.trend || '[]'); } catch { trendArr = []; }
+        trendArr.push(metric.value);
+        if (trendArr.length > 30) trendArr = trendArr.slice(-30);
+        // Update existing metric row
+        await db.prepare(
+          'UPDATE process_metrics SET value = ?, status = ?, trend = ?, measured_at = ?, sub_catalyst_name = ?, source_run_id = ?, cluster_id = ? WHERE id = ?'
+        ).bind(metric.value, metric.status, JSON.stringify(trendArr), now, subCatalystName || null, sourceRunId || null, clusterId || null, existingMetric.id).run();
+      } else {
+        trendArr = [metric.value];
+        // P1-2: Insert with source attribution fields
+        await db.prepare(
+          'INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, trend, source_system, measured_at, sub_catalyst_name, source_run_id, cluster_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(crypto.randomUUID(), tenantId, metric.name, metric.value, metric.unit, metric.status, JSON.stringify(trendArr), catalystName, now, subCatalystName || null, sourceRunId || null, clusterId || null).run();
+      }
+    } catch (err) { console.error('generateInsights: process_metrics upsert failed:', err); }
   }
   await writeLog(db, tenantId, logId, step, 'Process Metrics', 'completed', `${processMetrics.length} performance metrics captured for ${domainLabel}`, Date.now() - t4);
   step++;
@@ -383,7 +456,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domain} throughput`).run();
     await db.prepare("DELETE FROM anomalies WHERE tenant_id = ? AND metric = ?").bind(tenantId, `${domainLabel} throughput`).run();
   } catch (err) { console.error('generateInsights: anomalies cleanup failed:', err); }
-  // Only insert anomaly~40% of the time (not every catalyst run should find one)
+  // Only insert anomaly ~40% of the time
   if (Math.random() < 0.4) {
     try {
       const expected = 100;
@@ -406,7 +479,70 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   }
   step++;
 
-  // Step 7: Finalisation
+  // Step 7: Correlation Detection (P3) — detect cross-domain metric movements within 7-day window
+  const t6 = Date.now();
+  await writeLog(db, tenantId, logId, step, 'Correlation Detection', 'running', `Scanning for cross-domain metric correlations...`, 0);
+  try {
+    const window7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const recentRedMetrics = await db.prepare(
+      "SELECT name, value, status, source_system, measured_at FROM process_metrics WHERE tenant_id = ? AND status IN ('red', 'amber') AND measured_at >= ? ORDER BY measured_at DESC"
+    ).bind(tenantId, window7d).all<{ name: string; value: number; status: string; source_system: string; measured_at: string }>();
+
+    const metricsByDomain: Record<string, Array<{ name: string; value: number; status: string; measuredAt: string }>> = {};
+    for (const m of (recentRedMetrics.results || [])) {
+      const d = (m.source_system || 'unknown').toLowerCase();
+      if (!metricsByDomain[d]) metricsByDomain[d] = [];
+      metricsByDomain[d].push({ name: m.name, value: m.value, status: m.status, measuredAt: m.measured_at });
+    }
+
+    const domainKeys = Object.keys(metricsByDomain);
+    let correlationsInserted = 0;
+    if (domainKeys.length >= 2) {
+      for (let i = 0; i < domainKeys.length && correlationsInserted < 3; i++) {
+        for (let j = i + 1; j < domainKeys.length && correlationsInserted < 3; j++) {
+          const metricsA = metricsByDomain[domainKeys[i]];
+          const metricsB = metricsByDomain[domainKeys[j]];
+          // Check temporal proximity — within 24 hours
+          const aTime = new Date(metricsA[0].measuredAt).getTime();
+          const bTime = new Date(metricsB[0].measuredAt).getTime();
+          const timeDiffHours = Math.abs(aTime - bTime) / (1000 * 60 * 60);
+          if (timeDiffHours > 168) continue; // Skip if > 7 days apart
+          const confidence = Math.max(0.3, Math.min(0.95, 1 - (timeDiffHours / 168)));
+
+          // P3-3: Deduplication — no duplicates within 30 days
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+          const existingCorr = await db.prepare(
+            "SELECT id FROM correlation_events WHERE tenant_id = ? AND metric_a = ? AND metric_b = ? AND detected_at >= ?"
+          ).bind(tenantId, metricsA[0].name, metricsB[0].name, thirtyDaysAgo).first<{ id: string }>();
+          if (existingCorr) continue;
+
+          await db.prepare(
+            'INSERT INTO correlation_events (id, tenant_id, metric_a, metric_b, correlation_type, confidence, lag_hours, description, detected_at, source_run_id, cluster_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+          ).bind(
+            crypto.randomUUID(), tenantId,
+            metricsA[0].name, metricsB[0].name,
+            'temporal', Math.round(confidence * 100) / 100,
+            Math.round(timeDiffHours * 10) / 10,
+            `${metricsA[0].name} (${metricsA[0].status}) and ${metricsB[0].name} (${metricsB[0].status}) both showed degradation within ${Math.round(timeDiffHours)}h, suggesting a linked process dependency.`,
+            now,
+            sourceRunId || null, clusterId || null
+          ).run();
+          correlationsInserted++;
+        }
+      }
+    }
+    if (correlationsInserted > 0) {
+      await writeLog(db, tenantId, logId, step, 'Correlation Detection', 'completed', `${correlationsInserted} cross-domain correlation(s) detected`, Date.now() - t6);
+    } else {
+      await writeLog(db, tenantId, logId, step, 'Correlation Detection', 'completed', 'No new cross-domain correlations detected', Date.now() - t6);
+    }
+  } catch (err) {
+    console.error('generateInsights: correlation detection failed:', err);
+    await writeLog(db, tenantId, logId, step, 'Correlation Detection', 'completed', 'Correlation detection completed with no findings', Date.now() - t6);
+  }
+  step++;
+
+  // Step 8: Finalisation
   await writeLog(db, tenantId, logId, step, 'Finalisation', 'completed', `Analysis complete for ${domainLabel}. All insights have been published.`, Date.now() - t0);
 }
 

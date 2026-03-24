@@ -9,7 +9,7 @@ import { seedSampleCompany } from './seed-sample-company';
 import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v31';
+export const MIGRATION_VERSION = 'v32';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -81,6 +81,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS catalyst_run_analytics (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT, run_id TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, duration_ms INTEGER, total_items INTEGER NOT NULL DEFAULT 0, completed_items INTEGER NOT NULL DEFAULT 0, exception_items INTEGER NOT NULL DEFAULT 0, escalated_items INTEGER NOT NULL DEFAULT 0, pending_items INTEGER NOT NULL DEFAULT 0, auto_approved_items INTEGER NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, min_confidence REAL NOT NULL DEFAULT 0, max_confidence REAL NOT NULL DEFAULT 0, confidence_distribution TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'running', insights TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, run_number INTEGER NOT NULL, triggered_by TEXT NOT NULL DEFAULT 'manual', trigger_context TEXT, started_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, duration_ms INTEGER, data_sources_used TEXT NOT NULL DEFAULT '[]', source_record_count INTEGER NOT NULL DEFAULT 0, target_record_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'running', mode TEXT NOT NULL DEFAULT 'reconciliation', matched INTEGER NOT NULL DEFAULT 0, unmatched_source INTEGER NOT NULL DEFAULT 0, unmatched_target INTEGER NOT NULL DEFAULT 0, discrepancies INTEGER NOT NULL DEFAULT 0, exceptions_raised INTEGER NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, min_confidence REAL NOT NULL DEFAULT 0, max_confidence REAL NOT NULL DEFAULT 0, reasoning TEXT, recommendations TEXT DEFAULT '[]', metrics_generated TEXT DEFAULT '[]', anomalies_detected TEXT DEFAULT '[]', risk_alerts_raised TEXT DEFAULT '[]', actions_created TEXT DEFAULT '[]', result_data TEXT, discrepancy_details TEXT, total_source_value REAL NOT NULL DEFAULT 0, total_matched_value REAL NOT NULL DEFAULT 0, total_discrepancy_value REAL NOT NULL DEFAULT 0, total_exception_value REAL NOT NULL DEFAULT 0, total_unmatched_value REAL NOT NULL DEFAULT 0, currency TEXT DEFAULT 'ZAR', items_total INTEGER NOT NULL DEFAULT 0, items_reviewed INTEGER NOT NULL DEFAULT 0, items_approved INTEGER NOT NULL DEFAULT 0, items_rejected INTEGER NOT NULL DEFAULT 0, items_deferred INTEGER NOT NULL DEFAULT 0, review_complete INTEGER NOT NULL DEFAULT 0, parent_run_id TEXT, sign_off_status TEXT DEFAULT 'open', signed_off_by TEXT, signed_off_at TEXT, sign_off_notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_kpis (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, total_runs INTEGER NOT NULL DEFAULT 0, successful_runs INTEGER NOT NULL DEFAULT 0, failed_runs INTEGER NOT NULL DEFAULT 0, success_rate REAL NOT NULL DEFAULT 0, avg_duration_ms INTEGER NOT NULL DEFAULT 0, avg_records_processed INTEGER NOT NULL DEFAULT 0, avg_match_rate REAL NOT NULL DEFAULT 0, avg_discrepancy_rate REAL NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, total_exceptions INTEGER NOT NULL DEFAULT 0, exception_rate REAL NOT NULL DEFAULT 0, success_trend TEXT NOT NULL DEFAULT '[]', duration_trend TEXT NOT NULL DEFAULT '[]', discrepancy_trend TEXT NOT NULL DEFAULT '[]', confidence_trend TEXT NOT NULL DEFAULT '[]', health_dimensions TEXT NOT NULL DEFAULT '[]', health_contribution REAL NOT NULL DEFAULT 0, threshold_success_green REAL DEFAULT 90, threshold_success_amber REAL DEFAULT 70, threshold_success_red REAL DEFAULT 50, threshold_duration_green INTEGER DEFAULT 60000, threshold_duration_amber INTEGER DEFAULT 120000, threshold_duration_red INTEGER DEFAULT 300000, threshold_discrepancy_green REAL DEFAULT 2, threshold_discrepancy_amber REAL DEFAULT 5, threshold_discrepancy_red REAL DEFAULT 10, status TEXT NOT NULL DEFAULT 'green', last_run_at TEXT, next_scheduled_run TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name));
+    CREATE TABLE IF NOT EXISTS health_score_history (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), overall_score REAL NOT NULL, dimensions TEXT NOT NULL DEFAULT '{}', source_run_id TEXT, catalyst_name TEXT, recorded_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_run_items (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES sub_catalyst_runs(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), item_number INTEGER NOT NULL, item_status TEXT NOT NULL DEFAULT 'matched', category TEXT, source_ref TEXT, source_date TEXT, source_entity TEXT, source_amount REAL, source_currency TEXT DEFAULT 'ZAR', source_data TEXT, target_ref TEXT, target_date TEXT, target_entity TEXT, target_amount REAL, target_currency TEXT DEFAULT 'ZAR', target_data TEXT, match_confidence REAL, match_method TEXT, matched_on_field TEXT, discrepancy_field TEXT, discrepancy_source_value TEXT, discrepancy_target_value TEXT, discrepancy_amount REAL, discrepancy_pct REAL, discrepancy_reason TEXT, exception_type TEXT, exception_severity TEXT, exception_detail TEXT, review_status TEXT NOT NULL DEFAULT 'pending', reviewed_by TEXT, reviewed_at TEXT, review_notes TEXT, reclassified_to TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS run_comments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES sub_catalyst_runs(id), item_id TEXT REFERENCES sub_catalyst_run_items(id), user_id TEXT NOT NULL, user_name TEXT NOT NULL, comment TEXT NOT NULL, comment_type TEXT DEFAULT 'note', created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
@@ -144,6 +145,12 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_scri_severity ON sub_catalyst_run_items(exception_severity)',
     'CREATE INDEX IF NOT EXISTS idx_run_comments_run ON run_comments(run_id)',
     'CREATE INDEX IF NOT EXISTS idx_run_comments_item ON run_comments(item_id)',
+    // Spec 6: health_score_history indexes
+    'CREATE INDEX IF NOT EXISTS idx_hsh_tenant ON health_score_history(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_hsh_tenant_date ON health_score_history(tenant_id, recorded_at)',
+    // Spec 6: process_metrics source attribution indexes
+    'CREATE INDEX IF NOT EXISTS idx_pm_source_run ON process_metrics(source_run_id)',
+    'CREATE INDEX IF NOT EXISTS idx_pm_cluster ON process_metrics(tenant_id, cluster_id)',
   ];
 
   for (const idx of indexes) {
@@ -278,6 +285,25 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // Phase 9: Run analytics
     { table: 'catalyst_actions', column: 'run_id', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'processing_time_ms', definition: 'INTEGER' },
+    // Spec 6 P1: Source attribution on process_metrics
+    { table: 'process_metrics', column: 'sub_catalyst_name', definition: 'TEXT' },
+    { table: 'process_metrics', column: 'source_run_id', definition: 'TEXT' },
+    { table: 'process_metrics', column: 'cluster_id', definition: 'TEXT' },
+    // Spec 6 A2: Briefing source data columns
+    { table: 'executive_briefings', column: 'health_delta', definition: 'REAL' },
+    { table: 'executive_briefings', column: 'red_metric_count', definition: 'INTEGER' },
+    { table: 'executive_briefings', column: 'anomaly_count', definition: 'INTEGER' },
+    { table: 'executive_briefings', column: 'active_risk_count', definition: 'INTEGER' },
+    // Spec 6 A3: Scenario context columns
+    { table: 'scenarios', column: 'context_data', definition: 'TEXT' },
+    { table: 'scenarios', column: 'model_response', definition: 'TEXT' },
+    // Spec 6 P1: Risk alert source attribution
+    { table: 'risk_alerts', column: 'source_run_id', definition: 'TEXT' },
+    { table: 'risk_alerts', column: 'cluster_id', definition: 'TEXT' },
+    { table: 'risk_alerts', column: 'sub_catalyst_name', definition: 'TEXT' },
+    // Spec 6 P3: Correlation source attribution
+    { table: 'correlation_events', column: 'source_run_id', definition: 'TEXT' },
+    { table: 'correlation_events', column: 'cluster_id', definition: 'TEXT' },
   ];
 
   for (const col of selfHealColumns) {
