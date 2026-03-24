@@ -295,12 +295,12 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   let latestRunTotal = 0;
   try {
     const recentRun = await db.prepare(
-      'SELECT confidence, total_records, matched_count, discrepancy_count FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1'
-    ).bind(tenantId).first<{ confidence: number; total_records: number; matched_count: number; discrepancy_count: number }>();
+      'SELECT avg_confidence, source_record_count, matched, discrepancies FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1'
+    ).bind(tenantId).first<{ avg_confidence: number; source_record_count: number; matched: number; discrepancies: number }>();
     if (recentRun) {
-      latestRunConfidence = recentRun.confidence ?? 0;
-      latestRunTotal = recentRun.total_records ?? 0;
-      latestRunSuccess = recentRun.matched_count ?? 0;
+      latestRunConfidence = recentRun.avg_confidence ?? 0;
+      latestRunTotal = recentRun.source_record_count ?? 0;
+      latestRunSuccess = recentRun.matched ?? 0;
     }
   } catch { /* table may not exist yet */ }
 

@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api, getTenantOverride } from "@/lib/api";
+import { api, getTenantOverride, API_URL } from "@/lib/api";
 import type { ERPAdapter, ERPConnection, CanonicalEndpoint } from "@/lib/api";
 import {
   Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
@@ -811,7 +811,7 @@ export function IntegrationsPage() {
                                   setTryingEndpoint(ep.id);
                                   setTryLoading(true);
                                   setTryResult(null);
-                                  const apiUrl = import.meta.env.VITE_API_URL || '';
+                                  const apiUrl = API_URL;
                                   fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
                                     headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` },
                                   })

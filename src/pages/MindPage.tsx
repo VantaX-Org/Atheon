@@ -55,7 +55,7 @@ export function MindPage() {
  const evaluationMetrics = [
  { name: 'Avg Latency', value: stats?.avgLatencyMs || 0, target: 500, unit: 'ms', inverse: true },
  { name: 'Total Queries', value: stats?.totalQueries || 0, target: 100 },
- { name: 'Total Tokens', value: stats?.totalTokens || 0, target: 10000 },
+ { name: 'Total Tokens', value: stats?.totalTokens || 0, target: 10000, unit: ' tokens' },
  ];
 
  return (
