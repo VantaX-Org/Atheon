@@ -2977,7 +2977,7 @@ catalysts.put('/hitl-config', async (c) => {
     ).bind(tenantId, body.cluster_id, subName).first();
   } else {
     existing = await c.env.DB.prepare(
-      'SELECT id FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = \'\'\')'
+      "SELECT id FROM catalyst_hitl_config WHERE tenant_id = ? AND cluster_id = ? AND (sub_catalyst_name IS NULL OR sub_catalyst_name = '')"
     ).bind(tenantId, body.cluster_id).first();
   }
 
