@@ -379,7 +379,13 @@ export const api = {
     getSubCatalystRunDetail: (clusterId: string, subName: string, runId: string) =>
       request<SubCatalystRunDetail>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs/${runId}`),
     getSubCatalystKpis: (clusterId: string, subName: string) =>
-      request<{ kpis: SubCatalystKpis | null }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis`),
+      request<{ kpis: KpisResponse | null }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis`),
+    getKpiDefinitions: (clusterId: string, subName: string) =>
+      request<{ definitions: KpiDefinitionRow[] }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpi-definitions`),
+    updateKpiDefinition: (clusterId: string, subName: string, defId: string, data: { threshold_green?: number; threshold_amber?: number; threshold_red?: number; enabled?: boolean }) =>
+      request<{ success: boolean }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpi-definitions/${defId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    resetKpiDefinitions: (clusterId: string, subName: string) =>
+      request<{ success: boolean; definitions_count: number }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpi-definitions/reset`, { method: 'PUT' }),
     updateSubCatalystThresholds: (clusterId: string, subName: string, thresholds: Record<string, number>) =>
       request<{ success: boolean; kpis: SubCatalystKpis }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis/thresholds`, { method: 'PUT', body: JSON.stringify(thresholds) }),
     getRunItems: (runId: string, opts?: { limit?: number; offset?: number; status?: string; severity?: string; review_status?: string }) =>
@@ -1389,6 +1395,48 @@ export interface SubCatalystKpis {
   threshold_discrepancy_green: number;
   threshold_discrepancy_amber: number;
   threshold_discrepancy_red: number;
+}
+
+export interface KpiDefinitionItem {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  direction: string;
+  value: number | null;
+  status: string;
+  thresholds: { green: number | null; amber: number | null; red: number | null };
+  trend: number[];
+  is_universal: boolean;
+  enabled: boolean;
+  sort_order: number;
+  calculation: string;
+  data_source: string;
+}
+
+export interface KpiDefinitionRow {
+  id: string;
+  tenant_id: string;
+  cluster_id: string;
+  sub_catalyst_name: string;
+  kpi_name: string;
+  unit: string;
+  direction: string;
+  threshold_green: number | null;
+  threshold_amber: number | null;
+  threshold_red: number | null;
+  calculation: string;
+  data_source: string;
+  category: string;
+  is_universal: number;
+  sort_order: number;
+  enabled: number;
+}
+
+export interface KpisResponse {
+  overall_status: string;
+  aggregate: SubCatalystKpis | null;
+  definitions: KpiDefinitionItem[];
 }
 
 export interface SubCatalystRunItem {

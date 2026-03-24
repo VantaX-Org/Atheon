@@ -4,9 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, API_URL } from "@/lib/api";
 import type {
-  SubCatalystRun, SubCatalystRunDetail, SubCatalystKpis,
+  SubCatalystRun, SubCatalystRunDetail,
   SubCatalystRunItemsResponse,
   SubCatalystRunComparison, RunComment,
+  KpisResponse, KpiDefinitionItem, KpiDefinitionRow,
 } from "@/lib/api";
 import {
   X, Activity, Clock, Settings, CheckCircle, XCircle,
@@ -53,9 +54,6 @@ const fmtDate = (d?: string) => {
   return new Date(d).toLocaleString();
 };
 
-const parseTrend = (s: string): number[] => {
-  try { return JSON.parse(s); } catch { return []; }
-};
 
 function MiniSparkline({ data, color = '#60a5fa' }: { data: number[]; color?: string }) {
   if (!data.length) return <span className="text-xs text-white/30">No data</span>;
@@ -74,7 +72,11 @@ function MiniSparkline({ data, color = '#60a5fa' }: { data: number[]; color?: st
 
 export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, onClose }: SubCatalystOpsPanelProps) {
   const [tab, setTab] = useState<TabId>('overview');
-  const [kpis, setKpis] = useState<SubCatalystKpis | null>(null);
+  const [kpis, setKpis] = useState<KpisResponse | null>(null);
+  const [kpiDefs, setKpiDefs] = useState<KpiDefinitionRow[]>([]);
+  const [defEdits, setDefEdits] = useState<Record<string, { threshold_green?: number; threshold_amber?: number; threshold_red?: number; enabled?: boolean }>>({});
+  const [savingDef, setSavingDef] = useState<string | null>(null);
+  const [resettingDefs, setResettingDefs] = useState(false);
   const [runs, setRuns] = useState<SubCatalystRun[]>([]);
   const [runsTotal, setRunsTotal] = useState(0);
   const [runsLoading, setRunsLoading] = useState(false);
@@ -111,21 +113,29 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     try {
       const res = await api.catalysts.getSubCatalystKpis(clusterId, subCatalystName);
       setKpis(res.kpis);
-      if (res.kpis) {
+      if (res.kpis?.aggregate) {
         setThresholds({
-          threshold_success_green: res.kpis.threshold_success_green,
-          threshold_success_amber: res.kpis.threshold_success_amber,
-          threshold_success_red: res.kpis.threshold_success_red,
-          threshold_duration_green: res.kpis.threshold_duration_green,
-          threshold_duration_amber: res.kpis.threshold_duration_amber,
-          threshold_duration_red: res.kpis.threshold_duration_red,
-          threshold_discrepancy_green: res.kpis.threshold_discrepancy_green,
-          threshold_discrepancy_amber: res.kpis.threshold_discrepancy_amber,
-          threshold_discrepancy_red: res.kpis.threshold_discrepancy_red,
+          threshold_success_green: res.kpis.aggregate.threshold_success_green,
+          threshold_success_amber: res.kpis.aggregate.threshold_success_amber,
+          threshold_success_red: res.kpis.aggregate.threshold_success_red,
+          threshold_duration_green: res.kpis.aggregate.threshold_duration_green,
+          threshold_duration_amber: res.kpis.aggregate.threshold_duration_amber,
+          threshold_duration_red: res.kpis.aggregate.threshold_duration_red,
+          threshold_discrepancy_green: res.kpis.aggregate.threshold_discrepancy_green,
+          threshold_discrepancy_amber: res.kpis.aggregate.threshold_discrepancy_amber,
+          threshold_discrepancy_red: res.kpis.aggregate.threshold_discrepancy_red,
         });
       }
     } catch (err) { console.error('loadKpis failed:', err); }
     setKpiLoading(false);
+  }, [clusterId, subCatalystName]);
+
+  const loadKpiDefs = useCallback(async () => {
+    try {
+      const res = await api.catalysts.getKpiDefinitions(clusterId, subCatalystName);
+      setKpiDefs(res.definitions || []);
+      setDefEdits({});
+    } catch (err) { console.error('loadKpiDefs failed:', err); }
   }, [clusterId, subCatalystName]);
 
   const loadRuns = useCallback(async (page = 0) => {
@@ -160,7 +170,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     setDetailLoading(false);
   }, [clusterId, subCatalystName]);
 
-  useEffect(() => { loadKpis(); loadRuns(); }, [loadKpis, loadRuns]);
+  useEffect(() => { loadKpis(); loadRuns(); loadKpiDefs(); }, [loadKpis, loadRuns, loadKpiDefs]);
 
   const handleReview = async (itemId: string, reviewStatus: string) => {
     if (!selectedRun) return;
@@ -231,7 +241,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     setSavingThresholds(true);
     try {
       const res = await api.catalysts.updateSubCatalystThresholds(clusterId, subCatalystName, thresholds);
-      if (res.kpis) setKpis(res.kpis);
+      if (res.kpis) setKpis(res.kpis as unknown as KpisResponse);
     } catch (err) { console.error('saveThresholds failed:', err); }
     setSavingThresholds(false);
   };
@@ -249,56 +259,127 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
 
   // ========== RENDER ==========
 
-  const renderOverview = () => (
-    <div className="space-y-4">
-      {kpiLoading ? (
-        <div className="flex items-center gap-2 p-8 justify-center"><Loader2 size={16} className="animate-spin" /> Loading KPIs...</div>
-      ) : !kpis ? (
-        <div className="text-center text-white/50 p-8">No runs yet. Execute the sub-catalyst to see KPIs.</div>
-      ) : (
-        <>
-          {/* Status indicator */}
-          <div className={`border rounded-lg p-4 ${statusBg(kpis.status)}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${kpis.status === 'green' ? 'bg-emerald-400' : kpis.status === 'amber' ? 'bg-amber-400' : 'bg-red-400'}`} />
-                <span className={`font-semibold ${statusColor(kpis.status)}`}>{kpis.status.toUpperCase()}</span>
-              </div>
-              <span className="text-xs text-white/50">Last run: {fmtDate(kpis.last_run_at)}</span>
-            </div>
-          </div>
+  const handleSaveKpiDef = async (defId: string) => {
+    const edits = defEdits[defId];
+    if (!edits) return;
+    setSavingDef(defId);
+    try {
+      await api.catalysts.updateKpiDefinition(clusterId, subCatalystName, defId, edits);
+      await loadKpiDefs();
+      await loadKpis();
+    } catch (err) { console.error('saveKpiDef failed:', err); }
+    setSavingDef(null);
+  };
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="p-3 bg-surface border-white/5">
-              <div className="text-xs text-white/50 mb-1">Success Rate</div>
-              <div className="text-xl font-bold text-emerald-400">{kpis.success_rate}%</div>
-              <MiniSparkline data={parseTrend(kpis.success_trend)} color="#34d399" />
-              <div className="text-xs text-white/30 mt-1">{kpis.total_runs} runs ({kpis.successful_runs} ok, {kpis.failed_runs} fail)</div>
-            </Card>
-            <Card className="p-3 bg-surface border-white/5">
-              <div className="text-xs text-white/50 mb-1">Avg Duration</div>
-              <div className="text-xl font-bold text-accent">{fmtDuration(kpis.avg_duration_ms)}</div>
-              <MiniSparkline data={parseTrend(kpis.duration_trend)} color="#60a5fa" />
-              <div className="text-xs text-white/30 mt-1">{kpis.avg_records_processed} records/run</div>
-            </Card>
-            <Card className="p-3 bg-surface border-white/5">
-              <div className="text-xs text-white/50 mb-1">Discrepancy Rate</div>
-              <div className="text-xl font-bold text-amber-400">{kpis.avg_discrepancy_rate}%</div>
-              <MiniSparkline data={parseTrend(kpis.discrepancy_trend)} color="#fbbf24" />
-              <div className="text-xs text-white/30 mt-1">Match rate: {kpis.avg_match_rate}%</div>
-            </Card>
-            <Card className="p-3 bg-surface border-white/5">
-              <div className="text-xs text-white/50 mb-1">Avg Confidence</div>
-              <div className="text-xl font-bold text-purple-400">{(kpis.avg_confidence * 100).toFixed(0)}%</div>
-              <MiniSparkline data={parseTrend(kpis.confidence_trend)} color="#a78bfa" />
-              <div className="text-xs text-white/30 mt-1">Exceptions: {kpis.total_exceptions} ({kpis.exception_rate}%)</div>
-            </Card>
-          </div>
-        </>
-      )}
-    </div>
-  );
+  const handleResetDefs = async () => {
+    setResettingDefs(true);
+    try {
+      await api.catalysts.resetKpiDefinitions(clusterId, subCatalystName);
+      await loadKpiDefs();
+      await loadKpis();
+    } catch (err) { console.error('resetDefs failed:', err); }
+    setResettingDefs(false);
+  };
+
+  const categoryLabel = (cat: string) => cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const statusBorderClass = (s: string) =>
+    s === 'red' ? 'border-l-2 border-l-red-400' : s === 'amber' ? 'border-l-2 border-l-amber-400' : '';
+
+  const kpiValueColor = (s: string) =>
+    s === 'green' ? 'text-emerald-400' : s === 'amber' ? 'text-amber-400' : s === 'red' ? 'text-red-400' : 'text-white/70';
+
+  const sparklineColor = (s: string) =>
+    s === 'green' ? '#34d399' : s === 'amber' ? '#fbbf24' : s === 'red' ? '#f87171' : '#60a5fa';
+
+  const renderOverview = () => {
+    const agg = kpis?.aggregate;
+    const defs = kpis?.definitions || [];
+    const overallStatus = kpis?.overall_status || 'green';
+
+    // Group definitions by category
+    const universalDefs = defs.filter(d => d.is_universal);
+    const domainDefs = defs.filter(d => !d.is_universal && d.enabled);
+    const grouped = new Map<string, KpiDefinitionItem[]>();
+    for (const d of domainDefs) {
+      const arr = grouped.get(d.category) || [];
+      arr.push(d);
+      grouped.set(d.category, arr);
+    }
+
+    return (
+      <div className="space-y-4">
+        {kpiLoading ? (
+          <div className="flex items-center gap-2 p-8 justify-center"><Loader2 size={16} className="animate-spin" /> Loading KPIs...</div>
+        ) : !agg ? (
+          <div className="text-center text-white/50 p-8">No runs yet. Execute the sub-catalyst to see KPIs.</div>
+        ) : (
+          <>
+            {/* Overall Status */}
+            <div className={`border rounded-lg p-4 ${statusBg(overallStatus)}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${overallStatus === 'green' ? 'bg-emerald-400' : overallStatus === 'amber' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                  <span className={`font-semibold ${statusColor(overallStatus)}`}>{overallStatus.toUpperCase()}</span>
+                  <span className="text-xs text-white/40 ml-2">{defs.length} KPIs ({universalDefs.length} universal, {domainDefs.length} domain-specific)</span>
+                </div>
+                <span className="text-xs text-white/50">Last run: {fmtDate(agg.last_run_at)}</span>
+              </div>
+            </div>
+
+            {/* Universal KPIs (pinned at top) */}
+            {universalDefs.length > 0 && (
+              <div>
+                <div className="text-xs font-medium text-white/50 mb-2 uppercase tracking-wider">Universal KPIs</div>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                  {universalDefs.map(d => (
+                    <Card key={d.id} className={`p-3 bg-surface border-white/5 ${statusBorderClass(d.status)}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs text-white/50">{d.name}</div>
+                        <div className={`w-2 h-2 rounded-full ${d.status === 'green' ? 'bg-emerald-400' : d.status === 'amber' ? 'bg-amber-400' : d.status === 'red' ? 'bg-red-400' : 'bg-gray-400'}`} />
+                      </div>
+                      <div className={`text-xl font-bold ${kpiValueColor(d.status)}`}>
+                        {d.value !== null ? (d.unit === '%' ? `${d.value.toFixed(1)}%` : d.unit === 'ms' ? fmtDuration(d.value) : d.value.toFixed(2)) : '-'}
+                      </div>
+                      <MiniSparkline data={d.trend} color={sparklineColor(d.status)} />
+                      <div className="text-xs text-white/30 mt-1">{d.unit} | {d.direction === 'higher_better' ? 'Higher is better' : 'Lower is better'}</div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Domain-specific KPIs by category */}
+            {Array.from(grouped.entries()).map(([category, catDefs]) => (
+              <div key={category}>
+                <div className="text-xs font-medium text-white/50 mb-2 uppercase tracking-wider">{categoryLabel(category)} KPIs</div>
+                <div className={`grid gap-3 ${catDefs.length > 8 ? 'grid-cols-2 max-h-64 overflow-y-auto' : 'grid-cols-2 lg:grid-cols-3'}`}>
+                  {catDefs.map(d => (
+                    <Card key={d.id} className={`p-3 bg-surface border-white/5 ${statusBorderClass(d.status)}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs text-white/50 truncate" title={d.name}>{d.name}</div>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${d.status === 'green' ? 'bg-emerald-400' : d.status === 'amber' ? 'bg-amber-400' : d.status === 'red' ? 'bg-red-400' : 'bg-gray-400'}`} />
+                      </div>
+                      <div className={`text-lg font-bold ${kpiValueColor(d.status)}`}>
+                        {d.value !== null ? (d.unit === '%' ? `${d.value.toFixed(1)}%` : d.unit === 'ms' ? fmtDuration(d.value) : d.unit.includes('ZAR') || d.unit.includes('currency') ? fmtCurrency(d.value) : d.value.toFixed(2)) : '-'}
+                      </div>
+                      <MiniSparkline data={d.trend} color={sparklineColor(d.status)} />
+                      <div className="text-xs text-white/30 mt-1">{d.unit}</div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Summary footer if no domain KPIs */}
+            {domainDefs.length === 0 && universalDefs.length > 0 && (
+              <div className="text-xs text-white/30 text-center p-4">Only universal KPIs are active. Domain-specific KPIs will appear after template deployment.</div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderHistory = () => (
     <div className="space-y-3">
@@ -654,76 +735,131 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
     );
   };
 
-  const renderConfig = () => (
-    <div className="space-y-4">
-      <Card className="p-4 bg-surface border-white/5">
-        <div className="text-sm font-medium text-white/80 mb-3">KPI Thresholds</div>
-        <p className="text-xs text-white/40 mb-4">Configure the Green / Amber / Red threshold zones for each KPI metric.</p>
+  const renderConfig = () => {
+    // Group defs by category for display
+    const groupedDefs = new Map<string, KpiDefinitionRow[]>();
+    for (const d of kpiDefs) {
+      const arr = groupedDefs.get(d.category) || [];
+      arr.push(d);
+      groupedDefs.set(d.category, arr);
+    }
 
-        {/* Success Rate thresholds */}
-        <div className="mb-4">
-          <div className="text-xs font-medium text-white/60 mb-2">Success Rate (%)</div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-emerald-400 block mb-1">Green &ge;</label>
-              <input type="number" className="bg-surface border border-emerald-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_green || 90} onChange={e => setThresholds(t => ({ ...t, threshold_success_green: parseFloat(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-xs text-amber-400 block mb-1">Amber &ge;</label>
-              <input type="number" className="bg-surface border border-amber-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_amber || 70} onChange={e => setThresholds(t => ({ ...t, threshold_success_amber: parseFloat(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-xs text-red-400 block mb-1">Red &lt;</label>
-              <input type="number" className="bg-surface border border-red-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_red || 50} onChange={e => setThresholds(t => ({ ...t, threshold_success_red: parseFloat(e.target.value) }))} />
-            </div>
+    return (
+      <div className="space-y-4">
+        {/* Header with Reset button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-white/80">KPI Definitions ({kpiDefs.length})</div>
+            <p className="text-xs text-white/40">Edit thresholds and enable/disable individual KPIs per sub-catalyst.</p>
           </div>
+          <Button size="sm" variant="ghost" onClick={handleResetDefs} disabled={resettingDefs}>
+            {resettingDefs ? <Loader2 size={14} className="animate-spin mr-1" /> : <RotateCcw size={14} className="mr-1" />}
+            Reset to Defaults
+          </Button>
         </div>
 
-        {/* Duration thresholds */}
-        <div className="mb-4">
-          <div className="text-xs font-medium text-white/60 mb-2">Duration (ms)</div>
-          <div className="grid grid-cols-3 gap-3">
+        {kpiDefs.length === 0 ? (
+          <div className="text-center text-white/50 p-8">No KPI definitions found. Deploy a template to generate KPIs.</div>
+        ) : (
+          Array.from(groupedDefs.entries()).map(([category, catDefs]) => (
+            <Card key={category} className="bg-surface border-white/5">
+              <div className="p-3 border-b border-white/5">
+                <span className="text-xs font-medium text-white/60 uppercase tracking-wider">{categoryLabel(category)}</span>
+                <span className="text-xs text-white/30 ml-2">({catDefs.length} KPIs)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-white/40 border-b border-white/5">
+                      <th className="text-left p-2 font-medium">KPI Name</th>
+                      <th className="text-left p-2 font-medium">Unit</th>
+                      <th className="text-center p-2 font-medium text-emerald-400">Green</th>
+                      <th className="text-center p-2 font-medium text-amber-400">Amber</th>
+                      <th className="text-center p-2 font-medium text-red-400">Red</th>
+                      <th className="text-center p-2 font-medium">Enabled</th>
+                      <th className="text-center p-2 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catDefs.map(d => {
+                      const edit = defEdits[d.id] || {};
+                      const hasChanges = Object.keys(edit).length > 0;
+                      return (
+                        <tr key={d.id} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="p-2 text-white/80 max-w-[200px] truncate" title={d.kpi_name}>{d.kpi_name}</td>
+                          <td className="p-2 text-white/50">{d.unit}</td>
+                          <td className="p-2 text-center">
+                            <input type="number" step="any" className="bg-transparent border border-emerald-400/20 rounded px-1.5 py-0.5 w-20 text-center text-emerald-400"
+                              value={edit.threshold_green !== undefined ? edit.threshold_green : (d.threshold_green ?? '')}
+                              onChange={e => setDefEdits(prev => ({ ...prev, [d.id]: { ...prev[d.id], threshold_green: parseFloat(e.target.value) || 0 } }))}
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <input type="number" step="any" className="bg-transparent border border-amber-400/20 rounded px-1.5 py-0.5 w-20 text-center text-amber-400"
+                              value={edit.threshold_amber !== undefined ? edit.threshold_amber : (d.threshold_amber ?? '')}
+                              onChange={e => setDefEdits(prev => ({ ...prev, [d.id]: { ...prev[d.id], threshold_amber: parseFloat(e.target.value) || 0 } }))}
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <input type="number" step="any" className="bg-transparent border border-red-400/20 rounded px-1.5 py-0.5 w-20 text-center text-red-400"
+                              value={edit.threshold_red !== undefined ? edit.threshold_red : (d.threshold_red ?? '')}
+                              onChange={e => setDefEdits(prev => ({ ...prev, [d.id]: { ...prev[d.id], threshold_red: parseFloat(e.target.value) || 0 } }))}
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              className={`w-8 h-4 rounded-full transition-colors ${(edit.enabled !== undefined ? edit.enabled : d.enabled === 1) ? 'bg-emerald-500' : 'bg-white/20'}`}
+                              onClick={() => {
+                                const currentEnabled = edit.enabled !== undefined ? edit.enabled : d.enabled === 1;
+                                setDefEdits(prev => ({ ...prev, [d.id]: { ...prev[d.id], enabled: !currentEnabled } }));
+                              }}
+                            >
+                              <div className={`w-3 h-3 rounded-full bg-white transition-transform ${(edit.enabled !== undefined ? edit.enabled : d.enabled === 1) ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                            </button>
+                          </td>
+                          <td className="p-2 text-center">
+                            {hasChanges && (
+                              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => handleSaveKpiDef(d.id)} disabled={savingDef === d.id}>
+                                {savingDef === d.id ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ))
+        )}
+
+        {/* Legacy aggregate thresholds */}
+        <Card className="p-4 bg-surface border-white/5">
+          <div className="text-sm font-medium text-white/80 mb-3">Aggregate KPI Thresholds (Legacy)</div>
+          <p className="text-xs text-white/40 mb-4">These thresholds apply to the 3 universal aggregate KPIs (Success Rate, Duration, Discrepancy Rate).</p>
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <div>
-              <label className="text-xs text-emerald-400 block mb-1">Green &le;</label>
-              <input type="number" className="bg-surface border border-emerald-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_duration_green || 60000} onChange={e => setThresholds(t => ({ ...t, threshold_duration_green: parseInt(e.target.value) }))} />
+              <label className="text-xs text-white/50 block mb-1">Success Green &ge;</label>
+              <input type="number" className="bg-surface border border-white/10 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_green || 90} onChange={e => setThresholds(t => ({ ...t, threshold_success_green: parseFloat(e.target.value) }))} />
             </div>
             <div>
-              <label className="text-xs text-amber-400 block mb-1">Amber &le;</label>
-              <input type="number" className="bg-surface border border-amber-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_duration_amber || 120000} onChange={e => setThresholds(t => ({ ...t, threshold_duration_amber: parseInt(e.target.value) }))} />
+              <label className="text-xs text-white/50 block mb-1">Success Amber &ge;</label>
+              <input type="number" className="bg-surface border border-white/10 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_amber || 70} onChange={e => setThresholds(t => ({ ...t, threshold_success_amber: parseFloat(e.target.value) }))} />
             </div>
             <div>
-              <label className="text-xs text-red-400 block mb-1">Red &gt;</label>
-              <input type="number" className="bg-surface border border-red-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_duration_red || 300000} onChange={e => setThresholds(t => ({ ...t, threshold_duration_red: parseInt(e.target.value) }))} />
+              <label className="text-xs text-white/50 block mb-1">Success Red &lt;</label>
+              <input type="number" className="bg-surface border border-white/10 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_success_red || 50} onChange={e => setThresholds(t => ({ ...t, threshold_success_red: parseFloat(e.target.value) }))} />
             </div>
           </div>
-        </div>
-
-        {/* Discrepancy Rate thresholds */}
-        <div className="mb-4">
-          <div className="text-xs font-medium text-white/60 mb-2">Discrepancy Rate (%)</div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-emerald-400 block mb-1">Green &le;</label>
-              <input type="number" className="bg-surface border border-emerald-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_discrepancy_green || 2} onChange={e => setThresholds(t => ({ ...t, threshold_discrepancy_green: parseFloat(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-xs text-amber-400 block mb-1">Amber &le;</label>
-              <input type="number" className="bg-surface border border-amber-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_discrepancy_amber || 5} onChange={e => setThresholds(t => ({ ...t, threshold_discrepancy_amber: parseFloat(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-xs text-red-400 block mb-1">Red &gt;</label>
-              <input type="number" className="bg-surface border border-red-400/30 rounded px-2 py-1 text-xs w-full" value={thresholds.threshold_discrepancy_red || 10} onChange={e => setThresholds(t => ({ ...t, threshold_discrepancy_red: parseFloat(e.target.value) }))} />
-            </div>
-          </div>
-        </div>
-
-        <Button size="sm" onClick={handleSaveThresholds} disabled={savingThresholds}>
-          {savingThresholds ? <Loader2 size={14} className="animate-spin mr-1" /> : <Settings size={14} className="mr-1" />}
-          Save Thresholds
-        </Button>
-      </Card>
-    </div>
-  );
+          <Button size="sm" onClick={handleSaveThresholds} disabled={savingThresholds}>
+            {savingThresholds ? <Loader2 size={14} className="animate-spin mr-1" /> : <Settings size={14} className="mr-1" />}
+            Save Aggregate Thresholds
+          </Button>
+        </Card>
+      </div>
+    );
+  };
 
   const tabItems = [
     { id: 'overview' as TabId, label: 'Overview', icon: <Activity size={14} /> },
@@ -743,7 +879,7 @@ export function SubCatalystOpsPanel({ clusterId, clusterName, subCatalystName, o
           </div>
           <div className="flex items-center gap-2">
             {kpis && (
-              <div className={`w-2.5 h-2.5 rounded-full ${kpis.status === 'green' ? 'bg-emerald-400' : kpis.status === 'amber' ? 'bg-amber-400' : 'bg-red-400'}`} />
+              <div className={`w-2.5 h-2.5 rounded-full ${(kpis.overall_status || 'green') === 'green' ? 'bg-emerald-400' : (kpis.overall_status || 'green') === 'amber' ? 'bg-amber-400' : 'bg-red-400'}`} />
             )}
             <Button size="sm" variant="ghost" onClick={onClose}><X size={16} /></Button>
           </div>

@@ -84,6 +84,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS health_score_history (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), overall_score REAL NOT NULL, dimensions TEXT NOT NULL DEFAULT '{}', source_run_id TEXT, catalyst_name TEXT, recorded_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_run_items (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES sub_catalyst_runs(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), item_number INTEGER NOT NULL, item_status TEXT NOT NULL DEFAULT 'matched', category TEXT, source_ref TEXT, source_date TEXT, source_entity TEXT, source_amount REAL, source_currency TEXT DEFAULT 'ZAR', source_data TEXT, target_ref TEXT, target_date TEXT, target_entity TEXT, target_amount REAL, target_currency TEXT DEFAULT 'ZAR', target_data TEXT, match_confidence REAL, match_method TEXT, matched_on_field TEXT, discrepancy_field TEXT, discrepancy_source_value TEXT, discrepancy_target_value TEXT, discrepancy_amount REAL, discrepancy_pct REAL, discrepancy_reason TEXT, exception_type TEXT, exception_severity TEXT, exception_detail TEXT, review_status TEXT NOT NULL DEFAULT 'pending', reviewed_by TEXT, reviewed_at TEXT, review_notes TEXT, reclassified_to TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS run_comments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES sub_catalyst_runs(id), item_id TEXT REFERENCES sub_catalyst_run_items(id), user_id TEXT NOT NULL, user_name TEXT NOT NULL, comment TEXT NOT NULL, comment_type TEXT DEFAULT 'note', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS sub_catalyst_kpi_definitions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, kpi_name TEXT NOT NULL, unit TEXT NOT NULL, direction TEXT NOT NULL DEFAULT 'higher_better', threshold_green REAL, threshold_amber REAL, threshold_red REAL, calculation TEXT NOT NULL DEFAULT '', data_source TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'universal', is_universal INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS sub_catalyst_kpi_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, definition_id TEXT NOT NULL REFERENCES sub_catalyst_kpi_definitions(id), run_id TEXT REFERENCES sub_catalyst_runs(id), value REAL NOT NULL, status TEXT NOT NULL DEFAULT 'green', trend TEXT NOT NULL DEFAULT '[]', measured_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -145,6 +147,11 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_scri_severity ON sub_catalyst_run_items(exception_severity)',
     'CREATE INDEX IF NOT EXISTS idx_run_comments_run ON run_comments(run_id)',
     'CREATE INDEX IF NOT EXISTS idx_run_comments_item ON run_comments(item_id)',
+    // KPI definitions indexes (from PR #129)
+    'CREATE INDEX IF NOT EXISTS idx_sckd_tenant_sub ON sub_catalyst_kpi_definitions(tenant_id, cluster_id, sub_catalyst_name)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_sckd_unique ON sub_catalyst_kpi_definitions(tenant_id, cluster_id, sub_catalyst_name, kpi_name)',
+    'CREATE INDEX IF NOT EXISTS idx_sckv_def ON sub_catalyst_kpi_values(definition_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sckv_run ON sub_catalyst_kpi_values(run_id)',
     // Spec 6: health_score_history indexes
     'CREATE INDEX IF NOT EXISTS idx_hsh_tenant ON health_score_history(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_hsh_tenant_date ON health_score_history(tenant_id, recorded_at)',
