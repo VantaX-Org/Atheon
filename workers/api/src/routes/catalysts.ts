@@ -4,6 +4,7 @@ import { executeTask, approveAction, rejectAction } from '../services/catalyst-e
 import { getValidatedJsonBody } from '../middleware/validation';
 import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst-templates';
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
+import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns } from '../services/sub-catalyst-ops';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -730,7 +731,7 @@ type ExecutionResultRecord = {
   cluster_id: string;
   executed_at: string;
   duration_ms: number;
-  status: 'completed' | 'failed' | 'partial';
+  status: 'completed' | 'failed' | 'partial' | 'running';
   mode: string;
   summary: {
     total_records_source: number;
@@ -749,6 +750,12 @@ type ExecutionResultRecord = {
     difference?: string;
   }>;
   error?: string;
+  reasoning?: string;
+  recommendations?: string[];
+  matched_records?: Array<{ source: Record<string, unknown>; target: Record<string, unknown>; confidence: number; matched_on: string }>;
+  unmatched_source_records?: Array<Record<string, unknown>>;
+  unmatched_target_records?: Array<Record<string, unknown>>;
+  exception_records?: Array<{ record: Record<string, unknown>; type: string; severity: string; detail: string }>;
 };
 
 type SubCatalystRecord = {
@@ -1314,6 +1321,14 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     (result as Record<string, unknown>).exception_ids = exceptionIds;
   }
 
+  // ── Record run in sub_catalyst_runs + items (Phase 4) ──
+  try {
+    const runId = await recordRun(c.env.DB, targetTenant, clusterId, subName, result, 'manual');
+    (result as Record<string, unknown>).run_id = runId;
+  } catch (err) {
+    console.error('recordRun failed:', err);
+  }
+
   // Always return 200 so the client can read the detailed result (status field indicates success/failure)
   return c.json(result, 200);
 });
@@ -1357,10 +1372,12 @@ async function performReconciliation(
   const sourceData = await fetchDataForSource(sources[0], tenantId, db);
   const targetData = await fetchDataForSource(sources[1], tenantId, db);
 
-  let matched = 0;
+  let matchedCount = 0;
   let discrepancyCount = 0;
   let skippedSource = 0;
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
+  const matched_records: Array<{ source: Record<string, unknown>; target: Record<string, unknown>; confidence: number; matched_on: string }> = [];
+  const unmatched_source_records: Array<Record<string, unknown>> = [];
 
   // Use the first mapping that connects source 0 to source 1 as the key field
   const keyMappings = mappings.filter(m => m.source_index === 0 && m.target_index === 1);
@@ -1376,6 +1393,8 @@ async function performReconciliation(
         matched: 0, unmatched_source: sourceData.length, unmatched_target: targetData.length,
         discrepancies: Math.abs(sourceData.length - targetData.length),
       },
+      unmatched_source_records: sourceData,
+      unmatched_target_records: targetData,
     };
   }
 
@@ -1405,9 +1424,13 @@ async function performReconciliation(
       if (isMatch) {
         foundMatch = true;
         matchedTargetIndices.add(ti);
-        matched++;
+        matchedCount++;
+        let hasDiscrepancy = false;
 
-        // Check other mappings for discrepancies between matched records
+        // Track the matched pair
+        matched_records.push({ source: srcRow, target: tgtRow, confidence: 1.0, matched_on: primaryKey.source_field });
+
+        // Check other mappings for discrepancies between matched records (no cap)
         for (const fm of keyMappings.slice(1)) {
           const sv = srcRow[fm.source_field];
           const tv = tgtRow[fm.target_field];
@@ -1417,35 +1440,38 @@ async function performReconciliation(
             const tol = fm.tolerance ?? 0.01;
             if (!isNaN(nSv) && !isNaN(nTv) && Math.abs(nSv - nTv) > tol) {
               discrepancyCount++;
-              if (discrepancies && discrepancies.length < 50) {
-                discrepancies.push({
-                  source_record: srcRow, target_record: tgtRow,
-                  field: `${fm.source_field} vs ${fm.target_field}`,
-                  source_value: sv, target_value: tv,
-                  difference: `Difference: ${(nSv - nTv).toFixed(2)}`,
-                });
-              }
+              hasDiscrepancy = true;
+              discrepancies.push({
+                source_record: srcRow, target_record: tgtRow,
+                field: `${fm.source_field} vs ${fm.target_field}`,
+                source_value: sv, target_value: tv,
+                difference: `Difference: ${(nSv - nTv).toFixed(2)}`,
+              });
             }
           } else {
             const sSv = String(sv ?? '').toLowerCase().trim();
             const sTv = String(tv ?? '').toLowerCase().trim();
             if (sSv !== sTv) {
               discrepancyCount++;
-              if (discrepancies && discrepancies.length < 50) {
-                discrepancies.push({
-                  source_record: srcRow, target_record: tgtRow,
-                  field: `${fm.source_field} vs ${fm.target_field}`,
-                  source_value: sv, target_value: tv,
-                });
-              }
+              hasDiscrepancy = true;
+              discrepancies.push({
+                source_record: srcRow, target_record: tgtRow,
+                field: `${fm.source_field} vs ${fm.target_field}`,
+                source_value: sv, target_value: tv,
+              });
             }
           }
+        }
+        // If discrepancy found on a matched record, adjust confidence
+        if (hasDiscrepancy && matched_records.length > 0) {
+          matched_records[matched_records.length - 1].confidence = 0.7;
         }
         break;
       }
     }
 
-    if (!foundMatch && discrepancies && discrepancies.length < 50) {
+    if (!foundMatch) {
+      unmatched_source_records.push(srcRow);
       discrepancies.push({
         source_record: srcRow, target_record: null,
         field: primaryKey.source_field,
@@ -1456,20 +1482,32 @@ async function performReconciliation(
     }
   }
 
+  // Collect unmatched target records
+  const unmatched_target_records: Array<Record<string, unknown>> = [];
+  for (let ti = 0; ti < targetData.length; ti++) {
+    if (!matchedTargetIndices.has(ti)) {
+      const tgtVal = String(targetData[ti][primaryKey.target_field] ?? '').trim();
+      if (tgtVal) unmatched_target_records.push(targetData[ti]);
+    }
+  }
+
   return {
     id: crypto.randomUUID(), sub_catalyst: sub.name, cluster_id: clusterId,
     executed_at: new Date().toISOString(), duration_ms: 0,
-    status: (discrepancyCount > 0 || matched < (sourceData.length - skippedSource) || matchedTargetIndices.size < (targetData.length - skippedTargetCount)) ? 'partial' : 'completed',
+    status: (discrepancyCount > 0 || matchedCount < (sourceData.length - skippedSource) || matchedTargetIndices.size < (targetData.length - skippedTargetCount)) ? 'partial' : 'completed',
     mode: 'reconciliation',
     summary: {
       total_records_source: sourceData.length - skippedSource,
       total_records_target: targetData.length - skippedTargetCount,
-      matched,
-      unmatched_source: sourceData.length - skippedSource - matched,
+      matched: matchedCount,
+      unmatched_source: sourceData.length - skippedSource - matchedCount,
       unmatched_target: targetData.length - skippedTargetCount - matchedTargetIndices.size,
       discrepancies: discrepancyCount,
     },
     discrepancies: discrepancies?.length ? discrepancies : undefined,
+    matched_records: matched_records.length ? matched_records : undefined,
+    unmatched_source_records: unmatched_source_records.length ? unmatched_source_records : undefined,
+    unmatched_target_records: unmatched_target_records.length ? unmatched_target_records : undefined,
   };
 }
 
@@ -3064,6 +3102,300 @@ catalysts.get('/run-analytics/:runId', async (c) => {
       createdAt: a.created_at,
     })),
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Sub-Catalyst Ops Routes — Runs, Items, KPIs, Review, Compare, Sign-off, Comments
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/runs — Paginated run history
+catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/runs', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const tenantId = getTenantId(c);
+
+  const limit = parseInt(c.req.query('limit') || '20');
+  const offset = parseInt(c.req.query('offset') || '0');
+  const status = c.req.query('status') || undefined;
+  const from = c.req.query('from') || undefined;
+  const to = c.req.query('to') || undefined;
+  const triggered_by = c.req.query('triggered_by') || undefined;
+
+  const result = await getRuns(c.env.DB, tenantId, clusterId, subName, { limit, offset, status, from, to, triggered_by });
+  return c.json(result);
+});
+
+// GET /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/runs/:runId — Run detail with steps + linked outputs
+catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/runs/:runId', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const detail = await getRunDetail(c.env.DB, tenantId, runId);
+  if (!detail.run) return c.json({ error: 'Run not found' }, 404);
+  return c.json(detail);
+});
+
+// GET /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpis — KPI summary
+catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/kpis', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const tenantId = getTenantId(c);
+
+  const kpis = await getKpis(c.env.DB, tenantId, clusterId, subName);
+  return c.json({ kpis: kpis || null });
+});
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpis/thresholds — Update KPI thresholds
+catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/kpis/thresholds', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  const tenantId = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  const body = await c.req.json<Record<string, number>>();
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM sub_catalyst_kpis WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
+  ).bind(tenantId, clusterId, subName).first<{ id: string }>();
+
+  if (existing) {
+    const fields: string[] = [];
+    const vals: unknown[] = [];
+    const allowedFields = [
+      'threshold_success_green', 'threshold_success_amber', 'threshold_success_red',
+      'threshold_duration_green', 'threshold_duration_amber', 'threshold_duration_red',
+      'threshold_discrepancy_green', 'threshold_discrepancy_amber', 'threshold_discrepancy_red',
+    ];
+    for (const f of allowedFields) {
+      if (body[f] !== undefined) { fields.push(`${f} = ?`); vals.push(body[f]); }
+    }
+    if (fields.length > 0) {
+      fields.push('updated_at = ?');
+      vals.push(new Date().toISOString());
+      vals.push(existing.id);
+      await c.env.DB.prepare(`UPDATE sub_catalyst_kpis SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+    }
+  } else {
+    // Create a new KPI row with the thresholds
+    await c.env.DB.prepare(`INSERT INTO sub_catalyst_kpis (id, tenant_id, cluster_id, sub_catalyst_name,
+      threshold_success_green, threshold_success_amber, threshold_success_red,
+      threshold_duration_green, threshold_duration_amber, threshold_duration_red,
+      threshold_discrepancy_green, threshold_discrepancy_amber, threshold_discrepancy_red, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      `kpi-${crypto.randomUUID()}`, tenantId, clusterId, subName,
+      body.threshold_success_green ?? 90, body.threshold_success_amber ?? 70, body.threshold_success_red ?? 50,
+      body.threshold_duration_green ?? 60000, body.threshold_duration_amber ?? 120000, body.threshold_duration_red ?? 300000,
+      body.threshold_discrepancy_green ?? 2, body.threshold_discrepancy_amber ?? 5, body.threshold_discrepancy_red ?? 10,
+      new Date().toISOString()
+    ).run();
+  }
+
+  // Recalculate KPIs with new thresholds
+  await recalculateKpis(c.env.DB, tenantId, clusterId, subName);
+  const kpis = await getKpis(c.env.DB, tenantId, clusterId, subName);
+  return c.json({ success: true, kpis });
+});
+
+// GET /api/catalysts/runs/:runId/items — Paginated item-level results
+catalysts.get('/runs/:runId/items', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+  const status = c.req.query('status') || undefined;
+  const severity = c.req.query('severity') || undefined;
+  const review_status = c.req.query('review_status') || undefined;
+
+  const result = await getRunItems(c.env.DB, tenantId, runId, { limit, offset, status, severity, review_status });
+  return c.json(result);
+});
+
+// PUT /api/catalysts/runs/:runId/items/:itemId/review — Review (approve/reject/reclassify/defer) an item
+catalysts.put('/runs/:runId/items/:itemId/review', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const itemId = c.req.param('itemId');
+  const auth = c.get('auth') as AuthContext | undefined;
+
+  const body = await c.req.json<{ review_status: string; review_notes?: string; reclassified_to?: string }>();
+  const validStatuses = ['approved', 'rejected', 'reclassified', 'deferred'];
+  if (!validStatuses.includes(body.review_status)) {
+    return c.json({ error: `review_status must be one of: ${validStatuses.join(', ')}` }, 400);
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE sub_catalyst_run_items SET review_status = ?, reviewed_by = ?, reviewed_at = ?, review_notes = ?, reclassified_to = ? WHERE id = ? AND run_id = ? AND tenant_id = ?'
+  ).bind(
+    body.review_status, auth?.email || 'system', new Date().toISOString(),
+    body.review_notes || null, body.reclassified_to || null,
+    itemId, runId, tenantId
+  ).run();
+
+  // Update run-level review counters
+  const counts = await c.env.DB.prepare(
+    `SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN review_status != 'pending' THEN 1 ELSE 0 END) as reviewed,
+      SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved,
+      SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+      SUM(CASE WHEN review_status = 'deferred' THEN 1 ELSE 0 END) as deferred
+    FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ?`
+  ).bind(runId, tenantId).first<Record<string, number>>();
+
+  const reviewComplete = counts && counts.total > 0 && counts.reviewed >= counts.total ? 1 : 0;
+  await c.env.DB.prepare(
+    'UPDATE sub_catalyst_runs SET items_reviewed = ?, items_approved = ?, items_rejected = ?, items_deferred = ?, review_complete = ? WHERE id = ? AND tenant_id = ?'
+  ).bind(counts?.reviewed ?? 0, counts?.approved ?? 0, counts?.rejected ?? 0, counts?.deferred ?? 0, reviewComplete, runId, tenantId).run();
+
+  return c.json({ success: true, review_status: body.review_status, review_complete: reviewComplete === 1 });
+});
+
+// PUT /api/catalysts/runs/:runId/items/bulk-review — Bulk review multiple items
+catalysts.put('/runs/:runId/items/bulk-review', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const auth = c.get('auth') as AuthContext | undefined;
+
+  const body = await c.req.json<{ item_ids: string[]; review_status: string; review_notes?: string }>();
+  if (!body.item_ids?.length) return c.json({ error: 'item_ids required' }, 400);
+
+  const validStatuses = ['approved', 'rejected', 'reclassified', 'deferred'];
+  if (!validStatuses.includes(body.review_status)) return c.json({ error: 'Invalid review_status' }, 400);
+
+  const now = new Date().toISOString();
+  let updated = 0;
+  for (const itemId of body.item_ids) {
+    try {
+      await c.env.DB.prepare(
+        'UPDATE sub_catalyst_run_items SET review_status = ?, reviewed_by = ?, reviewed_at = ?, review_notes = ? WHERE id = ? AND run_id = ? AND tenant_id = ?'
+      ).bind(body.review_status, auth?.email || 'system', now, body.review_notes || null, itemId, runId, tenantId).run();
+      updated++;
+    } catch { /* skip */ }
+  }
+
+  // Refresh run-level counters
+  const counts = await c.env.DB.prepare(
+    `SELECT COUNT(*) as total, SUM(CASE WHEN review_status != 'pending' THEN 1 ELSE 0 END) as reviewed,
+     SUM(CASE WHEN review_status = 'approved' THEN 1 ELSE 0 END) as approved,
+     SUM(CASE WHEN review_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+     SUM(CASE WHEN review_status = 'deferred' THEN 1 ELSE 0 END) as deferred
+    FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ?`
+  ).bind(runId, tenantId).first<Record<string, number>>();
+
+  const reviewComplete = counts && counts.total > 0 && counts.reviewed >= counts.total ? 1 : 0;
+  await c.env.DB.prepare(
+    'UPDATE sub_catalyst_runs SET items_reviewed = ?, items_approved = ?, items_rejected = ?, items_deferred = ?, review_complete = ? WHERE id = ? AND tenant_id = ?'
+  ).bind(counts?.reviewed ?? 0, counts?.approved ?? 0, counts?.rejected ?? 0, counts?.deferred ?? 0, reviewComplete, runId, tenantId).run();
+
+  return c.json({ success: true, updated, review_complete: reviewComplete === 1 });
+});
+
+// GET /api/catalysts/runs/:runId/export — Export run items as CSV
+catalysts.get('/runs/:runId/export', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const items = await c.env.DB.prepare(
+    'SELECT * FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ? ORDER BY item_number'
+  ).bind(runId, tenantId).all<Record<string, unknown>>();
+
+  if (!items.results?.length) return c.json({ error: 'No items found' }, 404);
+
+  // Build CSV
+  const headers = ['item_number', 'item_status', 'source_ref', 'source_entity', 'source_amount', 'target_ref', 'target_entity', 'target_amount', 'match_confidence', 'discrepancy_field', 'discrepancy_amount', 'discrepancy_pct', 'exception_type', 'exception_severity', 'review_status', 'reviewed_by', 'review_notes'];
+  const rows = items.results.map(item =>
+    headers.map(h => {
+      const v = item[h];
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(',')
+  );
+  const csv = [headers.join(','), ...rows].join('\n');
+
+  return new Response(csv, {
+    headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="run-${runId}-items.csv"` },
+  });
+});
+
+// POST /api/catalysts/runs/:runId/retry — Re-execute the sub-catalyst and link as retry
+catalysts.post('/runs/:runId/retry', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) return c.json({ error: 'Forbidden' }, 403);
+
+  const parentRun = await c.env.DB.prepare(
+    'SELECT * FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
+  ).bind(runId, tenantId).first<{ cluster_id: string; sub_catalyst_name: string }>();
+  if (!parentRun) return c.json({ error: 'Run not found' }, 404);
+
+  // Redirect to the execute endpoint — caller should POST to execute and pass parent_run_id
+  return c.json({ redirect: true, cluster_id: parentRun.cluster_id, sub_catalyst_name: parentRun.sub_catalyst_name, parent_run_id: runId });
+});
+
+// GET /api/catalysts/runs/compare — Compare two runs
+catalysts.get('/runs/compare', async (c) => {
+  const tenantId = getTenantId(c);
+  const runA = c.req.query('run_a');
+  const runB = c.req.query('run_b');
+  if (!runA || !runB) return c.json({ error: 'run_a and run_b query params required' }, 400);
+
+  const comparison = await compareRuns(c.env.DB, tenantId, runA, runB);
+  return c.json(comparison);
+});
+
+// PUT /api/catalysts/runs/:runId/sign-off — Sign off on a run
+catalysts.put('/runs/:runId/sign-off', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const auth = c.get('auth') as AuthContext | undefined;
+
+  const body = await c.req.json<{ status: string; notes?: string }>();
+  const validStatuses = ['signed_off', 'rejected', 'deferred'];
+  if (!validStatuses.includes(body.status)) return c.json({ error: 'Invalid status' }, 400);
+
+  await c.env.DB.prepare(
+    'UPDATE sub_catalyst_runs SET sign_off_status = ?, signed_off_by = ?, signed_off_at = ?, sign_off_notes = ? WHERE id = ? AND tenant_id = ?'
+  ).bind(body.status, auth?.email || 'system', new Date().toISOString(), body.notes || null, runId, tenantId).run();
+
+  return c.json({ success: true, sign_off_status: body.status });
+});
+
+// GET /api/catalysts/runs/:runId/comments — Get comments for a run
+catalysts.get('/runs/:runId/comments', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const comments = await c.env.DB.prepare(
+    'SELECT * FROM run_comments WHERE run_id = ? AND tenant_id = ? ORDER BY created_at DESC'
+  ).bind(runId, tenantId).all<Record<string, unknown>>();
+
+  return c.json({ comments: comments.results || [] });
+});
+
+// POST /api/catalysts/runs/:runId/comments — Add a comment to a run or item
+catalysts.post('/runs/:runId/comments', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const auth = c.get('auth') as AuthContext | undefined;
+
+  const body = await c.req.json<{ comment: string; item_id?: string; comment_type?: string }>();
+  if (!body.comment?.trim()) return c.json({ error: 'comment is required' }, 400);
+
+  const commentId = `cmt-${crypto.randomUUID()}`;
+  await c.env.DB.prepare(
+    'INSERT INTO run_comments (id, tenant_id, run_id, item_id, user_id, user_name, comment, comment_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    commentId, tenantId, runId, body.item_id || null,
+    auth?.userId || 'system', auth?.name || auth?.email || 'System',
+    body.comment.trim(), body.comment_type || 'note', new Date().toISOString()
+  ).run();
+
+  return c.json({ id: commentId, success: true });
 });
 
 export { sendHitlNotification, sendRunResultsEmail };

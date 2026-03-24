@@ -372,6 +372,33 @@ export const api = {
       request<{ analytics: RunAnalytics; actions: Array<{ id: string; action: string; status: string; confidence: number; assignedTo?: string; processingTimeMs?: number; createdAt: string }> }>(`/api/catalysts/run-analytics/${runId}`),
     recordRunAnalytics: (data: { cluster_id: string; sub_catalyst_name?: string; run_id?: string; actions: Array<{ action: string; status: string; confidence: number; processing_time_ms?: number }> }) =>
       request<{ id: string; runId: string; status: string; summary: { total: number; completed: number; exceptions: number; escalated: number; pending: number; autoApproved: number }; confidence: { avg: number; min: number; max: number; distribution: Record<string, number> }; insights: string[]; durationMs: number }>('/api/catalysts/run-analytics', { method: 'POST', body: JSON.stringify(data) }),
+
+    // ── Sub-Catalyst Ops ──
+    getSubCatalystRuns: (clusterId: string, subName: string, opts?: { limit?: number; offset?: number; status?: string; from?: string; to?: string; triggered_by?: string }) =>
+      request<{ runs: SubCatalystRun[]; total: number }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs${qs({ limit: opts?.limit?.toString(), offset: opts?.offset?.toString(), status: opts?.status, from: opts?.from, to: opts?.to, triggered_by: opts?.triggered_by })}`),
+    getSubCatalystRunDetail: (clusterId: string, subName: string, runId: string) =>
+      request<SubCatalystRunDetail>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs/${runId}`),
+    getSubCatalystKpis: (clusterId: string, subName: string) =>
+      request<{ kpis: SubCatalystKpis | null }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis`),
+    updateSubCatalystThresholds: (clusterId: string, subName: string, thresholds: Record<string, number>) =>
+      request<{ success: boolean; kpis: SubCatalystKpis }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis/thresholds`, { method: 'PUT', body: JSON.stringify(thresholds) }),
+    getRunItems: (runId: string, opts?: { limit?: number; offset?: number; status?: string; severity?: string; review_status?: string }) =>
+      request<SubCatalystRunItemsResponse>(`/api/catalysts/runs/${runId}/items${qs({ limit: opts?.limit?.toString(), offset: opts?.offset?.toString(), status: opts?.status, severity: opts?.severity, review_status: opts?.review_status })}`),
+    reviewRunItem: (runId: string, itemId: string, data: { review_status: string; review_notes?: string; reclassified_to?: string }) =>
+      request<{ success: boolean; review_status: string; review_complete: boolean }>(`/api/catalysts/runs/${runId}/items/${itemId}/review`, { method: 'PUT', body: JSON.stringify(data) }),
+    bulkReviewRunItems: (runId: string, data: { item_ids: string[]; review_status: string; review_notes?: string }) =>
+      request<{ success: boolean; updated: number; review_complete: boolean }>(`/api/catalysts/runs/${runId}/items/bulk-review`, { method: 'PUT', body: JSON.stringify(data) }),
+    exportRunItems: (runId: string) => `${API_URL}/api/catalysts/runs/${runId}/export`,
+    retryRun: (runId: string) =>
+      request<{ redirect: boolean; cluster_id: string; sub_catalyst_name: string; parent_run_id: string }>(`/api/catalysts/runs/${runId}/retry`, { method: 'POST' }),
+    compareRuns: (runA: string, runB: string) =>
+      request<SubCatalystRunComparison>(`/api/catalysts/runs/compare${qs({ run_a: runA, run_b: runB })}`),
+    signOffRun: (runId: string, data: { status: string; notes?: string }) =>
+      request<{ success: boolean; sign_off_status: string }>(`/api/catalysts/runs/${runId}/sign-off`, { method: 'PUT', body: JSON.stringify(data) }),
+    getRunComments: (runId: string) =>
+      request<{ comments: RunComment[] }>(`/api/catalysts/runs/${runId}/comments`),
+    addRunComment: (runId: string, data: { comment: string; item_id?: string; comment_type?: string }) =>
+      request<{ id: string; success: boolean }>(`/api/catalysts/runs/${runId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
   },
 
   memory: {
@@ -1279,6 +1306,167 @@ export interface SubCatalystScore {
   estimated_monthly_llm_tokens: number;
   estimated_annual_saving_zar: number;
   deploy_prerequisite?: string;
+}
+
+// ── Sub-Catalyst Ops Types ──
+
+export interface SubCatalystRun {
+  id: string;
+  tenant_id: string;
+  cluster_id: string;
+  sub_catalyst_name: string;
+  run_number: number;
+  triggered_by: string;
+  trigger_context?: string;
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+  status: string;
+  mode: string;
+  matched: number;
+  unmatched_source: number;
+  unmatched_target: number;
+  discrepancies: number;
+  exceptions_raised: number;
+  avg_confidence: number;
+  total_source_value: number;
+  total_matched_value: number;
+  total_discrepancy_value: number;
+  total_exception_value: number;
+  total_unmatched_value: number;
+  currency: string;
+  items_total: number;
+  items_reviewed: number;
+  items_approved: number;
+  items_rejected: number;
+  items_deferred: number;
+  review_complete: boolean;
+  sign_off_status: string;
+  signed_off_by?: string;
+  signed_off_at?: string;
+  sign_off_notes?: string;
+  reasoning?: string;
+  recommendations?: string;
+  source_record_count: number;
+  target_record_count: number;
+  parent_run_id?: string;
+}
+
+export interface SubCatalystRunDetail {
+  run: SubCatalystRun;
+  steps: Array<{ step: number; name: string; status: string; duration_ms: number; detail: string }>;
+  linkedOutputs: { metrics: string[]; anomalies: string[]; risk_alerts: string[]; actions: string[] };
+}
+
+export interface SubCatalystKpis {
+  id: string;
+  tenant_id: string;
+  cluster_id: string;
+  sub_catalyst_name: string;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  success_rate: number;
+  avg_duration_ms: number;
+  avg_records_processed: number;
+  avg_match_rate: number;
+  avg_discrepancy_rate: number;
+  avg_confidence: number;
+  total_exceptions: number;
+  exception_rate: number;
+  success_trend: string;
+  duration_trend: string;
+  discrepancy_trend: string;
+  confidence_trend: string;
+  status: string;
+  last_run_at?: string;
+  threshold_success_green: number;
+  threshold_success_amber: number;
+  threshold_success_red: number;
+  threshold_duration_green: number;
+  threshold_duration_amber: number;
+  threshold_duration_red: number;
+  threshold_discrepancy_green: number;
+  threshold_discrepancy_amber: number;
+  threshold_discrepancy_red: number;
+}
+
+export interface SubCatalystRunItem {
+  id: string;
+  run_id: string;
+  item_number: number;
+  item_status: string;
+  category?: string;
+  source_ref?: string;
+  source_date?: string;
+  source_entity?: string;
+  source_amount?: number;
+  source_currency?: string;
+  target_ref?: string;
+  target_date?: string;
+  target_entity?: string;
+  target_amount?: number;
+  target_currency?: string;
+  match_confidence?: number;
+  match_method?: string;
+  discrepancy_field?: string;
+  discrepancy_source_value?: string;
+  discrepancy_target_value?: string;
+  discrepancy_amount?: number;
+  discrepancy_pct?: number;
+  discrepancy_reason?: string;
+  exception_type?: string;
+  exception_severity?: string;
+  exception_detail?: string;
+  review_status: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  reclassified_to?: string;
+}
+
+export interface SubCatalystRunItemsResponse {
+  items: SubCatalystRunItem[];
+  totals: {
+    items_total: number;
+    matched: number;
+    discrepancies: number;
+    unmatched: number;
+    exceptions: number;
+    total_source_value: number;
+    total_matched_value: number;
+    total_discrepancy_value: number;
+    total_exception_value: number;
+  };
+  review_progress: {
+    reviewed: number;
+    approved: number;
+    rejected: number;
+    deferred: number;
+    pending: number;
+  };
+  total: number;
+}
+
+export interface SubCatalystRunComparison {
+  run_a: SubCatalystRun | null;
+  run_b: SubCatalystRun | null;
+  delta: Record<string, number>;
+  new_discrepancies: Record<string, unknown>[];
+  resolved_discrepancies: Record<string, unknown>[];
+  persistent_discrepancies: Record<string, unknown>[];
+}
+
+export interface RunComment {
+  id: string;
+  tenant_id: string;
+  run_id: string;
+  item_id?: string;
+  user_id: string;
+  user_name: string;
+  comment: string;
+  comment_type: string;
+  created_at: string;
 }
 
 export interface TechnicalSizing {
