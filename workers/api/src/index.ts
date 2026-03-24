@@ -528,20 +528,37 @@ app.post('/api/contact', async (c) => {
         });
         const tokenData = await tokenRes.json() as { access_token?: string };
         if (tokenData.access_token) {
-          await fetch('https://graph.microsoft.com/v1.0/users/atheon@vantax.co.za/sendMail', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: {
+          try {
+            await fetch('https://graph.microsoft.com/v1.0/users/atheon@vantax.co.za/sendMail', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: {
+                  subject: `Atheon Contact: ${body.name} from ${body.company || 'Unknown'}`,
+                  body: { contentType: 'HTML', content: `<h3>New Contact Form Submission</h3><p><strong>Name:</strong> ${safeName}</p><p><strong>Email:</strong> ${safeEmail}</p><p><strong>Company:</strong> ${safeCompany}</p><p><strong>Message:</strong></p><p>${safeMessage}</p>` },
+                  toRecipients: [{ emailAddress: { address: 'atheon@vantax.co.za' } }],
+                  replyTo: [{ emailAddress: { address: body.email, name: body.name } }],
+                },
+              }),
+            });
+            console.log('[Contact Form] Graph email sent successfully');
+          } catch (graphErr) {
+            console.error('BUG-20: contact form Graph email send failed:', graphErr);
+            // Queue email for retry as fallback
+            try {
+              await sendOrQueueEmail(c.env.DB, {
+                to: ['atheon@vantax.co.za'],
                 subject: `Atheon Contact: ${body.name} from ${body.company || 'Unknown'}`,
-                body: { contentType: 'HTML', content: `<h3>New Contact Form Submission</h3><p><strong>Name:</strong> ${safeName}</p><p><strong>Email:</strong> ${safeEmail}</p><p><strong>Company:</strong> ${safeCompany}</p><p><strong>Message:</strong></p><p>${safeMessage}</p>` },
-                toRecipients: [{ emailAddress: { address: 'atheon@vantax.co.za' } }],
-                replyTo: [{ emailAddress: { address: body.email, name: body.name } }],
-              },
-            }),
-          });
+                htmlBody: `<h3>New Contact Form Submission</h3><p><strong>Name:</strong> ${safeName}</p><p><strong>Email:</strong> ${safeEmail}</p><p><strong>Company:</strong> ${safeCompany}</p><p><strong>Message:</strong></p><p>${safeMessage}</p>`,
+                textBody: `New Contact Form Submission\nName: ${body.name}\nEmail: ${body.email}\nCompany: ${body.company || 'Unknown'}\nMessage: ${body.message}`,
+                tenantId: 'system',
+              }, c.env);
+            } catch (queueErr) {
+              console.error('BUG-20: fallback email queue also failed:', queueErr);
+            }
+          }
         }
-      } catch (err) { console.error('BUG-20: contact form Graph email send failed:', err); }
+      } catch (err) { console.error('BUG-20: contact form Graph token fetch failed:', err); }
     }
 
     // Always log to DB as a fallback
