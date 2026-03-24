@@ -265,9 +265,10 @@ async function writeRunItems(
     }
   }
 
-  // Discrepancy records
+  // Discrepancy records (only those with a target_record — unmatched sources are handled below)
   if (result.discrepancies) {
     for (const d of result.discrepancies) {
+      if (!d.target_record) continue; // skip unmatched sources — handled in unmatched_source_records loop
       itemNumber++;
       const srcAmt = parseFloat(String(d.source_value ?? 0));
       const tgtAmt = parseFloat(String(d.target_value ?? 0));
@@ -528,17 +529,9 @@ export async function recalculateKpis(
         now
       ).run();
 
-      // Degrade health_score
-      const healthRow = await db.prepare(
-        'SELECT id, overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-      ).bind(tenantId).first<{ id: string; overall_score: number; dimensions: string }>();
-
-      if (healthRow) {
-        const penalty = redCount.cnt * 5; // 5 points per RED sub-catalyst
-        const newScore = Math.max(0, Math.round(healthRow.overall_score - penalty));
-        await db.prepare('UPDATE health_scores SET overall_score = ?, calculated_at = ? WHERE id = ?')
-          .bind(newScore, now, healthRow.id).run();
-      }
+      // Note: health_score degradation is handled by the scheduled recalculation job
+      // in services/scheduled.ts to avoid cumulative penalties on every run execution.
+      // The risk_alert above already flags the issue for the Apex layer.
     }
   } catch (err) { console.error('recalculateKpis: Apex integration failed:', err); }
 }
