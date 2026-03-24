@@ -81,6 +81,29 @@ app.use('*', async (c, next) => {
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
 
+// Spec 7 PERF-1: Response time middleware with X-Response-Time header + slow request logging
+app.use('*', async (c, next) => {
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+  c.header('X-Response-Time', `${duration}ms`);
+  if (duration > 500) {
+    console.warn(`[SLOW] ${c.req.method} ${c.req.path} took ${duration}ms`);
+  }
+  // Store metrics in KV (non-blocking, best-effort)
+  try {
+    const minute = Math.floor(Date.now() / 60000);
+    const bucket = c.req.path.split('/').slice(0, 4).join('/');
+    const key = `perf:${bucket}:${minute}`;
+    const existing = await c.env.CACHE.get(key);
+    const metrics = existing ? JSON.parse(existing) as { count: number; totalMs: number; slowCount: number } : { count: 0, totalMs: 0, slowCount: 0 };
+    metrics.count++;
+    metrics.totalMs += duration;
+    if (duration > 500) metrics.slowCount++;
+    c.executionCtx.waitUntil(c.env.CACHE.put(key, JSON.stringify(metrics), { expirationTtl: 3600 }));
+  } catch { /* non-fatal */ }
+});
+
 // Request size limiter (1MB max)
 app.use('/api/*', requestSizeLimiter(1048576));
 
@@ -202,6 +225,29 @@ app.get('/healthz', async (c) => {
     cacheStatus = 'error';
   }
 
+  // Spec 7 PERF-2: Aggregate performance metrics from KV
+  let avgResponseMs = 0;
+  let slowRequestsLastHour = 0;
+  try {
+    const now = Date.now();
+    const currentMinute = Math.floor(now / 60000);
+    let totalRequests = 0;
+    let totalMs = 0;
+    let totalSlow = 0;
+    // Sample last 60 minutes from a known bucket
+    for (let m = currentMinute - 60; m <= currentMinute; m++) {
+      const raw = await c.env.CACHE.get(`perf:/api:${m}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { count: number; totalMs: number; slowCount: number };
+        totalRequests += parsed.count;
+        totalMs += parsed.totalMs;
+        totalSlow += parsed.slowCount;
+      }
+    }
+    avgResponseMs = totalRequests > 0 ? Math.round(totalMs / totalRequests) : 0;
+    slowRequestsLastHour = totalSlow;
+  } catch { /* non-fatal */ }
+
   const overall = dbStatus === 'ok' && cacheStatus === 'ok' ? 'healthy' : 'degraded';
   const statusCode = overall === 'healthy' ? 200 : 503;
 
@@ -212,6 +258,11 @@ app.get('/healthz', async (c) => {
     checks: {
       database: { status: dbStatus, latencyMs: dbLatencyMs },
       cache: { status: cacheStatus },
+    },
+    performance: {
+      avg_response_ms: avgResponseMs,
+      slow_requests_last_hour: slowRequestsLastHour,
+      d1_query_ms: dbLatencyMs,
     },
   }, statusCode);
 });

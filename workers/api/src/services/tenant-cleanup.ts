@@ -53,6 +53,17 @@ const TENANT_TABLES = [
   'erp_suppliers',
   'erp_customers',
   'erp_connections',
+  // Sub-catalyst operations tables
+  'run_comments',
+  'sub_catalyst_run_items',
+  'sub_catalyst_kpi_values',
+  'sub_catalyst_runs',
+  'sub_catalyst_kpi_definitions',
+  'sub_catalyst_kpis',
+  // Analytics & history tables
+  'health_score_history',
+  'catalyst_run_analytics',
+  'catalyst_hitl_config',
   // Parent tables last
   'catalyst_clusters',
   'iam_policies',

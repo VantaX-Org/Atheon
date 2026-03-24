@@ -223,6 +223,11 @@ export const api = {
       request<{ success: boolean; clustersDeactivated: number; agentsDeactivated: number }>(`/api/tenants/${id}/archive`, { method: 'POST' }),
     unarchive: (id: string) =>
       request<{ success: boolean }>(`/api/tenants/${id}/unarchive`, { method: 'POST' }),
+    // Spec 7 POPIA: Data export and erasure
+    dataExport: () =>
+      request<{ success: boolean; exportedAt: string; tableCount: number; totalRecords: number; data: Record<string, unknown[]> }>('/api/tenants/data-export'),
+    dataErasure: () =>
+      request<{ success: boolean; erasedAt: string; erasureLog: { table: string; action: string; affected: number }[]; preservedTables: string[] }>('/api/tenants/data-export', { method: 'DELETE' }),
   },
 
   iam: {

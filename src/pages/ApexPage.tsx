@@ -553,6 +553,10 @@ export function ApexPage() {
        <div className="flex items-center gap-2 mb-3">
         <BarChart3 className="w-4 h-4 text-accent" />
         <h4 className="text-sm font-semibold t-primary">Results Overview</h4>
+        {/* Spec 7 LLM-4: AI unavailable indicator */}
+        {scenario.results?.source === 'fallback' && (
+          <Badge variant="warning" size="sm">AI unavailable — data-driven estimate</Badge>
+        )}
        </div>
 
        {/* Key Metrics Grid */}

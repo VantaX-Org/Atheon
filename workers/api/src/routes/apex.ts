@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
+import { withLlmFallback } from '../services/ollama';
 
 const apex = new Hono<AppBindings>();
 
@@ -243,50 +244,47 @@ apex.post('/scenarios', async (c) => {
     };
   } catch (err) { console.error('scenarios: context gathering failed:', err); }
 
-  // A3-2: Try LLM analysis via Workers AI / Ollama, with A3-4 fallback
-  let scenarioResults: Record<string, unknown>;
-  let modelResponse: string | null = null;
-  try {
-    // Attempt Workers AI if available
-    const ai = (c.env as unknown as Record<string, unknown>).AI;
-    if (ai && typeof (ai as Record<string, unknown>).run === 'function') {
-      const prompt = `You are Atheon Mind, an enterprise AI analyst. Analyze this what-if scenario for a business:\n\nScenario: ${body.title}\nDescription: ${body.description}\nQuery: ${body.input_query}\n\nCurrent Business Context:\n- Health Score: ${(contextData.healthScore as number) || 0}/100\n- RED Metrics: ${JSON.stringify(contextData.redMetrics || [])}\n- Active Risks: ${JSON.stringify(contextData.activeRisks || [])}\n- Recent Runs: ${JSON.stringify((contextData.recentRuns as unknown[])?.slice(0, 5) || [])}\n\nRespond with JSON: { "npv_impact": number, "risk_change": string, "confidence": number (0-100), "recommendation": string, "analysis_points": string[] }`;
+  // A3-2 + Spec 7 LLM-2: Scenario modelling with withLlmFallback wrapper
+  const healthScore = (contextData.healthScore as number) || 50;
+  const redCount = ((contextData.redMetrics as unknown[]) || []).length;
+  const riskCount = ((contextData.activeRisks as unknown[]) || []).length;
+
+  const llmResult = await withLlmFallback<Record<string, unknown>>(
+    async () => {
+      const ai = (c.env as unknown as Record<string, unknown>).AI;
+      if (!ai || typeof (ai as Record<string, unknown>).run !== 'function') throw new Error('Workers AI not available');
+      const prompt = `You are Atheon Mind, an enterprise AI analyst. Analyze this what-if scenario for a business:\n\nScenario: ${body.title}\nDescription: ${body.description}\nQuery: ${body.input_query}\n\nCurrent Business Context:\n- Health Score: ${healthScore}/100\n- RED Metrics: ${JSON.stringify(contextData.redMetrics || [])}\n- Active Risks: ${JSON.stringify(contextData.activeRisks || [])}\n- Recent Runs: ${JSON.stringify((contextData.recentRuns as unknown[])?.slice(0, 5) || [])}\n\nRespond with JSON: { "npv_impact": number, "risk_change": string, "confidence": number (0-100), "recommendation": string, "analysis_points": string[] }`;
       const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', { prompt });
-      modelResponse = aiResult?.response || null;
-      if (modelResponse) {
-        try {
-          const parsed = JSON.parse(modelResponse);
-          scenarioResults = { ...parsed, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
-        } catch {
-          scenarioResults = { recommendation: modelResponse, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
-        }
-      } else {
-        throw new Error('Empty AI response');
+      const text = aiResult?.response || '';
+      if (!text) throw new Error('Empty AI response');
+      try {
+        return { ...JSON.parse(text), generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+      } catch {
+        return { recommendation: text, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
       }
-    } else {
-      throw new Error('Workers AI not available');
-    }
-  } catch {
-    // A3-4: Fallback calculation from real context data
-    const healthScore = (contextData.healthScore as number) || 50;
-    const redCount = ((contextData.redMetrics as unknown[]) || []).length;
-    const riskCount = ((contextData.activeRisks as unknown[]) || []).length;
-    const baseImpact = healthScore > 70 ? 500000 : healthScore > 50 ? -200000 : -1000000;
-    const riskAdjustment = riskCount * -150000 + redCount * -100000;
-    scenarioResults = {
-      npv_impact: Math.round(baseImpact + riskAdjustment + (Math.random() - 0.5) * 200000),
-      risk_change: `${riskCount > 3 ? '+' : '-'}${Math.round(riskCount * 3 + redCount * 2)}%`,
-      confidence: Math.max(40, Math.min(85, 75 - riskCount * 5 - redCount * 3)),
-      recommendation: `Based on current health score (${healthScore}/100), ${redCount} RED metric(s), and ${riskCount} active risk(s): ${healthScore > 70 ? 'Organization is well-positioned for this change.' : healthScore > 50 ? 'Moderate risk — address RED metrics before proceeding.' : 'High risk — stabilize operations first.'}`,
-      analysis_points: [
-        `Current health score: ${healthScore}/100`,
-        redCount > 0 ? `${redCount} metric(s) in RED status need attention` : 'All metrics within acceptable ranges',
-        riskCount > 0 ? `${riskCount} active risk alert(s) may impact outcome` : 'No active risk alerts',
-      ],
-      generated_at: new Date().toISOString(),
-      model: 'fallback-calculation',
-    };
-  }
+    },
+    () => {
+      // Data-driven deterministic fallback (no Math.random)
+      const baseImpact = healthScore > 70 ? 500000 : healthScore > 50 ? -200000 : -1000000;
+      const riskAdjustment = riskCount * -150000 + redCount * -100000;
+      return {
+        npv_impact: Math.round(baseImpact + riskAdjustment),
+        risk_change: `${riskCount > 3 ? '+' : '-'}${Math.round(riskCount * 3 + redCount * 2)}%`,
+        confidence: Math.max(40, Math.min(85, 75 - riskCount * 5 - redCount * 3)),
+        recommendation: `Based on current health score (${healthScore}/100), ${redCount} RED metric(s), and ${riskCount} active risk(s): ${healthScore > 70 ? 'Organization is well-positioned for this change.' : healthScore > 50 ? 'Moderate risk — address RED metrics before proceeding.' : 'High risk — stabilize operations first.'}`,
+        analysis_points: [
+          `Current health score: ${healthScore}/100`,
+          redCount > 0 ? `${redCount} metric(s) in RED status need attention` : 'All metrics within acceptable ranges',
+          riskCount > 0 ? `${riskCount} active risk alert(s) may impact outcome` : 'No active risk alerts',
+        ],
+        generated_at: new Date().toISOString(),
+        model: 'fallback-calculation',
+      };
+    },
+    10000, // 10s timeout
+  );
+  const scenarioResults = { ...llmResult.result, source: llmResult.source };
+  const modelResponse = llmResult.source === 'llm' ? JSON.stringify(llmResult.result) : null;
 
   await c.env.DB.prepare(
     'INSERT INTO scenarios (id, tenant_id, title, description, input_query, variables, results, status, context_data, model_response) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
-import { getERPAdapter, listERPAdapters } from '../services/erp-connector';
+import { getERPAdapter, listERPAdapters, withCircuitBreaker, getCircuitBreakerState } from '../services/erp-connector';
 import { getValidatedJsonBody } from '../middleware/validation';
 import type { ERPCredentials, SyncResult } from '../services/erp-connector';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
@@ -357,7 +357,17 @@ erp.post('/sync/:connection_id', async (c) => {
       ? ['customers', 'suppliers', 'invoices', 'sales_orders', 'purchase_orders', 'products', 'employees', 'gl_accounts']
       : ['accounts', 'contacts'];
     const entities = (config.sync_entities as string[]) || defaultEntities;
-    const result = await adapter.syncData(credentials, decryptedToken, entities);
+    // Spec 7 CIRCUIT-2: Wrap syncData with circuit breaker
+    let result: SyncResult;
+    try {
+      result = await withCircuitBreaker(c.env.CACHE, connectionId, () => adapter.syncData(credentials, decryptedToken, entities));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes('Circuit breaker OPEN')) {
+        return c.json({ error: msg, circuitBreaker: 'OPEN' }, 503);
+      }
+      return c.json({ error: `Sync failed: ${msg}` }, 500);
+    }
 
     // 3.12: Write synced records to canonical tables (with Vectorize + AI for RAG embedding)
     await writeToCanonicalTables(c.env.DB, tenantId, conn.adapter_system as string, result, c.env.VECTORIZE, c.env.AI);
@@ -448,7 +458,17 @@ erp.post('/connections/:id/test', async (c) => {
     return c.json({ connected: false, message: 'No access token or credentials configured. Complete OAuth flow or provide credentials.' });
   }
 
-  const result = await adapter.testConnection(credentials, decryptedToken);
+  // Spec 7 CIRCUIT-2: Wrap testConnection with circuit breaker
+  let result: { connected: boolean; version?: string; message: string };
+  try {
+    result = await withCircuitBreaker(c.env.CACHE, id, () => adapter.testConnection(credentials, decryptedToken));
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('Circuit breaker OPEN')) {
+      return c.json({ connected: false, message: msg, circuitBreaker: 'OPEN' });
+    }
+    result = { connected: false, message: msg };
+  }
 
   // Update connection status
   await c.env.DB.prepare(
@@ -580,6 +600,13 @@ erp.post('/oauth/callback', async (c) => {
   } catch (err) {
     return c.json({ error: `Token exchange failed: ${(err as Error).message}` }, 500);
   }
+});
+
+// Spec 7 CIRCUIT-3: GET /api/erp/connections/:id/circuit - Get circuit breaker state
+erp.get('/connections/:id/circuit', async (c) => {
+  const id = c.req.param('id');
+  const state = await getCircuitBreakerState(c.env.CACHE, id);
+  return c.json(state);
 });
 
 // GET /api/erp/systems - List available ERP systems (from connector registry)

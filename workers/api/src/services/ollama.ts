@@ -83,6 +83,33 @@ export async function ollamaChat(
 }
 
 /**
+ * Spec 7 LLM-1: Generic LLM fallback wrapper with timeout.
+ * Tries llmFn first; if it fails or times out, returns fallbackFn result.
+ * Returns { result, source } so callers know which path was taken.
+ */
+export interface LlmFallbackResult<T> {
+  result: T;
+  source: 'llm' | 'fallback';
+}
+
+export async function withLlmFallback<T>(
+  llmFn: (signal: AbortSignal) => Promise<T>,
+  fallbackFn: () => T,
+  timeoutMs: number = 10000,
+): Promise<LlmFallbackResult<T>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const result = await llmFn(controller.signal);
+    clearTimeout(timer);
+    return { result, source: 'llm' };
+  } catch {
+    clearTimeout(timer);
+    return { result: fallbackFn(), source: 'fallback' };
+  }
+}
+
+/**
  * Chat with fallback: tries Ollama Cloud first, falls back to Workers AI.
  */
 export async function chatWithFallback(

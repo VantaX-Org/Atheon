@@ -1428,6 +1428,83 @@ const odooAdapter: ERPAdapter = {
   },
 };
 
+// ── Spec 7 CIRCUIT-1: Circuit Breaker ──
+
+export interface CircuitBreakerState {
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  failures: number;
+  openedAt: number | null;
+  lastAttempt: number | null;
+}
+
+export interface CircuitBreakerConfig {
+  failureThreshold: number;  // failures before opening (default 3)
+  resetTimeoutMs: number;    // time before HALF_OPEN (default 5 min)
+}
+
+const DEFAULT_CB_CONFIG: CircuitBreakerConfig = { failureThreshold: 3, resetTimeoutMs: 300000 };
+
+export async function withCircuitBreaker<T>(
+  cache: KVNamespace,
+  connectionId: string,
+  fn: () => Promise<T>,
+  config: CircuitBreakerConfig = DEFAULT_CB_CONFIG,
+): Promise<T> {
+  const key = `circuit:${connectionId}`;
+  let cbState: CircuitBreakerState = { state: 'CLOSED', failures: 0, openedAt: null, lastAttempt: null };
+
+  try {
+    const raw = await cache.get(key);
+    if (raw) cbState = JSON.parse(raw) as CircuitBreakerState;
+  } catch { /* use defaults */ }
+
+  const now = Date.now();
+
+  // OPEN → check if enough time has passed to try HALF_OPEN
+  if (cbState.state === 'OPEN') {
+    if (cbState.openedAt && now - cbState.openedAt >= config.resetTimeoutMs) {
+      cbState.state = 'HALF_OPEN';
+      cbState.lastAttempt = now;
+      await cache.put(key, JSON.stringify(cbState), { expirationTtl: 3600 });
+    } else {
+      throw new Error(`Circuit breaker OPEN for connection ${connectionId}. Retry after ${Math.ceil(((cbState.openedAt || now) + config.resetTimeoutMs - now) / 1000)}s.`);
+    }
+  }
+
+  try {
+    const result = await fn();
+    // Success → reset to CLOSED
+    if (cbState.state !== 'CLOSED' || cbState.failures > 0) {
+      cbState = { state: 'CLOSED', failures: 0, openedAt: null, lastAttempt: now };
+      await cache.put(key, JSON.stringify(cbState), { expirationTtl: 3600 });
+    }
+    return result;
+  } catch (err) {
+    cbState.failures++;
+    cbState.lastAttempt = now;
+
+    if (cbState.failures >= config.failureThreshold) {
+      cbState.state = 'OPEN';
+      cbState.openedAt = now;
+    }
+
+    await cache.put(key, JSON.stringify(cbState), { expirationTtl: 3600 });
+    throw err;
+  }
+}
+
+/** Get circuit breaker state for a connection (for monitoring) */
+export async function getCircuitBreakerState(
+  cache: KVNamespace,
+  connectionId: string,
+): Promise<CircuitBreakerState> {
+  try {
+    const raw = await cache.get(`circuit:${connectionId}`);
+    if (raw) return JSON.parse(raw) as CircuitBreakerState;
+  } catch { /* ignore */ }
+  return { state: 'CLOSED', failures: 0, openedAt: null, lastAttempt: null };
+}
+
 // ── Adapter Registry ──
 const adapters: Record<string, ERPAdapter> = {
   sap: sapAdapter,
