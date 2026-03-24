@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
+import { SubCatalystOpsPanel } from "@/components/SubCatalystOpsPanel";
 
 const tierConfig: Record<AutonomyTier, { label: string; icon: typeof Eye; color: string }> = {
  'read-only': { label: 'Read-Only', icon: Eye, color: 'text-accent' },
@@ -71,6 +72,9 @@ export function CatalystsPage() {
  const [execSuccess, setExecSuccess] = useState<string | null>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const quickRunFileRef = useRef<HTMLInputElement>(null);
+
+ // Sub-Catalyst Ops Panel state
+ const [opsPanel, setOpsPanel] = useState<{ clusterId: string; clusterName: string; subName: string } | null>(null);
 
  // Quick Run modal state (streamlined per-sub-catalyst execution)
  const [showQuickRun, setShowQuickRun] = useState(false);
@@ -1107,6 +1111,9 @@ export function CatalystsPage() {
  <Play size={10} className="mr-1" /> Run
  </Button>
  )}
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
+ <BarChart3 size={10} className="mr-1 text-accent" /> Ops
+ </Button>
  {sub.last_execution && (
  <button
  onClick={(e) => { e.stopPropagation(); setExecResult(sub.last_execution as ExecutionResult); setShowExecResult(true); }}
@@ -2684,6 +2691,16 @@ export function CatalystsPage() {
  </div>
  </div>
  </div></Portal>
+ )}
+
+ {/* Sub-Catalyst Ops Panel */}
+ {opsPanel && (
+ <SubCatalystOpsPanel
+ clusterId={opsPanel.clusterId}
+ clusterName={opsPanel.clusterName}
+ subCatalystName={opsPanel.subName}
+ onClose={() => setOpsPanel(null)}
+ />
  )}
  </div>
  );
