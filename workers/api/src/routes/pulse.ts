@@ -47,6 +47,10 @@ pulse.get('/metrics', async (c) => {
     trend: JSON.parse(m.trend as string || '[]'),
     sourceSystem: m.source_system,
     measuredAt: m.measured_at,
+    // P1-3: Source attribution fields
+    subCatalystName: m.sub_catalyst_name || null,
+    sourceRunId: m.source_run_id || null,
+    clusterId: m.cluster_id || null,
   }));
 
   return c.json({ metrics: formatted, total: countResult?.count || formatted.length, limit, offset });
@@ -152,13 +156,21 @@ pulse.get('/correlations', async (c) => {
 
   const formatted = results.results.map((ce: Record<string, unknown>) => ({
     id: ce.id,
+    // P3: Updated correlation response — support both old schema (source_system/source_event) and new (metric_a/metric_b)
+    metricA: ce.metric_a || ce.source_system,
+    metricB: ce.metric_b || ce.target_system,
     sourceSystem: ce.source_system,
     sourceEvent: ce.source_event,
     targetSystem: ce.target_system,
     targetImpact: ce.target_impact,
+    correlationType: ce.correlation_type || 'temporal',
     confidence: ce.confidence,
+    lagHours: ce.lag_hours,
     lagDays: ce.lag_days,
+    description: ce.description,
     detectedAt: ce.detected_at,
+    sourceRunId: ce.source_run_id || null,
+    clusterId: ce.cluster_id || null,
   }));
 
   return c.json({ correlations: formatted, total: formatted.length, limit: formatted.length, offset: 0 });
@@ -358,6 +370,46 @@ pulse.get('/catalyst-runs', async (c) => {
     limit,
     offset,
   });
+});
+
+// P2-2: POST /api/pulse/backfill-trends — backfill trend arrays from sub_catalyst_kpi_values
+pulse.post('/backfill-trends', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'Tenant required' }, 400);
+
+  // Get all metrics for tenant
+  const metrics = await c.env.DB.prepare(
+    'SELECT id, name, trend FROM process_metrics WHERE tenant_id = ?'
+  ).bind(tenantId).all();
+
+  let updated = 0;
+  for (const m of metrics.results) {
+    const metricName = m.name as string;
+    const existingTrend: number[] = (() => { try { return JSON.parse(m.trend as string || '[]'); } catch { return []; } })();
+    if (existingTrend.length >= 30) continue; // Already full
+
+    // Find matching KPI values by name pattern
+    const kpiValues = await c.env.DB.prepare(
+      `SELECT kv.numeric_value FROM sub_catalyst_kpi_values kv
+       JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
+       WHERE kd.tenant_id = ? AND kd.kpi_name LIKE ?
+       ORDER BY kv.recorded_at ASC LIMIT 30`
+    ).bind(tenantId, `%${metricName}%`).all();
+
+    if (kpiValues.results.length > 0) {
+      const values = kpiValues.results.map(v => v.numeric_value as number).filter(v => v != null);
+      if (values.length > 0) {
+        // Merge: existing + new, cap at 30
+        const merged = [...existingTrend, ...values].slice(-30);
+        await c.env.DB.prepare(
+          'UPDATE process_metrics SET trend = ? WHERE id = ?'
+        ).bind(JSON.stringify(merged), m.id as string).run();
+        updated++;
+      }
+    }
+  }
+
+  return c.json({ backfilled: updated, totalMetrics: metrics.results.length });
 });
 
 // GET /api/pulse/summary (aggregated overview)

@@ -308,9 +308,14 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'risk_alerts', column: 'source_run_id', definition: 'TEXT' },
     { table: 'risk_alerts', column: 'cluster_id', definition: 'TEXT' },
     { table: 'risk_alerts', column: 'sub_catalyst_name', definition: 'TEXT' },
-    // Spec 6 P3: Correlation source attribution
+    // Spec 6 P3: Correlation source attribution + new fields
     { table: 'correlation_events', column: 'source_run_id', definition: 'TEXT' },
     { table: 'correlation_events', column: 'cluster_id', definition: 'TEXT' },
+    { table: 'correlation_events', column: 'metric_a', definition: 'TEXT' },
+    { table: 'correlation_events', column: 'metric_b', definition: 'TEXT' },
+    { table: 'correlation_events', column: 'correlation_type', definition: "TEXT DEFAULT 'temporal'" },
+    { table: 'correlation_events', column: 'lag_hours', definition: 'REAL' },
+    { table: 'correlation_events', column: 'description', definition: 'TEXT' },
   ];
 
   for (const col of selfHealColumns) {

@@ -51,6 +51,38 @@ apex.get('/health', async (c) => {
   });
 });
 
+// A1-3: GET /api/apex/health/history — Health score time-series for trend sparklines
+apex.get('/health/history', async (c) => {
+  const tenantId = getTenantId(c);
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '30', 10) || 30, 1), 90);
+
+  const results = await c.env.DB.prepare(
+    'SELECT id, overall_score, dimensions, source_run_id, catalyst_name, recorded_at FROM health_score_history WHERE tenant_id = ? ORDER BY recorded_at DESC LIMIT ?'
+  ).bind(tenantId, limit).all();
+
+  const history = results.results.map((h: Record<string, unknown>) => ({
+    id: h.id,
+    overallScore: h.overall_score,
+    dimensions: JSON.parse(h.dimensions as string || '{}'),
+    sourceRunId: h.source_run_id || null,
+    catalystName: h.catalyst_name || null,
+    recordedAt: h.recorded_at,
+  }));
+
+  // Calculate delta from latest vs 7-days-ago
+  let delta = 0;
+  let deltaLabel = 'No change';
+  if (history.length >= 2) {
+    const latest = history[0].overallScore as number;
+    // Find score from ~7 days ago (or oldest available)
+    const weekAgo = history.length > 7 ? history[7].overallScore as number : history[history.length - 1].overallScore as number;
+    delta = latest - weekAgo;
+    deltaLabel = delta > 0 ? `+${delta} points this week` : delta < 0 ? `${delta} points this week` : 'No change this week';
+  }
+
+  return c.json({ history: history.reverse(), delta, deltaLabel, total: history.length });
+});
+
 // GET /api/apex/briefing
 apex.get('/briefing', async (c) => {
   const tenantId = getTenantId(c);
@@ -71,6 +103,11 @@ apex.get('/briefing', async (c) => {
     kpiMovements: JSON.parse(briefing.kpi_movements as string || '[]'),
     decisionsNeeded: JSON.parse(briefing.decisions_needed as string || '[]'),
     generatedAt: briefing.generated_at,
+    // A2: Data-driven briefing fields
+    healthDelta: briefing.health_delta ?? null,
+    redMetricCount: briefing.red_metric_count ?? null,
+    anomalyCount: briefing.anomaly_count ?? null,
+    activeRiskCount: briefing.active_risk_count ?? null,
   });
 });
 
@@ -103,6 +140,10 @@ apex.get('/risks', async (c) => {
     recommendedActions: JSON.parse(r.recommended_actions as string || '[]'),
     status: r.status,
     detectedAt: r.detected_at,
+    // P1/A4-3: Source attribution for drill-through
+    sourceRunId: r.source_run_id || null,
+    clusterId: r.cluster_id || null,
+    subCatalystName: r.sub_catalyst_name || null,
   }));
 
   return c.json({ risks: formatted, total: formatted.length });
@@ -186,20 +227,72 @@ apex.post('/scenarios', async (c) => {
 
   const id = crypto.randomUUID();
 
-  // Generate scenario results
-  const results = {
-    npv_impact: Math.round((Math.random() - 0.5) * 10000000),
-    risk_change: `${Math.random() > 0.5 ? '+' : '-'}${Math.round(Math.random() * 20)}%`,
-    confidence: Math.round(70 + Math.random() * 25),
-    recommendation: 'Analysis completed. See detailed report for implementation steps.',
-    generated_at: new Date().toISOString(),
-  };
+  // A3-1: Gather real context data for scenario analysis
+  let contextData: Record<string, unknown> = {};
+  try {
+    const health = await c.env.DB.prepare('SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first<{ overall_score: number; dimensions: string }>();
+    const redMetrics = await c.env.DB.prepare("SELECT name, value, unit FROM process_metrics WHERE tenant_id = ? AND status = 'red' LIMIT 10").bind(tenantId).all();
+    const activeRisks = await c.env.DB.prepare("SELECT title, severity, category FROM risk_alerts WHERE tenant_id = ? AND status = 'active' LIMIT 10").bind(tenantId).all();
+    const recentRuns = await c.env.DB.prepare('SELECT sub_catalyst_name, status, matched, discrepancies, exceptions_raised FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 20').bind(tenantId).all();
+    contextData = {
+      healthScore: health?.overall_score ?? 0,
+      dimensions: health?.dimensions ? JSON.parse(health.dimensions) : {},
+      redMetrics: redMetrics.results || [],
+      activeRisks: activeRisks.results || [],
+      recentRuns: recentRuns.results || [],
+    };
+  } catch (err) { console.error('scenarios: context gathering failed:', err); }
+
+  // A3-2: Try LLM analysis via Workers AI / Ollama, with A3-4 fallback
+  let scenarioResults: Record<string, unknown>;
+  let modelResponse: string | null = null;
+  try {
+    // Attempt Workers AI if available
+    const ai = (c.env as Record<string, unknown>).AI;
+    if (ai && typeof (ai as Record<string, unknown>).run === 'function') {
+      const prompt = `You are Atheon Mind, an enterprise AI analyst. Analyze this what-if scenario for a business:\n\nScenario: ${body.title}\nDescription: ${body.description}\nQuery: ${body.input_query}\n\nCurrent Business Context:\n- Health Score: ${(contextData.healthScore as number) || 0}/100\n- RED Metrics: ${JSON.stringify(contextData.redMetrics || [])}\n- Active Risks: ${JSON.stringify(contextData.activeRisks || [])}\n- Recent Runs: ${JSON.stringify((contextData.recentRuns as unknown[])?.slice(0, 5) || [])}\n\nRespond with JSON: { "npv_impact": number, "risk_change": string, "confidence": number (0-100), "recommendation": string, "analysis_points": string[] }`;
+      const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', { prompt });
+      modelResponse = aiResult?.response || null;
+      if (modelResponse) {
+        try {
+          const parsed = JSON.parse(modelResponse);
+          scenarioResults = { ...parsed, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+        } catch {
+          scenarioResults = { recommendation: modelResponse, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+        }
+      } else {
+        throw new Error('Empty AI response');
+      }
+    } else {
+      throw new Error('Workers AI not available');
+    }
+  } catch {
+    // A3-4: Fallback calculation from real context data
+    const healthScore = (contextData.healthScore as number) || 50;
+    const redCount = ((contextData.redMetrics as unknown[]) || []).length;
+    const riskCount = ((contextData.activeRisks as unknown[]) || []).length;
+    const baseImpact = healthScore > 70 ? 500000 : healthScore > 50 ? -200000 : -1000000;
+    const riskAdjustment = riskCount * -150000 + redCount * -100000;
+    scenarioResults = {
+      npv_impact: Math.round(baseImpact + riskAdjustment + (Math.random() - 0.5) * 200000),
+      risk_change: `${riskCount > 3 ? '+' : '-'}${Math.round(riskCount * 3 + redCount * 2)}%`,
+      confidence: Math.max(40, Math.min(85, 75 - riskCount * 5 - redCount * 3)),
+      recommendation: `Based on current health score (${healthScore}/100), ${redCount} RED metric(s), and ${riskCount} active risk(s): ${healthScore > 70 ? 'Organization is well-positioned for this change.' : healthScore > 50 ? 'Moderate risk — address RED metrics before proceeding.' : 'High risk — stabilize operations first.'}`,
+      analysis_points: [
+        `Current health score: ${healthScore}/100`,
+        redCount > 0 ? `${redCount} metric(s) in RED status need attention` : 'All metrics within acceptable ranges',
+        riskCount > 0 ? `${riskCount} active risk alert(s) may impact outcome` : 'No active risk alerts',
+      ],
+      generated_at: new Date().toISOString(),
+      model: 'fallback-calculation',
+    };
+  }
 
   await c.env.DB.prepare(
-    'INSERT INTO scenarios (id, tenant_id, title, description, input_query, variables, results, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, tenantId, body.title, body.description, body.input_query, JSON.stringify(body.variables || []), JSON.stringify(results), 'completed').run();
+    'INSERT INTO scenarios (id, tenant_id, title, description, input_query, variables, results, status, context_data, model_response) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, tenantId, body.title, body.description, body.input_query, JSON.stringify(body.variables || []), JSON.stringify(scenarioResults), 'completed', JSON.stringify(contextData), modelResponse).run();
 
-  return c.json({ id, results }, 201);
+  return c.json({ id, results: scenarioResults, context: contextData }, 201);
 });
 
 export default apex;

@@ -406,11 +406,11 @@ export function determineKpiStatus(
 ): 'green' | 'amber' | 'red' {
   if (direction === 'higher_better') {
     if (value < thresholdRed) return 'red';
-    if (value < thresholdAmber) return 'amber';
+    if (value < thresholdGreen) return 'amber';
     return 'green';
   } else if (direction === 'lower_better') {
     if (value > thresholdRed) return 'red';
-    if (value > thresholdAmber) return 'amber';
+    if (value > thresholdGreen) return 'amber';
     return 'green';
   }
   return 'green'; // 'info' direction = always green
