@@ -265,9 +265,23 @@ async function writeRunItems(
     }
   }
 
-  // Discrepancy records
+  // Build a set of unmatched source refs to avoid duplicates between discrepancies and unmatched_source_records
+  const unmatchedSourceRefs = new Set<string>();
+  if (result.unmatched_source_records) {
+    for (const rec of result.unmatched_source_records) {
+      const ref = String(rec['invoice_number'] ?? rec['po_number'] ?? rec['name'] ?? rec['id'] ?? '');
+      if (ref) unmatchedSourceRefs.add(ref);
+    }
+  }
+
+  // Discrepancy records — skip if the same record will be written by the unmatched_source_records loop
   if (result.discrepancies) {
     for (const d of result.discrepancies) {
+      if (!d.target_record && unmatchedSourceRefs.size > 0) {
+        // This unmatched source is already in unmatched_source_records — skip to avoid duplicates
+        const srcRef = String(d.source_record?.['invoice_number'] ?? d.source_record?.['po_number'] ?? d.source_record?.['name'] ?? d.source_record?.['id'] ?? '');
+        if (srcRef && unmatchedSourceRefs.has(srcRef)) continue;
+      }
       itemNumber++;
       const srcAmt = parseFloat(String(d.source_value ?? 0));
       const tgtAmt = parseFloat(String(d.target_value ?? 0));
@@ -528,17 +542,9 @@ export async function recalculateKpis(
         now
       ).run();
 
-      // Degrade health_score
-      const healthRow = await db.prepare(
-        'SELECT id, overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-      ).bind(tenantId).first<{ id: string; overall_score: number; dimensions: string }>();
-
-      if (healthRow) {
-        const penalty = redCount.cnt * 5; // 5 points per RED sub-catalyst
-        const newScore = Math.max(0, Math.round(healthRow.overall_score - penalty));
-        await db.prepare('UPDATE health_scores SET overall_score = ?, calculated_at = ? WHERE id = ?')
-          .bind(newScore, now, healthRow.id).run();
-      }
+      // Note: health_score degradation is handled by the scheduled recalculation job
+      // in services/scheduled.ts to avoid cumulative penalties on every run execution.
+      // The risk_alert above already flags the issue for the Apex layer.
     }
   } catch (err) { console.error('recalculateKpis: Apex integration failed:', err); }
 }
