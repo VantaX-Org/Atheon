@@ -280,6 +280,7 @@ async function writeRunItems(
   if (result.discrepancies) {
     for (const d of result.discrepancies) {
       if (!d.target_record && unmatchedSourceRefs.size > 0) {
+        // This unmatched source is already in unmatched_source_records — skip to avoid duplicates
         const srcRef = String(d.source_record?.['invoice_number'] ?? d.source_record?.['po_number'] ?? d.source_record?.['name'] ?? d.source_record?.['id'] ?? '');
         if (srcRef && unmatchedSourceRefs.has(srcRef)) continue;
       }
