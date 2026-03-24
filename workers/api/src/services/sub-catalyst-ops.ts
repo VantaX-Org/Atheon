@@ -4,6 +4,8 @@
  * Core service for the Sub-Catalyst Ops View (all 3 specs).
  */
 
+import { calculateKpiValue, determineKpiStatus } from './kpi-definitions';
+
 // ── Types ──
 
 export interface ExecutionResultRecord {
@@ -225,8 +227,8 @@ export async function recordRun(
     await db.prepare('UPDATE sub_catalyst_runs SET items_total = ? WHERE id = ?').bind(itemsTotal, runId).run();
   }
 
-  // Recalculate KPIs
-  await recalculateKpis(db, tenantId, clusterId, subName);
+  // Recalculate KPIs (pass runId for per-run KPI snapshots)
+  await recalculateKpis(db, tenantId, clusterId, subName, runId);
 
   return runId;
 }
@@ -379,7 +381,8 @@ export async function recalculateKpis(
   db: D1Database,
   tenantId: string,
   clusterId: string,
-  subName: string
+  subName: string,
+  runId?: string
 ): Promise<void> {
   // Aggregate from all runs
   const agg = await db.prepare(`SELECT
@@ -547,6 +550,88 @@ export async function recalculateKpis(
       // The risk_alert above already flags the issue for the Apex layer.
     }
   } catch (err) { console.error('recalculateKpis: Apex integration failed:', err); }
+
+  // ── KPI-4: Calculate ALL defined KPI values for this sub-catalyst ──
+  try {
+    const defs = await db.prepare(
+      'SELECT * FROM sub_catalyst_kpi_definitions WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? AND enabled = 1 ORDER BY sort_order'
+    ).bind(tenantId, clusterId, subName).all<Record<string, unknown>>();
+
+    if (defs.results && defs.results.length > 0) {
+      // Get latest run data for domain-specific KPI calculations
+      const latestRun = await db.prepare(
+        'SELECT * FROM sub_catalyst_runs WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId, clusterId, subName).first<Record<string, number>>();
+
+      const runData = {
+        source_record_count: latestRun?.source_record_count ?? 0,
+        target_record_count: latestRun?.target_record_count ?? 0,
+        matched: latestRun?.matched ?? 0,
+        discrepancies: latestRun?.discrepancies ?? 0,
+        exceptions_raised: latestRun?.exceptions_raised ?? 0,
+        total_source_value: latestRun?.total_source_value ?? 0,
+        total_matched_value: latestRun?.total_matched_value ?? 0,
+        total_discrepancy_value: latestRun?.total_discrepancy_value ?? 0,
+        total_exception_value: latestRun?.total_exception_value ?? 0,
+        total_unmatched_value: latestRun?.total_unmatched_value ?? 0,
+        duration_ms: latestRun?.duration_ms ?? 0,
+      };
+      const aggregateData = { success_rate: successRate, avg_duration_ms: avgDuration, exception_rate: excRate };
+
+      let worstStatus: 'green' | 'amber' | 'red' = 'green';
+
+      for (const def of defs.results) {
+        const defId = def.id as string;
+        const category = def.category as string;
+        const kpiName = def.kpi_name as string;
+        const direction = def.direction as string;
+        const thG = def.threshold_green as number;
+        const thA = def.threshold_amber as number;
+        const thR = def.threshold_red as number;
+
+        const value = calculateKpiValue(category, kpiName, runData, aggregateData);
+        if (value === null) continue;
+
+        const kpiStatus = determineKpiStatus(value, direction, thG, thA, thR);
+
+        // Update worst status for rollup
+        if (kpiStatus === 'red') worstStatus = 'red';
+        else if (kpiStatus === 'amber' && worstStatus !== 'red') worstStatus = 'amber';
+
+        // Get existing aggregate value for trend
+        const existingVal = await db.prepare(
+          'SELECT id, trend FROM sub_catalyst_kpi_values WHERE definition_id = ? AND run_id IS NULL'
+        ).bind(defId).first<{ id: string; trend: string }>();
+
+        const oldTrend: number[] = existingVal?.trend ? safeParseArray(existingVal.trend).map(Number) : [];
+        oldTrend.push(Math.round(value * 100) / 100);
+        if (oldTrend.length > 30) oldTrend.splice(0, oldTrend.length - 30);
+
+        if (existingVal) {
+          await db.prepare(
+            'UPDATE sub_catalyst_kpi_values SET value = ?, status = ?, trend = ?, measured_at = ? WHERE id = ?'
+          ).bind(value, kpiStatus, JSON.stringify(oldTrend), now, existingVal.id).run();
+        } else {
+          await db.prepare(
+            'INSERT INTO sub_catalyst_kpi_values (id, tenant_id, definition_id, run_id, value, status, trend, measured_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)'
+          ).bind(`kpiv-${crypto.randomUUID()}`, tenantId, defId, value, kpiStatus, JSON.stringify(oldTrend), now).run();
+        }
+
+        // Per-run snapshot (if runId provided)
+        if (runId) {
+          await db.prepare(
+            'INSERT OR IGNORE INTO sub_catalyst_kpi_values (id, tenant_id, definition_id, run_id, value, status, trend, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          ).bind(`kpiv-${crypto.randomUUID()}`, tenantId, defId, runId, value, kpiStatus, '[]', now).run();
+        }
+      }
+
+      // Worst-status rollup: update sub_catalyst_kpis.status to worst across all KPI values
+      if (worstStatus !== status) {
+        await db.prepare('UPDATE sub_catalyst_kpis SET status = ?, updated_at = ? WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?')
+          .bind(worstStatus, now, tenantId, clusterId, subName).run();
+      }
+    }
+  } catch (err) { console.error('recalculateKpis: KPI definitions calculation failed:', err); }
 }
 
 // ── getRuns ──
@@ -642,10 +727,97 @@ export async function getKpis(
   tenantId: string,
   clusterId: string,
   subName: string
-): Promise<SubCatalystKpisRow | null> {
-  return db.prepare(
+): Promise<{
+  overall_status: string;
+  aggregate: SubCatalystKpisRow | null;
+  definitions: Array<{
+    id: string; name: string; category: string; unit: string; direction: string;
+    value: number | null; status: string; thresholds: { green: number | null; amber: number | null; red: number | null };
+    trend: number[]; is_universal: boolean; enabled: boolean; sort_order: number;
+    calculation: string; data_source: string;
+  }>;
+}> {
+  const aggregate = await db.prepare(
     'SELECT * FROM sub_catalyst_kpis WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?'
   ).bind(tenantId, clusterId, subName).first<SubCatalystKpisRow>();
+
+  // Load all KPI definitions with their latest values
+  const defs = await db.prepare(
+    'SELECT * FROM sub_catalyst_kpi_definitions WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? ORDER BY sort_order'
+  ).bind(tenantId, clusterId, subName).all<Record<string, unknown>>();
+
+  const definitions = [];
+  const overallStatus = aggregate?.status ?? 'green';
+
+  for (const def of (defs.results || [])) {
+    const defId = def.id as string;
+    // Get latest aggregate value (run_id IS NULL)
+    const val = await db.prepare(
+      'SELECT value, status, trend FROM sub_catalyst_kpi_values WHERE definition_id = ? AND run_id IS NULL'
+    ).bind(defId).first<{ value: number; status: string; trend: string }>();
+
+    let trendArr: number[] = [];
+    try { trendArr = val?.trend ? JSON.parse(val.trend) : []; } catch { trendArr = []; }
+
+    definitions.push({
+      id: defId,
+      name: def.kpi_name as string,
+      category: def.category as string,
+      unit: def.unit as string,
+      direction: def.direction as string,
+      value: val?.value ?? null,
+      status: val?.status ?? 'green',
+      thresholds: {
+        green: def.threshold_green as number | null,
+        amber: def.threshold_amber as number | null,
+        red: def.threshold_red as number | null,
+      },
+      trend: trendArr,
+      is_universal: (def.is_universal as number) === 1,
+      enabled: (def.enabled as number) === 1,
+      sort_order: def.sort_order as number,
+      calculation: def.calculation as string,
+      data_source: def.data_source as string,
+    });
+  }
+
+  return { overall_status: overallStatus, aggregate, definitions };
+}
+
+// ── getKpiDefinitions (KPI-6) ──
+
+export async function getKpiDefinitions(
+  db: D1Database,
+  tenantId: string,
+  clusterId: string,
+  subName: string
+): Promise<Record<string, unknown>[]> {
+  const result = await db.prepare(
+    'SELECT * FROM sub_catalyst_kpi_definitions WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? ORDER BY sort_order'
+  ).bind(tenantId, clusterId, subName).all<Record<string, unknown>>();
+  return result.results || [];
+}
+
+// ── updateKpiDefinition (KPI-6) ──
+
+export async function updateKpiDefinition(
+  db: D1Database,
+  tenantId: string,
+  defId: string,
+  updates: { threshold_green?: number; threshold_amber?: number; threshold_red?: number; enabled?: boolean }
+): Promise<boolean> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (updates.threshold_green !== undefined) { sets.push('threshold_green = ?'); params.push(updates.threshold_green); }
+  if (updates.threshold_amber !== undefined) { sets.push('threshold_amber = ?'); params.push(updates.threshold_amber); }
+  if (updates.threshold_red !== undefined) { sets.push('threshold_red = ?'); params.push(updates.threshold_red); }
+  if (updates.enabled !== undefined) { sets.push('enabled = ?'); params.push(updates.enabled ? 1 : 0); }
+  if (sets.length === 0) return false;
+  params.push(defId, tenantId);
+  const result = await db.prepare(
+    `UPDATE sub_catalyst_kpi_definitions SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`
+  ).bind(...params).run();
+  return result.meta.changes > 0;
 }
 
 // ── getRunItems ──

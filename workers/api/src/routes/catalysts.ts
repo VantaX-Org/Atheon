@@ -4,7 +4,8 @@ import { executeTask, approveAction, rejectAction } from '../services/catalyst-e
 import { getValidatedJsonBody } from '../middleware/validation';
 import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst-templates';
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
-import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns } from '../services/sub-catalyst-ops';
+import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
+import { generateKpiDefinitions } from '../services/kpi-definitions';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -625,6 +626,27 @@ catalysts.post('/deploy-template', async (c) => {
       JSON.stringify(cl.sub_catalysts)
     ).run();
     createdIds.push(id);
+
+    // Seed KPI definitions for each sub-catalyst in this cluster
+    try {
+      const subs = Array.isArray(cl.sub_catalysts) ? cl.sub_catalysts : JSON.parse(cl.sub_catalysts || '[]');
+      for (const sub of subs) {
+        const subName = typeof sub === 'string' ? sub : (sub.name || sub);
+        const subDesc = typeof sub === 'object' && sub !== null ? (sub.description || '') : '';
+        const defs = generateKpiDefinitions(subName, subDesc, cl.domain || '', cl.autonomy_tier || '');
+        for (const [idx, def] of defs.entries()) {
+          await c.env.DB.prepare(
+            `INSERT OR IGNORE INTO sub_catalyst_kpi_definitions (id, tenant_id, cluster_id, sub_catalyst_name, kpi_name, unit, direction, threshold_green, threshold_amber, threshold_red, calculation, data_source, category, is_universal, sort_order, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+          ).bind(
+            crypto.randomUUID(), body.tenant_id, id, subName,
+            def.name, def.unit, def.direction, def.green, def.amber, def.red,
+            def.calculation, def.source, def.category, def.is_universal ? 1 : 0, idx
+          ).run();
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to seed KPI definitions for cluster ${cl.name}:`, err);
+    }
   }
 
   // Audit log
@@ -3396,6 +3418,69 @@ catalysts.post('/runs/:runId/comments', async (c) => {
   ).run();
 
   return c.json({ id: commentId, success: true });
+});
+
+// GET /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions — List all KPI definitions
+catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const tenantId = getTenantId(c);
+
+  const defs = await getKpiDefinitions(c.env.DB, tenantId, clusterId, subName);
+  return c.json({ definitions: defs });
+});
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions/:defId — Update KPI definition thresholds/enabled
+catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions/:defId', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  const tenantId = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+  const defId = c.req.param('defId');
+
+  const body = await c.req.json<{ threshold_green?: number; threshold_amber?: number; threshold_red?: number; enabled?: boolean }>();
+  const updated = await updateKpiDefinition(c.env.DB, tenantId, defId, body);
+  if (!updated) return c.json({ error: 'KPI definition not found or no changes' }, 404);
+  return c.json({ success: true });
+});
+
+// PUT /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions/reset — Reset all KPI definitions to defaults
+catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions/reset', async (c) => {
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  const tenantId = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
+
+  // Get cluster info for regeneration
+  const cluster = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, tenantId).first<Record<string, string>>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  // Delete existing definitions and regenerate
+  await c.env.DB.prepare('DELETE FROM sub_catalyst_kpi_values WHERE tenant_id = ? AND definition_id IN (SELECT id FROM sub_catalyst_kpi_definitions WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?)')
+    .bind(tenantId, tenantId, clusterId, subName).run();
+  await c.env.DB.prepare('DELETE FROM sub_catalyst_kpi_definitions WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ?')
+    .bind(tenantId, clusterId, subName).run();
+
+  const subs = safeJsonParse(cluster.sub_catalysts || '[]') as Array<Record<string, string> | string>;
+  const sub = subs.find((s) => (typeof s === 'object' ? s.name : s) === subName);
+  const subDesc = sub && typeof sub === 'object' ? (sub.description || '') : '';
+  const defs = generateKpiDefinitions(subName, subDesc, cluster.domain || '', cluster.autonomy_tier || '');
+
+  for (const [idx, def] of defs.entries()) {
+    await c.env.DB.prepare(
+      'INSERT OR IGNORE INTO sub_catalyst_kpi_definitions (id, tenant_id, cluster_id, sub_catalyst_name, kpi_name, unit, direction, threshold_green, threshold_amber, threshold_red, calculation, data_source, category, is_universal, sort_order, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+    ).bind(
+      crypto.randomUUID(), tenantId, clusterId, subName,
+      def.name, def.unit, def.direction, def.green, def.amber, def.red,
+      def.calculation, def.source, def.category, def.is_universal ? 1 : 0, idx
+    ).run();
+  }
+
+  return c.json({ success: true, definitions_count: defs.length });
 });
 
 export { sendHitlNotification, sendRunResultsEmail };
