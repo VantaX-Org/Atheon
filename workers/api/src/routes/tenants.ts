@@ -39,6 +39,155 @@ tenants.get('/', async (c) => {
   return c.json({ tenants: formatted, total: formatted.length });
 });
 
+// ── POPIA-1: GET /api/tenants/data-export — Data Subject Access Request (DSAR) ──
+// Returns JSON of all PII tables for the authenticated user's tenant.
+// NOTE: Must be registered BEFORE /:id route to avoid being captured by the param.
+tenants.get('/data-export', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || '';
+  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
+
+  const piiTables: Record<string, unknown[]> = {};
+
+  const queries: { key: string; sql: string }[] = [
+    { key: 'users', sql: 'SELECT id, name, email, role, created_at FROM users WHERE tenant_id = ?' },
+    { key: 'erp_customers', sql: 'SELECT * FROM erp_customers WHERE tenant_id = ?' },
+    { key: 'erp_suppliers', sql: 'SELECT * FROM erp_suppliers WHERE tenant_id = ?' },
+    { key: 'erp_employees', sql: 'SELECT * FROM erp_employees WHERE tenant_id = ?' },
+    { key: 'erp_invoices', sql: 'SELECT * FROM erp_invoices WHERE tenant_id = ?' },
+    { key: 'audit_log', sql: 'SELECT * FROM audit_log WHERE tenant_id = ?' },
+    { key: 'catalyst_actions', sql: 'SELECT * FROM catalyst_actions WHERE tenant_id = ?' },
+    { key: 'sub_catalyst_runs', sql: 'SELECT id, tenant_id, cluster_id, sub_catalyst_name, run_number, status, started_at, completed_at FROM sub_catalyst_runs WHERE tenant_id = ?' },
+    { key: 'mind_queries', sql: 'SELECT * FROM mind_queries WHERE tenant_id = ?' },
+  ];
+
+  for (const q of queries) {
+    try {
+      const result = await c.env.DB.prepare(q.sql).bind(tenantId).all();
+      piiTables[q.key] = result.results;
+    } catch {
+      piiTables[q.key] = [];
+    }
+  }
+
+  // Store export in R2 if available, otherwise return inline
+  const exportPayload = JSON.stringify({
+    tenant_id: tenantId,
+    exported_at: new Date().toISOString(),
+    exported_by: auth?.email || 'unknown',
+    data: piiTables,
+  }, null, 2);
+
+  try {
+    const key = `popia-export/${tenantId}/${Date.now()}.json`;
+    await c.env.STORAGE.put(key, exportPayload, {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { tenantId, exportedBy: auth?.email || '' },
+    });
+
+    // Audit log
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), tenantId, 'popia.data_export.completed', 'compliance', 'data-export',
+      JSON.stringify({ exportedBy: auth?.email, r2Key: key, tableCount: Object.keys(piiTables).length }),
+      'success'
+    ).run();
+
+    return c.json({
+      success: true,
+      exportedAt: new Date().toISOString(),
+      tableCount: Object.keys(piiTables).length,
+      totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
+      data: piiTables,
+    });
+  } catch {
+    // Fallback: return inline if R2 write fails
+    return c.json({
+      success: true,
+      exportedAt: new Date().toISOString(),
+      tableCount: Object.keys(piiTables).length,
+      totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
+      data: piiTables,
+    });
+  }
+});
+
+// ── POPIA-2: DELETE /api/tenants/data-export — Right to Erasure ──
+// Purges PII while preserving anonymised operational data.
+// NOTE: Must be registered BEFORE /:id route to avoid being captured by the param.
+tenants.delete('/data-export', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || '';
+  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
+
+  const erasureLog: { table: string; action: string; affected: number }[] = [];
+
+  // DELETE: erp_employees, erp_customers, mind_queries
+  for (const table of ['erp_employees', 'erp_customers', 'mind_queries']) {
+    try {
+      const del = await c.env.DB.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).bind(tenantId).run();
+      erasureLog.push({ table, action: 'deleted', affected: del.meta?.changes || 0 });
+    } catch {
+      erasureLog.push({ table, action: 'skipped', affected: 0 });
+    }
+  }
+
+  // ANONYMISE: erp_invoices (customer_name = 'REDACTED', customer_id = NULL)
+  try {
+    const upd = await c.env.DB.prepare(
+      "UPDATE erp_invoices SET customer_name = 'REDACTED', customer_id = NULL WHERE tenant_id = ?"
+    ).bind(tenantId).run();
+    erasureLog.push({ table: 'erp_invoices', action: 'anonymised', affected: upd.meta?.changes || 0 });
+  } catch {
+    erasureLog.push({ table: 'erp_invoices', action: 'skipped', affected: 0 });
+  }
+
+  // ANONYMISE: audit_log (user_id = 'REDACTED')
+  try {
+    const upd = await c.env.DB.prepare(
+      "UPDATE audit_log SET user_id = 'REDACTED' WHERE tenant_id = ? AND user_id IS NOT NULL"
+    ).bind(tenantId).run();
+    erasureLog.push({ table: 'audit_log', action: 'anonymised', affected: upd.meta?.changes || 0 });
+  } catch {
+    erasureLog.push({ table: 'audit_log', action: 'skipped', affected: 0 });
+  }
+
+  // ANONYMISE: users (name = 'Redacted User', email = '{userId}@redacted.local')
+  try {
+    const users = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE tenant_id = ? AND role NOT IN ('superadmin', 'support_admin')"
+    ).bind(tenantId).all();
+    let affected = 0;
+    for (const u of users.results) {
+      const userId = u.id as string;
+      await c.env.DB.prepare(
+        "UPDATE users SET name = 'Redacted User', email = ? WHERE id = ?"
+      ).bind(`${userId}@redacted.local`, userId).run();
+      affected++;
+    }
+    erasureLog.push({ table: 'users', action: 'anonymised', affected });
+  } catch {
+    erasureLog.push({ table: 'users', action: 'skipped', affected: 0 });
+  }
+
+  // Compliance evidence — audit log entry
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), tenantId, 'popia.erasure.completed', 'compliance', 'data-export',
+      JSON.stringify({ requestedBy: auth?.email, erasureLog, completedAt: new Date().toISOString() }),
+      'success'
+    ).run();
+  } catch { /* non-fatal */ }
+
+  return c.json({
+    success: true,
+    erasedAt: new Date().toISOString(),
+    erasureLog,
+    preservedTables: ['catalyst_clusters', 'process_metrics', 'health_scores', 'sub_catalyst_runs'],
+  });
+});
+
 // GET /api/tenants/:id
 tenants.get('/:id', async (c) => {
   const id = c.req.param('id');
@@ -375,153 +524,6 @@ tenants.delete('/:id', async (c) => {
     success: true,
     deletedRows: result.totalRowsDeleted,
     tablesCleared: result.tablesCleared.length + 2, // +2 for tenant_entitlements and tenants
-  });
-});
-
-// ── POPIA-1: GET /api/tenants/data-export — Data Subject Access Request (DSAR) ──
-// Returns JSON of all PII tables for the authenticated user's tenant.
-tenants.get('/data-export', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  const tenantId = auth?.tenantId || '';
-  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
-
-  const piiTables: Record<string, unknown[]> = {};
-
-  const queries: { key: string; sql: string }[] = [
-    { key: 'users', sql: 'SELECT id, name, email, role, created_at FROM users WHERE tenant_id = ?' },
-    { key: 'erp_customers', sql: 'SELECT * FROM erp_customers WHERE tenant_id = ?' },
-    { key: 'erp_suppliers', sql: 'SELECT * FROM erp_suppliers WHERE tenant_id = ?' },
-    { key: 'erp_employees', sql: 'SELECT * FROM erp_employees WHERE tenant_id = ?' },
-    { key: 'erp_invoices', sql: 'SELECT * FROM erp_invoices WHERE tenant_id = ?' },
-    { key: 'audit_log', sql: 'SELECT * FROM audit_log WHERE tenant_id = ?' },
-    { key: 'catalyst_actions', sql: 'SELECT * FROM catalyst_actions WHERE tenant_id = ?' },
-    { key: 'sub_catalyst_runs', sql: 'SELECT id, tenant_id, cluster_id, sub_catalyst_name, run_number, status, started_at, completed_at FROM sub_catalyst_runs WHERE tenant_id = ?' },
-    { key: 'mind_queries', sql: 'SELECT * FROM mind_queries WHERE tenant_id = ?' },
-  ];
-
-  for (const q of queries) {
-    try {
-      const result = await c.env.DB.prepare(q.sql).bind(tenantId).all();
-      piiTables[q.key] = result.results;
-    } catch {
-      piiTables[q.key] = [];
-    }
-  }
-
-  // Store export in R2 if available, otherwise return inline
-  const exportPayload = JSON.stringify({
-    tenant_id: tenantId,
-    exported_at: new Date().toISOString(),
-    exported_by: auth?.email || 'unknown',
-    data: piiTables,
-  }, null, 2);
-
-  try {
-    const key = `popia-export/${tenantId}/${Date.now()}.json`;
-    await c.env.STORAGE.put(key, exportPayload, {
-      httpMetadata: { contentType: 'application/json' },
-      customMetadata: { tenantId, exportedBy: auth?.email || '' },
-    });
-
-    // Audit log
-    await c.env.DB.prepare(
-      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(crypto.randomUUID(), tenantId, 'popia.data_export.completed', 'compliance', 'data-export',
-      JSON.stringify({ exportedBy: auth?.email, r2Key: key, tableCount: Object.keys(piiTables).length }),
-      'success'
-    ).run();
-
-    return c.json({
-      success: true,
-      exportedAt: new Date().toISOString(),
-      tableCount: Object.keys(piiTables).length,
-      totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
-      data: piiTables,
-    });
-  } catch {
-    // Fallback: return inline if R2 write fails
-    return c.json({
-      success: true,
-      exportedAt: new Date().toISOString(),
-      tableCount: Object.keys(piiTables).length,
-      totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
-      data: piiTables,
-    });
-  }
-});
-
-// ── POPIA-2: DELETE /api/tenants/data-export — Right to Erasure ──
-// Purges PII while preserving anonymised operational data.
-tenants.delete('/data-export', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  const tenantId = auth?.tenantId || '';
-  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
-
-  const erasureLog: { table: string; action: string; affected: number }[] = [];
-
-  // DELETE: erp_employees, erp_customers, mind_queries
-  for (const table of ['erp_employees', 'erp_customers', 'mind_queries']) {
-    try {
-      const del = await c.env.DB.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).bind(tenantId).run();
-      erasureLog.push({ table, action: 'deleted', affected: del.meta?.changes || 0 });
-    } catch {
-      erasureLog.push({ table, action: 'skipped', affected: 0 });
-    }
-  }
-
-  // ANONYMISE: erp_invoices (customer_name = 'REDACTED', customer_id = NULL)
-  try {
-    const upd = await c.env.DB.prepare(
-      "UPDATE erp_invoices SET customer_name = 'REDACTED', customer_id = NULL WHERE tenant_id = ?"
-    ).bind(tenantId).run();
-    erasureLog.push({ table: 'erp_invoices', action: 'anonymised', affected: upd.meta?.changes || 0 });
-  } catch {
-    erasureLog.push({ table: 'erp_invoices', action: 'skipped', affected: 0 });
-  }
-
-  // ANONYMISE: audit_log (user_id = 'REDACTED')
-  try {
-    const upd = await c.env.DB.prepare(
-      "UPDATE audit_log SET user_id = 'REDACTED' WHERE tenant_id = ? AND user_id IS NOT NULL"
-    ).bind(tenantId).run();
-    erasureLog.push({ table: 'audit_log', action: 'anonymised', affected: upd.meta?.changes || 0 });
-  } catch {
-    erasureLog.push({ table: 'audit_log', action: 'skipped', affected: 0 });
-  }
-
-  // ANONYMISE: users (name = 'Redacted User', email = '{userId}@redacted.local')
-  try {
-    const users = await c.env.DB.prepare(
-      "SELECT id FROM users WHERE tenant_id = ? AND role NOT IN ('superadmin', 'support_admin')"
-    ).bind(tenantId).all();
-    let affected = 0;
-    for (const u of users.results) {
-      const userId = u.id as string;
-      await c.env.DB.prepare(
-        "UPDATE users SET name = 'Redacted User', email = ? WHERE id = ?"
-      ).bind(`${userId}@redacted.local`, userId).run();
-      affected++;
-    }
-    erasureLog.push({ table: 'users', action: 'anonymised', affected });
-  } catch {
-    erasureLog.push({ table: 'users', action: 'skipped', affected: 0 });
-  }
-
-  // Compliance evidence — audit log entry
-  try {
-    await c.env.DB.prepare(
-      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(crypto.randomUUID(), tenantId, 'popia.erasure.completed', 'compliance', 'data-export',
-      JSON.stringify({ requestedBy: auth?.email, erasureLog, completedAt: new Date().toISOString() }),
-      'success'
-    ).run();
-  } catch { /* non-fatal */ }
-
-  return c.json({
-    success: true,
-    erasedAt: new Date().toISOString(),
-    erasureLog,
-    preservedTables: ['catalyst_clusters', 'process_metrics', 'health_scores', 'sub_catalyst_runs'],
   });
 });
 
