@@ -52,21 +52,17 @@ export function MindPage() {
  // Phase 4.3: Streaming status indicator
  const streamingStatus = stats?.totalQueries != null && stats.totalQueries > 0 ? 'active' : 'idle';
 
- const eval_ = pipeline?.evaluation;
  const evaluationMetrics = [
- { name: 'MMLU Score', value: eval_?.mmlu || 0, target: 80 },
- { name: 'HumanEval', value: eval_?.humaneval || 0, target: 50 },
- { name: 'Domain Accuracy', value: eval_?.domainAccuracy || 0, target: 85 },
- { name: 'Hallucination Rate', value: eval_?.hallucination_rate || 0, target: 5, inverse: true, unit: '%' },
  { name: 'Avg Latency', value: stats?.avgLatencyMs || 0, target: 500, unit: 'ms', inverse: true },
  { name: 'Total Queries', value: stats?.totalQueries || 0, target: 100 },
+ { name: 'Total Tokens', value: stats?.totalTokens || 0, target: 10000 },
  ];
 
  return (
  <div className="space-y-6 animate-fadeIn">
  <div>
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Mind</h1>
- <p className="text-sm t-muted mt-1">Powered by Reshigan/atheon — Enterprise Intelligence Engine</p>
+ <p className="text-sm t-muted mt-1">Enterprise Intelligence Engine</p>
  </div>
 
  {/* Model Tiers — admin sees full detail, users see summary */}
@@ -110,8 +106,8 @@ export function MindPage() {
  </div>
  </div>
 
- {/* Training Pipeline — admin only */}
- {isAdmin && <div>
+ {/* Training Pipeline — admin only, hidden when no pipeline data */}
+ {isAdmin && pipeline && <div>
  <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
  <Cpu className="w-4 h-4 text-accent" /> Training Pipeline
  </h2>
@@ -201,9 +197,9 @@ export function MindPage() {
  <div>
  <h3 className="text-sm font-semibold t-primary">Architecture Note</h3>
  <p className="text-xs t-muted mt-1">
- Atheon Mind uses the <span className="text-accent">Reshigan/atheon</span> model via Ollama Cloud as the primary
- inference engine, with Cloudflare Workers AI as a fallback. All three tiers route through the custom Atheon model
- for domain-tuned enterprise intelligence. Client-specific LoRA adapters are hot-swapped based on tenant context.
+ Atheon Mind uses a multi-tier inference architecture with Cloudflare Workers AI as the primary engine.
+ All three tiers route through domain-tuned models for enterprise intelligence.
+ Client-specific adapters are selected based on tenant context and industry vertical.
  </p>
  </div>
  </div>

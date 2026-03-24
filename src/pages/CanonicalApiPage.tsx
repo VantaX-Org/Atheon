@@ -131,7 +131,7 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  setTryingEndpoint(ep.id);
  setTryLoading(true);
  setTryResult(null);
- const apiUrl = import.meta.env.VITE_API_URL || 'https://atheon-api.reshigan-085.workers.dev';
+ const apiUrl = import.meta.env.VITE_API_URL || '';
  fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
  headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` }})
  .then(async (res) => {

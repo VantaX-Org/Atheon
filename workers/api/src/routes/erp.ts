@@ -388,19 +388,12 @@ erp.post('/sync/:connection_id', async (c) => {
     });
   }
 
-  // Fallback: simulated sync when no real credentials — still update sync metadata
-  const newRecords = Math.round(Math.random() * 500) + 10;
-  await c.env.DB.prepare(
-    'UPDATE erp_connections SET last_sync = datetime(\'now\'), records_synced = records_synced + ? WHERE id = ? AND tenant_id = ?'
-  ).bind(newRecords, connectionId, tenantId).run();
-
+  // No adapter or credentials available — return an error instead of faking data
   return c.json({
+    error: 'No ERP adapter or credentials configured for this connection. Please configure credentials on the Integrations page before syncing.',
     connectionId,
-    recordsSynced: newRecords,
-    syncedAt: new Date().toISOString(),
-    status: 'completed',
-    mode: 'simulated',
-  });
+    status: 'failed',
+  }, 400);
 });
 
 // POST /api/erp/connections/:id/test - Test ERP connection

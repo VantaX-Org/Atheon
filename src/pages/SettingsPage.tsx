@@ -388,7 +388,7 @@ export function SettingsPage() {
  <div className="space-y-4">
    <div className="p-3 rounded-lg" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
      <p className="text-xs font-medium t-primary mb-1">Information Officer</p>
-     <p className="text-xs t-muted">Reshigan Naidoo — reshigan@vantax.co.za</p>
+     <p className="text-xs t-muted">{user?.name || 'Not configured'} — {user?.email || 'Contact your administrator'}</p>
      <p className="text-xs t-muted">In terms of POPIA (Protection of Personal Information Act), you have the right to access and delete your personal data.</p>
    </div>
    <div className="flex gap-3">
