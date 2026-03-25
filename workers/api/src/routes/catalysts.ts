@@ -328,7 +328,33 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     const prevScore = existingDimensions[dim]?.score ?? score;
     const delta = Math.round((score - prevScore) * 10) / 10;
     const trend = delta > 0.5 ? 'improving' : delta < -0.5 ? 'declining' : 'stable';
-    existingDimensions[dim] = { score, trend, delta };
+    
+    // Build contributor tracking for traceability
+    const contributors: string[] = [];
+    if (subCatalystName) contributors.push(subCatalystName);
+    if (clusterId) contributors.push(clusterId);
+    
+    // Get KPIs that contributed to this dimension
+    const kpiContributors = await db.prepare(
+      'SELECT kd.kpi_name, kv.value, kv.status FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_catalyst_name = ? AND kd.enabled = 1 LIMIT 10'
+    ).bind(tenantId, clusterId || '', subCatalystName || '').all<{ kpi_name: string; value: number; status: string }>();
+    
+    const kpiDetails = (kpiContributors.results || []).map(k => ({
+      name: k.kpi_name,
+      value: k.value,
+      status: k.status,
+    }));
+    
+    existingDimensions[dim] = { 
+      score, 
+      trend, 
+      delta,
+      contributors,
+      sourceRunId: sourceRunId || null,
+      catalystName: catalystName,
+      kpiContributors: kpiDetails,
+      lastUpdated: now,
+    };
   }
 
   // Recalculate overall from only the populated dimensions
