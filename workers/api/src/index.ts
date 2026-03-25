@@ -10,6 +10,7 @@ import { DashboardRoom } from './services/realtime';
 import { handleScheduled, handleQueueMessage } from './services/scheduled';
 import { captureException, captureMessage } from './services/sentry';
 import type { CatalystQueueMessage } from './services/scheduled';
+import { sendOrQueueEmail } from './services/email';
 import auth, { validatePasswordStrength } from './routes/auth';
 import tenants from './routes/tenants';
 import iam from './routes/iam';

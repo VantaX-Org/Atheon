@@ -276,7 +276,16 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   await writeLog(db, tenantId, logId, step, 'Health Score Calculation', 'running', `Recalculating ${affectedDimensions.length} health dimension(s): ${affectedDimensions.map(friendlyDimension).join(', ')}`, 0);
 
   // Fetch existing health scores to merge with
-  let existingDimensions: Record<string, { score: number; trend: string; delta: number }> = {};
+  let existingDimensions: Record<string, { 
+    score: number; 
+    trend: string; 
+    delta: number;
+    contributors?: any;
+    sourceRunId?: string | null;
+    catalystName?: string;
+    kpiContributors?: Array<{ name: string; value: number; status: string }>;
+    lastUpdated?: string;
+  }> = {};
   let existingId: string | null = null;
   let previousOverallScore = 0;
   try {
