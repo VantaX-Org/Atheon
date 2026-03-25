@@ -44,7 +44,7 @@ export function ApexPage() {
  // Traceability modal state
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
  const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
- const [traceabilityType, _] = useState<'dimension' | 'risk'>('dimension');
+ const [traceabilityType, setTraceabilityType] = useState<'dimension' | 'risk'>('dimension');
  const [loadingTraceability, setLoadingTraceability] = useState(false);
 
  // Scenario Builder Modal state
@@ -59,10 +59,25 @@ export function ApexPage() {
  const handleOpenDimensionTrace = async (dimension: string) => {
   setLoadingTraceability(true);
   try {
-   // For now, use a placeholder - the dimension trace API will be implemented in the backend
-   console.log('Opening trace for dimension:', dimension);
+   const data = await api.apex.healthDimension(dimension);
+   setTraceabilityData(data);
+   setTraceabilityType('dimension');
+   setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load dimension traceability:', err);
+  }
+  setLoadingTraceability(false);
+ };
+ 
+ const handleOpenRiskTrace = async (riskId: string) => {
+  setLoadingTraceability(true);
+  try {
+   const data = await api.apex.riskTrace(riskId);
+   setTraceabilityData(data);
+   setTraceabilityType('risk');
+   setShowTraceabilityModal(true);
+  } catch (err) {
+   console.error('Failed to load risk traceability:', err);
   }
   setLoadingTraceability(false);
  };
@@ -414,6 +429,13 @@ export function ApexPage() {
  <div className="flex items-start justify-between gap-3">
  <h3 className="text-base font-semibold t-primary">{risk.title}</h3>
  <div className="flex items-center gap-2 flex-shrink-0">
+ <button
+ onClick={(e) => { e.stopPropagation(); handleOpenRiskTrace(risk.id); }}
+ className="text-accent hover:text-accent/80"
+ title="Trace to source"
+ >
+ <Link2 size={14} />
+ </button>
  <Badge variant={severityColor(risk.severity)}>{risk.severity}</Badge>
  <Badge variant="outline">{risk.category}</Badge>
  </div>

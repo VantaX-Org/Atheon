@@ -268,6 +268,12 @@ export const api = {
     // A1-3: Health score history
     healthHistory: (tenantId?: string, limit?: number) =>
       request<HealthHistoryResponse>(`/api/apex/health/history${qs({ tenant_id: tenantId, limit: limit?.toString() })}`),
+    // A1-4: Health dimension traceability
+    healthDimension: (dimension: string, tenantId?: string) =>
+      request<HealthDimensionTraceResponse>(`/api/apex/health/dimensions/${encodeURIComponent(dimension)}${qs({ tenant_id: tenantId })}`),
+    // A4-4: Risk traceability
+    riskTrace: (riskId: string, tenantId?: string) =>
+      request<RiskTraceResponse>(`/api/apex/risks/${riskId}/trace${qs({ tenant_id: tenantId })}`),
   },
 
   pulse: {
@@ -285,6 +291,9 @@ export const api = {
       request<{ refreshed: boolean; processFlows?: number; metricsGenerated?: number; catalystActions?: number; message?: string }>(`/api/pulse/refresh${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
     catalystRuns: (tenantId?: string, catalyst?: string) =>
       request<{ runs: CatalystRunItem[]; summary: CatalystRunSummary[]; total: number }>(`/api/pulse/catalyst-runs${qs({ tenant_id: tenantId, catalyst })}`),
+    // P1-4: Metric traceability
+    metricTrace: (metricId: string, tenantId?: string) =>
+      request<MetricTraceResponse>(`/api/pulse/metrics/${metricId}/trace${qs({ tenant_id: tenantId })}`),
   },
 
   catalysts: {
