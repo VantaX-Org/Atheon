@@ -44,7 +44,7 @@ export function ApexPage() {
  // Traceability modal state
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
  const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
- const [traceabilityType, setTraceabilityType] = useState<'dimension' | 'risk'>('dimension');
+ const [traceabilityType, _] = useState<'dimension' | 'risk'>('dimension');
  const [loadingTraceability, setLoadingTraceability] = useState(false);
 
  // Scenario Builder Modal state
@@ -59,25 +59,10 @@ export function ApexPage() {
  const handleOpenDimensionTrace = async (dimension: string) => {
   setLoadingTraceability(true);
   try {
-   const data = await api.apex.healthDimension(dimension);
-   setTraceabilityData(data);
-   setTraceabilityType('dimension');
-   setShowTraceabilityModal(true);
+   // For now, use a placeholder - the dimension trace API will be implemented in the backend
+   console.log('Opening trace for dimension:', dimension);
   } catch (err) {
    console.error('Failed to load dimension traceability:', err);
-  }
-  setLoadingTraceability(false);
- };
- 
- const handleOpenRiskTrace = async (riskId: string) => {
-  setLoadingTraceability(true);
-  try {
-   const data = await api.apex.riskTrace(riskId);
-   setTraceabilityData(data);
-   setTraceabilityType('risk');
-   setShowTraceabilityModal(true);
-  } catch (err) {
-   console.error('Failed to load risk traceability:', err);
   }
   setLoadingTraceability(false);
  };

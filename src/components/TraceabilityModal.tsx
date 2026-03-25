@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Portal } from "@/components/ui/portal";
@@ -20,18 +19,35 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
   };
 
   const renderDrillDownPath = () => {
-    const path = data.drillDownPath;
     return (
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline" className="text-xs">{type === 'dimension' ? 'Dimension' : type === 'risk' ? 'Risk' : 'Metric'}</Badge>
         <ChevronRight size={12} className="t-muted" />
-        <Badge variant="outline" className="text-xs">Clusters ({path.clusters?.length || 0})</Badge>
-        <ChevronRight size={12} className="t-muted" />
-        <Badge variant="outline" className="text-xs">Sub-Cataulysts ({path.subCataulysts?.length || 0})</Badge>
-        <ChevronRight size={12} className="t-muted" />
-        <Badge variant="outline" className="text-xs">Runs ({path.runs?.length || 0})</Badge>
-        <ChevronRight size={12} className="t-muted" />
-        <Badge variant="accent" className="text-xs">Items</Badge>
+        {type === 'dimension' ? (
+          <>
+            <Badge variant="outline" className="text-xs">Clusters ({(data as HealthDimensionTraceResponse).drillDownPath.clusters?.length || 0})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+            <Badge variant="outline" className="text-xs">Sub-Cataulysts ({(data as HealthDimensionTraceResponse).drillDownPath.subCataulysts?.length || 0})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+            <Badge variant="outline" className="text-xs">Runs ({(data as HealthDimensionTraceResponse).drillDownPath.runs?.length || 0})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+          </>
+        ) : type === 'risk' ? (
+          <>
+            <Badge variant="outline" className="text-xs">Run ({(data as RiskTraceResponse).drillDownPath.run || 'N/A'})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+            <Badge variant="outline" className="text-xs">Items ({(data as RiskTraceResponse).drillDownPath.items || '0'})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+          </>
+        ) : (
+          <>
+            <Badge variant="outline" className="text-xs">Run ({(data as MetricTraceResponse).drillDownPath.run || 'N/A'})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+            <Badge variant="outline" className="text-xs">Items ({(data as MetricTraceResponse).drillDownPath.items || '0'})</Badge>
+            <ChevronRight size={12} className="t-muted" />
+          </>
+        )}
+        <Badge variant="info" className="text-xs">Items</Badge>
       </div>
     );
   };
@@ -121,7 +137,7 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
           {m.relatedAnomalies.slice(0, 3).map((a, i) => (
             <div key={i} className="p-2 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
               <div className="flex items-center justify-between">
-                <span className="text-xs t-primary font-medium">{a.metric}</span>
+                <span className="text-xs t-primary font-medium">Anomaly #{i + 1}</span>
                 <Badge variant={a.severity === 'high' ? 'danger' : a.severity === 'medium' ? 'warning' : 'info'} className="text-xs">
                   {a.severity}
                 </Badge>
