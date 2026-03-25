@@ -1,12 +1,8 @@
 /**
  * Database Migration Service
  * Extracted from request-path middleware to run on-demand via POST /api/v1/admin/migrate.
- * Contains all schema DDL, indexes, self-healing columns, and seed-data orchestration.
+ * Contains all schema DDL, indexes, and self-healing columns.
  */
-
-import { seedDatabase } from './seed';
-import { seedSampleCompany } from './seed-sample-company';
-import { seedTestCompanies } from './seed-test-companies';
 
 /** Current schema version — bump when adding new tables/columns/indexes */
 export const MIGRATION_VERSION = 'v32';
@@ -17,13 +13,12 @@ export interface MigrationResult {
   tablesCreated: number;
   indexesCreated: number;
   columnsHealed: number;
-  seedsRun: string[];
   durationMs: number;
   errors: string[];
 }
 
 /**
- * Run the full database migration: DDL, indexes, self-healing columns, seeds.
+ * Run the full database migration: DDL, indexes, self-healing columns.
  * Idempotent — uses CREATE TABLE IF NOT EXISTS and ALTER TABLE wrapped in try/catch.
  * @param db - D1Database binding
  * @returns MigrationResult with stats
@@ -35,7 +30,6 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     tablesCreated: 0,
     indexesCreated: 0,
     columnsHealed: 0,
-    seedsRun: [],
     durationMs: 0,
     errors: [],
   };
@@ -382,28 +376,6 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     }
   } catch (err) {
     result.errors.push(`Seed ERP adapters: ${(err as Error).message}`);
-  }
-
-  // ── Seed Data ──
-  try {
-    await seedDatabase(db);
-    result.seedsRun.push('seedDatabase');
-  } catch (err) {
-    result.errors.push(`seedDatabase: ${(err as Error).message}`);
-  }
-
-  try {
-    await seedSampleCompany(db);
-    result.seedsRun.push('seedSampleCompany');
-  } catch (err) {
-    result.errors.push(`seedSampleCompany: ${(err as Error).message}`);
-  }
-
-  try {
-    await seedTestCompanies(db);
-    result.seedsRun.push('seedTestCompanies');
-  } catch (err) {
-    result.errors.push(`seedTestCompanies: ${(err as Error).message}`);
   }
 
   result.durationMs = Date.now() - t0;
