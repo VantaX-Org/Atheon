@@ -718,6 +718,130 @@ export interface ScenarioItem {
   createdAt: string;
 }
 
+// A1-4: Health dimension traceability response
+export interface HealthDimensionTraceResponse {
+  dimension: string;
+  score: number | null;
+  trend: string;
+  delta: number;
+  contributors: string[];
+  sourceRunId: string | null;
+  catalystName: string | null;
+  kpiContributors: Array<{ name: string; value: number; status: string }>;
+  lastUpdated: string;
+  calculatedAt: string;
+  traceability: {
+    contributingClusters: Array<{ clusterId: string; clusterName: string; domain: string; subCataulysts: Array<{ name?: string }> }>;
+    recentRuns: Array<{ runId: string; clusterId: string; subCataulystName: string; status: string; matched: number; discrepancies: number; exceptions: number; totalValue: number; startedAt: string }>;
+    relevantKpis: Array<{ kpiId: string; kpiName: string; category: string; value: number; status: string; unit: string; measuredAt: string; subCataulystName: string; runId: string }>;
+  };
+  drillDownPath: {
+    dimension: string;
+    clusters: string[];
+    subCataulysts: string[];
+    runs: string[];
+    items: string;
+  };
+}
+
+// A4-4: Risk alert traceability response
+export interface RiskTraceResponse {
+  riskAlert: {
+    id: string;
+    title: string;
+    description: string;
+    severity: string;
+    category: string;
+    probability: number;
+    impactValue: number;
+    impactUnit: string;
+    recommendedActions: string[];
+    status: string;
+    detectedAt: string;
+    resolvedAt: string | null;
+  };
+  sourceAttribution: {
+    sourceRunId: string | null;
+    clusterId: string | null;
+    subCataulystName: string | null;
+  };
+  sourceRun: {
+    runId: string;
+    clusterId: string;
+    subCataulystName: string;
+    catalystName: string;
+    status: string;
+    matched: number;
+    discrepancies: number;
+    exceptions: number;
+    totalValue: number;
+    startedAt: string;
+    completedAt: string;
+    reasoning: string | null;
+  } | null;
+  cluster: {
+    clusterId: string;
+    clusterName: string;
+    domain: string;
+    autonomyTier: string;
+    subCataulysts: Array<{ name?: string }>;
+  } | null;
+  contributingKpis: Array<{ kpiName: string; category: string; unit: string; value: number; status: string; measuredAt: string }>;
+  flaggedItems: Array<{ itemNumber: number; status: string; type: string | null; severity: string | null; sourceRef: string | null; targetRef: string | null; field: string | null; sourceValue: unknown; targetValue: unknown; difference: string | null }>;
+  relatedAnomalies: Array<{ anomalyId: string; metric: string; severity: string; expectedValue: number; actualValue: number; deviation: number; detectedAt: string }>;
+  drillDownPath: {
+    risk: string;
+    run: string | null;
+    items: string;
+    cluster: string | null;
+    kpis: string;
+  };
+}
+
+// P1-4: Metric traceability response
+export interface MetricTraceResponse {
+  metric: {
+    id: string;
+    name: string;
+    value: number;
+    status: string;
+    unit: string;
+    measuredAt: string;
+    trend: number[];
+  };
+  sourceAttribution: {
+    subCataulystName: string | null;
+    sourceRunId: string | null;
+    clusterId: string | null;
+    sourceSystem: string | null;
+  };
+  sourceRun: {
+    runId: string;
+    subCataulystName: string;
+    status: string;
+    matched: number;
+    discrepancies: number;
+    exceptions: number;
+    totalValue: number;
+    startedAt: string;
+    completedAt: string;
+  } | null;
+  cluster: {
+    clusterId: string;
+    clusterName: string;
+    domain: string;
+    subCataulysts: Array<{ name?: string }>;
+  } | null;
+  contributingKpis: Array<{ kpiName: string; category: string; value: number; status: string; measuredAt: string }>;
+  relatedAnomalies: Array<{ anomalyId: string; severity: string; expectedValue: number; actualValue: number; deviation: number; detectedAt: string }>;
+  drillDownPath: {
+    metric: string;
+    run: string | null;
+    items: string;
+    kpis: string;
+  };
+}
+
 // A1-3: Health score history
 export interface HealthHistoryItem {
   id: string;

@@ -7,8 +7,9 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
+import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
@@ -39,6 +40,12 @@ export function ApexPage() {
  const [actionError, setActionError] = useState<string | null>(null);
  // A1-4: Health history for sparkline + delta
  const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
+ 
+ // Traceability modal state
+ const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
+ const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
+ const [traceabilityType, setTraceabilityType] = useState<'dimension' | 'risk'>('dimension');
+ const [loadingTraceability, setLoadingTraceability] = useState(false);
 
  // Scenario Builder Modal state
  const [showScenarioBuilder, setShowScenarioBuilder] = useState(false);
@@ -48,6 +55,32 @@ export function ApexPage() {
  const [scenarioModelType, setScenarioModelType] = useState('what-if');
  const [scenarioQuery, setScenarioQuery] = useState('');
  const [scenarioVariables, setScenarioVariables] = useState<Array<{ name: string; baseValue: string }>>([{ name: '', baseValue: '' }]);
+ 
+ const handleOpenDimensionTrace = async (dimension: string) => {
+  setLoadingTraceability(true);
+  try {
+   const data = await api.apex.healthDimension(dimension);
+   setTraceabilityData(data);
+   setTraceabilityType('dimension');
+   setShowTraceabilityModal(true);
+  } catch (err) {
+   console.error('Failed to load dimension traceability:', err);
+  }
+  setLoadingTraceability(false);
+ };
+ 
+ const handleOpenRiskTrace = async (riskId: string) => {
+  setLoadingTraceability(true);
+  try {
+   const data = await api.apex.riskTrace(riskId);
+   setTraceabilityData(data);
+   setTraceabilityType('risk');
+   setShowTraceabilityModal(true);
+  } catch (err) {
+   console.error('Failed to load risk traceability:', err);
+  }
+  setLoadingTraceability(false);
+ };
 
  const resetScenarioBuilder = () => {
  setBuilderStep(1);
@@ -220,6 +253,17 @@ export function ApexPage() {
  </span>
  </div>
  <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'up' || dim.trend === 'improving' ? '#10b981' : dim.trend === 'down' || dim.trend === 'declining' ? '#ef4444' : '#6b7280'} />
+ <Button
+  variant="ghost"
+  size="sm"
+  onClick={() => handleOpenDimensionTrace(dim.key)}
+  disabled={loadingTraceability}
+  className="text-xs px-2 py-1 h-7"
+  title="View traceability details"
+ >
+  {loadingTraceability && traceabilityType === 'dimension' ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+  Trace
+ </Button>
  </div>
  </div>
  ))}
@@ -788,6 +832,16 @@ export function ApexPage() {
  </div>
  </div></Portal>
  )}
+ 
+ {/* Traceability Modal */}
+ {showTraceabilityModal && traceabilityData && (
+  <TraceabilityModal
+   data={traceabilityData}
+   type={traceabilityType}
+   onClose={() => { setShowTraceabilityModal(false); setTraceabilityData(null); }}
+  />
+ )}
+ 
  </div>
  );
 }

@@ -433,4 +433,115 @@ pulse.get('/summary', async (c) => {
   });
 });
 
+// P1-4: GET /api/pulse/metrics/:metricId/trace — Trace a metric back to its source sub-cataulyst runs
+pulse.get('/metrics/:metricId/trace', async (c) => {
+  const tenantId = getTenantId(c);
+  const metricId = c.req.param('metricId');
+  
+  // Get the metric
+  const metric = await c.env.DB.prepare(
+    'SELECT * FROM process_metrics WHERE id = ? AND tenant_id = ?'
+  ).bind(metricId, tenantId).first<Record<string, unknown>>();
+  
+  if (!metric) {
+    return c.json({ error: 'Metric not found' }, 404);
+  }
+  
+  // Get source attribution
+  const subCataulystName = metric.sub_cataulyst_name as string | null;
+  const sourceRunId = metric.source_run_id as string | null;
+  const clusterId = metric.cluster_id as string | null;
+  
+  // Get the source run if available
+  let sourceRun: Record<string, unknown> | null = null;
+  if (sourceRunId) {
+    sourceRun = await c.env.DB.prepare(
+      'SELECT id, cluster_id, sub_cataulyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at FROM sub_cataulyst_runs WHERE id = ? AND tenant_id = ?'
+    ).bind(sourceRunId, tenantId).first();
+  }
+  
+  // Get cluster info
+  let clusterInfo: Record<string, unknown> | null = null;
+  if (clusterId) {
+    clusterInfo = await c.env.DB.prepare(
+      'SELECT id, name, domain, sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+    ).bind(clusterId, tenantId).first();
+  }
+  
+  // Get KPIs that contributed to this metric
+  let contributingKpis: Record<string, unknown>[] = [];
+  if (subCataulystName && clusterId) {
+    const kpis = await c.env.DB.prepare(
+      'SELECT kd.kpi_name, kd.category, kv.value, kv.status, kv.measured_at FROM sub_cataulyst_kpi_values kv JOIN sub_cataulyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_cataulyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
+    ).bind(tenantId, clusterId, subCataulystName).all();
+    contributingKpis = kpis.results || [];
+  }
+  
+  // Get related anomalies
+  let relatedAnomalies: Record<string, unknown>[] = [];
+  const anomalies = await c.env.DB.prepare(
+    'SELECT * FROM anomalies WHERE tenant_id = ? AND metric = ? ORDER BY detected_at DESC LIMIT 10'
+  ).bind(tenantId, metric.name as string).all();
+  relatedAnomalies = anomalies.results || [];
+  
+  // Build traceability chain
+  const traceChain = {
+    metric: {
+      id: metric.id,
+      name: metric.name,
+      value: metric.value,
+      status: metric.status,
+      unit: metric.unit,
+      measuredAt: metric.measured_at,
+      trend: JSON.parse(metric.trend as string || '[]'),
+    },
+    sourceAttribution: {
+      subCataulystName,
+      sourceRunId,
+      clusterId,
+      sourceSystem: metric.source_system,
+    },
+    sourceRun: sourceRun ? {
+      runId: sourceRun.id,
+      subCataulystName: sourceRun.sub_cataulyst_name,
+      status: sourceRun.status,
+      matched: sourceRun.matched,
+      discrepancies: sourceRun.discrepancies,
+      exceptions: sourceRun.exceptions_raised,
+      totalValue: sourceRun.total_source_value,
+      startedAt: sourceRun.started_at,
+      completedAt: sourceRun.completed_at,
+    } : null,
+    cluster: clusterInfo ? {
+      clusterId: clusterInfo.id,
+      clusterName: clusterInfo.name,
+      domain: clusterInfo.domain,
+      subCataulysts: JSON.parse(clusterInfo.sub_cataulysts as string || '[]'),
+    } : null,
+    contributingKpis: contributingKpis.map(k => ({
+      kpiName: k.kpi_name,
+      category: k.category,
+      value: k.value,
+      status: k.status,
+      measuredAt: k.measured_at,
+    })),
+    relatedAnomalies: relatedAnomalies.map(a => ({
+      anomalyId: a.id,
+      severity: a.severity,
+      expectedValue: a.expected_value,
+      actualValue: a.actual_value,
+      deviation: a.deviation,
+      detectedAt: a.detected_at,
+    })),
+    drillDownPath: {
+      metric: metricId,
+      run: sourceRunId || 'N/A',
+      items: sourceRunId ? `GET /api/cataulysts/runs/${sourceRunId}/items` : 'N/A',
+      kpis: subCataulystName && clusterId ? `GET /api/cataulysts/clusters/${clusterId}/sub-cataulysts/${encodeURIComponent(subCataulystName)}/kpi-definitions` : 'N/A',
+    },
+  };
+  
+  return c.json(traceChain);
+});
+
 export default pulse;

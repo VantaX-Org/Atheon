@@ -84,6 +84,162 @@ apex.get('/health/history', async (c) => {
   return c.json({ history: history.reverse(), delta, deltaLabel, total: history.length });
 });
 
+// A1-4: GET /api/apex/health/dimensions/:dimension — Drill-down into a specific health dimension
+apex.get('/health/dimensions/:dimension', async (c) => {
+  const tenantId = getTenantId(c);
+  const dimension = c.req.param('dimension');
+  
+  // Validate dimension
+  const validDimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology', 'risk', 'catalyst', 'process'];
+  if (!validDimensions.includes(dimension)) {
+    return c.json({ error: `Invalid dimension. Must be one of: ${validDimensions.join(', ')}` }, 400);
+  }
+  
+  // Get latest health score
+  const latestScore = await c.env.DB.prepare(
+    'SELECT id, overall_score, dimensions, calculated_at FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+  ).bind(tenantId).first<{ id: string; overall_score: number; dimensions: string; calculated_at: string }>();
+  
+  if (!latestScore) {
+    return c.json({ error: 'No health score found. Run a catalyst first to generate health data.' }, 404);
+  }
+  
+  const dimensions = JSON.parse(latestScore.dimensions || '{}') as Record<string, { score: number; trend: string; delta: number; contributors?: string[]; sourceRunId?: string; catalystName?: string; kpiContributors?: Array<{ name: string; value: number; status: string }>; lastUpdated?: string }>;
+  
+  const dimData = dimensions[dimension];
+  if (!dimData) {
+    return c.json({ dimension, score: null, message: `No data for dimension '${dimension}'. Run a catalyst in this domain to generate data.` });
+  }
+  
+  // Get contributing sub-cataulysts from cluster info
+  const clusterInfo = await c.env.DB.prepare(
+    'SELECT id, name, domain, sub_catalysts FROM catalyst_clusters WHERE tenant_id = ?'
+  ).bind(tenantId).all<{ id: string; name: string; domain: string; sub_catalysts: string }>();
+  
+  // Map domains to dimensions (same logic as catalysts.ts)
+  const domainToDimensions: Record<string, string[]> = {
+    'finance': ['financial'],
+    'procurement': ['operational', 'financial'],
+    'supply-chain': ['operational'],
+    'hr': ['operational', 'strategic'],
+    'sales': ['financial', 'strategic'],
+    'mining-safety': ['compliance'],
+    'mining-environment': ['compliance'],
+    'health-compliance': ['compliance'],
+    'health-supply': ['technology', 'operational'],
+    'health-patient': ['operational'],
+    'health-staffing': ['operational'],
+    'health-experience': ['strategic', 'operational'],
+    'mining-equipment': ['technology', 'operational'],
+    'mining-ore': ['operational'],
+    'agri-crop': ['operational', 'technology'],
+    'agri-irrigation': ['technology'],
+    'agri-quality': ['compliance'],
+    'agri-market': ['strategic'],
+    'logistics-fleet': ['operational'],
+    'logistics-warehouse': ['operational'],
+    'logistics-compliance': ['compliance'],
+    'tech-devops': ['technology'],
+    'tech-security': ['technology', 'compliance'],
+    'tech-product': ['strategic', 'technology'],
+    'tech-customer-success': ['strategic', 'operational'],
+    'mfg-production': ['operational'],
+    'mfg-quality': ['compliance', 'operational'],
+    'mfg-maintenance': ['technology', 'operational'],
+    'mfg-energy': ['technology', 'operational'],
+    'fmcg-trade': ['financial', 'strategic'],
+    'fmcg-distributor': ['operational', 'strategic'],
+    'fmcg-launch': ['strategic'],
+    'fmcg-shelf': ['strategic', 'operational'],
+  };
+  
+  // Find clusters that contribute to this dimension
+  const contributingClusters = (clusterInfo.results || []).filter(cl => {
+    const clSubs = (JSON.parse(cl.sub_catalysts || '[]') as Array<{ name?: string }>).map(s => s.name || '').filter(Boolean);
+    // Check if cluster domain maps to this dimension
+    const clusterDomain = cl.domain || '';
+    const dimForDomain = domainToDimensions[clusterDomain] || ['operational'];
+    return dimForDomain.includes(dimension);
+  }).map(cl => ({
+    clusterId: cl.id,
+    clusterName: cl.name,
+    domain: cl.domain,
+    subCataulysts: JSON.parse(cl.sub_catalysts || '[]'),
+  }));
+  
+  // Get recent runs from contributing sub-cataulysts
+  const recentRuns = await c.env.DB.prepare(
+    'SELECT id, cluster_id, sub_catalyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at FROM sub_catalyst_runs WHERE tenant_id = ? AND status != ? ORDER BY started_at DESC LIMIT 20'
+  ).bind(tenantId, 'running').all();
+  
+  // Filter runs to only those from contributing clusters
+  const contributingRunIds = new Set(contributingClusters.map(c => c.clusterId));
+  const relevantRuns = (recentRuns.results || []).filter(r => contributingRunIds.has(r.cluster_id as string)).map(r => ({
+    runId: r.id,
+    clusterId: r.cluster_id,
+    subCataulystName: r.sub_cataulyst_name,
+    status: r.status,
+    matched: r.matched,
+    discrepancies: r.discrepancies,
+    exceptions: r.exceptions_raised,
+    totalValue: r.total_source_value,
+    startedAt: r.started_at,
+  }));
+  
+  // Get KPIs for this dimension from contributing sub-cataulysts
+  const kpiQuery = await c.env.DB.prepare(
+    'SELECT kd.id, kd.kpi_name, kd.category, kd.unit, kd.direction, kv.value, kv.status, kv.measured_at, scr.sub_catalyst_name, scr.id as run_id FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id LEFT JOIN sub_cataulyst_runs scr ON kv.run_id = scr.id WHERE kd.tenant_id = ? AND kv.status != ? ORDER BY kv.measured_at DESC LIMIT 50'
+  ).bind(tenantId, 'green').all();
+  
+  const relevantKpis = (kpiQuery.results || []).filter(k => {
+    // Filter by category matching dimension
+    const categoryToDimension: Record<string, string> = {
+      'financial': 'financial',
+      'operational': 'operational',
+      'compliance': 'compliance',
+      'strategic': 'strategic',
+      'technology': 'technology',
+      'risk': 'risk',
+    };
+    return categoryToDimension[k.category as string] === dimension;
+  }).map(k => ({
+    kpiId: k.id,
+    kpiName: k.kpi_name,
+    category: k.category,
+    value: k.value,
+    status: k.status,
+    unit: k.unit,
+    measuredAt: k.measured_at,
+    subCataulystName: k.sub_cataulyst_name,
+    runId: k.run_id,
+  }));
+  
+  return c.json({
+    dimension,
+    score: dimData.score,
+    trend: dimData.trend,
+    delta: dimData.delta,
+    contributors: dimData.contributors || [],
+    sourceRunId: dimData.sourceRunId || null,
+    catalystName: dimData.catalystName || null,
+    kpiContributors: dimData.kpiContributors || [],
+    lastUpdated: dimData.lastUpdated,
+    calculatedAt: latestScore.calculated_at,
+    traceability: {
+      contributingClusters,
+      recentRuns: relevantRuns,
+      relevantKpis: relevantKpis,
+    },
+    drillDownPath: {
+      dimension: dimension,
+      clusters: contributingClusters.map(c => c.clusterId),
+      subCataulysts: contributingClusters.flatMap(c => (c.subCataulysts as Array<{ name?: string }>).map(s => s.name || '')),
+      runs: relevantRuns.map(r => r.runId),
+      items: 'Use GET /api/cataulysts/runs/:runId/items for item-level detail',
+    },
+  });
+});
+
 // GET /api/apex/briefing
 apex.get('/briefing', async (c) => {
   const tenantId = getTenantId(c);
@@ -185,6 +341,151 @@ apex.put('/risks/:id', async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+// A4-4: GET /api/apex/risks/:riskId/trace — Trace a risk alert back to its source
+apex.get('/risks/:riskId/trace', async (c) => {
+  const tenantId = getTenantId(c);
+  const riskId = c.req.param('riskId');
+  
+  // Get the risk alert
+  const risk = await c.env.DB.prepare(
+    'SELECT * FROM risk_alerts WHERE id = ? AND tenant_id = ?'
+  ).bind(riskId, tenantId).first<Record<string, unknown>>();
+  
+  if (!risk) {
+    return c.json({ error: 'Risk alert not found' }, 404);
+  }
+  
+  // Get source attribution
+  const sourceRunId = risk.source_run_id as string | null;
+  const clusterId = risk.cluster_id as string | null;
+  const subCataulystName = risk.sub_cataulyst_name as string | null;
+  
+  // Get the source run if available
+  let sourceRun: Record<string, unknown> | null = null;
+  if (sourceRunId) {
+    sourceRun = await c.env.DB.prepare(
+      'SELECT id, cluster_id, sub_cataulyst_name, catalyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at, reasoning FROM sub_cataulyst_runs WHERE id = ? AND tenant_id = ?'
+    ).bind(sourceRunId, tenantId).first();
+  }
+  
+  // Get cluster info
+  let clusterInfo: Record<string, unknown> | null = null;
+  if (clusterId) {
+    clusterInfo = await c.env.DB.prepare(
+      'SELECT id, name, domain, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+    ).bind(clusterId, tenantId).first();
+  }
+  
+  // Get KPIs from the source run's sub-cataulyst
+  let contributingKpis: Record<string, unknown>[] = [];
+  if (subCataulystName && clusterId) {
+    const kpis = await c.env.DB.prepare(
+      'SELECT kd.kpi_name, kd.category, kd.unit, kv.value, kv.status, kv.measured_at FROM sub_cataulyst_kpi_values kv JOIN sub_cataulyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_cataulyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
+    ).bind(tenantId, clusterId, subCataulystName).all();
+    contributingKpis = kpis.results || [];
+  }
+  
+  // Get items with discrepancies/exceptions from the source run
+  let flaggedItems: Record<string, unknown>[] = [];
+  if (sourceRunId) {
+    const items = await c.env.DB.prepare(
+      "SELECT item_number, item_status, exception_type, exception_severity, source_ref, target_ref, field, source_value, target_value, difference FROM sub_cataulyst_run_items WHERE run_id = ? AND tenant_id = ? AND item_status IN ('discrepancy', 'exception') LIMIT 50"
+    ).bind(sourceRunId, tenantId).all();
+    flaggedItems = items.results || [];
+  }
+  
+  // Get related anomalies
+  let relatedAnomalies: Record<string, unknown>[] = [];
+  if (subCataulystName) {
+    const anomalies = await c.env.DB.prepare(
+      "SELECT * FROM anomalies WHERE tenant_id = ? AND (metric LIKE ? OR hypothesis LIKE ?) ORDER BY detected_at DESC LIMIT 10"
+    ).bind(tenantId, `%${subCataulystName}%`, `%${subCataulystName}%`).all();
+    relatedAnomalies = anomalies.results || [];
+  }
+  
+  // Build traceability chain
+  const traceChain = {
+    riskAlert: {
+      id: risk.id,
+      title: risk.title,
+      description: risk.description,
+      severity: risk.severity,
+      category: risk.category,
+      probability: risk.probability,
+      impactValue: risk.impact_value,
+      impactUnit: risk.impact_unit,
+      recommendedActions: JSON.parse(risk.recommended_actions as string || '[]'),
+      status: risk.status,
+      detectedAt: risk.detected_at,
+      resolvedAt: risk.resolved_at,
+    },
+    sourceAttribution: {
+      sourceRunId,
+      clusterId,
+      subCataulystName,
+    },
+    sourceRun: sourceRun ? {
+      runId: sourceRun.id,
+      clusterId: sourceRun.cluster_id,
+      subCataulystName: sourceRun.sub_cataulyst_name,
+      catalystName: sourceRun.catalyst_name,
+      status: sourceRun.status,
+      matched: sourceRun.matched,
+      discrepancies: sourceRun.discrepancies,
+      exceptions: sourceRun.exceptions_raised,
+      totalValue: sourceRun.total_source_value,
+      startedAt: sourceRun.started_at,
+      completedAt: sourceRun.completed_at,
+      reasoning: sourceRun.reasoning,
+    } : null,
+    cluster: clusterInfo ? {
+      clusterId: clusterInfo.id,
+      clusterName: clusterInfo.name,
+      domain: clusterInfo.domain,
+      autonomyTier: clusterInfo.autonomy_tier,
+      subCataulysts: JSON.parse(clusterInfo.sub_cataulysts as string || '[]'),
+    } : null,
+    contributingKpis: contributingKpis.map(k => ({
+      kpiName: k.kpi_name,
+      category: k.category,
+      unit: k.unit,
+      value: k.value,
+      status: k.status,
+      measuredAt: k.measured_at,
+    })),
+    flaggedItems: flaggedItems.map(i => ({
+      itemNumber: i.item_number,
+      status: i.item_status,
+      type: i.exception_type,
+      severity: i.exception_severity,
+      sourceRef: i.source_ref,
+      targetRef: i.target_ref,
+      field: i.field,
+      sourceValue: i.source_value,
+      targetValue: i.target_value,
+      difference: i.difference,
+    })),
+    relatedAnomalies: relatedAnomalies.map(a => ({
+      anomalyId: a.id,
+      metric: a.metric,
+      severity: a.severity,
+      expectedValue: a.expected_value,
+      actualValue: a.actual_value,
+      deviation: a.deviation,
+      detectedAt: a.detected_at,
+    })),
+    drillDownPath: {
+      risk: riskId,
+      run: sourceRunId || 'N/A',
+      items: sourceRunId ? `GET /api/cataulysts/runs/${sourceRunId}/items?status=discrepancy,status=exception` : 'N/A',
+      cluster: clusterId || 'N/A',
+      kpis: subCataulystName && clusterId ? `GET /api/cataulysts/clusters/${clusterId}/sub-cataulysts/${encodeURIComponent(subCataulystName)}/kpi-definitions` : 'N/A',
+    },
+  };
+  
+  return c.json(traceChain);
 });
 
 // GET /api/apex/scenarios
