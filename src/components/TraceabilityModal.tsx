@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Portal } from "@/components/ui/portal";
@@ -12,6 +13,10 @@ interface TraceabilityModalProps {
 }
 
 export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProps) {
+  const navigate = useNavigate();
+  const navigateToRun = (runId?: string) => {
+    if (runId) navigate(`/catalysts/runs/${runId}`);
+  };
   const [expandedSection, setExpandedSection] = useState<string | null>('source');
 
   const toggleSection = (section: string) => {
@@ -271,12 +276,12 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
           <div className="flex gap-2 pt-2">
             <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
             {type === 'risk' && (data as RiskTraceResponse).sourceRun && (
-              <Button variant="primary" size="sm" onClick={() => window.location.href = `/cataulysts?run=${(data as RiskTraceResponse).sourceRun?.runId}`}>
+              <Button variant="primary" size="sm" onClick={() => navigateToRun((data as RiskTraceResponse).sourceRun?.runId)}>
                 View Run <ChevronRight size={14} />
               </Button>
             )}
             {type === 'metric' && (data as MetricTraceResponse).sourceRun && (
-              <Button variant="primary" size="sm" onClick={() => window.location.href = `/cataulysts?run=${(data as MetricTraceResponse).sourceRun?.runId}`}>
+              <Button variant="primary" size="sm" onClick={() => navigateToRun((data as MetricTraceResponse).sourceRun?.runId)}>
                 View Run <ChevronRight size={14} />
               </Button>
             )}

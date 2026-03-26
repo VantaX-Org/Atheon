@@ -3754,3 +3754,149 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions/reset
 
 export { sendHitlNotification, sendRunResultsEmail };
 export default catalysts;
+
+// GET /api/catalysts/runs/:runId/detail — Run detail by ID only (for traceability navigation)
+catalysts.get('/runs/:runId/detail', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const detail = await getRunDetail(c.env.DB, tenantId, runId);
+  if (!detail.run) return c.json({ error: 'Run not found' }, 404);
+  
+  // Transform to simpler format for UI
+  const run = detail.run as any;
+  const kpis = (detail.kpis || []).map((k: any) => ({
+    name: k.kpi_name,
+    value: k.value,
+    target: k.target_value,
+    unit: k.unit,
+    status: k.status,
+  }));
+  
+  // Get metrics created by this run
+  const metrics = await c.env.DB.prepare(
+    'SELECT id, name, value, unit, status FROM process_metrics WHERE tenant_id = ? AND source_run_id = ? LIMIT 50'
+  ).bind(tenantId, runId).all();
+  
+  // Get source data attribution
+  const sourceData = await c.env.DB.prepare(
+    'SELECT id, source_system as sourceSystem, record_type as recordType, value, status FROM sub_catalyst_run_items WHERE tenant_id = ? AND run_id = ? LIMIT 100'
+  ).bind(tenantId, runId).all();
+  
+  // Get cluster name
+  const cluster = await c.env.DB.prepare(
+    'SELECT name FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+  ).bind(run.cluster_id, tenantId).first<{ name: string }>();
+
+  return c.json({
+    id: run.id,
+    subCatalystName: run.sub_catalyst_name,
+    clusterName: cluster?.name || 'Unknown',
+    clusterId: run.cluster_id,
+    status: run.status,
+    matched: run.matched,
+    discrepancies: run.discrepancies,
+    exceptions: run.exceptions_raised,
+    totalValue: run.total_source_value,
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    kpis,
+    metrics: metrics.results || [],
+    sourceData: sourceData.results || [],
+  });
+});
+
+// GET /api/catalysts/runs/:runId/detail — Full run detail with KPIs, metrics, and source data
+catalysts.get('/runs/:runId/detail', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  // Get basic run info
+  const run = await c.env.DB.prepare(
+    `SELECT r.id, r.cluster_id, r.sub_catalyst_name, r.status, r.matched, r.discrepancies, 
+            r.exceptions_raised, r.total_source_value, r.started_at, r.completed_at,
+            c.name as cluster_name, c.domain as cluster_domain
+     FROM sub_catalyst_runs r
+     JOIN catalyst_clusters c ON r.cluster_id = c.id
+     WHERE r.id = ? AND r.tenant_id = ?`
+  ).bind(runId, tenantId).first<{
+    id: string; cluster_id: string; sub_catalyst_name: string; status: string;
+    matched: number; discrepancies: number; exceptions_raised: number;
+    total_source_value: number; started_at: string; completed_at: string;
+    cluster_name: string; cluster_domain: string;
+  }>();
+
+  if (!run) {
+    return c.json({ error: 'Run not found' }, 404);
+  }
+
+  // Get KPIs generated in this run
+  const kpis = await c.env.DB.prepare(
+    `SELECT kd.kpi_name as name, kv.value, kv.status, kd.unit, 
+            kd.threshold_success_green as target
+     FROM sub_catalyst_kpi_values kv
+     JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
+     WHERE kv.run_id = ? AND kv.tenant_id = ?
+     ORDER BY kd.kpi_name`
+  ).bind(runId, tenantId).all<{
+    name: string; value: number; status: string; unit: string; target: number;
+  }>();
+
+  // Get metrics created in Pulse from this run
+  const metrics = await c.env.DB.prepare(
+    `SELECT id, name, value, unit, status
+     FROM process_metrics
+     WHERE source_run_id = ? AND tenant_id = ?
+     ORDER BY name`
+  ).bind(runId, tenantId).all<{
+    id: string; name: string; value: number; unit: string; status: string;
+  }>();
+
+  // Get source data attribution (sample of records processed)
+  const sourceData = await c.env.DB.prepare(
+    `SELECT id, source_system as sourceSystem, record_type as recordType, 
+            source_value as value, match_status as status
+     FROM sub_catalyst_run_items
+     WHERE run_id = ? AND tenant_id = ?
+     ORDER BY created_at DESC
+     LIMIT 100`
+  ).bind(runId, tenantId).all<{
+    id: string; sourceSystem: string; recordType: string; 
+    value: number; status: string;
+  }>();
+
+  return c.json({
+    id: run.id,
+    subCatalystName: run.sub_catalyst_name,
+    clusterName: run.cluster_name,
+    clusterDomain: run.cluster_domain,
+    status: run.status,
+    matched: run.matched,
+    discrepancies: run.discrepancies,
+    exceptions: run.exceptions_raised,
+    totalValue: run.total_source_value,
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    kpis: (kpis.results || []).map(k => ({
+      name: k.name,
+      value: k.value,
+      status: k.status,
+      unit: k.unit,
+      target: k.target,
+    })),
+    metrics: (metrics.results || []).map(m => ({
+      id: m.id,
+      name: m.name,
+      value: m.value,
+      unit: m.unit,
+      status: m.status,
+    })),
+    sourceData: (sourceData.results || []).map(s => ({
+      id: s.id,
+      sourceSystem: s.sourceSystem,
+      recordType: s.recordType,
+      value: s.value,
+      status: s.status === 'matched' ? 'matched' : s.status === 'discrepancy' ? 'discrepancy' : 'failed',
+    })),
+  });
+});

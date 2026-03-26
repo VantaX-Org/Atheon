@@ -18,6 +18,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MarketingPage } from "@/pages/MarketingPage";
 import { DeploymentsPage } from "@/pages/DeploymentsPage";
 import { AssessmentsPage } from "@/pages/AssessmentsPage";
+import { CatalystRunDetailPage } from "@/pages/CatalystRunDetailPage";
 import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />
           <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
           <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
+          <Route path="/catalysts/runs/:runId" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystRunDetailPage /></ProtectedRoute>} />
           <Route path="/mind" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><MindPage /></ProtectedRoute>} />
           <Route path="/memory" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><MemoryPage /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ChatPage /></ProtectedRoute>} />

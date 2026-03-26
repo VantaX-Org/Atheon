@@ -395,6 +395,15 @@ export const api = {
       request<{ runs: SubCatalystRun[]; total: number }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs${qs({ limit: opts?.limit?.toString(), offset: opts?.offset?.toString(), status: opts?.status, from: opts?.from, to: opts?.to, triggered_by: opts?.triggered_by })}`),
     getSubCatalystRunDetail: (clusterId: string, subName: string, runId: string) =>
       request<SubCatalystRunDetail>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs/${runId}`),
+    runDetail: (runId: string) =>
+      request<{
+        id: string; subCatalystName: string; clusterName: string; clusterDomain: string;
+        status: string; matched: number; discrepancies: number; exceptions: number;
+        totalValue: number; startedAt: string; completedAt: string;
+        kpis: Array<{ name: string; value: number; status: string; unit: string; target: number }>;
+        metrics: Array<{ id: string; name: string; value: number; unit: string; status: string }>;
+        sourceData: Array<{ id: string; sourceSystem: string; recordType: string; value: number; status: string }>;
+      }>(`/api/catalysts/runs/${runId}/detail`),
     getSubCatalystKpis: (clusterId: string, subName: string) =>
       request<{ kpis: KpisResponse | null }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/kpis`),
     getKpiDefinitions: (clusterId: string, subName: string) =>
