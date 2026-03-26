@@ -1135,25 +1135,25 @@ export function CatalystsPage() {
  {sub.description && <span className="text-[10px] t-secondary block truncate">{sub.description}</span>}
  </div>
  </div>
-  <div className="flex items-center gap-1.5 flex-shrink-0">
+  <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
  {sub.schedule && sub.schedule.frequency !== 'manual' && (
- <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title={sub.schedule.next_run ? `Next run: ${new Date(sub.schedule.next_run).toLocaleString()}` : ''}>
+ <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap" title={sub.schedule.next_run ? `Next run: ${new Date(sub.schedule.next_run).toLocaleString()}` : ''}>
  <Calendar size={8} />
  {sub.schedule.frequency === 'daily' ? 'Daily' : sub.schedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'}
  {sub.schedule.time_of_day ? ` ${sub.schedule.time_of_day}` : ''}
  </span>
  )}
  {sub.enabled && getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0 && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
  {subExecuting === `${cluster.id}:${sub.name}`? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
  </Button>
  )}
  {sub.enabled && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
  <Play size={10} className="mr-1" /> Run
  </Button>
  )}
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
  <BarChart3 size={10} className="mr-1 text-accent" /> Ops
  </Button>
  {sub.last_execution && (
