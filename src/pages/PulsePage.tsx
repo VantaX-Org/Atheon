@@ -8,15 +8,15 @@ import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
+import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   Activity, AlertTriangle, GitBranch, Link2, ArrowRight, Loader2,
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
-  UserCheck, FileWarning, RefreshCw, List, X, ChevronRight
+  UserCheck, FileWarning, RefreshCw, List
 } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 
 /* ── helpers ──────────────────────────────────────────────── */
 const trendIcon = (trend: string, size = 14) => {
@@ -1772,85 +1772,11 @@ export function PulsePage() {
   // Metric Traceability Modal
   if (showMetricTraceModal && metricTraceData) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} 
-             className="rounded-xl shadow-2xl p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-          
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <BarChart3 size={18} className="text-accent" />
-              <h3 className="text-lg font-semibold t-primary">
-                Metric: {metricTraceData!.metric.name}
-              </h3>
-            </div>
-            <button onClick={() => { setShowMetricTraceModal(false); setMetricTraceData(null); }} className="text-gray-400 hover:text-gray-600">
-              <X size={18} />
-            </button>
-          </div>
-
-          {/* Score/Status */}
-          <div className="flex items-center gap-2">
-            <BarChart3 size={16} className={`text-${metricTraceData!.metric.status === 'red' ? 'red' : metricTraceData!.metric.status === 'amber' ? 'amber' : 'emerald'}-400`} />
-            <Badge variant={metricTraceData!.metric.status === 'red' ? 'danger' : metricTraceData!.metric.status === 'amber' ? 'warning' : 'success'} className="text-xs">
-              {metricTraceData!.metric.status}
-            </Badge>
-            <span className="text-sm t-primary">{metricTraceData!.metric.value} {metricTraceData!.metric.unit}</span>
-          </div>
-
-          {/* Drill-down path */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">Metric</Badge>
-            <ChevronRight size={12} className="t-muted" />
-            <Badge variant="outline" className="text-xs">Run ({metricTraceData!.drillDownPath.run || 'N/A'})</Badge>
-            <ChevronRight size={12} className="t-muted" />
-            <Badge variant="outline" className="text-xs">Items ({metricTraceData!.drillDownPath.items || '0'})</Badge>
-          </div>
-
-          {/* Source Attribution */}
-          <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <h4 className="text-xs font-semibold t-primary uppercase tracking-wider mb-2">Source Attribution</h4>
-            <div className="space-y-1 text-xs">
-              <p className="t-muted">Source Run: {metricTraceData!.sourceAttribution.sourceRunId || 'N/A'}</p>
-              <p className="t-muted">Sub-Cataulyst: {metricTraceData!.sourceAttribution.subCataulystName || 'N/A'}</p>
-              <p className="t-muted">Cluster: {metricTraceData!.sourceAttribution.clusterId || 'N/A'}</p>
-              {metricTraceData!.sourceAttribution.sourceSystem && (
-                <p className="t-muted">Source System: {metricTraceData!.sourceAttribution.sourceSystem}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Related Anomalies */}
-          {metricTraceData!.relatedAnomalies.length > 0 && (
-            <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <h4 className="text-xs font-semibold t-primary uppercase tracking-wider mb-2">Related Anomalies ({metricTraceData!.relatedAnomalies.length})</h4>
-              <div className="space-y-2">
-                {metricTraceData!.relatedAnomalies.map((a, i) => (
-                  <div key={i} className="p-2 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs t-primary font-medium">Anomaly #{i + 1}</span>
-                      <Badge variant={a.severity === 'high' ? 'danger' : a.severity === 'medium' ? 'warning' : 'info'} className="text-xs">
-                        {a.severity}
-                      </Badge>
-                    </div>
-                    <p className="text-[10px] t-muted mt-1">Deviation: {a.deviation.toFixed(1)}%</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex gap-2 pt-2">
-            <Button variant="secondary" size="sm" onClick={() => { setShowMetricTraceModal(false); setMetricTraceData(null); }}>Close</Button>
-            {metricTraceData!.sourceRun && (
-              <Button variant="primary" size="sm" onClick={() => window.location.href = `/cataulysts?run=${metricTraceData!.sourceRun?.runId}`}>
-                View Run <ChevronRight size={14} />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+      <TraceabilityModal
+        data={metricTraceData as MetricTraceResponse}
+        type="metric"
+        onClose={() => { setShowMetricTraceModal(false); setMetricTraceData(null); }}
+      />
     );
   }
 
