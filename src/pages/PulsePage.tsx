@@ -370,9 +370,28 @@ export function PulsePage() {
   if (loading) {
     return (
       <div className="space-y-6 animate-fadeIn">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
-          <p className="text-sm t-muted mt-1">Process Intelligence — real-time operational monitoring, anomaly detection & process mining</p>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
+            <Badge variant="info">Process Intelligence</Badge>
+          </div>
+          <p className="text-base t-muted max-w-3xl">
+            <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+              <p className="text-sm t-primary font-medium">Management / Operations</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+              <p className="text-sm t-primary font-medium">Process Metrics & Anomalies</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
+              <p className="text-sm t-primary font-medium">Catalyst Runs</p>
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
@@ -387,9 +406,28 @@ export function PulsePage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
-        <p className="text-sm t-muted mt-1">Process Intelligence — real-time operational monitoring, anomaly detection & process mining</p>
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
+          <Badge variant="info">Process Intelligence</Badge>
+        </div>
+        <p className="text-base t-muted max-w-3xl">
+          <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+            <p className="text-sm t-primary font-medium">Management / Operations</p>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+            <p className="text-sm t-primary font-medium">Process Metrics & Anomalies</p>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
+            <p className="text-sm t-primary font-medium">Catalyst Runs</p>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

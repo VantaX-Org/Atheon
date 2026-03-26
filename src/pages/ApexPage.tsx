@@ -181,9 +181,28 @@ export function ApexPage() {
  if (!hasData) {
  return (
  <div className="space-y-6 animate-fadeIn">
- <div>
+ <div className="space-y-4">
+ <div className="flex flex-col sm:flex-row sm:items-center gap-3">
  <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Apex</h1>
- <p className="text-sm t-muted mt-1">Your strategic overview — insights that matter, when they matter</p>
+ <Badge variant="info">Executive Intelligence</Badge>
+ </div>
+ <p className="text-base t-muted max-w-3xl">
+ <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
+ </p>
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+ <p className="text-sm t-primary font-medium">Executive / Board</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+ <p className="text-sm t-primary font-medium">Business Health & Risk</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
+ <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
+ </div>
+ </div>
  </div>
  <Card>
  <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -199,9 +218,28 @@ export function ApexPage() {
 
  return (
  <div className="space-y-6 animate-fadeIn">
- <div>
+ <div className="space-y-4">
+ <div className="flex flex-col sm:flex-row sm:items-center gap-3">
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Apex</h1>
- <p className="text-sm t-muted mt-1">Your strategic overview — insights that matter, when they matter</p>
+ <Badge variant="info">Executive Intelligence</Badge>
+ </div>
+ <p className="text-base t-muted max-w-3xl">
+ <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
+ </p>
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+ <p className="text-sm t-primary font-medium">Executive / Board</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+ <p className="text-sm t-primary font-medium">Business Health & Risk</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
+ <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
+ </div>
+ </div>
  </div>
 
  {actionError && (

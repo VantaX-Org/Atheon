@@ -896,9 +896,28 @@ export function CatalystsPage() {
  return (
  <div className="space-y-6 animate-fadeIn">
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
- <div>
+ <div className="space-y-4 flex-1">
+ <div className="flex flex-col sm:flex-row sm:items-center gap-3">
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Catalysts</h1>
- <p className="text-sm t-muted mt-1">Autonomous Execution — Intelligent Workers</p>
+ <Badge variant="info">Autonomous Execution</Badge>
+ </div>
+ <p className="text-base t-muted max-w-3xl">
+ <strong>Execution layer for Teams & Workers.</strong> Catalysts are autonomous AI workers that execute business processes — from invoice processing to compliance checks — with full audit trails and human oversight.
+ </p>
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+ <p className="text-sm t-primary font-medium">Teams / Operational Staff</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+ <p className="text-sm t-primary font-medium">Process Execution & Tasks</p>
+ </div>
+ <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+ <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Generates Data For</p>
+ <p className="text-sm t-primary font-medium">Pulse → Apex</p>
+ </div>
+ </div>
  </div>
  {isAdmin && (
  <div className="flex gap-2">
