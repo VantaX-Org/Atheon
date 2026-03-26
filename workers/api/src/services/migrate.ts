@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v32';
+export const MIGRATION_VERSION = 'v33';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -152,6 +152,11 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // Spec 6: process_metrics source attribution indexes
     'CREATE INDEX IF NOT EXISTS idx_pm_source_run ON process_metrics(source_run_id)',
     'CREATE INDEX IF NOT EXISTS idx_pm_cluster ON process_metrics(tenant_id, cluster_id)',
+    // Traceability optimization indexes
+    'CREATE INDEX IF NOT EXISTS idx_ra_source_run ON risk_alerts(tenant_id, source_run_id, cluster_id)',
+    'CREATE INDEX IF NOT EXISTS idx_pm_tenant_source ON process_metrics(tenant_id, source_run_id, cluster_id)',
+    'CREATE INDEX IF NOT EXISTS idx_scr_tenant_cluster ON sub_catalyst_runs(tenant_id, cluster_id, source_run_id)',
+    'CREATE INDEX IF NOT EXISTS idx_anomalies_metric ON anomalies(tenant_id, metric)',
   ];
 
   for (const idx of indexes) {

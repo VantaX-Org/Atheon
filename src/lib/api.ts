@@ -274,6 +274,10 @@ export const api = {
     // A4-4: Risk traceability
     riskTrace: (riskId: string, tenantId?: string) =>
       request<RiskTraceResponse>(`/api/apex/risks/${riskId}/trace${qs({ tenant_id: tenantId })}`),
+    riskSuggestCauses: (riskId: string, tenantId?: string) =>
+      request<{ success: boolean; riskId: string; analysis: { rootCauses: Array<{ description: string; confidence: number; immediateAction: string; longTermFix: string; affectedSystems: string[] }>; generatedAt: string; model: string } }>(`/api/apex/risks/${riskId}/suggest-causes${qs({ tenant_id: tenantId })}`),
+    riskExport: (riskId: string, tenantId?: string) =>
+      fetch(`/api/apex/risks/${riskId}/export${qs({ tenant_id: tenantId })}`, { headers: { 'Content-Type': 'text/csv' } }).then(r => r.blob()),
   },
 
   pulse: {
@@ -281,6 +285,8 @@ export const api = {
       request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     anomalies: (tenantId?: string, industry?: string) =>
       request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    detectAnomalies: (metricId?: string, sensitivity?: 'low' | 'medium' | 'high', tenantId?: string) =>
+      request<{ success: boolean; statistics: { mean: number; stdDev: number; dataPoints: number; period: string }; detected: unknown[]; count: number }>(`/api/pulse/anomalies/detect${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify({ metric_id: metricId, sensitivity }) }),
     processes: (tenantId?: string, industry?: string) =>
       request<{ processes: ProcessItem[]; total: number }>(`/api/pulse/processes${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     correlations: (tenantId?: string, industry?: string) =>

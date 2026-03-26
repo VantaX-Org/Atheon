@@ -92,7 +92,11 @@ apex.get('/health/dimensions/:dimension', async (c) => {
   // Validate dimension
   const validDimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology', 'risk', 'catalyst', 'process'];
   if (!validDimensions.includes(dimension)) {
-    return c.json({ error: `Invalid dimension. Must be one of: ${validDimensions.join(', ')}` }, 400);
+    return c.json({ 
+      error: `Invalid dimension. Must be one of: ${validDimensions.join(', ')}`,
+      validDimensions,
+      suggestion: 'Check the traceability architecture documentation for available dimensions'
+    }, 400);
   }
   
   // Get latest health score
@@ -101,14 +105,28 @@ apex.get('/health/dimensions/:dimension', async (c) => {
   ).bind(tenantId).first<{ id: string; overall_score: number; dimensions: string; calculated_at: string }>();
   
   if (!latestScore) {
-    return c.json({ error: 'No health score found. Run a catalyst first to generate health data.' }, 404);
+    return c.json({ 
+      error: 'No health score found',
+      message: 'Run a catalyst first to generate health data.',
+      suggestion: 'Navigate to Catalysts page and run a catalyst action',
+      quickActions: [
+        { label: 'Run Catalyst', href: '/catalysts' },
+        { label: 'View Documentation', href: '/docs/traceability' }
+      ]
+    }, 404);
   }
   
   const dimensions = JSON.parse(latestScore.dimensions || '{}') as Record<string, { score: number; trend: string; delta: number; contributors?: string[]; sourceRunId?: string; catalystName?: string; kpiContributors?: Array<{ name: string; value: number; status: string }>; lastUpdated?: string }>;
   
   const dimData = dimensions[dimension];
   if (!dimData) {
-    return c.json({ dimension, score: null, message: `No data for dimension '${dimension}'. Run a catalyst in this domain to generate data.` });
+    return c.json({ 
+      dimension, 
+      score: null, 
+      message: `No data for dimension '${dimension}'. Run a catalyst in this domain to generate data.`,
+      suggestion: `Run a catalyst in a domain that affects ${dimension} dimension`,
+      relatedDimensions: validDimensions.filter(d => d !== dimension)
+    });
   }
   
   // Get contributing sub-cataulysts from cluster info
@@ -354,7 +372,14 @@ apex.get('/risks/:riskId/trace', async (c) => {
   ).bind(riskId, tenantId).first<Record<string, unknown>>();
   
   if (!risk) {
-    return c.json({ error: 'Risk alert not found' }, 404);
+    return c.json({ 
+      error: 'Risk alert not found',
+      riskId,
+      suggestion: 'Verify the risk ID or navigate to the Risks page to select a valid risk',
+      quickActions: [
+        { label: 'View All Risks', href: '/apex#risks' }
+      ]
+    }, 404);
   }
   
   // Get source attribution
@@ -488,6 +513,204 @@ apex.get('/risks/:riskId/trace', async (c) => {
   return c.json(traceChain);
 });
 
+// A4-5: GET /api/apex/risks/:riskId/suggest-causes — LLM-powered root cause suggestions
+apex.get('/risks/:riskId/suggest-causes', async (c) => {
+  const tenantId = getTenantId(c);
+  const riskId = c.req.param('riskId');
+  
+  // Get the risk alert
+  const risk = await c.env.DB.prepare(
+    'SELECT * FROM risk_alerts WHERE id = ? AND tenant_id = ?'
+  ).bind(riskId, tenantId).first<Record<string, unknown>>();
+  
+  if (!risk) {
+    return c.json({ error: 'Risk alert not found' }, 404);
+  }
+  
+  // Get source attribution
+  const sourceRunId = risk.source_run_id as string | null;
+  const subCataulystName = risk.sub_cataulyst_name as string | null;
+  
+  // Get related data for analysis
+  let sourceRun: Record<string, unknown> | null = null;
+  let contributingKpis: Record<string, unknown>[] = [];
+  let flaggedItems: Record<string, unknown>[] = [];
+  
+  if (sourceRunId) {
+    sourceRun = await c.env.DB.prepare(
+      'SELECT id, sub_catalyst_name, status, matched, discrepancies, exceptions_raised, reasoning FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
+    ).bind(sourceRunId, tenantId).first();
+  }
+  
+  if (sourceRunId && subCataulystName) {
+    const kpis = await c.env.DB.prepare(
+      'SELECT kd.kpi_name, kd.category, kv.value, kv.status FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kv.run_id = ? AND kv.tenant_id = ? ORDER BY kv.status DESC LIMIT 10'
+    ).bind(sourceRunId, tenantId).all();
+    contributingKpis = kpis.results || [];
+    
+    const items = await c.env.DB.prepare(
+      "SELECT item_number, item_status, exception_type, exception_severity, field, discrepancy_reason FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ? AND item_status IN ('discrepancy', 'exception') LIMIT 20"
+    ).bind(sourceRunId, tenantId).all();
+    flaggedItems = items.results || [];
+  }
+  
+  // Build context for LLM
+  const context = {
+    risk: {
+      title: risk.title,
+      description: risk.description,
+      severity: risk.severity,
+      category: risk.category,
+    },
+    runStats: sourceRun ? {
+      subCatalyst: sourceRun.sub_catalyst_name,
+      status: sourceRun.status,
+      matched: sourceRun.matched,
+      discrepancies: sourceRun.discrepancies,
+      exceptions: sourceRun.exceptions_raised,
+      reasoning: sourceRun.reasoning,
+    } : null,
+    topKpis: contributingKpis.slice(0, 5),
+    topIssues: flaggedItems.slice(0, 10),
+  };
+  
+  try {
+    // Call LLM for root cause analysis
+    const ai = (c.env as unknown as Record<string, unknown>).AI;
+    if (!ai || typeof (ai as Record<string, unknown>).run !== 'function') {
+      throw new Error('Workers AI not available');
+    }
+    
+    const prompt = `You are an enterprise root cause analysis expert. Analyze this risk alert and suggest likely root causes:
+
+**Risk Alert:**
+- Title: ${context.risk.title}
+- Description: ${context.risk.description}
+- Severity: ${context.risk.severity}
+- Category: ${context.risk.category}
+
+**Source Run Statistics:**
+${context.runStats ? JSON.stringify(context.runStats, null, 2) : 'No run data available'}
+
+**Top KPI Issues:**
+${context.topKpis.map((k: any) => `- ${k.kpi_name}: ${k.value} (${k.status})`).join('\n') || 'No KPI data'}
+
+**Flagged Items:**
+${context.topIssues.map((i: any) => `- Item #${i.item_number}: ${i.exception_type} - ${i.field} (${i.discrepancy_reason || 'No reason'})`).join('\n') || 'No flagged items'}
+
+**Task:** Identify the top 3 most likely root causes and provide:
+1. Root cause description
+2. Confidence level (0-100)
+3. Recommended immediate action
+4. Recommended long-term fix
+5. Related systems/processes affected
+
+Respond with JSON: { "rootCauses": [{ "description": string, "confidence": number, "immediateAction": string, "longTermFix": string, "affectedSystems": string[] }] }`;
+
+    const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', { prompt });
+    const text = aiResult?.response || '';
+    
+    if (!text) {
+      throw new Error('Empty AI response');
+    }
+    
+    try {
+      const analysis = JSON.parse(text);
+      
+      // Save analysis to database
+      await c.env.DB.prepare(
+        'INSERT OR REPLACE INTO run_insights (id, run_id, tenant_id, summary, risks, actions, impact, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(),
+        sourceRunId || 'N/A',
+        tenantId,
+        'Root cause analysis',
+        JSON.stringify(analysis.rootCauses || []),
+        JSON.stringify((analysis.rootCauses || []).map((r: any) => r.immediateAction)),
+        'Root cause analysis generated',
+        new Date().toISOString()
+      ).run();
+      
+      return c.json({
+        success: true,
+        riskId,
+        analysis: {
+          rootCauses: analysis.rootCauses || [],
+          generatedAt: new Date().toISOString(),
+          model: 'llama-3.1-8b-instruct',
+        },
+      });
+    } catch (parseErr) {
+      // Fallback: return text as analysis
+      return c.json({
+        success: true,
+        riskId,
+        analysis: {
+          rawAnalysis: text,
+          generatedAt: new Date().toISOString(),
+          model: 'llama-3.1-8b-instruct',
+        },
+      });
+    }
+  } catch (err) {
+    console.error('Root cause analysis failed:', err);
+    
+    // Fallback: heuristic-based analysis
+    const heuristicCauses = [];
+    
+    if (context.runStats?.discrepancies > 10) {
+      heuristicCauses.push({
+        description: 'High discrepancy rate suggests data quality issues in source or target systems',
+        confidence: 75,
+        immediateAction: 'Review data validation rules and source system logs',
+        longTermFix: 'Implement automated data quality monitoring',
+        affectedSystems: ['Source ERP', 'Target System'],
+      });
+    }
+    
+    if (context.runStats?.exceptions > 5) {
+      heuristicCauses.push({
+        description: 'Multiple exceptions indicate business rule violations or configuration mismatches',
+        confidence: 70,
+        immediateAction: 'Review exception details and business rule configurations',
+        longTermFix: 'Align business rules between systems',
+        affectedSystems: ['Business Rules Engine', 'Configuration'],
+      });
+    }
+    
+    if (context.topKpis.some((k: any) => k.status === 'red')) {
+      heuristicCauses.push({
+        description: 'Critical KPI failures suggest systemic process issues',
+        confidence: 65,
+        immediateAction: 'Investigate red KPIs and their dependencies',
+        longTermFix: 'Implement KPI-based alerting and monitoring',
+        affectedSystems: ['Process Monitoring', 'KPI Dashboard'],
+      });
+    }
+    
+    if (heuristicCauses.length === 0) {
+      heuristicCauses.push({
+        description: 'Insufficient data for automated analysis. Manual investigation recommended.',
+        confidence: 50,
+        immediateAction: 'Review run logs and flagged items manually',
+        longTermFix: 'Improve data collection for better automated analysis',
+        affectedSystems: ['Manual Review Process'],
+      });
+    }
+    
+    return c.json({
+      success: true,
+      riskId,
+      analysis: {
+        rootCauses: heuristicCauses,
+        generatedAt: new Date().toISOString(),
+        model: 'heuristic-fallback',
+        note: 'LLM analysis unavailable, using heuristic analysis',
+      },
+    });
+  }
+});
+
 // GET /api/apex/scenarios
 apex.get('/scenarios', async (c) => {
   const tenantId = getTenantId(c);
@@ -592,6 +815,68 @@ apex.post('/scenarios', async (c) => {
   ).bind(id, tenantId, body.title, body.description, body.input_query, JSON.stringify(body.variables || []), JSON.stringify(scenarioResults), 'completed', JSON.stringify(contextData), modelResponse).run();
 
   return c.json({ id, results: scenarioResults, context: contextData }, 201);
+});
+
+// A4-6: GET /api/apex/risks/:riskId/export — Export risk traceability report as CSV
+apex.get('/risks/:riskId/export', async (c) => {
+  const tenantId = getTenantId(c);
+  const riskId = c.req.param('riskId');
+  
+  // Get the risk alert
+  const risk = await c.env.DB.prepare(
+    'SELECT * FROM risk_alerts WHERE id = ? AND tenant_id = ?'
+  ).bind(riskId, tenantId).first<Record<string, unknown>>();
+  
+  if (!risk) {
+    return c.json({ error: 'Risk alert not found' }, 404);
+  }
+  
+  // Get source run and items
+  const sourceRunId = risk.source_run_id as string | null;
+  let items: Record<string, unknown>[] = [];
+  
+  if (sourceRunId) {
+    const itemsResult = await c.env.DB.prepare(
+      "SELECT item_number, item_status, exception_type, exception_severity, source_ref, target_ref, field, source_value, target_value, difference, discrepancy_reason FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ? AND item_status IN ('discrepancy', 'exception') ORDER BY item_number"
+    ).bind(sourceRunId, tenantId).all();
+    items = itemsResult.results || [];
+  }
+  
+  // Build CSV
+  const csvRows = [
+    ['Risk Traceability Report'],
+    ['Generated At', new Date().toISOString()],
+    ['Risk ID', riskId],
+    ['Risk Title', risk.title as string],
+    ['Severity', risk.severity as string],
+    ['Category', risk.category as string],
+    ['Source Run ID', sourceRunId || 'N/A'],
+    [],
+    ['Item #', 'Status', 'Type', 'Severity', 'Source Ref', 'Target Ref', 'Field', 'Source Value', 'Target Value', 'Difference', 'Reason'],
+  ];
+  
+  for (const item of items) {
+    csvRows.push([
+      item.item_number,
+      item.item_status,
+      item.exception_type || '',
+      item.exception_severity || '',
+      item.source_ref || '',
+      item.target_ref || '',
+      item.field || '',
+      item.source_value ?? '',
+      item.target_value ?? '',
+      item.difference || '',
+      item.discrepancy_reason || '',
+    ]);
+  }
+  
+  const csvContent = csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  
+  c.header('Content-Type', 'text/csv');
+  c.header('Content-Disposition', `attachment; filename="risk-${riskId}-traceability-${new Date().toISOString().split('T')[0]}.csv"`);
+  
+  return c.body(csvContent);
 });
 
 export default apex;

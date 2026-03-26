@@ -15,6 +15,13 @@ function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: str
   return defaultTenantId;
 }
 
+/**
+ * Check if a role has admin-level privileges (superadmin, support_admin, admin, or system_admin).
+ */
+function isAdminRole(role: string | undefined): boolean {
+  return role === 'superadmin' || role === 'support_admin' || role === 'admin' || role === 'system_admin';
+}
+
 // M2: Helper to parse pagination params
 function getPagination(c: { req: { query: (k: string) => string | undefined } }): { limit: number; offset: number } {
   const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '100', 10) || 100, 1), 500);
@@ -96,23 +103,37 @@ pulse.post('/metrics', async (c) => {
 // GET /api/pulse/anomalies
 pulse.get('/anomalies', async (c) => {
   const tenantId = getTenantId(c);
-  const results = await c.env.DB.prepare(
-    'SELECT * FROM anomalies WHERE tenant_id = ? ORDER BY CASE severity WHEN \'critical\' THEN 1 WHEN \'high\' THEN 2 WHEN \'medium\' THEN 3 WHEN \'low\' THEN 4 END'
-  ).bind(tenantId).all();
+  const limit = parseInt(c.req.query('limit') || '50');
+  const severity = c.req.query('severity');
 
-  const formatted = results.results.map((a: Record<string, unknown>) => ({
-    id: a.id,
-    metric: a.metric,
-    severity: a.severity,
-    expectedValue: a.expected_value,
-    actualValue: a.actual_value,
-    deviation: a.deviation,
-    hypothesis: a.hypothesis,
-    status: a.status,
-    detectedAt: a.detected_at,
-  }));
+  let query = `
+    SELECT a.*, pm.name as metric_name, pm.value as current_value
+    FROM anomalies a
+    LEFT JOIN process_metrics pm ON a.metric_id = pm.id
+    WHERE a.tenant_id = ?
+    ${severity ? 'AND a.severity = ?' : ''}
+    ORDER BY a.detected_at DESC
+    LIMIT ?
+  `;
 
-  return c.json({ anomalies: formatted, total: formatted.length, limit: formatted.length, offset: 0 });
+  const results = await c.env.DB.prepare(query)
+    .bind(tenantId, ...(severity ? [severity] : []), limit)
+    .all<any>();
+
+  return c.json({
+    anomalies: (results.results || []).map((a: any) => ({
+      id: a.id,
+      metric: a.metric,
+      metricName: a.metric_name,
+      currentValue: a.current_value,
+      deviation: a.deviation,
+      severity: a.severity,
+      description: a.description,
+      status: a.status,
+      detectedAt: a.detected_at,
+    })),
+    total: results.results?.length || 0,
+  });
 });
 
 // PUT /api/pulse/anomalies/:id
@@ -438,13 +459,35 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
   const tenantId = getTenantId(c);
   const metricId = c.req.param('metricId');
   
+  // Try cache first (5 minute TTL)
+  const cacheKey = `trace:metric:${tenantId}:${metricId}`;
+  try {
+    const cached = await c.env.CACHE.get(cacheKey);
+    if (cached) {
+      const cachedData = JSON.parse(cached);
+      // Add cache hit header
+      c.header('X-Cache', 'HIT');
+      return c.json(cachedData);
+    }
+  } catch (err) {
+    console.error('Cache read failed:', err);
+    // Continue without cache
+  }
+  
   // Get the metric
   const metric = await c.env.DB.prepare(
     'SELECT * FROM process_metrics WHERE id = ? AND tenant_id = ?'
   ).bind(metricId, tenantId).first<Record<string, unknown>>();
   
   if (!metric) {
-    return c.json({ error: 'Metric not found' }, 404);
+    return c.json({ 
+      error: 'Metric not found',
+      metricId,
+      suggestion: 'Verify the metric ID or navigate to the Metrics page to select a valid metric',
+      quickActions: [
+        { label: 'View All Metrics', href: '/pulse#metrics' }
+      ]
+    }, 404);
   }
   
   // Get source attribution
@@ -541,7 +584,106 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
     },
   };
   
+  // Cache the result (5 minute TTL)
+  try {
+    await c.env.CACHE.put(cacheKey, JSON.stringify(traceChain), { expirationTtl: 300 });
+    c.header('X-Cache', 'MISS');
+  } catch (err) {
+    console.error('Cache write failed:', err);
+    // Non-fatal, continue without caching
+  }
+  
   return c.json(traceChain);
+});
+
+// P1-5: POST /api/pulse/anomalies/detect — ML-powered anomaly detection
+pulse.post('/anomalies/detect', async (c) => {
+  const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const body = await c.req.json<{ metric_id?: string; sensitivity?: 'low' | 'medium' | 'high' }>();
+  const metricId = body.metric_id;
+  const sensitivity = body.sensitivity || 'medium';
+
+  // Sensitivity multipliers for Z-score threshold
+  const thresholds = { low: 3.0, medium: 2.5, high: 2.0 };
+  const zThreshold = thresholds[sensitivity];
+
+  // Get historical metric data (last 90 days)
+  const historicalData = await c.env.DB.prepare(
+    `SELECT value, recorded_at
+     FROM process_metric_history
+     WHERE tenant_id = ? AND metric_id = ? AND recorded_at >= datetime('now', '-90 days')
+     ORDER BY recorded_at ASC`
+  ).bind(tenantId, metricId || '').all<{ value: number; recorded_at: string }>();
+
+  const values = (historicalData.results || []).map(d => d.value);
+  
+  if (values.length < 30) {
+    return c.json({ error: 'Insufficient historical data. Need at least 30 data points.', detected: [] }, 400);
+  }
+
+  // Calculate statistics
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Get current metrics
+  const currentMetrics = await c.env.DB.prepare(
+    `SELECT id, name, value, recorded_at
+     FROM process_metrics
+     WHERE tenant_id = ? ${metricId ? 'AND id = ?' : ''}
+     ORDER BY recorded_at DESC
+     LIMIT 100`
+  ).bind(tenantId, ...(metricId ? [metricId] : [])).all<any>();
+
+  // Detect anomalies using Z-score
+  const anomalies = (currentMetrics.results || []).map((m: any) => {
+    const zScore = Math.abs((m.value - mean) / stdDev);
+    const deviation = ((m.value - mean) / mean) * 100;
+    
+    if (zScore > zThreshold) {
+      return {
+        metric_id: m.id,
+        metric_name: m.name,
+        current_value: m.value,
+        expected_mean: mean,
+        std_deviation: stdDev,
+        z_score: zScore,
+        deviation_percent: deviation,
+        severity: zScore > 3.5 ? 'critical' : zScore > 3.0 ? 'high' : 'medium',
+        description: `Value ${m.value} deviates ${deviation.toFixed(1)}% from historical mean ${mean.toFixed(2)}`,
+      };
+    }
+    return null;
+  }).filter(Boolean);
+
+  // Save detected anomalies
+  for (const anomaly of anomalies) {
+    await c.env.DB.prepare(
+      `INSERT INTO anomalies (id, tenant_id, metric_id, metric, deviation, severity, description, status, detected_at, source_run_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      crypto.randomUUID(), tenantId, anomaly.metric_id, anomaly.metric_name,
+      anomaly.deviation_percent, anomaly.severity, anomaly.description,
+      'open', new Date().toISOString(), null
+    ).run();
+  }
+
+  return c.json({
+    success: true,
+    statistics: {
+      mean,
+      stdDev,
+      dataPoints: values.length,
+      period: '90 days',
+    },
+    detected: anomalies,
+    count: anomalies.length,
+  });
 });
 
 export default pulse;
