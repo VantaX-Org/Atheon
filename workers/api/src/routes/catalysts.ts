@@ -691,7 +691,7 @@ catalysts.get('/clusters/:id', async (c) => {
   const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
   const tenantId = canCrossTenant(auth?.role) ? (c.req.query('tenant_id') || defaultTenantId) : defaultTenantId;
 
-  // BUG-26: Enforce tenant ownership on cluster reads
+  // Enforce tenant ownership on cluster reads - tenant isolation
   const cl = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
 
   if (!cl) return c.json({ error: 'Cluster not found' }, 404);
@@ -2201,7 +2201,7 @@ catalysts.put('/clusters/:id', async (c) => {
   const tenantId = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
   const body = await c.req.json<{ status?: string; autonomy_tier?: string }>();
 
-  // BUG-19: Validate update fields
+  // Validate update fields - whitelist approach for security
   const allowedStatus = new Set(['active', 'inactive']);
   const allowedAutonomy = new Set(['read-only', 'assisted', 'transactional']);
 
@@ -2212,7 +2212,7 @@ catalysts.put('/clusters/:id', async (c) => {
     return c.json({ error: 'Invalid autonomy_tier', message: `Allowed: ${[...allowedAutonomy].join(', ')}` }, 400);
   }
 
-  // BUG-25: Enforce tenant ownership on cluster updates
+  // Enforce tenant ownership on cluster updates - tenant isolation
   const existing = await c.env.DB.prepare('SELECT id FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
   if (!existing) return c.json({ error: 'Cluster not found' }, 404);
 

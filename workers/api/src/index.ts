@@ -544,7 +544,7 @@ app.post('/api/contact', async (c) => {
             });
             console.log('[Contact Form] Graph email sent successfully');
           } catch (graphErr) {
-            console.error('BUG-20: contact form Graph email send failed:', graphErr);
+            console.error('[Contact Form] Graph email send failed, queuing for retry:', graphErr);
             // Queue email for retry as fallback
             try {
               await sendOrQueueEmail(c.env.DB, {
@@ -555,14 +555,14 @@ app.post('/api/contact', async (c) => {
                 tenantId: 'system',
               }, c.env);
             } catch (queueErr) {
-              console.error('BUG-20: fallback email queue also failed:', queueErr);
+              console.error('[Contact Form] Fallback email queue also failed:', queueErr);
             }
           }
         }
-      } catch (err) { console.error('BUG-20: contact form Graph token fetch failed:', err); }
+      } catch (err) { console.error('[Contact Form] Graph token fetch failed:', err); }
     }
 
-    // Always log to DB as a fallback
+    // Always log to DB as a fallback for audit trail
     try {
       await c.env.DB.prepare(
         'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -570,7 +570,7 @@ app.post('/api/contact', async (c) => {
         JSON.stringify({ name: body.name, email: body.email, company: body.company, message: body.message }),
         'success'
       ).run();
-    } catch (err) { console.error('BUG-20: contact form DB log failed:', err); }
+    } catch (err) { console.error('[Contact Form] DB log failed:', err); }
 
     return c.json({ success: true, message: 'Your message has been received. We will be in touch shortly.' });
   } catch (err) {
