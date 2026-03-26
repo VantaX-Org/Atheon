@@ -6,6 +6,7 @@ import { ScoreRing } from "@/components/ui/score-ring";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
+import { FlipCard, FlipCardFront, FlipCardBack } from "@/components/ui/flip-card";
 import { api } from "@/lib/api";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
@@ -13,7 +14,7 @@ import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
- Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight
+ Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, RotateCw
 } from "lucide-react";
 
 
@@ -40,6 +41,10 @@ export function ApexPage() {
  const [actionError, setActionError] = useState<string | null>(null);
  // A1-4: Health history for sparkline + delta
  const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
+ 
+ // Flip card states for interactive cards
+ const [flippedDimension, setFlippedDimension] = useState<string | null>(null);
+ const [flippedHealth, setFlippedHealth] = useState(false);
  
  // Traceability modal state
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
@@ -256,79 +261,184 @@ export function ApexPage() {
  {activeTab === 'health' && (
  <TabPanel>
  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
- <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
- <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
- {health?.calculatedAt && healthHistory && (
- <div className="flex flex-col items-center gap-2 mt-4">
- {healthHistory.history.length > 1 && (
- <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
- )}
- <div className="flex items-center gap-2">
- {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
- <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
- </div>
- </div>
- )}
- {!health?.calculatedAt && overallScore === 0 && (
- <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate.</p>
- )}
- </Card>
+ {/* Overall Health Score - Interactive Flip Card */}
+ <FlipCard
+  front={
+   <FlipCardFront className="items-center justify-center">
+    <div className="flex flex-col items-center justify-center h-full">
+     <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
+     {health?.calculatedAt && healthHistory && (
+      <div className="flex flex-col items-center gap-2 mt-4">
+       {healthHistory.history.length > 1 && (
+        <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
+       )}
+       <div className="flex items-center gap-2">
+        {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
+        <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
+       </div>
+      </div>
+     )}
+     {!health?.calculatedAt && overallScore === 0 && (
+      <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate.</p>
+     )}
+    </div>
+    <div className="absolute bottom-3 right-3 text-white/30">
+     <RotateCw size={14} />
+    </div>
+   </FlipCardFront>
+  }
+  back={
+   <FlipCardBack>
+    <div className="flex items-center justify-between mb-3">
+     <h4 className="text-sm font-semibold t-primary">Health Breakdown</h4>
+     <RotateCw size={14} className="text-white/30" />
+    </div>
+    <div className="space-y-3 overflow-y-auto max-h-[300px]">
+     {dimensions.map((dim) => (
+      <div key={dim.key} className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+       <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium t-primary">{dim.name}</span>
+        <span className={`text-xs font-bold ${dim.score >= 80 ? 'text-emerald-400' : dim.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+         {dim.score}
+        </span>
+       </div>
+       <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
+       <div className="flex items-center justify-between mt-1">
+        <span className="text-[10px] t-muted">Weight: {(dim.weight * 100).toFixed(0)}%</span>
+        <div className="flex items-center gap-1">
+         {trendIcon(dim.trend, 10)}
+         <span className={`text-[10px] ${dim.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+          {dim.change > 0 ? '+' : ''}{dim.change}
+         </span>
+        </div>
+       </div>
+      </div>
+     ))}
+     {dimensions.length === 0 && (
+      <p className="text-xs t-muted text-center py-4">No dimension data available</p>
+     )}
+    </div>
+    <p className="text-[10px] t-muted mt-3 text-center">Click to flip back</p>
+   </FlipCardBack>
+  }
+  isFlipped={flippedHealth}
+  onFlip={() => setFlippedHealth(!flippedHealth)}
+  height="h-80"
+  className="lg:col-span-1"
+ />
 
- <Card className="lg:col-span-2">
- <div className="flex items-center justify-between mb-4">
- <h3 className="text-lg font-semibold t-primary">Performance Areas</h3>
- <div className="flex items-center gap-2">
- <Badge variant="info" className="text-xs">Traceability Available</Badge>
+ {/* Performance Areas - Interactive Cards */}
+ <div className="lg:col-span-2">
+  <Card>
+   <div className="flex items-center justify-between mb-4">
+    <h3 className="text-lg font-semibold t-primary">Performance Areas</h3>
+    <div className="flex items-center gap-2">
+     <Badge variant="info" className="text-xs">Click to Flip</Badge>
+     <Badge variant="info" className="text-xs">Traceability Available</Badge>
+    </div>
+   </div>
+   {dimensions.length === 0 && (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+     <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
+     <p className="text-sm t-muted">No dimensions available yet.</p>
+     <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating insights.</p>
+     <div className="mt-4 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-w-md">
+      <p className="text-xs t-primary font-medium mb-1">🔍 About Traceability</p>
+      <p className="text-[10px] t-muted">Once catalysts run, each performance area will show a <strong>Trace</strong> button. Click it to drill down from health scores → clusters → sub-catalysts → individual items for root cause analysis.</p>
+     </div>
+    </div>
+   )}
+   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {dimensions.map((dim) => (
+     <FlipCard
+      key={dim.key}
+      front={
+       <FlipCardFront>
+        <div className="flex flex-col h-full justify-between">
+         <div>
+          <div className="flex items-center justify-between mb-2">
+           <span className="text-sm font-semibold t-primary">{dim.name}</span>
+           <span className={`text-lg font-bold ${dim.score >= 80 ? 'text-emerald-400' : dim.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+            {dim.score}
+           </span>
+          </div>
+          <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="md" />
+         </div>
+         <div className="flex items-center justify-between mt-3">
+          <div className="flex items-center gap-1">
+           {trendIcon(dim.trend, 12)}
+           <span className={`text-xs ${dim.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {dim.change > 0 ? '+' : ''}{dim.change}
+           </span>
+          </div>
+          <div className="flex items-center gap-2">
+           <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); handleOpenDimensionTrace(dim.key); }}
+            disabled={loadingTraceability}
+            className="text-xs px-2 py-1 h-7"
+            title="View traceability details"
+           >
+            {loadingTraceability && traceabilityType === 'dimension' ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+            Trace
+           </Button>
+           <RotateCw size={12} className="text-white/30" />
+          </div>
+         </div>
+        </div>
+       </FlipCardFront>
+      }
+      back={
+       <FlipCardBack>
+        <div className="flex items-center justify-between mb-2">
+         <h4 className="text-sm font-semibold t-primary">{dim.name} Details</h4>
+         <RotateCw size={14} className="text-white/30" />
+        </div>
+        <div className="space-y-2 text-xs">
+         <div className="flex justify-between">
+          <span className="t-muted">Score:</span>
+          <span className="t-primary font-medium">{dim.score}/100</span>
+         </div>
+         <div className="flex justify-between">
+          <span className="t-muted">Weight:</span>
+          <span className="t-primary font-medium">{(dim.weight * 100).toFixed(0)}%</span>
+         </div>
+         <div className="flex justify-between">
+          <span className="t-muted">Trend:</span>
+          <div className="flex items-center gap-1">
+           {trendIcon(dim.trend, 10)}
+           <span className="t-primary font-medium capitalize">{dim.trend}</span>
+          </div>
+         </div>
+         <div className="flex justify-between">
+          <span className="t-muted">Change:</span>
+          <span className={dim.change >= 0 ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium'}>
+           {dim.change > 0 ? '+' : ''}{dim.change}
+          </span>
+         </div>
+        </div>
+        <div className="flex gap-2 mt-4">
+         <Button
+          variant="primary"
+          size="sm"
+          className="flex-1 text-xs"
+          onClick={(e) => { e.stopPropagation(); handleOpenDimensionTrace(dim.key); }}
+         >
+          <Link2 size={12} className="mr-1" /> Full Trace
+         </Button>
+        </div>
+        <p className="text-[10px] t-muted mt-3 text-center">Click to flip back</p>
+       </FlipCardBack>
+      }
+      isFlipped={flippedDimension === dim.key}
+      onFlip={() => setFlippedDimension(flippedDimension === dim.key ? null : dim.key)}
+      height="h-40"
+     />
+    ))}
+   </div>
+  </Card>
  </div>
- </div>
- {dimensions.length === 0 && (
- <div className="flex flex-col items-center justify-center py-12 text-center">
- <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
- <p className="text-sm t-muted">No dimensions available yet.</p>
- <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating insights.</p>
- <div className="mt-4 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-w-md">
- <p className="text-xs t-primary font-medium mb-1">🔍 About Traceability</p>
- <p className="text-[10px] t-muted">Once catalysts run, each performance area will show a <strong>Trace</strong> button. Click it to drill down from health scores → clusters → sub-catalysts → individual items for root cause analysis.</p>
- </div>
- </div>
- )}
- <div className="space-y-4">
- {dimensions.map((dim) => (
- <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
- <div className="sm:w-36 flex-shrink-0">
- <span className="text-sm t-secondary">{dim.name}</span>
- <span className="block text-[10px] text-gray-400">Weight: {(dim.weight * 100).toFixed(0)}%</span>
- </div>
- <div className="flex-1">
- <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="md" />
- </div>
- <div className="flex items-center gap-3 sm:gap-0">
- <div className="w-12 text-right">
- <span className="text-sm font-bold t-primary">{dim.score}</span>
- </div>
- <div className="flex items-center gap-1 w-20">
- {trendIcon(dim.trend, 12)}
- <span className={`text-xs ${dim.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
- {dim.change > 0 ? '+' : ''}{dim.change}
- </span>
- </div>
- <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'up' || dim.trend === 'improving' ? '#10b981' : dim.trend === 'down' || dim.trend === 'declining' ? '#ef4444' : '#6b7280'} />
- <Button
-  variant="ghost"
-  size="sm"
-  onClick={() => handleOpenDimensionTrace(dim.key)}
-  disabled={loadingTraceability}
-  className="text-xs px-2 py-1 h-7"
-  title="View traceability details"
- >
-  {loadingTraceability && traceabilityType === 'dimension' ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
-  Trace
- </Button>
- </div>
- </div>
- ))}
- </div>
- </Card>
  </div>
  </TabPanel>
  )}
