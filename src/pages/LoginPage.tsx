@@ -58,6 +58,7 @@ export function LoginPage() {
     if (token && window.location.pathname.startsWith('/reset-password')) {
       setResetToken(token);
       setShowResetPw(true);
+      window.history.replaceState({}, '', '/reset-password');
     }
   }, [searchParams]);
 
@@ -83,7 +84,7 @@ export function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
 
-  // BUG-21: Support password reset via /reset-password?token=...
+  // Password reset functionality - token parsed from URL params
   const [showResetPw, setShowResetPw] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [resetNewPassword, setResetNewPassword] = useState('');
@@ -102,13 +103,18 @@ export function LoginPage() {
 
   const handleForgotPassword = async () => {
     if (!forgotEmail.trim()) return;
+    setLoading(true);
+    setError(null);
     try {
       await api.auth.forgotPassword(forgotEmail);
+      setForgotSent(true);
     } catch (err) {
-      console.error('BUG-23: forgot password request failed:', err);
-      setError('Unable to send reset email right now. Please try again later.');
+      console.error('Forgot password request failed:', err);
+      // Security: Don't reveal if email exists, but inform user of technical issues
+      setError('Unable to process your request at this time. Please try again later.');
+    } finally {
+      setLoading(false);
     }
-    setForgotSent(true);
   };
 
   const handleResetPassword = async () => {
