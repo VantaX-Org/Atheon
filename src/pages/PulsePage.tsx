@@ -242,10 +242,16 @@ export function PulsePage() {
     setLoadingMetricTrace(true);
     try {
       const data = await api.pulse.metricTrace(metricId);
+      if (!data || !data.metric) {
+        console.warn('No traceability data available for metric:', metricId);
+        alert('No traceability data available for this metric.');
+        return;
+      }
       setMetricTraceData(data);
       setShowMetricTraceModal(true);
     } catch (err) {
       console.error('Failed to load metric traceability:', err);
+      alert('Failed to load metric traceability data. This metric may not have source attribution yet.');
     } finally {
       setLoadingMetricTrace(false);
     }

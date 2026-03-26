@@ -60,11 +60,18 @@ export function ApexPage() {
   setLoadingTraceability(true);
   try {
    const data = await api.apex.healthDimension(dimension);
+   if (!data || data.score === null) {
+     console.warn('No traceability data available for dimension:', dimension);
+     // Show user-friendly message
+     alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+     return;
+   }
    setTraceabilityData(data);
    setTraceabilityType('dimension');
    setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load dimension traceability:', err);
+   alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
   }
   setLoadingTraceability(false);
  };
@@ -73,11 +80,17 @@ export function ApexPage() {
   setLoadingTraceability(true);
   try {
    const data = await api.apex.riskTrace(riskId);
+   if (!data || !data.riskAlert) {
+     console.warn('No traceability data available for risk:', riskId);
+     alert('No traceability data available for this risk.');
+     return;
+   }
    setTraceabilityData(data);
    setTraceabilityType('risk');
    setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load risk traceability:', err);
+   alert('Failed to load risk traceability data.');
   }
   setLoadingTraceability(false);
  };
