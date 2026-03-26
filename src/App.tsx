@@ -20,6 +20,7 @@ import { DeploymentsPage } from "@/pages/DeploymentsPage";
 import { AssessmentsPage } from "@/pages/AssessmentsPage";
 import { CatalystRunDetailPage } from "@/pages/CatalystRunDetailPage";
 import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
+import { TenantManagementPage } from "@/pages/TenantManagementPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="/connectivity" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
           <Route path="/iam" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IAMPage /></ProtectedRoute>} />
           <Route path="/control-plane" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ControlPlanePage /></ProtectedRoute>} />
