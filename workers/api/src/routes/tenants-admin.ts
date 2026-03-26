@@ -23,7 +23,7 @@ function requireSuperadmin(c: any): boolean {
  * GET /api/v1/admin/tenants
  * List all tenants (superadmin only)
  */
-tenants.get('/admin/tenants', async (c) => {
+tenants.get('/tenants', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -77,7 +77,7 @@ tenants.get('/admin/tenants', async (c) => {
  * GET /api/v1/admin/tenants/:id
  * Get detailed tenant information (superadmin only)
  */
-tenants.get('/admin/tenants/:id', async (c) => {
+tenants.get('/tenants/:id', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -137,7 +137,7 @@ tenants.get('/admin/tenants/:id', async (c) => {
  * POST /api/v1/admin/tenants/:id/soft-delete
  * Soft-delete a tenant (superadmin only)
  */
-tenants.post('/admin/tenants/:id/soft-delete', async (c) => {
+tenants.post('/tenants/:id/soft-delete', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -201,7 +201,7 @@ tenants.post('/admin/tenants/:id/soft-delete', async (c) => {
  * POST /api/v1/admin/tenants/:id/reactivate
  * Reactivate a soft-deleted tenant (superadmin only)
  */
-tenants.post('/admin/tenants/:id/reactivate', async (c) => {
+tenants.post('/tenants/:id/reactivate', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -254,7 +254,7 @@ tenants.post('/admin/tenants/:id/reactivate', async (c) => {
  * GET /api/v1/admin/tenants/:id/export
  * Export all tenant data as JSON (superadmin only)
  */
-tenants.get('/admin/tenants/:id/export', async (c) => {
+tenants.get('/tenants/:id/export', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -340,7 +340,7 @@ tenants.get('/admin/tenants/:id/export', async (c) => {
  * Permanently delete a soft-deleted tenant and all data (superadmin only)
  * DANGEROUS - Tenant must be soft-deleted first
  */
-tenants.delete('/admin/tenants/:id/hard-delete', async (c) => {
+tenants.delete('/tenants/:id/hard-delete', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
