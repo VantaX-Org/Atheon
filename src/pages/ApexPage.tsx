@@ -237,12 +237,21 @@ export function ApexPage() {
  </Card>
 
  <Card className="lg:col-span-2">
- <h3 className="text-lg font-semibold t-primary mb-4">Performance Areas</h3>
+ <div className="flex items-center justify-between mb-4">
+ <h3 className="text-lg font-semibold t-primary">Performance Areas</h3>
+ <div className="flex items-center gap-2">
+ <Badge variant="info" className="text-xs">Traceability Available</Badge>
+ </div>
+ </div>
  {dimensions.length === 0 && (
  <div className="flex flex-col items-center justify-center py-12 text-center">
  <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
  <p className="text-sm t-muted">No dimensions available yet.</p>
  <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating insights.</p>
+ <div className="mt-4 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-w-md">
+ <p className="text-xs t-primary font-medium mb-1">🔍 About Traceability</p>
+ <p className="text-[10px] t-muted">Once catalysts run, each performance area will show a <strong>Trace</strong> button. Click it to drill down from health scores → clusters → sub-catalysts → individual items for root cause analysis.</p>
+ </div>
  </div>
  )}
  <div className="space-y-4">
