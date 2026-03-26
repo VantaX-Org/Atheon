@@ -501,7 +501,7 @@ auth.post('/forgot-password', async (c) => {
     // Send password reset email immediately via MS Graph (falls back to queue)
     const resetUrl = `https://atheon.vantax.co.za/reset-password?token=${resetToken}`;
     const { html, text } = getPasswordResetEmailTemplate(user.name as string, resetUrl);
-    sendOrQueueEmail(c.env.DB, {
+    await sendOrQueueEmail(c.env.DB, {
       to: [user.email as string],
       subject: 'Atheon™ — Password Reset Request',
       htmlBody: html,
