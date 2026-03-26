@@ -30,6 +30,7 @@ import deployments from './routes/deployments';
 import assessments from './routes/assessments';
 import agentRoutes from './routes/agent-routes';
 import aiCosts from './routes/ai-costs';
+import seedVantaX from './routes/seed-vantax';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -306,6 +307,11 @@ for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
   app.route(`/api/v1/${name}`, handler);
 }
+
+// VantaX demo seeder - restricted to VantaX tenant only
+app.route('/api/v1/seed-vantax', seedVantaX);
+
+
 // Agent routes mounted separately — no tenantIsolation middleware
 app.route('/api/agent', agentRoutes);
 app.route('/api/v1/agent', agentRoutes);
