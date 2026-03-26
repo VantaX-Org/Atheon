@@ -196,6 +196,20 @@ export function Dashboard() {
             <h1 className="text-lg font-bold t-primary tracking-tight">Atheon Dashboard</h1>
             <p className="text-[11px] t-muted">Enterprise Intelligence &mdash; {now.getFullYear()}</p>
           </div>
+            <div className="grid grid-cols-3 gap-2 text-[10px] mt-3">
+              <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                <p className="text-[9px] t-muted uppercase">Level</p>
+                <p className="text-[10px] t-primary font-medium">Executive Overview</p>
+              </div>
+              <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                <p className="text-[9px] t-muted uppercase">Aggregates</p>
+                <p className="text-[10px] t-primary font-medium">Apex + Pulse + Catalysts</p>
+              </div>
+              <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                <p className="text-[9px] t-muted uppercase">Drill Down</p>
+                <p className="text-[10px] t-primary font-medium">All Intelligence Layers</p>
+              </div>
+            </div>
         </div>
 
         <div className="flex items-center gap-2">

@@ -179,6 +179,20 @@ export function ChatPage() {
  <h1 className="text-2xl font-bold t-primary">Atheon Chat</h1>
  <p className="text-sm t-muted">Unified conversational interface across all intelligence layers</p>
  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-4">
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+              <p className="text-sm t-primary font-medium">Interaction / User Interface</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+              <p className="text-sm t-primary font-medium">Unified Conversational UI</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Integrates</p>
+              <p className="text-sm t-primary font-medium">Mind (AI) + Memory (Context)</p>
+            </div>
+          </div>
  </div>
 
  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

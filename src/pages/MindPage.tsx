@@ -64,6 +64,20 @@ export function MindPage() {
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Mind</h1>
  <p className="text-sm t-muted mt-1">Enterprise Intelligence Engine</p>
  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-4">
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+              <p className="text-sm t-primary font-medium">Knowledge / Strategic</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+              <p className="text-sm t-primary font-medium">AI Models & Inference</p>
+            </div>
+            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Serves</p>
+              <p className="text-sm t-primary font-medium">All Layers (Apex/Pulse/Catalyst)</p>
+            </div>
+          </div>
 
  {/* Model Tiers — admin sees full detail, users see summary */}
  <div>
