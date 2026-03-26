@@ -3900,3 +3900,259 @@ catalysts.get('/runs/:runId/detail', async (c) => {
     })),
   });
 });
+
+// POST /api/catalysts/runs/:runId/llm-insights — Generate LLM-powered narrative insights
+catalysts.post('/runs/:runId/llm-insights', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  
+  // Get run data
+  const run = await c.env.DB.prepare(
+    `SELECT r.*, c.name as cluster_name, c.domain as cluster_domain
+     FROM sub_catalyst_runs r
+     JOIN catalyst_clusters c ON r.cluster_id = c.id
+     WHERE r.id = ? AND r.tenant_id = ?`
+  ).bind(runId, tenantId).first<any>();
+
+  if (!run) {
+    return c.json({ error: 'Run not found' }, 404);
+  }
+
+  // Get KPIs
+  const kpis = await c.env.DB.prepare(
+    `SELECT kd.kpi_name, kv.value, kv.status, kd.unit
+     FROM sub_catalyst_kpi_values kv
+     JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
+     WHERE kv.run_id = ? AND kv.tenant_id = ?`
+  ).bind(runId, tenantId).all<any>();
+
+  // Get anomalies
+  const anomalies = await c.env.DB.prepare(
+    `SELECT metric, deviation, severity, description
+     FROM anomalies
+     WHERE source_run_id = ? AND tenant_id = ?
+     ORDER BY deviation DESC
+     LIMIT 10`
+  ).bind(runId, tenantId).all<any>();
+
+  // Construct prompt for LLM
+  const kpiSummary = (kpis.results || []).map((k: any) => 
+    `- ${k.kpi_name}: ${k.value} ${k.unit} (${k.status})`
+  ).join('\n');
+
+  const anomalySummary = (anomalies.results || []).map((a: any) => 
+    `- ${a.metric}: ${a.deviation}% deviation (${a.severity}) - ${a.description}`
+  ).join('\n');
+
+  const prompt = `You are an enterprise operations analyst. Analyze this catalyst run and provide actionable insights:
+
+**Run Context:**
+- Catalyst: ${run.sub_catalyst_name}
+- Cluster: ${run.cluster_name} (${run.cluster_domain})
+- Status: ${run.status}
+- Records Processed: ${run.matched} matched, ${run.discrepancies} discrepancies, ${run.exceptions_raised} exceptions
+- Total Value: R ${(run.total_source_value / 1000000).toFixed(2)}M
+
+**KPIs Generated:**
+${kpiSummary || 'No KPIs generated'}
+
+**Anomalies Detected:**
+${anomalySummary || 'No anomalies detected'}
+
+**Provide a concise executive summary (3-4 sentences) covering:**
+1. Overall performance assessment
+2. Key risks or concerns
+3. Recommended immediate actions
+4. Business impact
+
+Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impact": "..." }`;
+
+  // Call LLM (using Cloudflare AI or external API)
+  try {
+    // If using Cloudflare AI Workers
+    const aiResponse = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 500,
+    });
+
+    const insights = JSON.parse(aiResponse.response || '{}');
+    
+    // Save insights to database
+    await c.env.DB.prepare(
+      `INSERT INTO run_insights (id, run_id, tenant_id, summary, risks, actions, impact, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      crypto.randomUUID(), runId, tenantId,
+      insights.summary || '', JSON.stringify(insights.risks || []),
+      JSON.stringify(insights.actions || []), insights.impact || '',
+      new Date().toISOString()
+    ).run();
+
+    return c.json({
+      success: true,
+      insights: {
+        summary: insights.summary,
+        risks: insights.risks || [],
+        actions: insights.actions || [],
+        impact: insights.impact || '',
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    console.error('LLM insights generation failed:', err);
+    return c.json({ error: 'Failed to generate AI insights', details: err.message }, 500);
+  }
+});
+
+// GET /api/catalysts/runs/:runId/insights — Get cached LLM insights
+catalysts.get('/runs/:runId/insights', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+
+  const insights = await c.env.DB.prepare(
+    `SELECT summary, risks, actions, impact, generated_at
+     FROM run_insights
+     WHERE run_id = ? AND tenant_id = ?
+     ORDER BY generated_at DESC
+     LIMIT 1`
+  ).bind(runId, tenantId).first<any>();
+
+  if (!insights) {
+    return c.json({ error: 'No insights generated yet. Call POST /llm-insights first.' }, 404);
+  }
+
+  return c.json({
+    summary: insights.summary,
+    risks: JSON.parse(insights.risks || '[]'),
+    actions: JSON.parse(insights.actions || '[]'),
+    impact: insights.impact,
+    generatedAt: insights.generated_at,
+  });
+});
+
+// POST /api/pulse/anomalies/detect — ML-powered anomaly detection
+pulse.post('/anomalies/detect', async (c) => {
+  const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || (!isAdminRole(auth.role) && auth.role !== 'executive')) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const body = await c.req.json<{ metric_id?: string; sensitivity?: 'low' | 'medium' | 'high' }>();
+  const metricId = body.metric_id;
+  const sensitivity = body.sensitivity || 'medium';
+
+  // Sensitivity multipliers for Z-score threshold
+  const thresholds = { low: 3.0, medium: 2.5, high: 2.0 };
+  const zThreshold = thresholds[sensitivity];
+
+  // Get historical metric data (last 90 days)
+  const historicalData = await c.env.DB.prepare(
+    `SELECT value, recorded_at
+     FROM process_metric_history
+     WHERE tenant_id = ? AND metric_id = ? AND recorded_at >= datetime('now', '-90 days')
+     ORDER BY recorded_at ASC`
+  ).bind(tenantId, metricId || '').all<{ value: number; recorded_at: string }>();
+
+  const values = (historicalData.results || []).map(d => d.value);
+  
+  if (values.length < 30) {
+    return c.json({ error: 'Insufficient historical data. Need at least 30 data points.', detected: [] }, 400);
+  }
+
+  // Calculate statistics
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Get current metrics
+  const currentMetrics = await c.env.DB.prepare(
+    `SELECT id, name, value, recorded_at
+     FROM process_metrics
+     WHERE tenant_id = ? ${metricId ? 'AND id = ?' : ''}
+     ORDER BY recorded_at DESC
+     LIMIT 100`
+  ).bind(tenantId, ...(metricId ? [metricId] : [])).all<any>();
+
+  // Detect anomalies using Z-score
+  const anomalies = (currentMetrics.results || []).map((m: any) => {
+    const zScore = Math.abs((m.value - mean) / stdDev);
+    const deviation = ((m.value - mean) / mean) * 100;
+    
+    if (zScore > zThreshold) {
+      return {
+        metric_id: m.id,
+        metric_name: m.name,
+        current_value: m.value,
+        expected_mean: mean,
+        std_deviation: stdDev,
+        z_score: zScore,
+        deviation_percent: deviation,
+        severity: zScore > 3.5 ? 'critical' : zScore > 3.0 ? 'high' : 'medium',
+        description: `Value ${m.value} deviates ${deviation.toFixed(1)}% from historical mean ${mean.toFixed(2)}`,
+      };
+    }
+    return null;
+  }).filter(Boolean);
+
+  // Save detected anomalies
+  for (const anomaly of anomalies) {
+    await c.env.DB.prepare(
+      `INSERT INTO anomalies (id, tenant_id, metric_id, metric, deviation, severity, description, status, detected_at, source_run_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      crypto.randomUUID(), tenantId, anomaly.metric_id, anomaly.metric_name,
+      anomaly.deviation_percent, anomaly.severity, anomaly.description,
+      'open', new Date().toISOString(), null
+    ).run();
+  }
+
+  return c.json({
+    success: true,
+    statistics: {
+      mean,
+      stdDev,
+      dataPoints: values.length,
+      period: '90 days',
+    },
+    detected: anomalies,
+    count: anomalies.length,
+  });
+});
+
+// GET /api/pulse/anomalies — Get detected anomalies with ML scores
+pulse.get('/anomalies', async (c) => {
+  const tenantId = getTenantId(c);
+  const limit = parseInt(c.req.query('limit') || '50');
+  const severity = c.req.query('severity');
+
+  let query = `
+    SELECT a.*, pm.name as metric_name, pm.value as current_value
+    FROM anomalies a
+    LEFT JOIN process_metrics pm ON a.metric_id = pm.id
+    WHERE a.tenant_id = ?
+    ${severity ? 'AND a.severity = ?' : ''}
+    ORDER BY a.detected_at DESC
+    LIMIT ?
+  `;
+
+  const results = await c.env.DB.prepare(query)
+    .bind(tenantId, ...(severity ? [severity] : []), limit)
+    .all<any>();
+
+  return c.json({
+    anomalies: (results.results || []).map((a: any) => ({
+      id: a.id,
+      metric: a.metric,
+      metricName: a.metric_name,
+      currentValue: a.current_value,
+      deviation: a.deviation,
+      severity: a.severity,
+      description: a.description,
+      status: a.status,
+      detectedAt: a.detected_at,
+    })),
+    total: results.results?.length || 0,
+  });
+});
