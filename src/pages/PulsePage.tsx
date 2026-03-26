@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
@@ -250,6 +251,7 @@ export function PulsePage() {
   // Expandable states
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
   const [expandedAnomaly, setExpandedAnomaly] = useState<string | null>(null);
+  const [mlDetectionRunning, setMlDetectionRunning] = useState(false);
   const [expandedProcess, setExpandedProcess] = useState<string | null>(null);
   const [expandedCorrelation, setExpandedCorrelation] = useState<string | null>(null);
 
@@ -290,6 +292,27 @@ export function PulsePage() {
     }
   };
 
+
+  async function runMLDetection() {
+    setMlDetectionRunning(true);
+    try {
+      const response = await fetch(`/api/pulse/anomalies/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitivity: 'medium' }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        const ind = industry !== 'general' ? industry : undefined;
+        const a = await api.pulse.anomalies(undefined, ind);
+        setAnomalies(a.anomalies);
+      }
+    } catch (err) {
+      console.error('ML detection failed:', err);
+    } finally {
+      setMlDetectionRunning(false);
+    }
+  }
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -822,6 +845,28 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'anomalies' && (
         <TabPanel>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold t-primary">Anomaly Detection</h3>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={runMLDetection}
+              disabled={mlDetectionRunning}
+            >
+              {mlDetectionRunning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Running ML Detection...
+                </>
+              ) : (
+                <>
+                  <TrendingUp size={14} className="mr-2" />
+                  Run ML Detection
+                </>
+              )}
+            </Button>
+          </div>
+          {/* Anomaly Severity Filter */}
           {/* Anomaly Severity Filter */}
           <div className="flex items-center gap-2 mb-4">
             <Filter size={14} className="text-gray-400" />
