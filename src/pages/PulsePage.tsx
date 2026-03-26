@@ -74,85 +74,118 @@ function computeOperationalHealth(metrics: Metric[], summary: PulseSummary | nul
   };
 }
 
-/* ── Recommendations engine ──────────────────────────────── */
-interface Recommendation {
+/* ── Insights engine ──────────────────────────────── */
+interface Insight {
   icon: typeof Shield;
   title: string;
   description: string;
-  priority: string;
-  category: string;
+  priority: 'Critical' | 'High' | 'Medium' | 'Low';
+  category: 'Metrics' | 'Processes' | 'Anomalies' | 'Trends';
+  impact?: string;
+  action?: string;
 }
 
-function generateRecommendations(metrics: Metric[], anomalies: AnomalyItem[], processes: ProcessItem[]): Recommendation[] {
-  const recs: Recommendation[] = [];
+function generateInsights(metrics: Metric[], anomalies: AnomalyItem[], processes: ProcessItem[], _summary: PulseSummary | null): Insight[] {
+  const insights: Insight[] = [];
 
+  // Critical metrics requiring immediate action
   const redMetrics = metrics.filter(m => m.status === 'red');
   if (redMetrics.length > 0) {
-    recs.push({
+    const affectedDomain = redMetrics[0].name.includes('AP') || redMetrics[0].name.includes('Payable') ? 'Accounts Payable' 
+      : redMetrics[0].name.includes('Finance') ? 'Financial Operations'
+      : redMetrics[0].name.includes('HR') || redMetrics[0].name.includes('Leave') ? 'Human Resources'
+      : 'core business processes';
+    
+    insights.push({
       icon: AlertCircle,
       title: `${redMetrics.length} Critical Metric${redMetrics.length > 1 ? 's' : ''} Breaching Thresholds`,
-      description: `${redMetrics.map(m => m.name).join(', ')} ${redMetrics.length > 1 ? 'are' : 'is'} in red status. Immediate investigation required to prevent operational impact.`,
-      priority: 'Immediate',
+      description: `${redMetrics.map(m => m.name).join(', ')} ${redMetrics.length > 1 ? 'are' : 'is'} failing to meet minimum thresholds. This indicates systematic issues in ${affectedDomain.toLowerCase()}.`,
+      priority: 'Critical',
       category: 'Metrics',
+      impact: `Immediate operational impact — affected processes may be blocked or failing.`,
+      action: 'Review catalyst execution logs and source system data quality immediately.',
     });
   }
 
-  const amberMetrics = metrics.filter(m => m.status === 'amber');
-  if (amberMetrics.length >= 2) {
-    recs.push({
-      icon: Eye,
-      title: `${amberMetrics.length} Metrics Approaching Warning Levels`,
-      description: `Monitor ${amberMetrics.slice(0, 3).map(m => m.name).join(', ')} closely. Consider proactive action before they breach red thresholds.`,
-      priority: 'Short-term',
-      category: 'Metrics',
+  // Degrading trends
+  const decliningMetrics = metrics.filter(m => {
+    const trend = Array.isArray(m.trend) ? m.trend : [];
+    return trend.length >= 3 && trend[trend.length - 1] < trend[0] - 10;
+  });
+  if (decliningMetrics.length > 0) {
+    insights.push({
+      icon: TrendingDown,
+      title: `${decliningMetrics.length} Metric${decliningMetrics.length > 1 ? 's' : ''} Showing Downward Trend`,
+      description: `${decliningMetrics.map(m => m.name).join(', ')} ${decliningMetrics.length > 1 ? 'have' : 'has'} declined by more than 10 points over recent measurements. Early intervention can prevent threshold breaches.`,
+      priority: 'High',
+      category: 'Trends',
+      impact: 'Proactive action now can prevent future critical alerts.',
+      action: 'Investigate root cause and consider adjusting process parameters or catalyst configurations.',
     });
   }
 
-  const criticalAnomalies = anomalies.filter(a => a.severity === 'critical');
-  if (criticalAnomalies.length > 0) {
-    recs.push({
-      icon: Zap,
-      title: `${criticalAnomalies.length} Critical Anomal${criticalAnomalies.length > 1 ? 'ies' : 'y'} Detected`,
-      description: `Critical deviations in ${criticalAnomalies.map(a => a.metric).join(', ')}. Root cause analysis and remediation should be prioritised.`,
-      priority: 'Immediate',
-      category: 'Anomalies',
-    });
-  }
-
-  const bottleneckProcesses = processes.filter(p => p.bottlenecks.length > 0);
-  if (bottleneckProcesses.length > 0) {
-    const totalBottlenecks = bottleneckProcesses.reduce((s, p) => s + p.bottlenecks.length, 0);
-    recs.push({
-      icon: Workflow,
-      title: `${totalBottlenecks} Process Bottleneck${totalBottlenecks > 1 ? 's' : ''} Identified`,
-      description: `${bottleneckProcesses.map(p => p.name).join(', ')} ${bottleneckProcesses.length > 1 ? 'have' : 'has'} bottleneck steps. Consider process re-engineering or resource reallocation.`,
-      priority: 'Short-term',
-      category: 'Processes',
-    });
-  }
-
-  const lowConformance = processes.filter(p => p.conformanceRate < 75);
+  // Process conformance issues
+  const lowConformance = processes.filter(p => p.conformanceRate < 70);
   if (lowConformance.length > 0) {
-    recs.push({
-      icon: Target,
-      title: `${lowConformance.length} Process${lowConformance.length > 1 ? 'es' : ''} Below Conformance Target`,
-      description: `${lowConformance.map(p => `${p.name} (${p.conformanceRate}%)`).join(', ')}. Review process variants and enforce standard operating procedures.`,
-      priority: 'Medium-term',
+    const avgConformance = Math.round(lowConformance.reduce((s, p) => s + p.conformanceRate, 0) / lowConformance.length);
+    insights.push({
+      icon: GitBranch,
+      title: `Process Conformance Below Target (${lowConformance.length} process${lowConformance.length > 1 ? 'es' : ''})`,
+      description: `${lowConformance.map(p => p.name).join(', ')} ${lowConformance.length > 1 ? 'are' : 'is'} operating below 70% conformance. This suggests workarounds, manual interventions, or training gaps.`,
+      priority: 'High',
       category: 'Processes',
+      impact: `Average conformance: ${avgConformance}% vs 85% target — indicates process deviation.`,
+      action: 'Review process variants and enforce standard operating procedures. Consider additional user training.',
     });
   }
 
-  if (recs.length === 0) {
-    recs.push({
-      icon: CheckCircle2,
-      title: 'All Systems Operating Normally',
-      description: 'No critical issues detected. Continue monitoring and maintain current operational standards.',
-      priority: 'Ongoing',
-      category: 'General',
+  // Critical anomalies
+  const critAnomalies = anomalies.filter(a => a.severity === 'critical' && (a.status === 'open' || !a.status));
+  if (critAnomalies.length > 0) {
+    const avgDeviation = Math.round(critAnomalies.reduce((s, a) => s + a.deviation, 0) / critAnomalies.length);
+    insights.push({
+      icon: AlertTriangle,
+      title: `${critAnomalies.length} Critical Anomalie${critAnomalies.length > 1 ? 's' : 'y'} Detected`,
+      description: `Statistical anomalies detected in ${critAnomalies.map(a => a.metric).join(', ')}. These represent significant deviations from expected patterns that may indicate data quality issues, fraud, or system malfunctions.`,
+      priority: 'Critical',
+      category: 'Anomalies',
+      impact: `Average deviation: ${avgDeviation}% from baseline — requires investigation.`,
+      action: 'Investigate anomaly details and correlate with recent system changes or business events.',
     });
   }
 
-  return recs;
+  // Bottleneck identification
+  const bottleneckProcesses = processes.filter(p => p.bottlenecks.length > 0); const bottleneckCount = bottleneckProcesses.reduce((s, p) => s + p.bottlenecks.length, 0);
+  if (bottleneckCount > 0) {
+    const affectedProcesses = bottleneckProcesses.map(p => p.name).join(", ");
+    insights.push({
+      icon: Activity,
+      title: `${bottleneckCount} Process Bottleneck${bottleneckCount > 1 ? 's' : ''} Identified`,
+      description: `Bottlenecks detected in ${affectedProcesses}. These steps are constraining throughput and increasing cycle time.`,
+      priority: 'Medium',
+      category: 'Processes',
+      impact: 'Bottlenecks increase processing time and resource consumption.',
+      action: 'Analyze bottleneck steps for automation opportunities or resource reallocation.',
+    });
+  }
+
+  // Positive insights (when things are going well)
+  if (redMetrics.length === 0 && decliningMetrics.length === 0 && critAnomalies.length === 0) {
+    const healthyMetrics = metrics.filter(m => m.status === 'green');
+    if (healthyMetrics.length >= metrics.length * 0.8 && metrics.length > 0) {
+      insights.push({
+        icon: CheckCircle2,
+        title: 'Strong Operational Performance',
+        description: `${healthyMetrics.length} of ${metrics.length} metrics (${Math.round(healthyMetrics.length / metrics.length * 100)}%) are within healthy thresholds. Your operational processes are performing well.`,
+        priority: 'Low',
+        category: 'Metrics',
+        impact: 'Maintain current monitoring frequency and continue best practices.',
+        action: 'Consider using this stable period for process optimization initiatives.',
+      });
+    }
+  }
+
+  return insights;
 }
 
 /* ── Narrative generator ─────────────────────────────────── */
@@ -300,7 +333,7 @@ export function PulsePage() {
   }, [industry]);
 
   const health = computeOperationalHealth(metrics, summary, anomalies, processes);
-  const recommendations = generateRecommendations(metrics, anomalies, processes);
+  const insights = generateInsights(metrics, anomalies, processes, summary);
   const narrative = generateNarrative(metrics, anomalies, processes, summary);
   const dimensions = Object.entries(health.dimensions).map(([key, val]) => ({
     key, name: key,
@@ -537,7 +570,7 @@ export function PulsePage() {
             </Card>
           </div>
 
-          {/* Narrative + Recommendations */}
+          {/* Narrative + Insights */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Operational Narrative */}
             <Card variant="black">
@@ -551,14 +584,14 @@ export function PulsePage() {
               </p>
             </Card>
 
-            {/* Recommendations */}
+            {/* Insights */}
             <Card>
               <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
-                <Lightbulb className="w-4 h-4 text-emerald-400" /> Recommendations
+                <Lightbulb className="w-4 h-4 text-emerald-400" /> Insights
               </h3>
               <div className="space-y-2.5">
-                {recommendations.map((rec, i) => {
-                  const Icon = rec.icon;
+                {insights.map((insight, i) => {
+                  const Icon = insight.icon;
                   return (
                     <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: 'var(--accent)', color: '#fff' }}>
@@ -568,14 +601,14 @@ export function PulsePage() {
                         <div className="flex items-start justify-between gap-2">
                           <span className="text-sm font-medium t-primary flex items-center gap-1.5">
                             <Icon size={12} className="text-accent flex-shrink-0" />
-                            {rec.title}
+                            {insight.title}
                           </span>
                         </div>
-                        <p className="text-xs t-muted mt-0.5">{rec.description}</p>
+                        <p className="text-xs t-muted mt-0.5">{insight.description}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] t-muted">Priority: {rec.priority}</span>
+                          <span className="text-[10px] t-muted">Priority: {insight.priority}</span>
                           <span className="text-[10px] t-muted">|</span>
-                          <span className="text-[10px] t-muted">{rec.category}</span>
+                          <span className="text-[10px] t-muted">{insight.category}</span>
                         </div>
                       </div>
                     </div>
@@ -1167,11 +1200,11 @@ export function PulsePage() {
                         </div>
                       </div>
 
-                      {/* Optimisation Recommendations */}
+                      {/* Optimisation Insights */}
                       <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                         <div className="flex items-center gap-2 mb-3">
                           <Lightbulb className="w-4 h-4 text-accent" />
-                          <h4 className="text-sm font-semibold t-primary">Optimisation Recommendations</h4>
+                          <h4 className="text-sm font-semibold t-primary">Optimisation Insights</h4>
                         </div>
                         <div className="space-y-2.5">
                           {flow.bottlenecks.length > 0 && (
