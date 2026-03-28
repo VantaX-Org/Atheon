@@ -14,7 +14,7 @@ seed.use('/*', cors());
 /**
  * Helper: Verify VantaX tenant and admin access
  */
-function getVantaXTenantId(c: any): string | null {
+async function getVantaXTenantId(c: any): Promise<string | null> {
   const auth = c.get('auth') as AuthContext | undefined;
   
   // Allow superadmin, support_admin, or VantaX tenant users
@@ -24,9 +24,10 @@ function getVantaXTenantId(c: any): string | null {
   }
 
   // Find VantaX tenant specifically
-  return (c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     "SELECT id FROM tenants WHERE slug = 'vantax'"
-  ).first() as Promise<{ id: string } | null>)?.then((r: any) => r?.id || null) as any;
+  ).first() as { id: string } | null;
+  return row?.id || null;
 }
 
 /**
@@ -36,7 +37,7 @@ function getVantaXTenantId(c: any): string | null {
  */
 seed.post('/seed-vantax', async (c) => {
   // Security: Only VantaX tenant
-  const tenantId = getVantaXTenantId(c);
+  const tenantId = await getVantaXTenantId(c);
   if (!tenantId) {
     return c.json({ 
       error: 'Access denied',
@@ -347,7 +348,7 @@ seed.post('/seed-vantax', async (c) => {
  * Restricted to VantaX tenant only
  */
 seed.get('/vantax-status', async (c) => {
-  const tenantId = getVantaXTenantId(c);
+  const tenantId = await getVantaXTenantId(c);
   if (!tenantId) {
     return c.json({ 
       exists: false, 
