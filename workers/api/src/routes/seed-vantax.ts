@@ -6,9 +6,9 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { AuthContext } from '../middleware/auth';
+import type { AuthContext, AppBindings } from '../types';
 
-const seed = new Hono();
+const seed = new Hono<AppBindings>();
 seed.use('/*', cors());
 
 /**
@@ -24,9 +24,9 @@ function getVantaXTenantId(c: any): string | null {
   }
 
   // Find VantaX tenant specifically
-  return c.env.DB.prepare(
+  return (c.env.DB.prepare(
     "SELECT id FROM tenants WHERE slug = 'vantax'"
-  ).first<{ id: string }>()?.id || null;
+  ).first() as Promise<{ id: string } | null>)?.then((r: any) => r?.id || null) as any;
 }
 
 /**
@@ -76,7 +76,7 @@ seed.post('/seed-vantax', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ?`
       ).bind(tenantId).run();
-      cleanupCount += result.changes || 0;
+      cleanupCount += (result.meta as any)?.changes || 0;
     }
     console.log(`Cleaned ${cleanupCount} old records`);
 
@@ -290,7 +290,7 @@ seed.post('/seed-vantax', async (c) => {
     return c.json({
       success: true,
       message: 'VantaX tenant seeded with SAP test data',
-      tenant: { id: tenantId, name: vantaxTenant.name, slug: 'vantax' },
+      tenant: { id: tenantId, slug: 'vantax' },
       cleanup: { tables: cleanupTables.length, recordsRemoved: cleanupCount },
       seeded: {
         clusters: clusters.length,
@@ -364,7 +364,7 @@ seed.get('/vantax-status', async (c) => {
 
   return c.json({
     exists: true,
-    tenant: vantaxTenant,
+    tenantId,
     data: {
       runs: (counts[0] as any)?.count || 0,
       metrics: (counts[1] as any)?.count || 0,

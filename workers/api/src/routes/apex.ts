@@ -658,7 +658,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
     // Fallback: heuristic-based analysis
     const heuristicCauses = [];
     
-    if (context.runStats?.discrepancies > 10) {
+    if ((context.runStats?.discrepancies as number) > 10) {
       heuristicCauses.push({
         description: 'High discrepancy rate suggests data quality issues in source or target systems',
         confidence: 75,
@@ -668,7 +668,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
       });
     }
     
-    if (context.runStats?.exceptions > 5) {
+    if ((context.runStats?.exceptions as number) > 5) {
       heuristicCauses.push({
         description: 'Multiple exceptions indicate business rule violations or configuration mismatches',
         confidence: 70,
@@ -857,17 +857,17 @@ apex.get('/risks/:riskId/export', async (c) => {
   
   for (const item of items) {
     csvRows.push([
-      item.item_number,
-      item.item_status,
-      item.exception_type || '',
-      item.exception_severity || '',
-      item.source_ref || '',
-      item.target_ref || '',
-      item.field || '',
-      item.source_value ?? '',
-      item.target_value ?? '',
-      item.difference || '',
-      item.discrepancy_reason || '',
+      String(item.item_number ?? ''),
+      String(item.item_status ?? ''),
+      String(item.exception_type || ''),
+      String(item.exception_severity || ''),
+      String(item.source_ref || ''),
+      String(item.target_ref || ''),
+      String(item.field || ''),
+      String(item.source_value ?? ''),
+      String(item.target_value ?? ''),
+      String(item.difference || ''),
+      String(item.discrepancy_reason || ''),
     ]);
   }
   

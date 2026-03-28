@@ -6,9 +6,9 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { AuthContext } from '../middleware/auth';
+import type { AuthContext, AppBindings } from '../types';
 
-const tenants = new Hono();
+const tenants = new Hono<AppBindings>();
 tenants.use('/*', cors());
 
 /**
@@ -29,7 +29,7 @@ tenants.get('/tenants', async (c) => {
   }
 
   try {
-    const { data } = await c.env.DB.prepare(`
+    const queryResult = await c.env.DB.prepare(`
       SELECT 
         id, name, slug, industry, plan, status, deployment_model, region,
         created_at, updated_at,
@@ -38,6 +38,7 @@ tenants.get('/tenants', async (c) => {
       FROM tenants
       ORDER BY created_at DESC
     `).all();
+    const data = queryResult.results || [];
 
     // Get data counts for each tenant
     const tenantsWithCounts = [];
@@ -409,7 +410,7 @@ tenants.delete('/tenants/:id/hard-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ?`
       ).bind(tenantId).run();
-      deletedCount += result.changes || 0;
+      deletedCount += (result.meta as any)?.changes || 0;
     }
 
     // Log the deletion

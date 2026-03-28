@@ -1,0 +1,175 @@
+name: Deploy Frontend (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+
+concurrency:
+  group: deploy-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Build & Type Check
+  #    Runs on every push and PR
+  #    Lessons learned:
+  #      - Use --noEmit instead of -b to avoid stale tsbuildinfo
+  #      - Cache node_modules for faster builds
+  # ──────────────────────────────────────────────
+  build:
+    name: Build & Type Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  # ──────────────────────────────────────────────
+  # 2. Deploy to Production
+  #    Triggers: push to main only
+  #    Lessons learned:
+  #      - Support both API Token and Global API Key auth
+  #      - Add retry logic for transient Cloudflare API failures
+  #      - Separate build from deploy for cleaner logs
+  # ──────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: deploy-frontend-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Deploy to Cloudflare Pages (with retry)
+        run: |
+          MAX_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::Deploy attempt $ATTEMPT of $MAX_ATTEMPTS"
+            if npx wrangler pages deploy dist --project-name=atheon 2>&1; then
+              echo "::endgroup::"
+              echo "✓ Production deploy succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              WAIT=$((ATTEMPT * 10))
+              echo "⚠ Deploy failed, retrying in ${WAIT}s..."
+              sleep $WAIT
+            fi
+          done
+          echo "✗ Deploy failed after $MAX_ATTEMPTS attempts"
+          exit 1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ──────────────────────────────────────────────
+  # 3. Deploy Preview (PR)
+  #    Triggers: pull requests only
+  #    Creates a preview deployment for each PR branch
+  # ──────────────────────────────────────────────
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Deploy Preview to Cloudflare Pages
+        run: |
+          MAX_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::Preview deploy attempt $ATTEMPT of $MAX_ATTEMPTS"
+            if npx wrangler pages deploy dist --project-name=atheon --branch=${{ github.head_ref }} 2>&1; then
+              echo "::endgroup::"
+              echo "✓ Preview deploy succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              sleep $((ATTEMPT * 5))
+            fi
+          done
+          echo "✗ Preview deploy failed after $MAX_ATTEMPTS attempts"
+          exit 1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

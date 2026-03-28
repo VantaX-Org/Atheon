@@ -5,10 +5,9 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { getTenantId } from '../middleware/request-path';
-import type { AuthContext } from '../middleware/auth';
+import type { AuthContext, AppBindings } from '../types';
 
-const admin = new Hono();
+const admin = new Hono<AppBindings>();
 
 admin.use('/*', cors());
 
