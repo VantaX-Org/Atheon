@@ -54,6 +54,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_API_URL: https://atheon-api.vantax.co.za
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -102,7 +104,7 @@ jobs:
           MAX_ATTEMPTS=3
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "::group::Deploy attempt $ATTEMPT of $MAX_ATTEMPTS"
-            if npx wrangler pages deploy dist --project-name=atheon 2>&1; then
+            if npx wrangler pages deploy dist --project-name=atheon --branch=main 2>&1; then
               echo "::endgroup::"
               echo "✓ Production deploy succeeded on attempt $ATTEMPT"
               exit 0
