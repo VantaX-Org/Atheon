@@ -6,9 +6,9 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { AuthContext } from '../middleware/auth';
+import type { AuthContext, AppBindings } from '../types';
 
-const tenants = new Hono();
+const tenants = new Hono<AppBindings>();
 tenants.use('/*', cors());
 
 /**
@@ -29,7 +29,7 @@ tenants.get('/', async (c) => {
   }
 
   try {
-    const { data } = await c.env.DB.prepare(`
+    const result = await c.env.DB.prepare(`
       SELECT 
         t.id, t.name, t.slug, t.industry, t.plan, t.status, t.deployment_model,
         t.region, t.created_at, t.updated_at,
@@ -45,11 +45,12 @@ tenants.get('/', async (c) => {
       GROUP BY t.id
       ORDER BY t.created_at DESC
     `).all();
+    const data = result.results || [];
 
     return c.json({
       success: true,
-      count: (data as any[])?.length || 0,
-      tenants: data || [],
+      count: data.length,
+      tenants: data,
     });
   } catch (err) {
     console.error('Failed to list tenants:', err);
@@ -265,34 +266,34 @@ tenants.post('/:id/export', async (c) => {
       exportDate: new Date().toISOString(),
       tenant,
       data: {
-        users: (users as any[]) || [],
-        clusters: (clusters as any[]) || [],
-        subCatalysts: (subCatalysts as any[]) || [],
-        runs: (runs as any[]) || [],
-        runItems: (runItems as any[]) || [],
-        metrics: (metrics as any[]) || [],
-        risks: (risks as any[]) || [],
-        healthScores: (healthScores as any[]) || [],
-        briefings: (briefings as any[]) || [],
-        actions: (actions as any[]) || [],
+        users: users.results || [],
+        clusters: clusters.results || [],
+        subCatalysts: subCatalysts.results || [],
+        runs: runs.results || [],
+        runItems: runItems.results || [],
+        metrics: metrics.results || [],
+        risks: risks.results || [],
+        healthScores: healthScores.results || [],
+        briefings: briefings.results || [],
+        actions: actions.results || [],
       },
       summary: {
-        users: (users as any[])?.length || 0,
-        clusters: (clusters as any[])?.length || 0,
-        subCatalysts: (subCatalysts as any[])?.length || 0,
-        runs: (runs as any[])?.length || 0,
-        runItems: (runItems as any[])?.length || 0,
-        metrics: (metrics as any[])?.length || 0,
-        risks: (risks as any[])?.length || 0,
-        healthScores: (healthScores as any[])?.length || 0,
-        briefings: (briefings as any[])?.length || 0,
-        actions: (actions as any[])?.length || 0,
+        users: users.results?.length || 0,
+        clusters: clusters.results?.length || 0,
+        subCatalysts: subCatalysts.results?.length || 0,
+        runs: runs.results?.length || 0,
+        runItems: runItems.results?.length || 0,
+        metrics: metrics.results?.length || 0,
+        risks: risks.results?.length || 0,
+        healthScores: healthScores.results?.length || 0,
+        briefings: briefings.results?.length || 0,
+        actions: actions.results?.length || 0,
       },
     };
 
     return c.json({
       success: true,
-      message: `Exported ${tenant.name} data successfully`,
+      message: `Exported ${(tenant as any).name} data successfully`,
       export: exportData,
       downloadUrl: `/api/v1/admin/tenants/${tenantId}/export/download`,
     });
@@ -341,18 +342,18 @@ tenants.get('/:id/export/download', async (c) => {
 
     const exportData = {
       exportDate: new Date().toISOString(),
-      tenant: { name: tenant.name, slug: tenant.slug, id: tenantId },
+      tenant: { name: (tenant as any).name, slug: (tenant as any).slug, id: tenantId },
       data: {
-        users: (users as any[]) || [],
-        clusters: (clusters as any[]) || [],
-        subCatalysts: (subCatalysts as any[]) || [],
-        runs: (runs as any[]) || [],
-        runItems: (runItems as any[]) || [],
-        metrics: (metrics as any[]) || [],
-        risks: (risks as any[]) || [],
-        healthScores: (healthScores as any[]) || [],
-        briefings: (briefings as any[]) || [],
-        actions: (actions as any[]) || [],
+        users: users.results || [],
+        clusters: clusters.results || [],
+        subCatalysts: subCatalysts.results || [],
+        runs: runs.results || [],
+        runItems: runItems.results || [],
+        metrics: metrics.results || [],
+        risks: risks.results || [],
+        healthScores: healthScores.results || [],
+        briefings: briefings.results || [],
+        actions: actions.results || [],
       },
     };
 
@@ -427,7 +428,7 @@ tenants.delete('/:id/permanent-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ? OR id = ?`
       ).bind(tenantId, tenantId).run();
-      deletedCount += result.changes || 0;
+      deletedCount += (result.meta as any)?.changes || 0;
     }
 
     // Log deletion for audit

@@ -663,6 +663,7 @@ pulse.post('/anomalies/detect', async (c) => {
 
   // Save detected anomalies
   for (const anomaly of anomalies) {
+    if (!anomaly) continue;
     await c.env.DB.prepare(
       `INSERT INTO anomalies (id, tenant_id, metric_id, metric, deviation, severity, description, status, detected_at, source_run_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
