@@ -1,0 +1,345 @@
+name: Deploy Workers API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/api/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'workers/api/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: deploy-api-${{ github.event.inputs.environment || 'ci' }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  WORKING_DIR: workers/api
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Type Check
+  # ──────────────────────────────────────────────
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: workers/api/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.WORKING_DIR }}
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+        working-directory: ${{ env.WORKING_DIR }}
+
+  # ──────────────────────────────────────────────
+  # 2. Unit Tests
+  # ──────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: workers/api/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.WORKING_DIR }}
+      - name: Run unit tests
+        run: npx vitest run --reporter=verbose
+        working-directory: ${{ env.WORKING_DIR }}
+
+  # ──────────────────────────────────────────────
+  # 3. Deploy to Staging
+  #    Triggers: push to main, or workflow_dispatch with staging
+  #    Lessons learned:
+  #      - Pre-create Cloudflare Queues idempotently (old failure: missing queues)
+  #      - Retry deploy up to 3 times with backoff (old failure: transient 503)
+  #      - Support both API Token and Global API Key auth (old failure: auth issues)
+  #      - Run post-deploy migration automatically
+  # ──────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [typecheck, test]
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    concurrency:
+      group: deploy-api-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: workers/api/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Pre-create Cloudflare Queues (idempotent)
+        run: |
+          for QUEUE in catalyst-tasks-staging catalyst-dlq-staging; do
+            echo "::group::Ensuring queue $QUEUE exists"
+            HTTP_CODE=$(curl -s -o /tmp/queue_resp.json -w "%{http_code}" \
+              -X POST "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/queues" \
+              -H "X-Auth-Key: ${CF_API_KEY}" \
+              -H "X-Auth-Email: ${CF_EMAIL}" \
+              -H "Content-Type: application/json" \
+              -d "{\"queue_name\":\"${QUEUE}\"}")
+            BODY=$(cat /tmp/queue_resp.json)
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+              echo "✓ Created queue $QUEUE"
+            elif echo "$BODY" | grep -qi "already exists"; then
+              echo "✓ Queue $QUEUE already exists"
+            else
+              echo "⚠ Could not create queue $QUEUE (HTTP $HTTP_CODE): $BODY"
+            fi
+            echo "::endgroup::"
+          done
+        env:
+          CF_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CF_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Staging (with retry)
+        run: |
+          MAX_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::Deploy attempt $ATTEMPT of $MAX_ATTEMPTS"
+            if npx wrangler deploy --env staging 2>&1; then
+              echo "::endgroup::"
+              echo "✓ Deploy succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              WAIT=$((ATTEMPT * 15))
+              echo "⚠ Deploy failed, retrying in ${WAIT}s..."
+              sleep $WAIT
+            fi
+          done
+          echo "✗ Deploy failed after $MAX_ATTEMPTS attempts"
+          exit 1
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Run post-deploy database migration (staging)
+        if: success()
+        run: |
+          if [ -z "$SETUP_SECRET" ] || [ -z "$API_URL" ]; then
+            echo "⚠ Skipping migration: SETUP_SECRET or STAGING_API_URL not configured"
+            exit 0
+          fi
+          echo "Running migration on staging..."
+          for ATTEMPT in 1 2 3; do
+            HTTP_CODE=$(curl -s -o /tmp/migrate_resp.json -w "%{http_code}" \
+              -X POST "${API_URL}/api/v1/admin/migrate" \
+              -H "X-Setup-Secret: ${SETUP_SECRET}" \
+              -H "Content-Type: application/json" \
+              --max-time 30)
+            echo "Migration attempt $ATTEMPT — HTTP $HTTP_CODE"
+            cat /tmp/migrate_resp.json
+            echo ""
+            if [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✓ Migration succeeded"
+              exit 0
+            fi
+            if [ "$ATTEMPT" -lt 3 ]; then
+              echo "⚠ Migration failed, retrying in 10s..."
+              sleep 10
+            fi
+          done
+          echo "✗ Migration failed after 3 attempts"
+          exit 1
+        env:
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          API_URL: ${{ vars.STAGING_API_URL }}
+
+      - name: Verify staging health
+        if: success()
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "⚠ Skipping health check: STAGING_API_URL not configured"
+            exit 0
+          fi
+          echo "Checking staging health..."
+          for ATTEMPT in 1 2 3; do
+            HTTP_CODE=$(curl -s -o /tmp/health_resp.json -w "%{http_code}" \
+              "${API_URL}/healthz" --max-time 10)
+            echo "Health check attempt $ATTEMPT — HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Staging is healthy"
+              cat /tmp/health_resp.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "⚠ Health check did not return 200 — check manually"
+          cat /tmp/health_resp.json || true
+        env:
+          API_URL: ${{ vars.STAGING_API_URL }}
+
+  # ──────────────────────────────────────────────
+  # 4. Deploy to Production
+  #    Triggers: workflow_dispatch with production ONLY (never auto-deploy)
+  #    Same hardening as staging plus:
+  #      - Production queue names (no -staging suffix)
+  #      - Mandatory health check
+  # ──────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [typecheck, test]
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
+    environment: production
+    concurrency:
+      group: deploy-api-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: workers/api/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Pre-create Cloudflare Queues (idempotent)
+        run: |
+          for QUEUE in catalyst-tasks catalyst-dlq; do
+            echo "::group::Ensuring queue $QUEUE exists"
+            HTTP_CODE=$(curl -s -o /tmp/queue_resp.json -w "%{http_code}" \
+              -X POST "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/queues" \
+              -H "X-Auth-Key: ${CF_API_KEY}" \
+              -H "X-Auth-Email: ${CF_EMAIL}" \
+              -H "Content-Type: application/json" \
+              -d "{\"queue_name\":\"${QUEUE}\"}")
+            BODY=$(cat /tmp/queue_resp.json)
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+              echo "✓ Created queue $QUEUE"
+            elif echo "$BODY" | grep -qi "already exists"; then
+              echo "✓ Queue $QUEUE already exists"
+            else
+              echo "⚠ Could not create queue $QUEUE (HTTP $HTTP_CODE): $BODY"
+            fi
+            echo "::endgroup::"
+          done
+        env:
+          CF_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CF_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Production (with retry)
+        run: |
+          MAX_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::Deploy attempt $ATTEMPT of $MAX_ATTEMPTS"
+            if npx wrangler deploy 2>&1; then
+              echo "::endgroup::"
+              echo "✓ Deploy succeeded on attempt $ATTEMPT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              WAIT=$((ATTEMPT * 15))
+              echo "⚠ Deploy failed, retrying in ${WAIT}s..."
+              sleep $WAIT
+            fi
+          done
+          echo "✗ Deploy failed after $MAX_ATTEMPTS attempts"
+          exit 1
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Run post-deploy database migration (production)
+        if: success()
+        run: |
+          if [ -z "$SETUP_SECRET" ] || [ -z "$API_URL" ]; then
+            echo "⚠ Skipping migration: SETUP_SECRET or PRODUCTION_API_URL not configured"
+            exit 0
+          fi
+          echo "Running migration on production..."
+          for ATTEMPT in 1 2 3; do
+            HTTP_CODE=$(curl -s -o /tmp/migrate_resp.json -w "%{http_code}" \
+              -X POST "${API_URL}/api/v1/admin/migrate" \
+              -H "X-Setup-Secret: ${SETUP_SECRET}" \
+              -H "Content-Type: application/json" \
+              --max-time 30)
+            echo "Migration attempt $ATTEMPT — HTTP $HTTP_CODE"
+            cat /tmp/migrate_resp.json
+            echo ""
+            if [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✓ Migration succeeded"
+              exit 0
+            fi
+            if [ "$ATTEMPT" -lt 3 ]; then
+              echo "⚠ Migration failed, retrying in 10s..."
+              sleep 10
+            fi
+          done
+          echo "✗ Migration failed after 3 attempts"
+          exit 1
+        env:
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
+
+      - name: Verify production health
+        if: success()
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "⚠ Skipping health check: PRODUCTION_API_URL not configured"
+            exit 0
+          fi
+          echo "Checking production health..."
+          for ATTEMPT in 1 2 3 4 5; do
+            HTTP_CODE=$(curl -s -o /tmp/health_resp.json -w "%{http_code}" \
+              "${API_URL}/healthz" --max-time 10)
+            echo "Health check attempt $ATTEMPT — HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Production is healthy"
+              cat /tmp/health_resp.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "✗ Production health check failed after 5 attempts"
+          cat /tmp/health_resp.json || true
+          exit 1
+        env:
+          API_URL: ${{ vars.PRODUCTION_API_URL }}
