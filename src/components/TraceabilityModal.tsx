@@ -32,7 +32,7 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
           <>
             <Badge variant="outline" className="text-xs">Clusters ({(data as HealthDimensionTraceResponse).drillDownPath.clusters?.length || 0})</Badge>
             <ChevronRight size={12} className="t-muted" />
-            <Badge variant="outline" className="text-xs">Sub-Cataulysts ({(data as HealthDimensionTraceResponse).drillDownPath.subCataulysts?.length || 0})</Badge>
+            <Badge variant="outline" className="text-xs">Sub-Catalysts ({(data as HealthDimensionTraceResponse).drillDownPath.subCataulysts?.length || 0})</Badge>
             <ChevronRight size={12} className="t-muted" />
             <Badge variant="outline" className="text-xs">Runs ({(data as HealthDimensionTraceResponse).drillDownPath.runs?.length || 0})</Badge>
             <ChevronRight size={12} className="t-muted" />
@@ -202,19 +202,19 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
                   {type === 'dimension' ? (
                     <div className="space-y-1">
                       <p className="text-xs t-muted">Source Run: {(data as HealthDimensionTraceResponse).sourceRunId || 'N/A'}</p>
-                      <p className="text-xs t-muted">Cataulyst: {(data as HealthDimensionTraceResponse).catalystName || 'N/A'}</p>
+                      <p className="text-xs t-muted">Catalyst: {(data as HealthDimensionTraceResponse).catalystName || 'N/A'}</p>
                       <p className="text-xs t-muted">Contributors: {(data as HealthDimensionTraceResponse).contributors.join(', ') || 'None'}</p>
                     </div>
                   ) : type === 'risk' ? (
                     <div className="space-y-1">
                       <p className="text-xs t-muted">Source Run: {(data as RiskTraceResponse).sourceAttribution.sourceRunId || 'N/A'}</p>
                       <p className="text-xs t-muted">Cluster: {(data as RiskTraceResponse).sourceAttribution.clusterId || 'N/A'}</p>
-                      <p className="text-xs t-muted">Sub-Cataulyst: {(data as RiskTraceResponse).sourceAttribution.subCataulystName || 'N/A'}</p>
+                      <p className="text-xs t-muted">Sub-Catalyst: {(data as RiskTraceResponse).sourceAttribution.subCataulystName || 'N/A'}</p>
                     </div>
                   ) : (
                     <div className="space-y-1">
                       <p className="text-xs t-muted">Source Run: {(data as MetricTraceResponse).sourceAttribution.sourceRunId || 'N/A'}</p>
-                      <p className="text-xs t-muted">Sub-Cataulyst: {(data as MetricTraceResponse).sourceAttribution.subCataulystName || 'N/A'}</p>
+                      <p className="text-xs t-muted">Sub-Catalyst: {(data as MetricTraceResponse).sourceAttribution.subCataulystName || 'N/A'}</p>
                       <p className="text-xs t-muted">Cluster: {(data as MetricTraceResponse).sourceAttribution.clusterId || 'N/A'}</p>
                     </div>
                   )}
