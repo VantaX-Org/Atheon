@@ -301,7 +301,7 @@ export function PulsePage() {
     'Metric Health': 'operational',
     'Process Conformance': 'process',
     'Anomaly Pressure': 'risk',
-    'Process Efficiency': 'operational',
+    'Process Efficiency': 'process',
   };
 
   const handleOpenDimensionTrace = async (dimension: string) => {
