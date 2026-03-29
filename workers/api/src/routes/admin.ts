@@ -471,9 +471,8 @@ admin.post('/llm-config', async (c) => {
       maxTokens?: number;
     }>();
 
-    const validProviders = ['claude', 'openai', 'ollama', 'internal', 'workers-ai'];
-    // Accept workers_ai from frontend but normalize to workers-ai
-    const normalizedProvider = body.provider === 'workers_ai' ? 'workers-ai' : body.provider;
+    const validProviders = ['claude', 'openai', 'ollama', 'internal', 'workers_ai'];
+    const normalizedProvider = body.provider;
     if (!validProviders.includes(normalizedProvider)) {
       return c.json({ error: `Invalid provider. Must be one of: ${validProviders.join(', ')}` }, 400);
     }

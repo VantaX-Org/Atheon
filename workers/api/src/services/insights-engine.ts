@@ -458,7 +458,7 @@ async function autoGenerateRiskAlerts(
   if (criticalInsights.length === 0) return;
 
   for (const insight of criticalInsights) {
-    const alertId = `ra-auto-${context.tenantId}-${context.runId}-${insight.category}`;
+    const alertId = `ra-auto-${context.tenantId}-${context.runId}-${insight.category}-${insight.id}`;
     try {
       await db.prepare(
         `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at, source_run_id, cluster_id, sub_catalyst_name)

@@ -12,7 +12,7 @@
  * This is a trade secret. All responses are attributed to "Atheon Intelligence".
  */
 
-export type LlmProviderType = 'claude' | 'openai' | 'ollama' | 'internal' | 'workers-ai';
+export type LlmProviderType = 'claude' | 'openai' | 'ollama' | 'internal' | 'workers_ai';
 
 export interface LlmProviderConfig {
   provider: LlmProviderType;
@@ -63,7 +63,7 @@ export async function loadLlmConfig(db: D1Database, tenantId: string): Promise<L
   } catch {
     // Fall through to default
   }
-  return { provider: 'workers-ai' };
+  return { provider: 'workers_ai' };
 }
 
 /**
@@ -100,7 +100,7 @@ export async function llmChat(
       return callOllama(config, messages, maxTokens, temperature);
     case 'internal':
       return callInternal(config, messages, maxTokens, temperature);
-    case 'workers-ai':
+    case 'workers_ai':
     default:
       return callWorkersAI(ai, messages, maxTokens, temperature);
   }
