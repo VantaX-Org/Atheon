@@ -491,7 +491,7 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
   }
   
   // Get source attribution
-  const subCataulystName = metric.sub_cataulyst_name as string | null;
+  const subCataulystName = metric.sub_catalyst_name as string | null;
   const sourceRunId = metric.source_run_id as string | null;
   const clusterId = metric.cluster_id as string | null;
   
@@ -499,7 +499,7 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
   let sourceRun: Record<string, unknown> | null = null;
   if (sourceRunId) {
     sourceRun = await c.env.DB.prepare(
-      'SELECT id, cluster_id, sub_cataulyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at FROM sub_cataulyst_runs WHERE id = ? AND tenant_id = ?'
+      'SELECT id, cluster_id, sub_catalyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
     ).bind(sourceRunId, tenantId).first();
   }
   
@@ -515,7 +515,7 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
   let contributingKpis: Record<string, unknown>[] = [];
   if (subCataulystName && clusterId) {
     const kpis = await c.env.DB.prepare(
-      'SELECT kd.kpi_name, kd.category, kv.value, kv.status, kv.measured_at FROM sub_cataulyst_kpi_values kv JOIN sub_cataulyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_cataulyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
+      'SELECT kd.kpi_name, kd.category, kv.value, kv.status, kv.measured_at FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_catalyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
     ).bind(tenantId, clusterId, subCataulystName).all();
     contributingKpis = kpis.results || [];
   }
@@ -546,7 +546,7 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
     },
     sourceRun: sourceRun ? {
       runId: sourceRun.id,
-      subCataulystName: sourceRun.sub_cataulyst_name,
+      subCataulystName: sourceRun.sub_catalyst_name,
       status: sourceRun.status,
       matched: sourceRun.matched,
       discrepancies: sourceRun.discrepancies,
@@ -559,7 +559,7 @@ pulse.get('/metrics/:metricId/trace', async (c) => {
       clusterId: clusterInfo.id,
       clusterName: clusterInfo.name,
       domain: clusterInfo.domain,
-      subCataulysts: JSON.parse(clusterInfo.sub_cataulysts as string || '[]'),
+      subCataulysts: JSON.parse(clusterInfo.sub_catalysts as string || '[]'),
     } : null,
     contributingKpis: contributingKpis.map(k => ({
       kpiName: k.kpi_name,

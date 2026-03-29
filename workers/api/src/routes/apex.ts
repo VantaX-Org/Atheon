@@ -195,7 +195,7 @@ apex.get('/health/dimensions/:dimension', async (c) => {
   const relevantRuns = (recentRuns.results || []).filter(r => contributingRunIds.has(r.cluster_id as string)).map(r => ({
     runId: r.id,
     clusterId: r.cluster_id,
-    subCataulystName: r.sub_cataulyst_name,
+    subCataulystName: r.sub_catalyst_name,
     status: r.status,
     matched: r.matched,
     discrepancies: r.discrepancies,
@@ -206,7 +206,7 @@ apex.get('/health/dimensions/:dimension', async (c) => {
   
   // Get KPIs for this dimension from contributing sub-cataulysts
   const kpiQuery = await c.env.DB.prepare(
-    'SELECT kd.id, kd.kpi_name, kd.category, kd.unit, kd.direction, kv.value, kv.status, kv.measured_at, scr.sub_catalyst_name, scr.id as run_id FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id LEFT JOIN sub_cataulyst_runs scr ON kv.run_id = scr.id WHERE kd.tenant_id = ? AND kv.status != ? ORDER BY kv.measured_at DESC LIMIT 50'
+    'SELECT kd.id, kd.kpi_name, kd.category, kd.unit, kd.direction, kv.value, kv.status, kv.measured_at, scr.sub_catalyst_name, scr.id as run_id FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id LEFT JOIN sub_catalyst_runs scr ON kv.run_id = scr.id WHERE kd.tenant_id = ? AND kv.status != ? ORDER BY kv.measured_at DESC LIMIT 50'
   ).bind(tenantId, 'green').all();
   
   const relevantKpis = (kpiQuery.results || []).filter(k => {
@@ -228,7 +228,7 @@ apex.get('/health/dimensions/:dimension', async (c) => {
     status: k.status,
     unit: k.unit,
     measuredAt: k.measured_at,
-    subCataulystName: k.sub_cataulyst_name,
+    subCataulystName: k.sub_catalyst_name,
     runId: k.run_id,
   }));
   
@@ -385,13 +385,13 @@ apex.get('/risks/:riskId/trace', async (c) => {
   // Get source attribution
   const sourceRunId = risk.source_run_id as string | null;
   const clusterId = risk.cluster_id as string | null;
-  const subCataulystName = risk.sub_cataulyst_name as string | null;
+  const subCataulystName = risk.sub_catalyst_name as string | null;
   
   // Get the source run if available
   let sourceRun: Record<string, unknown> | null = null;
   if (sourceRunId) {
     sourceRun = await c.env.DB.prepare(
-      'SELECT id, cluster_id, sub_cataulyst_name, catalyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at, reasoning FROM sub_cataulyst_runs WHERE id = ? AND tenant_id = ?'
+      'SELECT id, cluster_id, sub_catalyst_name, catalyst_name, status, matched, discrepancies, exceptions_raised, total_source_value, started_at, completed_at, reasoning FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
     ).bind(sourceRunId, tenantId).first();
   }
   
@@ -407,7 +407,7 @@ apex.get('/risks/:riskId/trace', async (c) => {
   let contributingKpis: Record<string, unknown>[] = [];
   if (subCataulystName && clusterId) {
     const kpis = await c.env.DB.prepare(
-      'SELECT kd.kpi_name, kd.category, kd.unit, kv.value, kv.status, kv.measured_at FROM sub_cataulyst_kpi_values kv JOIN sub_cataulyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_cataulyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
+      'SELECT kd.kpi_name, kd.category, kd.unit, kv.value, kv.status, kv.measured_at FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id WHERE kd.tenant_id = ? AND kd.cluster_id = ? AND kd.sub_catalyst_name = ? ORDER BY kv.measured_at DESC LIMIT 20'
     ).bind(tenantId, clusterId, subCataulystName).all();
     contributingKpis = kpis.results || [];
   }
@@ -416,7 +416,7 @@ apex.get('/risks/:riskId/trace', async (c) => {
   let flaggedItems: Record<string, unknown>[] = [];
   if (sourceRunId) {
     const items = await c.env.DB.prepare(
-      "SELECT item_number, item_status, exception_type, exception_severity, source_ref, target_ref, field, source_value, target_value, difference FROM sub_cataulyst_run_items WHERE run_id = ? AND tenant_id = ? AND item_status IN ('discrepancy', 'exception') LIMIT 50"
+      "SELECT item_number, item_status, exception_type, exception_severity, source_ref, target_ref, field, source_value, target_value, difference FROM sub_catalyst_run_items WHERE run_id = ? AND tenant_id = ? AND item_status IN ('discrepancy', 'exception') LIMIT 50"
     ).bind(sourceRunId, tenantId).all();
     flaggedItems = items.results || [];
   }
@@ -454,7 +454,7 @@ apex.get('/risks/:riskId/trace', async (c) => {
     sourceRun: sourceRun ? {
       runId: sourceRun.id,
       clusterId: sourceRun.cluster_id,
-      subCataulystName: sourceRun.sub_cataulyst_name,
+      subCataulystName: sourceRun.sub_catalyst_name,
       catalystName: sourceRun.catalyst_name,
       status: sourceRun.status,
       matched: sourceRun.matched,
@@ -470,7 +470,7 @@ apex.get('/risks/:riskId/trace', async (c) => {
       clusterName: clusterInfo.name,
       domain: clusterInfo.domain,
       autonomyTier: clusterInfo.autonomy_tier,
-      subCataulysts: JSON.parse(clusterInfo.sub_cataulysts as string || '[]'),
+      subCataulysts: JSON.parse(clusterInfo.sub_catalysts as string || '[]'),
     } : null,
     contributingKpis: contributingKpis.map(k => ({
       kpiName: k.kpi_name,
@@ -529,7 +529,7 @@ apex.get('/risks/:riskId/suggest-causes', async (c) => {
   
   // Get source attribution
   const sourceRunId = risk.source_run_id as string | null;
-  const subCataulystName = risk.sub_cataulyst_name as string | null;
+  const subCataulystName = risk.sub_catalyst_name as string | null;
   
   // Get related data for analysis
   let sourceRun: Record<string, unknown> | null = null;
