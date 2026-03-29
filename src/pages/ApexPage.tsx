@@ -631,10 +631,10 @@ export function ApexPage() {
  <div
  key={risk.id}
  onClick={() => setExpandedRisk(expandedRisk === risk.id ? null : risk.id)}
- className={`rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-all ${expandedRisk === risk.id ? 'border-accent/20' : ''}`}
+ className="rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-all"
  style={{
   background: 'var(--bg-card-solid)',
-  border: '1px solid var(--border-card)',
+  border: expandedRisk === risk.id ? '1px solid rgba(74, 107, 90, 0.20)' : '1px solid var(--border-card)',
   boxShadow: '0 2px 12px rgba(100, 120, 180, 0.07), 0 0 0 1px rgba(255,255,255,0.5)',
  }}
  >
