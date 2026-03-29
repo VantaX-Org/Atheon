@@ -331,7 +331,7 @@ function NewAssessmentWizard({ onCreated, onError }: {
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>ERP Connection (optional)</label>
             <select value={erpConnectionId} onChange={e => setErpConnectionId(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm" style={inputStyle}>
-              <option value="">No ERP connection — use synthetic data</option>
+              <option value="">No ERP connection — use estimated data</option>
               {erpConnections.map(c => <option key={c.id} value={c.id}>{c.company_name} ({c.erp_type})</option>)}
             </select>
           </div>
@@ -452,7 +452,7 @@ function NewAssessmentWizard({ onCreated, onError }: {
             <div className="flex justify-between text-sm">
               <span style={{ color: 'var(--text-muted)' }}>ERP Connection</span>
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                {erpConnectionId ? erpConnections.find(c => c.id === erpConnectionId)?.company_name || erpConnectionId : 'Synthetic data'}
+                {erpConnectionId ? erpConnections.find(c => c.id === erpConnectionId)?.company_name || erpConnectionId : 'Estimated data'}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -471,7 +471,7 @@ function NewAssessmentWizard({ onCreated, onError }: {
 
           {!erpConnectionId && (
             <div className="p-3 rounded-lg text-xs bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-              No ERP connection selected. Synthetic / mock data will be used for volume estimation.
+              No ERP connection selected. Estimated data will be used for volume estimation.
             </div>
           )}
 
