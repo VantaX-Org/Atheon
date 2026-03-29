@@ -311,6 +311,10 @@ for (const [name, handler] of routeModules) {
 
 // VantaX demo seeder - restricted to VantaX tenant only
 app.route('/api/v1/seed-vantax', seedVantaX);
+
+// Tenant admin routes need auth middleware (tenantIsolation sets c.get('auth'))
+app.use('/api/v1/admin/*', tenantIsolation());
+app.use('/api/v1/admin/*', requireRole('superadmin'));
 app.route('/api/v1/admin', tenantsAdmin);
 
 
