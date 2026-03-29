@@ -5,8 +5,10 @@ import { api } from "@/lib/api";
 import type { AuditEntry } from "@/lib/api";
 import { Shield, CheckCircle, XCircle, Clock, Filter, Loader2, Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 export function AuditPage() {
+ const toast = useToast();
  const [entries, setEntries] = useState<AuditEntry[]>([]);
  const [loading, setLoading] = useState(true);
  const [showFilters, setShowFilters] = useState(false);
@@ -22,8 +24,8 @@ export function AuditPage() {
  try {
  const data = await api.audit.log();
  setEntries(data.entries);
- } catch { /* ignore */ }
- setLoading(false);
+  } catch (err) { console.error('Failed to load audit log', err); toast.error('Failed to load audit log'); }
+  setLoading(false);
  }
  load();
  }, []);

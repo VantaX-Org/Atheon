@@ -530,8 +530,8 @@ function RunningView({ id, onComplete }: {
           // Increment stage based on time elapsed
           setStage(prev => Math.min(prev + 1, 3));
         }
-      } catch {
-        // Continue polling
+      } catch (err) {
+        console.error('Assessment status poll failed', err);
       }
     };
 

@@ -210,7 +210,7 @@ export function IntegrationsPage() {
     try {
       const c = await api.erp.connections();
       setConnections(c.connections);
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to refresh connections', err); }
   }, []);
 
   const handleSync = async (connectionId: string) => {

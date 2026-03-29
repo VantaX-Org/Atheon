@@ -103,8 +103,8 @@ export function Header() {
     try {
       const data = await api.notifications.unreadCount();
       setUnreadCount(data.unreadCount);
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error('Failed to fetch unread count', err);
     }
   }, []);
 
@@ -122,8 +122,8 @@ export function Header() {
         const data = await api.notifications.list({ limit: 20 });
         setNotifications(data.notifications);
         setUnreadCount(data.unreadCount);
-      } catch {
-        // fallback empty
+      } catch (err) {
+        console.error('Failed to load notifications', err);
       } finally {
         setLoadingNotifs(false);
       }
@@ -137,16 +137,16 @@ export function Header() {
       await api.notifications.markRead(unreadIds);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error('Failed to mark notifications as read', err);
     }
   };
 
   const handleLogout = async () => {
     try {
       await api.auth.logout();
-    } catch {
-      // Continue with client-side logout even if API call fails
+    } catch (err) {
+      console.error('Logout API call failed', err);
     }
     setToken(null);
     setTenantOverride(null);

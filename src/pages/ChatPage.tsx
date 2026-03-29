@@ -163,8 +163,9 @@ export function ChatPage() {
   tier: selectedTier,
   citations: result.citations.map((c, i) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))};
  addMessageToThread(activeThreadId, assistantMsg);
- } catch {
- addMessageToThread(activeThreadId, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' });
+  } catch (err) {
+  console.error('Chat query failed', err);
+  addMessageToThread(activeThreadId, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' });
  }
  setSending(false);
  };

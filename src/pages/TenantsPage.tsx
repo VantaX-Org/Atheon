@@ -117,8 +117,8 @@ export function TenantsPage() {
  try {
  const res = await api.iam.users(tenantId);
  setTenantUsers(res.users);
- } catch { setTenantUsers([]); }
- setLoadingUsers(false);
+  } catch (err) { console.error('Failed to load tenant users', err); setTenantUsers([]); }
+  setLoadingUsers(false);
  };
 
  const handleAddUser = async () => {
@@ -211,8 +211,8 @@ export function TenantsPage() {
  try {
  const res = await api.catalysts.clusters(tenantId);
  setTenantClusters(res.clusters);
- } catch { setTenantClusters([]); }
- setLoadingClusters(false);
+  } catch (err) { console.error('Failed to load tenant clusters', err); setTenantClusters([]); }
+  setLoadingClusters(false);
  };
 
  // Open manage mode (view existing clusters, toggle sub-catalysts, configure)
@@ -253,19 +253,19 @@ export function TenantsPage() {
  try {
  await api.catalysts.removeDataSource(clusterId, subName, showDeployCatalyst || undefined);
  if (showDeployCatalyst) await loadTenantClusters(showDeployCatalyst);
- } catch { /* silent */ }
- };
+  } catch (err) { console.error('Failed to remove data source', err); }
+  };
 
- // Delete a cluster
- const handleDeleteCluster = async (clusterId: string) => {
+  // Delete a cluster
+  const handleDeleteCluster = async (clusterId: string) => {
  if (!showDeployCatalyst) return;
  try {
  await api.catalysts.deleteCluster(clusterId, showDeployCatalyst);
  await loadTenantClusters(showDeployCatalyst);
- } catch { /* silent */ }
- };
+  } catch (err) { console.error('Failed to delete cluster', err); }
+  };
 
- // Company Reset handler
+  // Company Reset handler
  const handleResetCompany = async () => {
   if (!showResetConfirm || resetting) return;
   const tenant = tenants.find(t => t.id === showResetConfirm);
@@ -274,8 +274,8 @@ export function TenantsPage() {
   try {
    const res = await api.tenants.reset(showResetConfirm);
    setResetResult({ deletedRows: res.deletedRows, tablesCleared: res.tablesCleared });
-  } catch { /* silent */ }
-  setResetting(false);
+   } catch (err) { console.error('Failed to reset company', err); }
+   setResetting(false);
  };
 
  // Delete Company handler
@@ -348,11 +348,11 @@ export function TenantsPage() {
  try {
  const res = await api.tenants.list();
  setTenants(res.tenants);
- } catch { /* silent */ }
- setLoading(false);
- }
- load();
- }, []);
+  } catch (err) { console.error('Failed to load tenants', err); }
+  setLoading(false);
+  }
+  load();
+  }, []);
 
  const tabs = [
  { id: 'overview', label: 'All Tenants', icon: <Building2 size={14} />, count: tenants.length },
@@ -701,9 +701,9 @@ export function TenantsPage() {
  await api.iam.updateUser(u.id, { role: e.target.value }, showManageUsers || undefined);
  const res = await api.iam.users(showManageUsers!);
  setTenantUsers(res.users);
- } catch { /* silent */ }
- }}
- title="Change user role"
+  } catch (err) { console.error('Failed to update user role', err); }
+  }}
+  title="Change user role"
  >
  <option value="admin">Admin</option>
  <option value="executive">Executive</option>
@@ -715,7 +715,7 @@ export function TenantsPage() {
  try {
  await api.iam.resendWelcome(u.id, showManageUsers || undefined);
  setActionError(null);
- } catch { setActionError('Failed to send password reset'); }
+ } catch (err) { console.error('Failed to send password reset', err); setActionError('Failed to send password reset'); }
  }} title="Send password reset email to this user" className="!px-2 !py-1 text-[10px]">Reset Pwd</Button>
  </div>
  </div>

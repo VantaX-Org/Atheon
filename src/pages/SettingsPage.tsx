@@ -122,7 +122,7 @@ export function SettingsPage() {
        const k = res.keys[0];
        setApiKeyMeta({ id: k.id, name: k.name, prefix: k.prefix, createdAt: k.createdAt });
      }
-   } catch { /* no keys yet */ }
+   } catch (err) { console.error('Failed to load API keys', err); }
  }, []);
 
  useEffect(() => { loadApiKeys(); }, [loadApiKeys]);

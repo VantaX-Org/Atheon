@@ -212,20 +212,6 @@ export function MemoryPage() {
               <p className="text-sm t-primary font-medium">Mind (AI) & Chat (Interaction)</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-4">
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-              <p className="text-sm t-primary font-medium">Context / Foundation</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-              <p className="text-sm t-primary font-medium">GraphRAG & Knowledge</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Powers</p>
-              <p className="text-sm t-primary font-medium">Mind LLM Context</p>
-            </div>
-          </div>
  </div>
 
  {/* Stats */}

@@ -91,7 +91,8 @@ export function Dashboard() {
       }
       setTraceData(data);
       setShowTraceModal(true);
-    } catch {
+    } catch (err) {
+      console.error('Failed to load dimension traceability', err);
       alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
     } finally {
       setLoadingTrace(false);
@@ -118,8 +119,8 @@ export function Dashboard() {
       if (c.status === "fulfilled") setClusters(c.value.clusters);
       if (act.status === "fulfilled") setActions(act.value.actions);
       if (cp.status === "fulfilled") setCpHealth(cp.value);
-    } catch {
-      /* silently handle */
+    } catch (err) {
+      console.error('Failed to load dashboard data', err);
     }
     setLoading(false);
     setLastRefreshed(new Date());

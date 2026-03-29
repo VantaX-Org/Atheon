@@ -45,10 +45,10 @@ export function IAMPage() {
  setPolicies(p.policies);
  setPolicyForm({ name: '', description: '', type: 'rbac' });
  setShowNewPolicy(false);
- } catch {
- /* silent */
- }
- setCreatingPolicy(false);
+  } catch (err) {
+  console.error('Failed to create policy', err);
+  }
+  setCreatingPolicy(false);
  };
 
  useEffect(() => {
@@ -222,7 +222,7 @@ export function IAMPage() {
            try {
              await api.iam.updateUser(user.id, { role: editRole });
              setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: editRole } : u));
-           } catch { /* ignore */ }
+           } catch (err) { console.error('Failed to update user role', err); }
            setEditingUserId(null);
            setSavingUser(false);
          }} title="Save role change">
@@ -239,7 +239,7 @@ export function IAMPage() {
            try {
              await api.iam.deleteUser(user.id);
              setUsers(prev => prev.filter(u => u.id !== user.id));
-           } catch { /* ignore */ }
+           } catch (err) { console.error('Failed to delete user', err); }
          }} title="Delete user"><Trash2 size={12} className="text-red-400" /></Button>
        </>
      )}
