@@ -1492,10 +1492,11 @@ export function TenantsPage() {
  </div>
  <div className="flex gap-3 pt-1">
  <Button variant="secondary" size="sm" onClick={() => setShowReseedConfirm(false)} title="Cancel re-seed">Cancel</Button>
- <button
+  <button
  onClick={handleReseedVantax}
  disabled={reseeding}
- className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-accent text-white hover:opacity-90"
+ className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white hover:opacity-90"
+ style={{ backgroundColor: 'var(--accent)' }}
  title="Reset and re-seed VantaX demo data"
  >
  {reseeding ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <RefreshCw size={14} className="inline mr-1" />}
