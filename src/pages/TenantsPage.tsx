@@ -92,7 +92,7 @@ export function TenantsPage() {
  // Re-seed VantaX demo state
  const [showReseedConfirm, setShowReseedConfirm] = useState(false);
  const [reseeding, setReseeding] = useState(false);
- const [reseedResult, setReseedResult] = useState<{ clusters: number; subCatalysts: number; positiveRuns: number; negativeRuns: number; insights: number; healthScore: number } | null>(null);
+ const [reseedResult, setReseedResult] = useState<{ clusters: number; subCatalysts: number; positiveRuns: { count: number; totalItems: number; matchRate: number }; negativeRuns: { count: number; totalItems: number; matchRate: number }; metrics: number; risks: number; healthScore: number } | null>(null);
 
  // Edit Entitlements modal state
  const [showEditEntitlements, setShowEditEntitlements] = useState<string | null>(null);
@@ -1455,12 +1455,12 @@ export function TenantsPage() {
  <p className="text-[10px] t-muted">Sub-Catalysts</p>
  </div>
  <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
- <p className="text-lg font-bold text-accent">{reseedResult.positiveRuns + reseedResult.negativeRuns}</p>
+ <p className="text-lg font-bold text-accent">{reseedResult.positiveRuns.count + reseedResult.negativeRuns.count}</p>
  <p className="text-[10px] t-muted">Runs</p>
  </div>
  <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
- <p className="text-lg font-bold text-accent">{reseedResult.insights}</p>
- <p className="text-[10px] t-muted">Insights</p>
+ <p className="text-lg font-bold text-accent">{reseedResult.metrics + reseedResult.risks}</p>
+ <p className="text-[10px] t-muted">Metrics & Risks</p>
  </div>
  <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
  <p className="text-lg font-bold text-accent">{reseedResult.healthScore}</p>
