@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
-import { FlipCard, FlipCardFront, FlipCardBack } from "@/components/ui/flip-card";
+import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
+import { SkeletonCard } from "@/components/ui/skeleton";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
- Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, RotateCw
+ Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
+ CheckCircle2, XCircle, Gauge
 } from "lucide-react";
 
 
@@ -23,37 +26,6 @@ const trendIcon = (trend: string, size = 14) => {
 };
 
 const severityColor = (s: string) => s === 'critical' ? 'danger' : s === 'high' ? 'warning' : s === 'medium' ? 'info' : 'default';
-
-function DashCard({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
-  return (
-    <div
-      className={`rounded-2xl p-5 ${className}`}
-      style={{
-        background: "var(--bg-card-solid)",
-        border: "1px solid var(--border-card)",
-        boxShadow: "0 2px 12px rgba(100, 120, 180, 0.07), 0 0 0 1px rgba(255,255,255,0.5)",
-        ...style,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function TintedCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={`rounded-2xl p-5 ${className}`}
-      style={{
-        background: "linear-gradient(135deg, rgba(74, 107, 90, 0.06), rgba(93, 138, 111, 0.03))",
-        border: "1px solid rgba(74, 107, 90, 0.10)",
-        boxShadow: "0 2px 12px rgba(74, 107, 90, 0.05)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
 
 const riskImpactLabel = (probability: number) => probability >= 0.7 ? 'Very High' : probability >= 0.5 ? 'High' : probability >= 0.3 ? 'Medium' : 'Low';
 const riskLikelihoodBar = (probability: number) => Math.round(probability * 100);
@@ -71,15 +43,11 @@ export function ApexPage() {
  // A1-4: Health history for sparkline + delta
  const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
  
- // Flip card states for interactive cards
- const [flippedDimension, setFlippedDimension] = useState<string | null>(null);
- const [flippedHealth, setFlippedHealth] = useState(false);
  
  // Traceability modal state
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
  const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
  const [traceabilityType, setTraceabilityType] = useState<'dimension' | 'risk'>('dimension');
- const [loadingTraceability, setLoadingTraceability] = useState(false);
 
  // Scenario Builder Modal state
  const [showScenarioBuilder, setShowScenarioBuilder] = useState(false);
@@ -204,13 +172,41 @@ export function ApexPage() {
  { id: 'scenarios', label: 'What-If Analysis', icon: <BarChart3 size={14} /> },
  ];
 
- if (loading) {
- return (
- <div className="flex items-center justify-center h-96">
- <Loader2 className="w-8 h-8 text-accent animate-spin" />
- </div>
- );
- }
+  if (loading) {
+  return (
+  <div className="space-y-6 animate-fadeIn">
+  <div className="space-y-4">
+  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+  <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Apex</h1>
+  <Badge variant="info">Executive Intelligence</Badge>
+  </div>
+  <p className="text-base t-muted max-w-3xl">
+  <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
+  </p>
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
+  <p className="text-sm t-primary font-medium">Executive / Board</p>
+  </div>
+  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
+  <p className="text-sm t-primary font-medium">Business Health & Risk</p>
+  </div>
+  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
+  <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
+  </div>
+  </div>
+  </div>
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+  </div>
+  <div className="flex items-center justify-center h-48">
+  <Loader2 className="w-8 h-8 text-accent animate-spin" />
+  </div>
+  </div>
+  );
+  }
 
  if (!hasData) {
  return (
@@ -238,14 +234,14 @@ export function ApexPage() {
  </div>
  </div>
  </div>
- <DashCard>
+ <Card>
  <div className="flex flex-col items-center justify-center py-16 text-center">
  <Crown className="w-12 h-12 t-muted mb-4 opacity-30" />
  <p className="text-sm font-medium t-primary">No data yet</p>
  <p className="text-xs t-muted mt-1">Connect an ERP system and run a sync to populate executive intelligence,</p>
  <p className="text-xs t-muted">or use the Catalysts page to generate insights.</p>
  </div>
- </DashCard>
+ </Card>
  </div>
  );
  }
@@ -284,220 +280,170 @@ export function ApexPage() {
  </div>
  )}
 
- <div className="flex items-center gap-2">
-  <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
-   {tabs.map((tab) => (
-    <button
-     key={tab.id}
-     onClick={() => setActiveTab(tab.id)}
-     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
-     style={
-      activeTab === tab.id
-       ? { background: "var(--bg-card-solid)", color: "var(--text-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }
-       : { color: "var(--text-muted)" }
-     }
-    >
-     {tab.icon}
-     <span>{tab.label}</span>
-     {tab.count !== undefined && (
-      <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${activeTab === tab.id ? 'bg-accent/10 text-accent' : 'bg-[var(--bg-secondary)] t-muted'}`}>
-       {tab.count}
-      </span>
-     )}
-    </button>
-   ))}
+ <div className="flex items-center gap-3">
+  <div className="flex-1 overflow-x-auto">
+   <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
   </div>
  </div>
 
  {/* Business Health Tab */}
  {activeTab === 'health' && (
- <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
- {/* Overall Health Score - Interactive Flip Card */}
- <FlipCard
-  front={
-   <FlipCardFront className="items-center justify-center">
-    <div className="flex flex-col items-center justify-center h-full">
-     <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
-     {health?.calculatedAt && healthHistory && (
-      <div className="flex flex-col items-center gap-2 mt-4">
-       {healthHistory.history.length > 1 && (
-        <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
-       )}
-       <div className="flex items-center gap-2">
-        {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
-        <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
-       </div>
+ <TabPanel>
+  {/* Top Row: Health Ring + Dimensions */}
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+   <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
+    <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
+    {health?.calculatedAt && healthHistory && (
+     <div className="flex flex-col items-center gap-2 mt-4">
+      {healthHistory.history.length > 1 && (
+       <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
+      )}
+      <div className="flex items-center gap-2">
+       {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
+       <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
       </div>
-     )}
-     {!health?.calculatedAt && overallScore === 0 && (
-      <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate.</p>
-     )}
-    </div>
-    <div className="absolute bottom-3 right-3 text-white/30">
-     <RotateCw size={14} />
-    </div>
-   </FlipCardFront>
-  }
-  back={
-   <FlipCardBack>
-    <div className="flex items-center justify-between mb-3">
-     <h4 className="text-sm font-semibold t-primary">Health Breakdown</h4>
-     <RotateCw size={14} className="text-white/30" />
-    </div>
-    <div className="space-y-3 overflow-y-auto max-h-[300px]">
-     {dimensions.map((dim) => (
-      <div key={dim.key} className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium t-primary">{dim.name}</span>
-        <span className={`text-xs font-bold ${dim.score >= 80 ? 'text-emerald-400' : dim.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
-         {dim.score}
-        </span>
-       </div>
-       <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
-       <div className="flex items-center justify-between mt-1">
-        <span className="text-[10px] t-muted">Weight: {(dim.weight * 100).toFixed(0)}%</span>
-        <div className="flex items-center gap-1">
-         {trendIcon(dim.trend, 10)}
-         <span className={`text-[10px] ${dim.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-          {dim.change > 0 ? '+' : ''}{dim.change}
-         </span>
-        </div>
-       </div>
-      </div>
-     ))}
-     {dimensions.length === 0 && (
-      <p className="text-xs t-muted text-center py-4">No dimension data available</p>
-     )}
-    </div>
-    <p className="text-[10px] t-muted mt-3 text-center">Click to flip back</p>
-   </FlipCardBack>
-  }
-  isFlipped={flippedHealth}
-  onFlip={() => setFlippedHealth(!flippedHealth)}
-  height="h-80"
-  className="lg:col-span-1"
- />
-
- {/* Performance Areas - Interactive Cards */}
- <div className="lg:col-span-2">
-  <DashCard>
-   <div className="flex items-center justify-between mb-4">
-    <h3 className="text-lg font-semibold t-primary">Performance Areas</h3>
-    <div className="flex items-center gap-2">
-     <Badge variant="info" className="text-xs">Click to Flip</Badge>
-     <Badge variant="info" className="text-xs">Traceability Available</Badge>
-    </div>
-   </div>
-   {dimensions.length === 0 && (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-     <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
-     <p className="text-sm t-muted">No dimensions available yet.</p>
-     <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating insights.</p>
-     <div className="mt-4 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-w-md">
-      <p className="text-xs t-primary font-medium mb-1">🔍 About Traceability</p>
-      <p className="text-[10px] t-muted">Once catalysts run, each performance area will show a <strong>Trace</strong> button. Click it to drill down from health scores → clusters → sub-catalysts → individual items for root cause analysis.</p>
      </div>
-    </div>
-   )}
-   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    {dimensions.map((dim) => (
-     <FlipCard
-      key={dim.key}
-      front={
-       <FlipCardFront>
-        <div className="flex flex-col h-full justify-between">
-         <div>
-          <div className="flex items-center justify-between mb-2">
-           <span className="text-sm font-semibold t-primary">{dim.name}</span>
-           <span className={`text-lg font-bold ${dim.score >= 80 ? 'text-emerald-400' : dim.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
-            {dim.score}
-           </span>
-          </div>
-          <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="md" />
-         </div>
-         <div className="flex items-center justify-between mt-3">
-          <div className="flex items-center gap-1">
-           {trendIcon(dim.trend, 12)}
-           <span className={`text-xs ${dim.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {dim.change > 0 ? '+' : ''}{dim.change}
-           </span>
-          </div>
-          <div className="flex items-center gap-2">
-           <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => { e.stopPropagation(); handleOpenDimensionTrace(dim.key); }}
-            disabled={loadingTraceability}
-            className="text-xs px-2 py-1 h-7"
-            title="View traceability details"
-           >
-            {loadingTraceability && traceabilityType === 'dimension' ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
-            Trace
-           </Button>
-           <RotateCw size={12} className="text-white/30" />
-          </div>
-         </div>
+    )}
+    {!health?.calculatedAt && overallScore === 0 && (
+     <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
+    )}
+   </Card>
+
+   <Card className="lg:col-span-2">
+    <h3 className="text-lg font-semibold t-primary mb-4">Business Dimensions</h3>
+    {dimensions.length === 0 || overallScore === 0 ? (
+     <div className="flex flex-col items-center justify-center py-12 text-center">
+      <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
+      <p className="text-sm t-muted">No dimensions available yet.</p>
+      <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating executive insights.</p>
+     </div>
+    ) : (
+     <div className="space-y-4">
+      {dimensions.map((dim) => (
+       <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+        <div className="sm:w-44 flex-shrink-0">
+         <span className="text-sm t-secondary">{dim.name}</span>
         </div>
-       </FlipCardFront>
-      }
-      back={
-       <FlipCardBack>
-        <div className="flex items-center justify-between mb-2">
-         <h4 className="text-sm font-semibold t-primary">{dim.name} Details</h4>
-         <RotateCw size={14} className="text-white/30" />
+        <div className="flex-1">
+         <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="md" />
         </div>
-        <div className="space-y-2 text-xs">
-         <div className="flex justify-between">
-          <span className="t-muted">Score:</span>
-          <span className="t-primary font-medium">{dim.score}/100</span>
+        <div className="flex items-center gap-3 sm:gap-0">
+         <div className="w-12 text-right">
+          <span className="text-sm font-bold t-primary">{dim.score}</span>
          </div>
-         <div className="flex justify-between">
-          <span className="t-muted">Weight:</span>
-          <span className="t-primary font-medium">{(dim.weight * 100).toFixed(0)}%</span>
-         </div>
-         <div className="flex justify-between">
-          <span className="t-muted">Trend:</span>
-          <div className="flex items-center gap-1">
-           {trendIcon(dim.trend, 10)}
-           <span className="t-primary font-medium capitalize">{dim.trend}</span>
-          </div>
-         </div>
-         <div className="flex justify-between">
-          <span className="t-muted">Change:</span>
-          <span className={dim.change >= 0 ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium'}>
+         <div className="flex items-center gap-1 w-20">
+          {trendIcon(dim.trend, 12)}
+          <span className={`text-xs ${dim.change >= 0 ? 'text-emerald-400' : dim.change < 0 ? 'text-red-400' : 'text-gray-400'}`}>
            {dim.change > 0 ? '+' : ''}{dim.change}
           </span>
          </div>
-        </div>
-        <div className="flex gap-2 mt-4">
-         <Button
-          variant="primary"
-          size="sm"
-          className="flex-1 text-xs"
-          onClick={(e) => { e.stopPropagation(); handleOpenDimensionTrace(dim.key); }}
+         <Sparkline data={dim.sparkline} width={60} height={20} color={dim.score >= 80 ? '#10b981' : dim.score >= 60 ? '#f59e0b' : '#ef4444'} />
+         <button
+          onClick={() => handleOpenDimensionTrace(dim.key)}
+          className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors ml-2"
+          title={`Trace ${dim.name}`}
          >
-          <Link2 size={12} className="mr-1" /> Full Trace
-         </Button>
+          <Eye size={10} /> Trace
+         </button>
         </div>
-        <p className="text-[10px] t-muted mt-3 text-center">Click to flip back</p>
-       </FlipCardBack>
-      }
-      isFlipped={flippedDimension === dim.key}
-      onFlip={() => setFlippedDimension(flippedDimension === dim.key ? null : dim.key)}
-      height="h-40"
-     />
-    ))}
-   </div>
-  </DashCard>
- </div>
- </div>
+       </div>
+      ))}
+     </div>
+    )}
+   </Card>
+  </div>
+
+  {/* Status Breakdown Cards */}
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+   <Card hover>
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
+     <Gauge size={14} className="text-accent" />
+    </div>
+    <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
+    <p className="text-[10px] t-muted mt-1">Being tracked</p>
+   </Card>
+   <Card hover>
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+     <CheckCircle2 size={14} className="text-emerald-400" />
+    </div>
+    <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
+    <p className="text-[10px] t-muted mt-1">Score above 80</p>
+   </Card>
+   <Card hover>
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
+     <AlertTriangle size={14} className="text-amber-400" />
+    </div>
+    <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
+    <p className="text-[10px] t-muted mt-1">Score 60–79</p>
+   </Card>
+   <Card hover>
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+     <XCircle size={14} className="text-red-400" />
+    </div>
+    <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
+    <p className="text-[10px] t-muted mt-1">Score below 60</p>
+   </Card>
+  </div>
+
+  {/* Executive Summary + Risk Snapshot */}
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   <Card variant="black">
+    <div className="flex items-center gap-2 mb-3">
+     <BarChart3 className="w-4 h-4 text-accent" />
+     <h3 className="text-lg font-semibold">Executive Summary</h3>
+     <Badge variant="info">Live</Badge>
+    </div>
+    <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-muted)' }}>
+     {briefing?.summary || `Atheon is monitoring ${dimensions.length} business dimensions across your enterprise. Overall health score is ${overallScore}/100. ${dimensions.filter(d => d.score < 60).length > 0 ? `${dimensions.filter(d => d.score < 60).length} dimension(s) require immediate attention.` : 'All dimensions are within acceptable thresholds.'} ${risks.length > 0 ? `There are ${risks.length} active risk alert(s) requiring review.` : 'No active risk alerts detected.'}`}
+    </p>
+   </Card>
+
+   <Card>
+    <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
+     <Shield className="w-4 h-4 text-accent" /> Risk Snapshot
+    </h3>
+    <div className="space-y-2.5">
+     {risks.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-6 text-center">
+       <Shield className="w-8 h-8 t-muted mb-2 opacity-30" />
+       <p className="text-sm t-muted">No active risks detected.</p>
+       <p className="text-xs t-muted mt-1">Run a catalyst to scan for organisational risks.</p>
+      </div>
+     ) : (
+      risks.slice(0, 4).map((risk, i) => (
+       <div key={risk.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: risk.severity === 'critical' ? 'rgba(239,68,68,0.15)' : 'var(--accent)', color: risk.severity === 'critical' ? '#ef4444' : '#fff' }}>
+         {i + 1}
+        </div>
+        <div className="flex-1 min-w-0">
+         <div className="flex items-start justify-between gap-2">
+          <span className="text-sm font-medium t-primary">{risk.title}</span>
+          <Badge variant={severityColor(risk.severity)} size="sm">{risk.severity}</Badge>
+         </div>
+         <p className="text-xs t-muted mt-0.5 truncate">{risk.description}</p>
+         <div className="flex items-center gap-2 mt-1">
+          <span className="text-[10px] t-muted">Impact: {risk.impactValue} {risk.impactUnit}</span>
+          <span className="text-[10px] t-muted">|</span>
+          <span className="text-[10px] t-muted">{risk.category}</span>
+         </div>
+        </div>
+       </div>
+      ))
+     )}
+    </div>
+   </Card>
+  </div>
+ </TabPanel>
  )}
 
  {/* Executive Briefing Tab */}
  {activeTab === 'briefing' && (
- <div className="space-y-6">
- {/* Narrative */}
- <DashCard>
+ <TabPanel>
+ <Card>
  <div className="flex items-center gap-2 mb-3">
  <FileText className="w-4 h-4 text-accent" />
  <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
@@ -506,7 +452,6 @@ export function ApexPage() {
  {briefing?.summary ? (
  <>
  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{briefing.summary}</p>
- {/* A2: Data-driven briefing summary cards */}
  {(briefing.healthDelta !== null || briefing.redMetricCount !== null || briefing.anomalyCount !== null || briefing.activeRiskCount !== null) && (
  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
  {briefing.healthDelta !== null && (
@@ -545,11 +490,10 @@ export function ApexPage() {
  <p className="text-xs t-muted mt-1">Run a catalyst to generate your first briefing.</p>
  </div>
  )}
- </DashCard>
+ </Card>
 
- <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
- {/* KPI Movements */}
- <DashCard>
+ <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+ <Card>
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <TrendingUp className="w-4 h-4 text-accent" /> KPI Movements
  </h3>
@@ -564,10 +508,9 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </DashCard>
+ </Card>
 
- {/* Top Risks */}
- <DashCard>
+ <Card>
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <AlertTriangle className="w-4 h-4 text-red-400" /> Top Risks
  </h3>
@@ -581,10 +524,9 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </DashCard>
+ </Card>
 
- {/* Top Opportunities */}
- <TintedCard>
+ <Card variant="mint">
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <Lightbulb className="w-4 h-4 text-emerald-400" /> Opportunities
  </h3>
@@ -598,28 +540,27 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </TintedCard>
+ </Card>
  </div>
 
- {/* Required Decisions */}
  {(briefing?.decisionsNeeded || []).length > 0 && (
- <DashCard>
+ <Card className="mt-6">
  <h3 className="text-base font-semibold flex items-center gap-2">
  <Shield className="w-4 h-4 text-accent" /> Decisions Required
  </h3>
  {(briefing?.decisionsNeeded || []).map((dec, i) => (
- <div key={i} className="p-4 rounded-lg bg-accent/5 border border-accent/10">
+ <div key={i} className="p-4 rounded-lg bg-accent/5 border border-accent/10 mt-3">
  <h4 className="text-sm font-semibold text-amber-800">{dec}</h4>
  </div>
  ))}
- </DashCard>
+ </Card>
  )}
- </div>
+ </TabPanel>
  )}
 
  {/* Risk Alerts Tab */}
  {activeTab === 'risks' && (
- <div className="space-y-4">
+ <TabPanel><div className="space-y-4">
  {risks.length === 0 && (
  <div className="flex flex-col items-center justify-center py-12 text-center">
  <Shield className="w-10 h-10 t-muted mb-3 opacity-30" />
@@ -780,12 +721,12 @@ export function ApexPage() {
  </div>
  </div>
  ))}
- </div>
+ </div></TabPanel>
  )}
 
  {/* Scenario Modelling Tab */}
  {activeTab === 'scenarios' && (
- <div className="space-y-6">
+ <TabPanel><div className="space-y-6">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">What-If Analysis</h3>
  <Button variant="primary" size="sm" onClick={() => { resetScenarioBuilder(); setShowScenarioBuilder(true); }} title="Create a new what-if scenario analysis"><Plus size={14} /> New Scenario</Button>
@@ -801,7 +742,7 @@ export function ApexPage() {
   const resultEntries = scenario.results ? Object.entries(scenario.results) : [];
   const hasResults = resultEntries.length > 0;
   return (
-   <DashCard key={scenario.id}>
+   <Card key={scenario.id}>
     <div className="flex items-start justify-between">
      <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
@@ -903,10 +844,10 @@ export function ApexPage() {
       <p className="text-sm t-muted">No results were generated for this scenario.</p>
      </div>
     )}
-   </DashCard>
+   </Card>
   );
  })}
- </div>
+ </div></TabPanel>
  )}
 
  {/* Scenario Builder Modal */}
