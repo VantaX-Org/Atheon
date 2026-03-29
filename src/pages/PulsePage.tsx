@@ -758,6 +758,7 @@ export function PulsePage() {
                     {metrics.length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.length - 8} more</p>}
                     {metrics.length === 0 && <p className="text-[9px] t-muted text-center py-2">No metrics yet</p>}
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('all'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-accent hover:text-accent/80 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
                 </Card>
               }
             />
@@ -791,6 +792,7 @@ export function PulsePage() {
                     {metrics.filter(m => m.status === 'green').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'green').length - 8} more</p>}
                     {metrics.filter(m => m.status === 'green').length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy metrics</p>}
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('green'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-emerald-400 hover:text-emerald-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
                 </Card>
               }
             />
@@ -824,6 +826,7 @@ export function PulsePage() {
                     {metrics.filter(m => m.status === 'amber').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'amber').length - 8} more</p>}
                     {metrics.filter(m => m.status === 'amber').length === 0 && <p className="text-[9px] t-muted text-center py-2">No warning metrics</p>}
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('amber'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-amber-400 hover:text-amber-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
                 </Card>
               }
             />
@@ -857,6 +860,7 @@ export function PulsePage() {
                     {metrics.filter(m => m.status === 'red').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'red').length - 8} more</p>}
                     {metrics.filter(m => m.status === 'red').length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical metrics</p>}
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('red'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-red-400 hover:text-red-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
                 </Card>
               }
             />
