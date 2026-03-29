@@ -1,46 +1,65 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 
 interface FlipCardProps {
   front: ReactNode;
   back: ReactNode;
-  isFlipped: boolean;
-  onFlip: () => void;
+  isFlipped?: boolean;
+  onFlip?: () => void;
   className?: string;
+  /** Fixed height (CSS value). When set, uses 3D flip with absolute positioning. */
   height?: string;
+  /** Minimum height for auto-sizing cards. Uses content-swap transition instead of 3D flip. */
+  minHeight?: string;
 }
 
-export function FlipCard({ front, back, isFlipped, onFlip, className = '', height = 'h-48' }: FlipCardProps) {
-  return (
-    <div
-      className={`relative perspective-1000 cursor-pointer ${className}`}
-      onClick={onFlip}
-      style={{ height }}
-    >
+/**
+ * FlipCard – click to reveal the back face.
+ * Supports two modes:
+ *   1. Fixed height (3D rotate) – pass `height`
+ *   2. Auto height (content swap with fade) – pass `minHeight` or neither
+ */
+export function FlipCard({ front, back, isFlipped: controlledFlipped, onFlip, className = '', height, minHeight }: FlipCardProps) {
+  const [internalFlipped, setInternalFlipped] = useState(false);
+  const isControlled = controlledFlipped !== undefined;
+  const flipped = isControlled ? controlledFlipped : internalFlipped;
+  const toggle = onFlip ?? (isControlled ? () => {} : () => setInternalFlipped(f => !f));
+
+  // Auto-height mode: content swap with fade
+  if (!height) {
+    return (
       <div
-        className={`relative w-full h-full transition-transform duration-500 transform-style-preserve-3d ${
-          isFlipped ? 'rotate-y-180' : ''
-        }`}
-        style={{
-          transformStyle: 'preserve-3d',
-          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-        }}
+        className={`relative cursor-pointer transition-all duration-300 ${className}`}
+        onClick={toggle}
+        style={{ minHeight }}
       >
-        {/* Front */}
-        <div
-          className="absolute w-full h-full backface-hidden"
-          style={{ backfaceVisibility: 'hidden' }}
-        >
+        <div className={`transition-opacity duration-300 ${flipped ? 'opacity-0 pointer-events-none absolute inset-0' : 'opacity-100'}`}>
           {front}
         </div>
+        <div className={`transition-opacity duration-300 ${flipped ? 'opacity-100' : 'opacity-0 pointer-events-none absolute inset-0'}`}>
+          {back}
+        </div>
+      </div>
+    );
+  }
 
-        {/* Back */}
-        <div
-          className="absolute w-full h-full backface-hidden rotate-y-180"
-          style={{
-            backfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg)',
-          }}
-        >
+  // Fixed-height mode: 3D flip
+  return (
+    <div
+      className={`relative cursor-pointer ${className}`}
+      onClick={toggle}
+      style={{ height, perspective: '1000px' }}
+    >
+      <div
+        className="relative w-full h-full transition-transform duration-500"
+        style={{
+          transformStyle: 'preserve-3d',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        <div className="absolute w-full h-full" style={{ backfaceVisibility: 'hidden' }}>
+          {front}
+        </div>
+        <div className="absolute w-full h-full" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
           {back}
         </div>
       </div>

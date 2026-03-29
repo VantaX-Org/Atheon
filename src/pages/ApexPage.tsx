@@ -11,6 +11,7 @@ import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, 
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { FlipCard } from "@/components/ui/flip-card";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
@@ -44,6 +45,10 @@ export function ApexPage() {
  const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
  
  
+ // Flip card state for dashboard cards
+ const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
+ const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
+
  // Traceability modal state
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
  const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
@@ -380,23 +385,57 @@ export function ApexPage() {
  <TabPanel>
   {/* Top Row: Health Ring + Dimensions */}
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-   <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
-    <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
-    {health?.calculatedAt && healthHistory && (
-     <div className="flex flex-col items-center gap-2 mt-4">
-      {healthHistory.history.length > 1 && (
-       <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
+   <FlipCard
+    className="lg:col-span-1"
+    isFlipped={!!flippedCards['apex-health']}
+    onFlip={() => toggleFlip('apex-health')}
+    front={
+     <Card variant="black" className="h-full flex flex-col items-center justify-center">
+      <ScoreRing score={overallScore} size="xl" label="Overall Health" />
+      {health?.calculatedAt && healthHistory && (
+       <div className="flex flex-col items-center gap-2 mt-4">
+        {healthHistory.history.length > 1 && (
+         <Sparkline data={healthHistory.history.map(h => h.overallScore)} width={120} height={30} color={healthHistory.delta >= 0 ? '#10b981' : '#ef4444'} />
+        )}
+        <div className="flex items-center gap-2">
+         {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
+         <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
+        </div>
+       </div>
       )}
-      <div className="flex items-center gap-2">
-       {trendIcon(healthHistory.delta > 0 ? 'up' : healthHistory.delta < 0 ? 'down' : 'stable')}
-       <span className={`text-sm ${healthHistory.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{healthHistory.deltaLabel}</span>
+      {!health?.calculatedAt && overallScore === 0 && (
+       <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
+      )}
+     </Card>
+    }
+    back={
+     <Card variant="black" className="h-full">
+      <div className="flex items-center justify-between mb-3">
+       <h4 className="text-sm font-semibold t-primary">Health Score Breakdown</h4>
       </div>
-     </div>
-    )}
-    {!health?.calculatedAt && overallScore === 0 && (
-     <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
-    )}
-   </Card>
+      <div className="space-y-2.5">
+       {dimensions.map((dim) => (
+        <div key={dim.key} className="flex items-center gap-2">
+         <span className="text-xs t-secondary w-32 truncate">{dim.name}</span>
+         <div className="flex-1">
+          <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
+         </div>
+         <span className="text-xs font-bold t-primary w-8 text-right">{dim.score}</span>
+        </div>
+       ))}
+       {dimensions.length === 0 && (
+        <p className="text-xs t-muted text-center py-4">No dimension data yet</p>
+       )}
+      </div>
+      <div className="mt-3 pt-2 border-t border-[var(--border-card)]">
+       <div className="flex justify-between text-xs">
+        <span className="t-muted">Composite Score</span>
+        <span className="font-bold t-primary">{overallScore}/100</span>
+       </div>
+      </div>
+     </Card>
+    }
+   />
 
    <Card className="lg:col-span-2">
     <h3 className="text-lg font-semibold t-primary mb-4">Business Dimensions</h3>
@@ -442,40 +481,128 @@ export function ApexPage() {
    </Card>
   </div>
 
-  {/* Status Breakdown Cards */}
+  {/* Status Breakdown Cards (Flippable) */}
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-   <Card hover>
-    <div className="flex items-center justify-between mb-2">
-     <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
-     <Gauge size={14} className="text-accent" />
-    </div>
-    <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
-    <p className="text-[10px] t-muted mt-1">Being tracked</p>
-   </Card>
-   <Card hover>
-    <div className="flex items-center justify-between mb-2">
-     <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
-     <CheckCircle2 size={14} className="text-emerald-400" />
-    </div>
-    <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
-    <p className="text-[10px] t-muted mt-1">Score above 80</p>
-   </Card>
-   <Card hover>
-    <div className="flex items-center justify-between mb-2">
-     <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
-     <AlertTriangle size={14} className="text-amber-400" />
-    </div>
-    <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
-    <p className="text-[10px] t-muted mt-1">Score 60–79</p>
-   </Card>
-   <Card hover>
-    <div className="flex items-center justify-between mb-2">
-     <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
-     <XCircle size={14} className="text-red-400" />
-    </div>
-    <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
-    <p className="text-[10px] t-muted mt-1">Score below 60</p>
-   </Card>
+   {/* Dimensions */}
+   <FlipCard
+    isFlipped={!!flippedCards['apex-dims']}
+    onFlip={() => toggleFlip('apex-dims')}
+    front={
+     <Card hover className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
+       <Gauge size={14} className="text-accent" />
+      </div>
+      <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
+     </Card>
+    }
+    back={
+     <Card className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs font-semibold t-primary">All Dimensions</span>
+      </div>
+      <div className="space-y-1 max-h-32 overflow-y-auto">
+       {dimensions.map((d) => (
+        <div key={d.key} className="flex items-center justify-between text-[10px]">
+         <span className="t-secondary truncate mr-2">{d.name}</span>
+         <span className={`font-medium ${d.score >= 80 ? 'text-emerald-400' : d.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{d.score}</span>
+        </div>
+       ))}
+       {dimensions.length === 0 && <p className="text-[9px] t-muted text-center py-2">No dimensions yet</p>}
+      </div>
+     </Card>
+    }
+   />
+   {/* Healthy */}
+   <FlipCard
+    isFlipped={!!flippedCards['apex-healthy']}
+    onFlip={() => toggleFlip('apex-healthy')}
+    front={
+     <Card hover className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+       <CheckCircle2 size={14} className="text-emerald-400" />
+      </div>
+      <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
+     </Card>
+    }
+    back={
+     <Card className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs font-semibold text-emerald-400">Healthy Dimensions</span>
+      </div>
+      <div className="space-y-1 max-h-32 overflow-y-auto">
+       {dimensions.filter(d => d.score >= 80).map((d) => (
+        <div key={d.key} className="flex items-center justify-between text-[10px]">
+         <span className="t-secondary truncate mr-2">{d.name}</span>
+         <span className="font-medium text-emerald-400">{d.score}</span>
+        </div>
+       ))}
+       {dimensions.filter(d => d.score >= 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy dimensions</p>}
+      </div>
+     </Card>
+    }
+   />
+   {/* At Risk */}
+   <FlipCard
+    isFlipped={!!flippedCards['apex-atrisk']}
+    onFlip={() => toggleFlip('apex-atrisk')}
+    front={
+     <Card hover className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
+       <AlertTriangle size={14} className="text-amber-400" />
+      </div>
+      <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
+     </Card>
+    }
+    back={
+     <Card className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs font-semibold text-amber-400">At Risk Dimensions</span>
+      </div>
+      <div className="space-y-1 max-h-32 overflow-y-auto">
+       {dimensions.filter(d => d.score >= 60 && d.score < 80).map((d) => (
+        <div key={d.key} className="flex items-center justify-between text-[10px]">
+         <span className="t-secondary truncate mr-2">{d.name}</span>
+         <span className="font-medium text-amber-400">{d.score}</span>
+        </div>
+       ))}
+       {dimensions.filter(d => d.score >= 60 && d.score < 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No at-risk dimensions</p>}
+      </div>
+     </Card>
+    }
+   />
+   {/* Critical */}
+   <FlipCard
+    isFlipped={!!flippedCards['apex-critical']}
+    onFlip={() => toggleFlip('apex-critical')}
+    front={
+     <Card hover className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+       <XCircle size={14} className="text-red-400" />
+      </div>
+      <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
+     </Card>
+    }
+    back={
+     <Card className="h-full">
+      <div className="flex items-center justify-between mb-2">
+       <span className="text-xs font-semibold text-red-400">Critical Dimensions</span>
+      </div>
+      <div className="space-y-1 max-h-32 overflow-y-auto">
+       {dimensions.filter(d => d.score < 60).map((d) => (
+        <div key={d.key} className="flex items-center justify-between text-[10px]">
+         <span className="t-secondary truncate mr-2">{d.name}</span>
+         <span className="font-medium text-red-400">{d.score}</span>
+        </div>
+       ))}
+       {dimensions.filter(d => d.score < 60).length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical dimensions</p>}
+      </div>
+     </Card>
+    }
+   />
   </div>
 
   {/* Executive Summary + Risk Snapshot */}
@@ -484,7 +611,6 @@ export function ApexPage() {
     <div className="flex items-center gap-2 mb-3">
      <BarChart3 className="w-4 h-4 text-accent" />
      <h3 className="text-lg font-semibold">Executive Summary</h3>
-     <Badge variant="info">Live</Badge>
     </div>
     <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-muted)' }}>
      {briefing?.summary || `Atheon is monitoring ${dimensions.length} business dimensions across your enterprise. Overall health score is ${overallScore}/100. ${dimensions.filter(d => d.score < 60).length > 0 ? `${dimensions.filter(d => d.score < 60).length} dimension(s) require immediate attention.` : 'All dimensions are within acceptable thresholds.'} ${risks.length > 0 ? `There are ${risks.length} active risk alert(s) requiring review.` : 'No active risk alerts detected.'}`}
@@ -535,8 +661,7 @@ export function ApexPage() {
  <Card>
  <div className="flex items-center gap-2 mb-3">
  <FileText className="w-4 h-4 text-accent" />
- <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
- <Badge variant="info">Today</Badge>
+  <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
  </div>
  {briefing?.summary ? (
  <>

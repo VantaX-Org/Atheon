@@ -227,7 +227,6 @@ export function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Dashboard</h1>
-            <Badge variant="info">Enterprise Intelligence</Badge>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-[10px] t-muted transition-colors duration-500 ${refreshFlash ? 'text-emerald-500' : ''}`}>
@@ -242,23 +241,6 @@ export function Dashboard() {
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-          </div>
-        </div>
-        <p className="text-base t-muted max-w-3xl">
-          <strong>Unified enterprise overview.</strong> The Dashboard aggregates Apex health scores, Pulse operational metrics, and Catalyst activity into a single executive view.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-            <p className="text-sm t-primary font-medium">Executive Overview</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Aggregates</p>
-            <p className="text-sm t-primary font-medium">Apex + Pulse + Catalysts</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down</p>
-            <p className="text-sm t-primary font-medium">All Intelligence Layers</p>
           </div>
         </div>
       </div>

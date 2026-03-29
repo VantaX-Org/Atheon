@@ -1111,12 +1111,29 @@ export function CatalystsPage() {
  </h4>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
  {cluster.subCatalysts.map((sub: SubCatalyst) => (
- <div key={sub.name} className={`flex items-center justify-between p-2 rounded-lg border ${sub.enabled ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-gray-500/5 border-gray-500/20 opacity-60'}`}>
+ <div key={sub.name} className={`p-2.5 rounded-lg border space-y-1.5 ${sub.enabled ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-gray-500/5 border-gray-500/20 opacity-60'}`}>
+ {/* Row 1: Name + Toggle */}
+ <div className="flex items-center justify-between gap-2">
  <div className="flex items-center gap-2 min-w-0">
  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${sub.enabled ? 'bg-emerald-400' : 'bg-gray-400'}`} />
- <div className="min-w-0">
- <div className="flex items-center gap-1.5">
  <span className="text-xs font-medium t-primary truncate">{sub.name}</span>
+ </div>
+ {isAdmin && (
+ <button
+ onClick={(e) => { e.stopPropagation(); handleToggleSubCatalyst(cluster.id, sub.name); }}
+ disabled={togglingSubCatalyst === `${cluster.id}:${sub.name}`}
+ className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${sub.enabled ? 'bg-emerald-500' : 'bg-gray-400'} ${togglingSubCatalyst === `${cluster.id}:${sub.name}` ? 'opacity-50' : ''}`}
+ title={sub.enabled ? 'Disable this sub-catalyst' : 'Enable this sub-catalyst'}
+ >
+ <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${sub.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+ </button>
+ )}
+ </div>
+ {/* Row 2: Description (optional) */}
+ {sub.description && <p className="text-[10px] t-secondary truncate pl-4">{sub.description}</p>}
+ {/* Row 3: Status badges — data sources, schedule, last execution */}
+ {(getSubDataSources(sub).length > 0 || (sub.schedule && sub.schedule.frequency !== 'manual') || sub.last_execution) && (
+ <div className="flex items-center gap-1.5 flex-wrap pl-4">
  {getSubDataSources(sub).map((ds, dsIdx) => (
  <span key={dsIdx} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${
  ds.type === 'erp' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
@@ -1132,31 +1149,13 @@ export function CatalystsPage() {
  {ds.type === 'custom_system' && <><Cog size={8} /> {(ds.config.system_name as string) || 'Custom'}</>}
  </span>
  ))}
- </div>
- {sub.description && <span className="text-[10px] t-secondary block truncate">{sub.description}</span>}
- </div>
- </div>
-  <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
  {sub.schedule && sub.schedule.frequency !== 'manual' && (
- <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap" title={sub.schedule.next_run ? `Next run: ${new Date(sub.schedule.next_run).toLocaleString()}` : ''}>
+ <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title={sub.schedule.next_run ? `Next run: ${new Date(sub.schedule.next_run).toLocaleString()}` : ''}>
  <Calendar size={8} />
  {sub.schedule.frequency === 'daily' ? 'Daily' : sub.schedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'}
  {sub.schedule.time_of_day ? ` ${sub.schedule.time_of_day}` : ''}
  </span>
  )}
- {sub.enabled && getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0 && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
- {subExecuting === `${cluster.id}:${sub.name}`? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
- </Button>
- )}
- {sub.enabled && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
- <Play size={10} className="mr-1" /> Run
- </Button>
- )}
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
- <BarChart3 size={10} className="mr-1 text-accent" /> Ops
- </Button>
  {sub.last_execution && (
  <button
  onClick={(e) => { e.stopPropagation(); setExecResult(sub.last_execution as ExecutionResult); setShowExecResult(true); }}
@@ -1171,20 +1170,27 @@ export function CatalystsPage() {
  {sub.last_execution.summary.matched} matched / {sub.last_execution.summary.discrepancies} disc.
  </button>
  )}
+ </div>
+ )}
+ {/* Row 4: Action buttons */}
+ <div className="flex items-center gap-1 pl-4">
+ {sub.enabled && getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0 && (
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
+ {subExecuting === `${cluster.id}:${sub.name}`? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
+ </Button>
+ )}
+ {sub.enabled && (
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
+ <Play size={10} className="mr-1" /> Run
+ </Button>
+ )}
+ <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
+ <BarChart3 size={10} className="mr-1 text-accent" /> Ops
+ </Button>
  {isAdmin && (
- <>
  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openDataSourceConfig(cluster.id, sub); }} title="Configure data sources, schedule, execution mode and field mappings">
  <Settings size={10} className="mr-1 text-accent" /> Configure
  </Button>
- <button
- onClick={(e) => { e.stopPropagation(); handleToggleSubCatalyst(cluster.id, sub.name); }}
- disabled={togglingSubCatalyst === `${cluster.id}:${sub.name}`}
- className={`relative w-8 h-4 rounded-full transition-colors ${sub.enabled ? 'bg-emerald-500' : 'bg-gray-400'} ${togglingSubCatalyst === `${cluster.id}:${sub.name}` ? 'opacity-50' : ''}`}
- title={sub.enabled ? 'Disable this sub-catalyst' : 'Enable this sub-catalyst'}
- >
- <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${sub.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
- </button>
- </>
  )}
  </div>
  </div>

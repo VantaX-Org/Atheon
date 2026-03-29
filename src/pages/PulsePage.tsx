@@ -18,6 +18,7 @@ import {
   UserCheck, FileWarning, RefreshCw, List
 } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { FlipCard } from "@/components/ui/flip-card";
 
 /* ── helpers ──────────────────────────────────────────────── */
 const trendIcon = (trend: string, size = 14) => {
@@ -273,6 +274,10 @@ export function PulsePage() {
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [availableDomains, setAvailableDomains] = useState<string[]>([]);
+
+  // Flip card state for dashboard cards
+  const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
+  const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
 
   // Traceability modal state
   const [showMetricTraceModal, setShowMetricTraceModal] = useState(false);
@@ -628,18 +633,52 @@ export function PulsePage() {
         <TabPanel>
           {/* Top Row: Health Ring + Dimensions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
-              <ScoreRing score={health.score} size="xl" label="Operational Health" sublabel="Composite Index" />
-              <div className="flex items-center gap-2 mt-4">
-                {trendIcon(health.trend)}
-                <span className={`text-sm ${health.trend === 'improving' ? 'text-emerald-400' : health.trend === 'declining' ? 'text-red-400' : 'text-gray-400'}`}>
-                  {health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs Attention' : 'Stable'}
-                </span>
-              </div>
-              {health.score === 0 && (
-                <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
-              )}
-            </Card>
+            <FlipCard
+              className="lg:col-span-1"
+              isFlipped={!!flippedCards['pulse-health']}
+              onFlip={() => toggleFlip('pulse-health')}
+              front={
+                <Card variant="black" className="h-full flex flex-col items-center justify-center">
+                  <ScoreRing score={health.score} size="xl" label="Operational Health" />
+                  <div className="flex items-center gap-2 mt-4">
+                    {trendIcon(health.trend)}
+                    <span className={`text-sm ${health.trend === 'improving' ? 'text-emerald-400' : health.trend === 'declining' ? 'text-red-400' : 'text-gray-400'}`}>
+                      {health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs Attention' : 'Stable'}
+                    </span>
+                  </div>
+                  {health.score === 0 && (
+                    <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
+                  )}
+                </Card>
+              }
+              back={
+                <Card variant="black" className="h-full">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold t-primary">Health Score Breakdown</h4>
+                  </div>
+                  <div className="space-y-2.5">
+                    {Object.entries(health.dimensions).map(([name, dim]) => (
+                      <div key={name} className="flex items-center gap-2">
+                        <span className="text-xs t-secondary w-32 truncate">{name}</span>
+                        <div className="flex-1">
+                          <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
+                        </div>
+                        <span className="text-xs font-bold t-primary w-8 text-right">{dim.score}</span>
+                      </div>
+                    ))}
+                    {Object.keys(health.dimensions).length === 0 && (
+                      <p className="text-xs t-muted text-center py-4">No dimension data yet</p>
+                    )}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-[var(--border-card)]">
+                    <div className="flex justify-between text-xs">
+                      <span className="t-muted">Composite Score</span>
+                      <span className="font-bold t-primary">{health.score}/100</span>
+                    </div>
+                  </div>
+                </Card>
+              }
+            />
 
             <Card className="lg:col-span-2">
               <h3 className="text-lg font-semibold t-primary mb-4">Operational Dimensions</h3>
@@ -685,40 +724,136 @@ export function PulsePage() {
             </Card>
           </div>
 
-          {/* Status Breakdown Cards */}
+          {/* Status Breakdown Cards (Flippable) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card hover onClick={() => { setMetricFilter('all'); setActiveTab('monitoring'); }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Total Metrics</span>
-                <Activity size={14} className="text-accent" />
-              </div>
-              <p className="text-2xl font-bold t-primary">{summary?.totalMetrics ?? metrics.length}</p>
-              <p className="text-[10px] t-muted mt-1">Being monitored</p>
-            </Card>
-            <Card hover onClick={() => { setMetricFilter('green'); setActiveTab('monitoring'); }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
-                <CheckCircle2 size={14} className="text-emerald-400" />
-              </div>
-              <p className="text-2xl font-bold text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length}</p>
-              <p className="text-[10px] t-muted mt-1">Within thresholds</p>
-            </Card>
-            <Card hover onClick={() => { setMetricFilter('amber'); setActiveTab('monitoring'); }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Warning</span>
-                <AlertTriangle size={14} className="text-amber-400" />
-              </div>
-              <p className="text-2xl font-bold text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length}</p>
-              <p className="text-[10px] t-muted mt-1">Approaching limits</p>
-            </Card>
-            <Card hover onClick={() => { setMetricFilter('red'); setActiveTab('monitoring'); }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
-                <XCircle size={14} className="text-red-400" />
-              </div>
-              <p className="text-2xl font-bold text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}</p>
-              <p className="text-[10px] t-muted mt-1">Breaching thresholds</p>
-            </Card>
+            {/* Total Metrics */}
+            <FlipCard
+              isFlipped={!!flippedCards['pulse-total']}
+              onFlip={() => toggleFlip('pulse-total')}
+              front={
+                <Card hover className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs t-muted uppercase tracking-wider">Total Metrics</span>
+                    <Activity size={14} className="text-accent" />
+                  </div>
+                  <p className="text-2xl font-bold t-primary">{summary?.totalMetrics ?? metrics.length}</p>
+                </Card>
+              }
+              back={
+                <Card className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold t-primary">All Metrics</span>
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {metrics.slice(0, 8).map((m, i) => (
+                      <div key={i} className="flex items-center justify-between text-[10px]">
+                        <span className="t-secondary truncate mr-2">{m.name}</span>
+                        <span className={`font-medium ${statusColor(m.status)}`}>{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}{m.unit ? ` ${m.unit}` : ''}</span>
+                      </div>
+                    ))}
+                    {metrics.length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.length - 8} more</p>}
+                    {metrics.length === 0 && <p className="text-[9px] t-muted text-center py-2">No metrics yet</p>}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('all'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-accent hover:text-accent/80 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
+                </Card>
+              }
+            />
+            {/* Healthy */}
+            <FlipCard
+              isFlipped={!!flippedCards['pulse-healthy']}
+              onFlip={() => toggleFlip('pulse-healthy')}
+              front={
+                <Card hover className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+                    <CheckCircle2 size={14} className="text-emerald-400" />
+                  </div>
+                  <p className="text-2xl font-bold text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length}</p>
+                </Card>
+              }
+              back={
+                <Card className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-emerald-400">Healthy Metrics</span>
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {metrics.filter(m => m.status === 'green').slice(0, 8).map((m, i) => (
+                      <div key={i} className="flex items-center justify-between text-[10px]">
+                        <span className="t-secondary truncate mr-2">{m.name}</span>
+                        <span className="font-medium text-emerald-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
+                      </div>
+                    ))}
+                    {metrics.filter(m => m.status === 'green').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'green').length - 8} more</p>}
+                    {metrics.filter(m => m.status === 'green').length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy metrics</p>}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('green'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-emerald-400 hover:text-emerald-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
+                </Card>
+              }
+            />
+            {/* Warning */}
+            <FlipCard
+              isFlipped={!!flippedCards['pulse-warning']}
+              onFlip={() => toggleFlip('pulse-warning')}
+              front={
+                <Card hover className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs t-muted uppercase tracking-wider">Warning</span>
+                    <AlertTriangle size={14} className="text-amber-400" />
+                  </div>
+                  <p className="text-2xl font-bold text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length}</p>
+                </Card>
+              }
+              back={
+                <Card className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-amber-400">Warning Metrics</span>
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {metrics.filter(m => m.status === 'amber').slice(0, 8).map((m, i) => (
+                      <div key={i} className="flex items-center justify-between text-[10px]">
+                        <span className="t-secondary truncate mr-2">{m.name}</span>
+                        <span className="font-medium text-amber-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
+                      </div>
+                    ))}
+                    {metrics.filter(m => m.status === 'amber').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'amber').length - 8} more</p>}
+                    {metrics.filter(m => m.status === 'amber').length === 0 && <p className="text-[9px] t-muted text-center py-2">No warning metrics</p>}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('amber'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-amber-400 hover:text-amber-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
+                </Card>
+              }
+            />
+            {/* Critical */}
+            <FlipCard
+              isFlipped={!!flippedCards['pulse-critical']}
+              onFlip={() => toggleFlip('pulse-critical')}
+              front={
+                <Card hover className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+                    <XCircle size={14} className="text-red-400" />
+                  </div>
+                  <p className="text-2xl font-bold text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}</p>
+                </Card>
+              }
+              back={
+                <Card className="h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-red-400">Critical Metrics</span>
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {metrics.filter(m => m.status === 'red').slice(0, 8).map((m, i) => (
+                      <div key={i} className="flex items-center justify-between text-[10px]">
+                        <span className="t-secondary truncate mr-2">{m.name}</span>
+                        <span className="font-medium text-red-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
+                      </div>
+                    ))}
+                    {metrics.filter(m => m.status === 'red').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'red').length - 8} more</p>}
+                    {metrics.filter(m => m.status === 'red').length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical metrics</p>}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('red'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-red-400 hover:text-red-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
+                </Card>
+              }
+            />
           </div>
 
           {/* Narrative + Insights */}
@@ -728,7 +863,6 @@ export function PulsePage() {
               <div className="flex items-center gap-2 mb-3">
                 <BarChart3 className="w-4 h-4 text-accent" />
                 <h3 className="text-lg font-semibold">Operational Summary</h3>
-                <Badge variant="info">Live</Badge>
               </div>
               <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-muted)' }}>
                 {narrative}
