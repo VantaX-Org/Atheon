@@ -20,8 +20,9 @@ interface FlipCardProps {
  */
 export function FlipCard({ front, back, isFlipped: controlledFlipped, onFlip, className = '', height, minHeight }: FlipCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
-  const flipped = controlledFlipped ?? internalFlipped;
-  const toggle = onFlip ?? (() => setInternalFlipped(f => !f));
+  const isControlled = controlledFlipped !== undefined;
+  const flipped = isControlled ? controlledFlipped : internalFlipped;
+  const toggle = onFlip ?? (isControlled ? () => {} : () => setInternalFlipped(f => !f));
 
   // Auto-height mode: content swap with fade
   if (!height) {

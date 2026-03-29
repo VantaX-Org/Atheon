@@ -313,8 +313,9 @@ for (const [name, handler] of routeModules) {
 app.route('/api/v1/seed-vantax', seedVantaX);
 
 // Tenant admin routes need auth middleware (tenantIsolation sets c.get('auth'))
-app.use('/api/v1/admin/*', tenantIsolation());
-app.use('/api/v1/admin/*', requireRole('superadmin'));
+// Scoped to /tenants/* so /admin/setup and /admin/migrate (JWT-free) are not blocked
+app.use('/api/v1/admin/tenants/*', tenantIsolation());
+app.use('/api/v1/admin/tenants/*', requireRole('superadmin'));
 app.route('/api/v1/admin', tenantsAdmin);
 
 
