@@ -9,7 +9,7 @@ import type { Tenant, IAMUser, CatalystIndustryTemplate, CatalystClusterTemplate
 import {
  Building2, Cloud, Server, GitBranch, Users, Bot, Shield,
  ChevronDown, ChevronUp, CheckCircle, XCircle, Plus, Layers, Loader2, X,
- Zap, ToggleLeft, ToggleRight, Database, Mail, HardDrive, Upload, Settings, Trash2, ArrowLeft, AlertCircle, Archive, ArchiveRestore
+ Zap, ToggleLeft, ToggleRight, Database, Mail, HardDrive, Upload, Settings, Trash2, ArrowLeft, AlertCircle, Archive, ArchiveRestore, RefreshCw
 } from "lucide-react";
 import { IconCheck, IconCross } from "@/components/icons/AtheonIcons";
 
@@ -88,6 +88,11 @@ export function TenantsPage() {
  // Archive Company modal state
  const [showArchiveConfirm, setShowArchiveConfirm] = useState<string | null>(null);
  const [archiving, setArchiving] = useState(false);
+
+ // Re-seed VantaX demo state
+ const [showReseedConfirm, setShowReseedConfirm] = useState(false);
+ const [reseeding, setReseeding] = useState(false);
+ const [reseedResult, setReseedResult] = useState<{ clusters: number; subCatalysts: number; positiveRuns: number; negativeRuns: number; insights: number; healthScore: number } | null>(null);
 
  // Edit Entitlements modal state
  const [showEditEntitlements, setShowEditEntitlements] = useState<string | null>(null);
@@ -313,6 +318,18 @@ export function TenantsPage() {
    const res = await api.tenants.list();
    setTenants(res.tenants);
   } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to restore company'); }
+ };
+
+ // Re-seed VantaX handler
+ const handleReseedVantax = async () => {
+  if (reseeding) return;
+  setReseeding(true);
+  setReseedResult(null);
+  try {
+   const res = await api.tenants.seedVantax();
+   setReseedResult(res.seeded);
+  } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to re-seed VantaX'); }
+  setReseeding(false);
  };
 
  // Edit Entitlements handler
@@ -579,6 +596,9 @@ export function TenantsPage() {
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowArchiveConfirm(tenant.id); }} title="Archive company — keep data but mark inactive" className="!text-amber-500 !border-amber-500/30 hover:!bg-amber-500/10"><Archive size={12} /> Archive</Button>
  )}
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(tenant.id); setDeleteResult(null); setDeleteConfirmText(''); }} title="Permanently delete company and ALL data" className="!text-red-600 !border-red-600/30 hover:!bg-red-600/10"><Trash2 size={12} /> Delete Company</Button>
+ {tenant.slug === 'vantax' && (
+ <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setShowReseedConfirm(true); setReseedResult(null); }} title="Reset and re-seed VantaX with fresh demo data" className="!text-accent !border-accent/30 hover:!bg-accent/10"><RefreshCw size={12} /> Re-seed Demo</Button>
+ )}
  </div>
  </div>
  )}
@@ -1402,6 +1422,84 @@ export function TenantsPage() {
  >
  {deleting ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Trash2 size={14} className="inline mr-1" />}
  Delete Permanently
+ </button>
+ </div>
+ </>
+ )}
+ </div>
+ </div></Portal>
+ )}
+
+ {/* Re-seed VantaX Confirmation Modal */}
+ {showReseedConfirm && (
+ <Portal><div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => !reseeding && setShowReseedConfirm(false)}>
+ <div className="bg-[var(--bg-card)] border border-[var(--border-card)] rounded-2xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
+ {reseedResult ? (
+ <>
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+ <CheckCircle size={20} className="text-emerald-400" />
+ </div>
+ <div>
+ <h3 className="text-lg font-semibold t-primary">Demo Data Re-seeded</h3>
+ <p className="text-sm t-muted">VantaX demo environment is ready</p>
+ </div>
+ </div>
+ <div className="grid grid-cols-3 gap-3">
+ <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
+ <p className="text-lg font-bold text-accent">{reseedResult.clusters}</p>
+ <p className="text-[10px] t-muted">Clusters</p>
+ </div>
+ <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
+ <p className="text-lg font-bold text-accent">{reseedResult.subCatalysts}</p>
+ <p className="text-[10px] t-muted">Sub-Catalysts</p>
+ </div>
+ <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
+ <p className="text-lg font-bold text-accent">{reseedResult.positiveRuns + reseedResult.negativeRuns}</p>
+ <p className="text-[10px] t-muted">Runs</p>
+ </div>
+ <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
+ <p className="text-lg font-bold text-accent">{reseedResult.insights}</p>
+ <p className="text-[10px] t-muted">Insights</p>
+ </div>
+ <div className="text-center p-3 rounded-lg bg-[var(--bg-secondary)]">
+ <p className="text-lg font-bold text-accent">{reseedResult.healthScore}</p>
+ <p className="text-[10px] t-muted">Health Score</p>
+ </div>
+ </div>
+ <Button variant="primary" size="sm" onClick={() => setShowReseedConfirm(false)} title="Close">Done</Button>
+ </>
+ ) : (
+ <>
+ <div className="flex items-center gap-3">
+ <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+ <RefreshCw size={20} className="text-accent" />
+ </div>
+ <div>
+ <h3 className="text-lg font-semibold t-primary">Re-seed Demo Data</h3>
+ <p className="text-sm t-muted">Reset VantaX with fresh demo data</p>
+ </div>
+ </div>
+ <div className="p-3 rounded-lg bg-accent/5 border border-accent/20">
+ <p className="text-sm t-primary">This will:</p>
+ <ul className="text-xs t-muted mt-2 space-y-1 list-disc list-inside">
+ <li>Delete all existing VantaX catalyst data</li>
+ <li>Create fresh clusters, sub-catalysts, and runs</li>
+ <li>Generate KPI definitions, insights, and analytics</li>
+ <li>Seed health scores, risk alerts, and executive briefings</li>
+ <li>Populate Pulse and Apex dashboards with demo data</li>
+ </ul>
+ </div>
+ <div className="flex gap-3 pt-1">
+ <Button variant="secondary" size="sm" onClick={() => setShowReseedConfirm(false)} title="Cancel re-seed">Cancel</Button>
+ <button
+ onClick={handleReseedVantax}
+ disabled={reseeding}
+ className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-accent text-white hover:opacity-90"
+ title="Reset and re-seed VantaX demo data"
+ >
+ {reseeding ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <RefreshCw size={14} className="inline mr-1" />}
+ {reseeding ? 'Re-seeding...' : 'Re-seed Demo Data'}
  </button>
  </div>
  </>

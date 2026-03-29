@@ -223,6 +223,8 @@ export const api = {
       request<{ success: boolean; clustersDeactivated: number; agentsDeactivated: number }>(`/api/tenants/${id}/archive`, { method: 'POST' }),
     unarchive: (id: string) =>
       request<{ success: boolean }>(`/api/tenants/${id}/unarchive`, { method: 'POST' }),
+    seedVantax: () =>
+      request<{ success: boolean; message: string; seeded: { clusters: number; subCatalysts: number; positiveRuns: number; negativeRuns: number; insights: number; healthScore: number } }>('/api/seed-vantax/seed-vantax', { method: 'POST' }),
     // Spec 7 POPIA: Data export and erasure
     dataExport: () =>
       request<{ success: boolean; exportedAt: string; tableCount: number; totalRecords: number; data: Record<string, unknown[]> }>('/api/tenants/data-export'),
