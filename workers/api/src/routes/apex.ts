@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { withLlmFallback } from '../services/ollama';
+import { generateApexInsights, generateDashboardIntelligence } from '../services/insights-engine';
 
 const apex = new Hono<AppBindings>();
 
@@ -877,6 +878,60 @@ apex.get('/risks/:riskId/export', async (c) => {
   c.header('Content-Disposition', `attachment; filename="risk-${riskId}-traceability-${new Date().toISOString().split('T')[0]}.csv"`);
   
   return c.body(csvContent);
+});
+
+// GET /api/apex/insights — Executive cross-department performance drivers and issue detection
+apex.get('/insights', async (c) => {
+  const tenantId = getTenantId(c);
+
+  try {
+    const result = await generateApexInsights(c.env.DB, c.env.AI, tenantId);
+    return c.json({
+      executiveSummary: result.executiveSummary,
+      performanceDrivers: result.performanceDrivers,
+      issues: result.issues,
+      crossDepartmentCorrelations: result.crossDepartmentCorrelations,
+      strategicImplications: result.strategicImplications,
+      generatedAt: new Date().toISOString(),
+      poweredBy: 'Atheon Intelligence',
+    });
+  } catch (err) {
+    console.error('Apex insights generation failed:', err);
+    return c.json({
+      executiveSummary: 'Executive insights temporarily unavailable.',
+      performanceDrivers: [],
+      issues: [],
+      crossDepartmentCorrelations: [],
+      strategicImplications: [],
+      poweredBy: 'Atheon Intelligence',
+    });
+  }
+});
+
+// GET /api/apex/dashboard-intelligence — Unified intelligence summary for the main dashboard
+apex.get('/dashboard-intelligence', async (c) => {
+  const tenantId = getTenantId(c);
+
+  try {
+    const result = await generateDashboardIntelligence(c.env.DB, c.env.AI, tenantId);
+    return c.json({
+      summary: result.summary,
+      keyMetrics: result.keyMetrics,
+      topRisks: result.topRisks,
+      recommendedActions: result.recommendedActions,
+      generatedAt: new Date().toISOString(),
+      poweredBy: 'Atheon Intelligence',
+    });
+  } catch (err) {
+    console.error('Dashboard intelligence generation failed:', err);
+    return c.json({
+      summary: 'Intelligence summary temporarily unavailable.',
+      keyMetrics: [],
+      topRisks: [],
+      recommendedActions: [],
+      poweredBy: 'Atheon Intelligence',
+    });
+  }
 });
 
 export default apex;

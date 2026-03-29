@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AuthContext, AppBindings } from '../types';
+import { loadLlmConfig, saveLlmConfig } from '../services/llm-provider';
 
 const admin = new Hono<AppBindings>();
 
@@ -411,6 +412,89 @@ admin.get('/data/vantax-status', async (c) => {
       briefings: (counts[4] as any)?.count || 0,
     },
   });
+});
+
+/**
+ * GET /api/admin/llm-config
+ * Get current LLM provider configuration (superadmin only)
+ * Never exposes API keys in full — returns masked versions
+ */
+admin.get('/llm-config', async (c) => {
+  if (!isSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || '';
+
+  try {
+    const config = await loadLlmConfig(c.env.DB, tenantId);
+    // Mask the API key for security — never return full key
+    const maskedKey = config.apiKey
+      ? config.apiKey.substring(0, 8) + '...' + config.apiKey.substring(config.apiKey.length - 4)
+      : null;
+
+    return c.json({
+      provider: config.provider,
+      model: config.model,
+      apiKeySet: !!config.apiKey,
+      apiKeyMasked: maskedKey,
+      baseUrl: config.baseUrl || null,
+      temperature: config.temperature ?? 0.3,
+      maxTokens: config.maxTokens ?? 1024,
+    });
+  } catch (err) {
+    console.error('Failed to load LLM config:', err);
+    return c.json({ error: 'Failed to load LLM configuration' }, 500);
+  }
+});
+
+/**
+ * POST /api/admin/llm-config
+ * Save LLM provider configuration (superadmin only)
+ * Supports: claude, openai, ollama, internal, workers_ai
+ */
+admin.post('/llm-config', async (c) => {
+  if (!isSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+
+  const auth = c.get('auth') as AuthContext | undefined;
+  const tenantId = auth?.tenantId || '';
+
+  try {
+    const body = await c.req.json<{
+      provider: string;
+      model?: string;
+      apiKey?: string;
+      baseUrl?: string;
+      temperature?: number;
+      maxTokens?: number;
+    }>();
+
+    const validProviders = ['claude', 'openai', 'ollama', 'internal', 'workers_ai'];
+    if (!validProviders.includes(body.provider)) {
+      return c.json({ error: `Invalid provider. Must be one of: ${validProviders.join(', ')}` }, 400);
+    }
+
+    await saveLlmConfig(c.env.DB, tenantId, {
+      provider: body.provider as 'claude' | 'openai' | 'ollama' | 'internal' | 'workers_ai',
+      model: body.model,
+      apiKey: body.apiKey,
+      baseUrl: body.baseUrl,
+      temperature: body.temperature,
+      maxTokens: body.maxTokens,
+    });
+
+    return c.json({
+      success: true,
+      message: `LLM provider updated to ${body.provider}`,
+      provider: body.provider,
+    });
+  } catch (err) {
+    console.error('Failed to save LLM config:', err);
+    return c.json({ error: 'Failed to save LLM configuration' }, 500);
+  }
 });
 
 export default admin;

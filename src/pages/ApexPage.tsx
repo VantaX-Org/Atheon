@@ -7,7 +7,7 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -48,6 +48,19 @@ export function ApexPage() {
  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
  const [traceabilityData, setTraceabilityData] = useState<HealthDimensionTraceResponse | RiskTraceResponse | null>(null);
  const [traceabilityType, setTraceabilityType] = useState<'dimension' | 'risk'>('dimension');
+
+ // AI Executive Insights state
+ const [execInsights, setExecInsights] = useState<ApexInsightsResponse | null>(null);
+ const [execInsightsLoading, setExecInsightsLoading] = useState(false);
+
+ const loadExecInsights = async () => {
+  setExecInsightsLoading(true);
+  try {
+   const result = await api.apex.insights();
+   setExecInsights(result);
+  } catch (err) { console.error('Failed to load executive insights:', err); }
+  setExecInsightsLoading(false);
+ };
 
  // Scenario Builder Modal state
  const [showScenarioBuilder, setShowScenarioBuilder] = useState(false);
@@ -279,7 +292,88 @@ export function ApexPage() {
   <div className="flex-1 overflow-x-auto">
    <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
   </div>
+  <button
+   onClick={loadExecInsights}
+   disabled={execInsightsLoading}
+   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-all disabled:opacity-50 flex-shrink-0"
+   title="Generate AI-powered executive insights"
+  >
+   <Lightbulb size={12} className={execInsightsLoading ? 'animate-pulse' : ''} />
+   {execInsightsLoading ? 'Analyzing...' : 'AI Insights'}
+  </button>
  </div>
+
+ {/* AI Executive Insights Panel */}
+ {execInsights && (
+  <Card className="border-purple-500/20 bg-purple-500/5">
+   <div className="flex items-center justify-between mb-3">
+    <div className="flex items-center gap-2">
+     <Lightbulb size={16} className="text-purple-400" />
+     <h3 className="text-sm font-semibold t-primary">Atheon Intelligence — Executive Summary</h3>
+    </div>
+    <span className="text-[10px] t-muted">{execInsights.poweredBy}</span>
+   </div>
+   <p className="text-sm t-secondary mb-3 whitespace-pre-line">{execInsights.executiveSummary}</p>
+   {execInsights.performanceDrivers.length > 0 && (
+    <div className="mb-3">
+     <p className="text-xs font-medium t-primary mb-1.5">Performance Drivers</p>
+     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {execInsights.performanceDrivers.map((d, i) => (
+       <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+        <div className="flex-1">
+         <p className="text-xs font-medium t-primary">{d.dimension}</p>
+         <p className="text-[10px] t-muted">{d.driver}</p>
+        </div>
+        <Badge variant={d.impact === 'positive' ? 'success' : d.impact === 'negative' ? 'danger' : 'default'} size="sm">{d.trend}</Badge>
+       </div>
+      ))}
+     </div>
+    </div>
+   )}
+   {execInsights.issues.length > 0 && (
+    <div className="mb-3">
+     <p className="text-xs font-medium t-primary mb-1.5">Key Issues</p>
+     <div className="space-y-1.5">
+      {execInsights.issues.map((issue, i) => (
+       <div key={i} className="flex items-start gap-2 text-xs">
+        <AlertTriangle size={10} className={issue.severity === 'critical' ? 'text-red-400' : issue.severity === 'high' ? 'text-amber-400' : 'text-gray-400'} />
+        <div>
+         <span className="font-medium t-primary">{issue.title}</span>
+         <span className="t-muted"> — {issue.description}</span>
+         <Badge variant="info" size="sm" className="ml-1">{issue.affectedDomain}</Badge>
+        </div>
+       </div>
+      ))}
+     </div>
+    </div>
+   )}
+   {execInsights.crossDepartmentCorrelations.length > 0 && (
+    <div className="mb-3">
+     <p className="text-xs font-medium t-primary mb-1.5">Cross-Department Correlations</p>
+     <div className="flex flex-wrap gap-1.5">
+      {execInsights.crossDepartmentCorrelations.map((c, i) => (
+       <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] text-[10px] t-muted border border-[var(--border-card)]">
+        {c.from} <ArrowRight size={8} /> {c.to}: {c.relationship}
+       </span>
+      ))}
+     </div>
+    </div>
+   )}
+   {execInsights.strategicImplications.length > 0 && (
+    <div>
+     <p className="text-xs font-medium t-primary mb-1.5">Strategic Implications</p>
+     <ul className="space-y-1">
+      {execInsights.strategicImplications.map((s, i) => (
+       <li key={i} className="text-xs t-secondary flex items-start gap-1.5">
+        <ArrowRight size={10} className="text-purple-400 mt-0.5 flex-shrink-0" />
+        {s}
+       </li>
+      ))}
+     </ul>
+    </div>
+   )}
+  </Card>
+ )}
 
  {/* Business Health Tab */}
  {activeTab === 'health' && (

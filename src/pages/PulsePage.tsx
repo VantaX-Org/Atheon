@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse } from "@/lib/api";
+import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
@@ -268,6 +268,12 @@ export function PulsePage() {
   const [runsLoading, setRunsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // AI Insights state
+  const [aiInsights, setAiInsights] = useState<PulseInsightsResponse | null>(null);
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+  const [domainFilter, setDomainFilter] = useState<string>('all');
+  const [availableDomains, setAvailableDomains] = useState<string[]>([]);
+
   // Traceability modal state
   const [showMetricTraceModal, setShowMetricTraceModal] = useState(false);
   const [metricTraceData, setMetricTraceData] = useState<MetricTraceResponse | null>(null);
@@ -276,6 +282,21 @@ export function PulsePage() {
   const [showDimTraceModal, setShowDimTraceModal] = useState(false);
   const [dimTraceData, setDimTraceData] = useState<HealthDimensionTraceResponse | null>(null);
   const [, setLoadingDimTrace] = useState(false);
+
+  // Load AI insights
+  const loadAiInsights = async (domain?: string) => {
+    setAiInsightsLoading(true);
+    try {
+      const result = await api.pulse.insights(domain && domain !== 'all' ? domain : undefined);
+      setAiInsights(result);
+    } catch (err) { console.error('Failed to load AI insights:', err); }
+    setAiInsightsLoading(false);
+  };
+
+  // Load domains on mount
+  useEffect(() => {
+    api.pulse.domains().then(d => setAvailableDomains(d.domains || [])).catch(() => {});
+  }, []);
 
   const handleOpenMetricTrace = async (metricId: string) => {
     setLoadingMetricTrace(true);
@@ -517,10 +538,39 @@ export function PulsePage() {
         </div>
       </div>
 
+      {/* Department Filter */}
+      {availableDomains.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs t-muted font-medium">Department:</span>
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              onClick={() => setDomainFilter('all')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${domainFilter === 'all' ? 'bg-accent text-white' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
+            >All</button>
+            {availableDomains.map(d => (
+              <button
+                key={d}
+                onClick={() => setDomainFilter(d)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all capitalize ${domainFilter === d ? 'bg-accent text-white' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
+              >{d}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <div className="flex-1 overflow-x-auto">
           <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
+        <button
+          onClick={() => loadAiInsights(domainFilter)}
+          disabled={aiInsightsLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-all disabled:opacity-50 flex-shrink-0"
+          title="Generate AI-powered operational insights"
+        >
+          <Lightbulb size={12} className={aiInsightsLoading ? 'animate-pulse' : ''} />
+          {aiInsightsLoading ? 'Analyzing...' : 'AI Insights'}
+        </button>
         <button
           onClick={handleManualRefresh}
           disabled={refreshing}
@@ -530,6 +580,46 @@ export function PulsePage() {
           {refreshing ? 'Refreshing...' : 'Refresh Mining'}
         </button>
       </div>
+
+      {/* AI Insights Panel */}
+      {aiInsights && (
+        <Card className="border-purple-500/20 bg-purple-500/5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Lightbulb size={16} className="text-purple-400" />
+              <h3 className="text-sm font-semibold t-primary">Atheon Intelligence — Operational Insights</h3>
+              {aiInsights.domain !== 'all' && <Badge variant="info" size="sm">{aiInsights.domain}</Badge>}
+            </div>
+            <span className="text-[10px] t-muted">{aiInsights.poweredBy}</span>
+          </div>
+          <p className="text-sm t-secondary mb-3 whitespace-pre-line">{aiInsights.insights}</p>
+          {aiInsights.recommendations.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-medium t-primary mb-1.5">Recommendations</p>
+              <ul className="space-y-1">
+                {aiInsights.recommendations.map((rec, i) => (
+                  <li key={i} className="text-xs t-secondary flex items-start gap-1.5">
+                    <ArrowRight size={10} className="text-purple-400 mt-0.5 flex-shrink-0" />
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {aiInsights.drivers.length > 0 && (
+            <div>
+              <p className="text-xs font-medium t-primary mb-1.5">Insight Drivers (Traceability)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {aiInsights.drivers.map((driver, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] text-[10px] t-muted border border-[var(--border-card)]">
+                    <Eye size={8} /> {driver.source}: {driver.metric || driver.description || driver.type}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ══════════════════════════════════════════════════════
           TAB 1: Operations Dashboard

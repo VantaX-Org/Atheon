@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/appStore";
 import type { AccentColor } from "@/stores/appStore";
 import { api } from "@/lib/api";
+import type { LlmConfigResponse } from "@/lib/api";
 import {
- Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2
+ Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2, Brain
 } from "lucide-react";
 
 interface NotificationPref {
@@ -139,6 +140,56 @@ export function SettingsPage() {
      setApiKeyError(err instanceof Error ? err.message : 'Failed to generate API key');
    }
    setApiKeyLoading(false);
+ };
+
+ // LLM Configuration state (superadmin only)
+ const isSuperadmin = user?.role === 'superadmin';
+ const [llmConfig, setLlmConfig] = useState<LlmConfigResponse | null>(null);
+ const [llmProvider, setLlmProvider] = useState('workers_ai');
+ const [llmModel, setLlmModel] = useState('');
+ const [llmApiKey, setLlmApiKey] = useState('');
+ const [llmBaseUrl, setLlmBaseUrl] = useState('');
+ const [llmTemperature, setLlmTemperature] = useState(0.3);
+ const [llmMaxTokens, setLlmMaxTokens] = useState(1024);
+ const [llmSaving, setLlmSaving] = useState(false);
+ const [llmSaved, setLlmSaved] = useState(false);
+ const [llmError, setLlmError] = useState<string | null>(null);
+
+ const loadLlmConfig = useCallback(async () => {
+  if (!isSuperadmin) return;
+  try {
+   const config = await api.admin.getLlmConfig();
+   setLlmConfig(config);
+   setLlmProvider(config.provider);
+   setLlmModel(config.model || '');
+   setLlmBaseUrl(config.baseUrl || '');
+   setLlmTemperature(config.temperature);
+   setLlmMaxTokens(config.maxTokens);
+  } catch (err) { console.error('Failed to load LLM config', err); }
+ }, [isSuperadmin]);
+
+ useEffect(() => { loadLlmConfig(); }, [loadLlmConfig]);
+
+ const handleSaveLlmConfig = async () => {
+  setLlmSaving(true);
+  setLlmError(null);
+  try {
+   await api.admin.saveLlmConfig({
+    provider: llmProvider,
+    model: llmModel || undefined,
+    apiKey: llmApiKey || undefined,
+    baseUrl: llmBaseUrl || undefined,
+    temperature: llmTemperature,
+    maxTokens: llmMaxTokens,
+   });
+   setLlmSaved(true);
+   setLlmApiKey('');
+   await loadLlmConfig();
+   setTimeout(() => setLlmSaved(false), 3000);
+  } catch (err) {
+   setLlmError(err instanceof Error ? err.message : 'Failed to save LLM configuration');
+  }
+  setLlmSaving(false);
  };
 
  const accentOptions: { key: AccentColor; label: string; lightColor: string; darkColor: string }[] = [
@@ -419,6 +470,56 @@ export function SettingsPage() {
  </div>
  </Card>
 
+ {/* LLM Configuration — Superadmin Only */}
+ {isSuperadmin && (
+ <Card>
+ <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
+ <Brain className="w-4 h-4 text-purple-400" /> AI Engine Configuration
+ <Badge variant="warning" size="sm">Superadmin</Badge>
+ </h3>
+ <p className="text-xs t-muted mb-4">Configure the AI provider powering Atheon Intelligence insights across Pulse, Apex, and Dashboard.</p>
+ <div className="space-y-4">
+ <div>
+ <label className="text-xs font-medium t-secondary mb-1 block">Provider</label>
+ <select
+  value={llmProvider}
+  onChange={(e) => setLlmProvider(e.target.value)}
+  className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--bg-secondary)] border border-[var(--border-card)] t-primary"
+ >
+  <option value="workers_ai">Cloudflare Workers AI (Default)</option>
+  <option value="claude">Anthropic Claude</option>
+  <option value="openai">OpenAI ChatGPT</option>
+  <option value="ollama">Ollama Cloud</option>
+  <option value="internal">Internal Hosted</option>
+ </select>
+ </div>
+ <Input label="Model Name" value={llmModel} onChange={(e) => setLlmModel(e.target.value)} placeholder="e.g. claude-3-sonnet, gpt-4o, llama3.1" />
+ <Input label="API Key" type="password" value={llmApiKey} onChange={(e) => setLlmApiKey(e.target.value)} placeholder={llmConfig?.apiKeySet ? `Current: ${llmConfig.apiKeyMasked}` : 'Enter API key'} />
+ {(llmProvider === 'ollama' || llmProvider === 'internal') && (
+  <Input label="Base URL" value={llmBaseUrl} onChange={(e) => setLlmBaseUrl(e.target.value)} placeholder="https://your-server.com/v1" />
+ )}
+ <div className="grid grid-cols-2 gap-4">
+  <div>
+   <label className="text-xs font-medium t-secondary mb-1 block">Temperature ({llmTemperature})</label>
+   <input type="range" min="0" max="1" step="0.1" value={llmTemperature} onChange={(e) => setLlmTemperature(parseFloat(e.target.value))} className="w-full" />
+  </div>
+  <div>
+   <label className="text-xs font-medium t-secondary mb-1 block">Max Tokens</label>
+   <input type="number" value={llmMaxTokens} onChange={(e) => setLlmMaxTokens(parseInt(e.target.value) || 1024)} className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--bg-secondary)] border border-[var(--border-card)] t-primary" />
+  </div>
+ </div>
+ <div className="flex items-center gap-3">
+  <Button variant="primary" size="sm" onClick={handleSaveLlmConfig} disabled={llmSaving} title="Save AI configuration">
+   {llmSaving ? <Loader2 size={14} className="animate-spin" /> : llmSaved ? <Check size={14} /> : null}
+   {llmSaved ? 'Saved' : 'Save Configuration'}
+  </Button>
+  {llmSaved && <span className="text-xs text-emerald-500">Configuration updated</span>}
+  {llmError && <span className="text-xs text-red-400">{llmError}</span>}
+ </div>
+ </div>
+ </Card>
+ )}
+
  {/* Platform Info */}
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
@@ -432,7 +533,7 @@ export function SettingsPage() {
  { label: 'Region', value: 'af-south-1 (South Africa)' },
  { label: 'Database', value: 'Cloudflare D1' },
  { label: 'Vector DB', value: 'Cloudflare Vectorize' },
- { label: 'LLM', value: 'Atheon Mind 70B (Multi-Tier)' },
+ { label: 'AI Engine', value: 'Atheon Intelligence' },
  ].map(item => (
  <div key={item.label} className="flex items-center justify-between py-2 last:border-0" style={{ borderBottom: '1px solid var(--divider)' }}>
  <span className="text-sm t-muted">{item.label}</span>

@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v33';
+export const MIGRATION_VERSION = 'v34';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -80,6 +80,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS run_comments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES sub_catalyst_runs(id), item_id TEXT REFERENCES sub_catalyst_run_items(id), user_id TEXT NOT NULL, user_name TEXT NOT NULL, comment TEXT NOT NULL, comment_type TEXT DEFAULT 'note', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_kpi_definitions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, kpi_name TEXT NOT NULL, unit TEXT NOT NULL, direction TEXT NOT NULL DEFAULT 'higher_better', threshold_green REAL, threshold_amber REAL, threshold_red REAL, calculation TEXT NOT NULL DEFAULT '', data_source TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT 'universal', is_universal INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS sub_catalyst_kpi_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, definition_id TEXT NOT NULL REFERENCES sub_catalyst_kpi_definitions(id), run_id TEXT REFERENCES sub_catalyst_runs(id), value REAL NOT NULL, status TEXT NOT NULL DEFAULT 'green', trend TEXT NOT NULL DEFAULT '[]', measured_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS catalyst_insights (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source_type TEXT NOT NULL DEFAULT 'catalyst_run', source_run_id TEXT, cluster_id TEXT, sub_catalyst_name TEXT, domain TEXT, insight_level TEXT NOT NULL DEFAULT 'pulse', category TEXT NOT NULL DEFAULT 'kpi_movement', title TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', data TEXT NOT NULL DEFAULT '{}', traceability TEXT NOT NULL DEFAULT '{}', generated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS tenant_settings (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, key));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -157,6 +159,14 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_pm_tenant_source ON process_metrics(tenant_id, source_run_id, cluster_id)',
     'CREATE INDEX IF NOT EXISTS idx_scr_tenant_cluster ON sub_catalyst_runs(tenant_id, cluster_id, source_run_id)',
     'CREATE INDEX IF NOT EXISTS idx_anomalies_metric ON anomalies(tenant_id, metric)',
+    // Insights engine indexes
+    'CREATE INDEX IF NOT EXISTS idx_ci_tenant_level ON catalyst_insights(tenant_id, insight_level)',
+    'CREATE INDEX IF NOT EXISTS idx_ci_tenant_domain ON catalyst_insights(tenant_id, domain)',
+    'CREATE INDEX IF NOT EXISTS idx_ci_tenant_severity ON catalyst_insights(tenant_id, severity)',
+    'CREATE INDEX IF NOT EXISTS idx_ci_generated ON catalyst_insights(tenant_id, generated_at)',
+    'CREATE INDEX IF NOT EXISTS idx_ts_tenant_key ON tenant_settings(tenant_id, key)',
+    // Process metrics domain/category indexes
+    'CREATE INDEX IF NOT EXISTS idx_pm_domain ON process_metrics(tenant_id, domain)',
   ];
 
   for (const idx of indexes) {
@@ -315,6 +325,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'correlation_events', column: 'correlation_type', definition: "TEXT DEFAULT 'temporal'" },
     { table: 'correlation_events', column: 'lag_hours', definition: 'REAL' },
     { table: 'correlation_events', column: 'description', definition: 'TEXT' },
+    // Insights engine: process_metrics domain and category columns
+    { table: 'process_metrics', column: 'domain', definition: 'TEXT' },
+    { table: 'process_metrics', column: 'category', definition: 'TEXT' },
   ];
 
   for (const col of selfHealColumns) {
