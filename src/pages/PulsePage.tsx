@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse } from "@/lib/api";
+import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
@@ -271,7 +271,11 @@ export function PulsePage() {
   // Traceability modal state
   const [showMetricTraceModal, setShowMetricTraceModal] = useState(false);
   const [metricTraceData, setMetricTraceData] = useState<MetricTraceResponse | null>(null);
-  const [_loadingMetricTrace, setLoadingMetricTrace] = useState(false);
+  const [, setLoadingMetricTrace] = useState(false);
+  // Dimension trace state
+  const [showDimTraceModal, setShowDimTraceModal] = useState(false);
+  const [dimTraceData, setDimTraceData] = useState<HealthDimensionTraceResponse | null>(null);
+  const [, setLoadingDimTrace] = useState(false);
 
   const handleOpenMetricTrace = async (metricId: string) => {
     setLoadingMetricTrace(true);
@@ -289,6 +293,23 @@ export function PulsePage() {
       alert('Failed to load metric traceability data. This metric may not have source attribution yet.');
     } finally {
       setLoadingMetricTrace(false);
+    }
+  };
+
+  const handleOpenDimensionTrace = async (dimension: string) => {
+    setLoadingDimTrace(true);
+    try {
+      const data = await api.apex.healthDimension(dimension);
+      if (!data || data.score === null) {
+        alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+        return;
+      }
+      setDimTraceData(data);
+      setShowDimTraceModal(true);
+    } catch {
+      alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+    } finally {
+      setLoadingDimTrace(false);
     }
   };
 
@@ -549,6 +570,13 @@ export function PulsePage() {
                           </span>
                         </div>
                         <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'improving' ? '#10b981' : dim.trend === 'declining' ? '#ef4444' : '#6b7280'} />
+                        <button
+                          onClick={() => handleOpenDimensionTrace(dim.key)}
+                          className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors ml-2"
+                          title={`Trace ${dim.name}`}
+                        >
+                          <Eye size={10} /> Trace
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -1882,19 +1910,23 @@ export function PulsePage() {
         </TabPanel>
       )}
 
+      {/* Metric Traceability Modal */}
+      {showMetricTraceModal && metricTraceData && (
+        <TraceabilityModal
+          data={metricTraceData as MetricTraceResponse}
+          type="metric"
+          onClose={() => { setShowMetricTraceModal(false); setMetricTraceData(null); }}
+        />
+      )}
+
+      {/* Dimension Traceability Modal */}
+      {showDimTraceModal && dimTraceData && (
+        <TraceabilityModal
+          data={dimTraceData}
+          type="dimension"
+          onClose={() => { setShowDimTraceModal(false); setDimTraceData(null); }}
+        />
+      )}
     </div>
   );
-
-  // Metric Traceability Modal
-  if (showMetricTraceModal && metricTraceData) {
-    return (
-      <TraceabilityModal
-        data={metricTraceData as MetricTraceResponse}
-        type="metric"
-        onClose={() => { setShowMetricTraceModal(false); setMetricTraceData(null); }}
-      />
-    );
-  }
-
-  return null;
 }
