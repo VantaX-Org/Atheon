@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
+import { generatePulseInsights } from '../services/insights-engine';
 
 const pulse = new Hono<AppBindings>();
 
@@ -29,16 +30,43 @@ function getPagination(c: { req: { query: (k: string) => string | undefined } })
   return { limit, offset };
 }
 
-// GET /api/pulse/metrics
+// GET /api/pulse/metrics — GAP 1: Department/domain filtering support
 pulse.get('/metrics', async (c) => {
   const tenantId = getTenantId(c);
   const { limit, offset } = getPagination(c);
-  const results = await c.env.DB.prepare(
-    'SELECT * FROM process_metrics WHERE tenant_id = ? ORDER BY name ASC LIMIT ? OFFSET ?'
-  ).bind(tenantId, limit, offset).all();
-  const countResult = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?'
-  ).bind(tenantId).first<{ count: number }>();
+  const domain = c.req.query('domain'); // GAP 1: filter by department/domain
+  const category = c.req.query('category'); // Filter by KPI category
+  const status = c.req.query('status'); // Filter by status (green/amber/red)
+
+  let query = 'SELECT * FROM process_metrics WHERE tenant_id = ?';
+  let countQuery = 'SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?';
+  const binds: unknown[] = [tenantId];
+  const countBinds: unknown[] = [tenantId];
+
+  if (domain) {
+    query += ' AND domain = ?';
+    countQuery += ' AND domain = ?';
+    binds.push(domain);
+    countBinds.push(domain);
+  }
+  if (category) {
+    query += ' AND category = ?';
+    countQuery += ' AND category = ?';
+    binds.push(category);
+    countBinds.push(category);
+  }
+  if (status) {
+    query += ' AND status = ?';
+    countQuery += ' AND status = ?';
+    binds.push(status);
+    countBinds.push(status);
+  }
+
+  query += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+  binds.push(limit, offset);
+
+  const results = await c.env.DB.prepare(query).bind(...binds).all();
+  const countResult = await c.env.DB.prepare(countQuery).bind(...countBinds).first<{ count: number }>();
 
   const formatted = results.results.map((m: Record<string, unknown>) => ({
     id: m.id,
@@ -54,13 +82,63 @@ pulse.get('/metrics', async (c) => {
     trend: JSON.parse(m.trend as string || '[]'),
     sourceSystem: m.source_system,
     measuredAt: m.measured_at,
-    // P1-3: Source attribution fields
+    // Source attribution & traceability
     subCatalystName: m.sub_catalyst_name || null,
     sourceRunId: m.source_run_id || null,
     clusterId: m.cluster_id || null,
+    domain: m.domain || null,
+    category: m.category || null,
   }));
 
   return c.json({ metrics: formatted, total: countResult?.count || formatted.length, limit, offset });
+});
+
+// GET /api/pulse/insights — AI-powered operational insights per department
+pulse.get('/insights', async (c) => {
+  const tenantId = getTenantId(c);
+  const domain = c.req.query('domain');
+
+  try {
+    const result = await generatePulseInsights(c.env.DB, c.env.AI, tenantId, domain || undefined);
+    return c.json({
+      insights: result.insights,
+      recommendations: result.recommendations,
+      drivers: result.drivers,
+      domain: domain || 'all',
+      generatedAt: new Date().toISOString(),
+      // Attribution: "Atheon Intelligence" — never expose LLM identity
+      poweredBy: 'Atheon Intelligence',
+    });
+  } catch (err) {
+    console.error('Pulse insights generation failed:', err);
+    return c.json({ insights: 'Insights temporarily unavailable.', recommendations: [], drivers: [], domain: domain || 'all', poweredBy: 'Atheon Intelligence' });
+  }
+});
+
+// GET /api/pulse/domains — List available domains for department filtering
+pulse.get('/domains', async (c) => {
+  const tenantId = getTenantId(c);
+  const result = await c.env.DB.prepare(
+    'SELECT DISTINCT domain, COUNT(*) as metric_count FROM process_metrics WHERE tenant_id = ? AND domain IS NOT NULL GROUP BY domain ORDER BY metric_count DESC'
+  ).bind(tenantId).all<Record<string, unknown>>();
+
+  // Also get domains from catalyst clusters
+  const clusterDomains = await c.env.DB.prepare(
+    'SELECT DISTINCT domain FROM catalyst_clusters WHERE tenant_id = ?'
+  ).bind(tenantId).all<Record<string, unknown>>();
+
+  const domains = new Set<string>();
+  for (const r of (result.results || [])) {
+    if (r.domain) domains.add(r.domain as string);
+  }
+  for (const c2 of (clusterDomains.results || [])) {
+    if (c2.domain) domains.add(c2.domain as string);
+  }
+
+  return c.json({
+    domains: Array.from(domains),
+    total: domains.size,
+  });
 });
 
 // POST /api/pulse/metrics

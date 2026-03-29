@@ -5,6 +5,8 @@
  */
 
 import { calculateKpiValue, determineKpiStatus } from './kpi-definitions';
+import { collectRunInsights, bridgeKpisToProcessMetrics } from './insights-engine';
+import type { RunInsightContext } from './insights-engine';
 
 // ── Types ──
 
@@ -229,6 +231,98 @@ export async function recordRun(
 
   // Recalculate KPIs (pass runId for per-run KPI snapshots)
   await recalculateKpis(db, tenantId, clusterId, subName, runId);
+
+  // ── Insights Engine: collect KPIs, issues, trends DURING this run ──
+  try {
+    // Get domain for this cluster
+    const clusterRow = await db.prepare(
+      'SELECT domain FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+    ).bind(clusterId, tenantId).first<{ domain: string }>();
+    const domain = clusterRow?.domain || 'operational';
+
+    // Get previous run for trend detection
+    const prevRun = await db.prepare(
+      'SELECT matched, discrepancies, exceptions_raised, total_source_value FROM sub_catalyst_runs WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? AND id != ? ORDER BY started_at DESC LIMIT 1'
+    ).bind(tenantId, clusterId, subName, runId).first<Record<string, number>>();
+
+    // Calculate rates
+    const totalRecords = (result.summary.matched || 0) + (result.summary.discrepancies || 0) + (result.exception_records?.length ?? 0);
+    const matchRate = totalRecords > 0 ? (result.summary.matched / totalRecords) * 100 : 100;
+    const discrepancyRate = totalRecords > 0 ? (result.summary.discrepancies / totalRecords) * 100 : 0;
+    const exceptionRate = totalRecords > 0 ? ((result.exception_records?.length ?? 0) / totalRecords) * 100 : 0;
+
+    // Get KPI values for this run
+    const kpiVals = await db.prepare(
+      `SELECT kd.kpi_name, kd.category, kv.value, kv.status
+       FROM sub_catalyst_kpi_values kv
+       JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
+       WHERE kv.run_id = ? AND kv.tenant_id = ?`
+    ).bind(runId, tenantId).all<Record<string, unknown>>();
+
+    // Previous run's KPI values for comparison
+    let previousRunId: string | null = null;
+    if (prevRun) {
+      const prevRunRow = await db.prepare(
+        'SELECT id FROM sub_catalyst_runs WHERE tenant_id = ? AND cluster_id = ? AND sub_catalyst_name = ? AND id != ? ORDER BY started_at DESC LIMIT 1'
+      ).bind(tenantId, clusterId, subName, runId).first<{ id: string }>();
+      previousRunId = prevRunRow?.id || null;
+    }
+
+    let prevKpiMap: Record<string, number> = {};
+    if (previousRunId) {
+      const prevKpis = await db.prepare(
+        `SELECT kd.kpi_name, kv.value FROM sub_catalyst_kpi_values kv
+         JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
+         WHERE kv.run_id = ? AND kv.tenant_id = ?`
+      ).bind(previousRunId, tenantId).all<Record<string, unknown>>();
+      for (const pk of (prevKpis.results || [])) {
+        prevKpiMap[pk.kpi_name as string] = pk.value as number;
+      }
+    }
+
+    const insightContext: RunInsightContext = {
+      tenantId,
+      clusterId,
+      subCatalystName: subName,
+      runId,
+      domain,
+      runData: {
+        status: result.status,
+        matched: result.summary.matched,
+        discrepancies: result.summary.discrepancies,
+        exceptions: result.exception_records?.length ?? 0,
+        totalSourceValue,
+        totalDiscrepancyValue,
+        totalUnmatchedValue,
+        matchRate,
+        discrepancyRate,
+        exceptionRate,
+        confidence: 0,
+        duration_ms: result.duration_ms,
+      },
+      previousRunData: prevRun ? {
+        matched: prevRun.matched || 0,
+        discrepancies: prevRun.discrepancies || 0,
+        exceptions: prevRun.exceptions_raised || 0,
+        matchRate: prevRun.matched && prevRun.total_source_value ? (prevRun.matched / (prevRun.matched + prevRun.discrepancies + prevRun.exceptions_raised)) * 100 : 0,
+        totalSourceValue: prevRun.total_source_value || 0,
+      } : null,
+      kpiValues: (kpiVals.results || []).map(k => ({
+        name: k.kpi_name as string,
+        category: k.category as string,
+        value: k.value as number,
+        status: k.status as string,
+        previousValue: prevKpiMap[k.kpi_name as string],
+      })),
+    };
+
+    await collectRunInsights(db, insightContext);
+
+    // GAP 2: Bridge ALL KPI values to Pulse process_metrics
+    await bridgeKpisToProcessMetrics(db, tenantId, clusterId, subName, runId);
+  } catch (err) {
+    console.error('recordRun: insights collection failed (non-fatal):', err);
+  }
 
   return runId;
 }

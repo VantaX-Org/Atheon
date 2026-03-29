@@ -4,11 +4,11 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
-import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse } from "@/lib/api";
+import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse } from "@/lib/api";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
-  ChevronRight, AlertTriangle, RefreshCw, Eye,
+  ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -75,6 +75,19 @@ export function Dashboard() {
   const [refreshFlash, setRefreshFlash] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pieId = useId();
+
+  // Dashboard Intelligence state
+  const [dashIntel, setDashIntel] = useState<DashboardIntelligenceResponse | null>(null);
+  const [dashIntelLoading, setDashIntelLoading] = useState(false);
+
+  const loadDashboardIntelligence = async () => {
+    setDashIntelLoading(true);
+    try {
+      const result = await api.apex.dashboardIntelligence();
+      setDashIntel(result);
+    } catch (err) { console.error('Failed to load dashboard intelligence:', err); }
+    setDashIntelLoading(false);
+  };
 
   // Traceability modal state
   const [showTraceModal, setShowTraceModal] = useState(false);
@@ -267,7 +280,74 @@ export function Dashboard() {
             </button>
           ))}
         </div>
+        <button
+          onClick={loadDashboardIntelligence}
+          disabled={dashIntelLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-all disabled:opacity-50 ml-auto"
+          title="Generate AI-powered dashboard intelligence"
+        >
+          <Lightbulb size={12} className={dashIntelLoading ? 'animate-pulse' : ''} />
+          {dashIntelLoading ? 'Analyzing...' : 'AI Insights'}
+        </button>
       </div>
+
+      {/* Dashboard Intelligence Panel */}
+      {dashIntel && (
+        <DashCard className="!border-purple-500/20 !bg-purple-500/5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Lightbulb size={16} className="text-purple-400" />
+              <h3 className="text-sm font-semibold t-primary">Atheon Intelligence — Dashboard Summary</h3>
+            </div>
+            <span className="text-[10px] t-muted">{dashIntel.poweredBy}</span>
+          </div>
+          <p className="text-sm t-secondary mb-3 whitespace-pre-line">{dashIntel.summary}</p>
+          {dashIntel.keyMetrics.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-medium t-primary mb-1.5">Key Metrics</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {dashIntel.keyMetrics.map((m, i) => (
+                  <div key={i} className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                    <p className="text-[10px] t-muted">{m.name}</p>
+                    <p className="text-sm font-bold t-primary">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</p>
+                    <div className="flex items-center gap-1">
+                      {trendIcon(m.trend)}
+                      <span className="text-[10px] t-muted">{m.status === 'red' ? 'Critical' : m.status === 'amber' ? 'Warning' : 'Healthy'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {dashIntel.topRisks.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-medium t-primary mb-1.5">Top Risks</p>
+              <div className="space-y-1">
+                {dashIntel.topRisks.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <AlertTriangle size={10} className={r.severity === 'critical' ? 'text-red-400' : r.severity === 'high' ? 'text-amber-400' : 'text-gray-400'} />
+                    <span className="t-primary font-medium">{r.title}</span>
+                    <Badge variant={r.severity === 'critical' ? 'danger' : r.severity === 'high' ? 'warning' : 'default'} size="sm">{r.severity}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {dashIntel.recommendedActions.length > 0 && (
+            <div>
+              <p className="text-xs font-medium t-primary mb-1.5">Recommended Actions</p>
+              <ul className="space-y-1">
+                {dashIntel.recommendedActions.map((a, i) => (
+                  <li key={i} className="text-xs t-secondary flex items-start gap-1.5">
+                    <ArrowRight size={10} className="text-purple-400 mt-0.5 flex-shrink-0" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </DashCard>
+      )}
 
       {/* MAIN GRID */}
       {activeTab === 'overview' && !hasData && (

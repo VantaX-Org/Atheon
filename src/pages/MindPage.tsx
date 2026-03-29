@@ -211,8 +211,8 @@ export function MindPage() {
  <div>
  <h3 className="text-sm font-semibold t-primary">Architecture Note</h3>
  <p className="text-xs t-muted mt-1">
- Atheon Mind uses a multi-tier inference architecture with Cloudflare Workers AI as the primary engine.
- All three tiers route through domain-tuned models for enterprise intelligence.
+  Atheon Mind uses a multi-tier inference architecture with proprietary AI engines.
+  All three tiers route through domain-tuned models for enterprise intelligence.
  Client-specific adapters are selected based on tenant context and industry vertical.
  </p>
  </div>

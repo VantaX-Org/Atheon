@@ -278,6 +278,12 @@ export const api = {
       request<{ success: boolean; riskId: string; analysis: { rootCauses: Array<{ description: string; confidence: number; immediateAction: string; longTermFix: string; affectedSystems: string[] }>; generatedAt: string; model: string } }>(`/api/apex/risks/${riskId}/suggest-causes${qs({ tenant_id: tenantId })}`),
     riskExport: (riskId: string, tenantId?: string) =>
       fetch(`/api/apex/risks/${riskId}/export${qs({ tenant_id: tenantId })}`, { headers: { 'Content-Type': 'text/csv' } }).then(r => r.blob()),
+    // Insights engine: AI-powered executive insights
+    insights: (tenantId?: string) =>
+      request<ApexInsightsResponse>(`/api/apex/insights${qs({ tenant_id: tenantId })}`),
+    // Dashboard intelligence: unified summary
+    dashboardIntelligence: (tenantId?: string) =>
+      request<DashboardIntelligenceResponse>(`/api/apex/dashboard-intelligence${qs({ tenant_id: tenantId })}`),
   },
 
   pulse: {
@@ -300,6 +306,12 @@ export const api = {
     // P1-4: Metric traceability
     metricTrace: (metricId: string, tenantId?: string) =>
       request<MetricTraceResponse>(`/api/pulse/metrics/${metricId}/trace${qs({ tenant_id: tenantId })}`),
+    // Insights engine: AI-powered operational insights
+    insights: (domain?: string, tenantId?: string) =>
+      request<PulseInsightsResponse>(`/api/pulse/insights${qs({ tenant_id: tenantId, domain })}`),
+    // Department domains available for filtering
+    domains: (tenantId?: string) =>
+      request<{ domains: string[] }>(`/api/pulse/domains${qs({ tenant_id: tenantId })}`),
   },
 
   catalysts: {
@@ -602,6 +614,14 @@ export const api = {
       const a = document.createElement('a'); a.href = url; a.download = `financial-model-${id}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     },
+  },
+
+  // ── Admin (Superadmin only) ────────────────────────────────────────
+  admin: {
+    getLlmConfig: () =>
+      request<LlmConfigResponse>('/api/admin/llm-config'),
+    saveLlmConfig: (data: { provider: string; model?: string; apiKey?: string; baseUrl?: string; temperature?: number; maxTokens?: number }) =>
+      request<{ success: boolean; message: string; provider: string }>('/api/admin/llm-config', { method: 'POST', body: JSON.stringify(data) }),
   },
 };
 
@@ -1708,6 +1728,56 @@ export interface RunComment {
   comment: string;
   comment_type: string;
   created_at: string;
+}
+
+// Insights Engine response types
+export interface InsightDriver {
+  type: string;
+  source: string;
+  metric?: string;
+  value?: number;
+  runId?: string;
+  subCatalyst?: string;
+  domain?: string;
+  description?: string;
+}
+
+export interface PulseInsightsResponse {
+  insights: string;
+  recommendations: string[];
+  drivers: InsightDriver[];
+  domain: string;
+  generatedAt: string;
+  poweredBy: string;
+}
+
+export interface ApexInsightsResponse {
+  executiveSummary: string;
+  performanceDrivers: Array<{ dimension: string; driver: string; impact: string; trend: string }>;
+  issues: Array<{ title: string; severity: string; description: string; affectedDomain: string; traceability?: Record<string, unknown> }>;
+  crossDepartmentCorrelations: string[];
+  strategicImplications: string[];
+  generatedAt: string;
+  poweredBy: string;
+}
+
+export interface DashboardIntelligenceResponse {
+  summary: string;
+  keyMetrics: Array<{ name: string; value: number; trend: string; status: string; impact?: string }>;
+  topRisks: Array<{ title: string; severity: string; traceability?: Record<string, unknown> }>;
+  recommendedActions: string[];
+  generatedAt: string;
+  poweredBy: string;
+}
+
+export interface LlmConfigResponse {
+  provider: string;
+  model: string;
+  apiKeySet: boolean;
+  apiKeyMasked: string | null;
+  baseUrl: string | null;
+  temperature: number;
+  maxTokens: number;
 }
 
 export interface TechnicalSizing {
