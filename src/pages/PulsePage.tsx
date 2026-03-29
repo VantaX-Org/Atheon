@@ -296,10 +296,19 @@ export function PulsePage() {
     }
   };
 
+  // Map Pulse client-side dimension keys to valid Apex server dimension keys
+  const pulseDimToApexDim: Record<string, string> = {
+    'Metric Health': 'operational',
+    'Process Conformance': 'process',
+    'Anomaly Pressure': 'risk',
+    'Process Efficiency': 'operational',
+  };
+
   const handleOpenDimensionTrace = async (dimension: string) => {
+    const apexDimension = pulseDimToApexDim[dimension] || dimension;
     setLoadingDimTrace(true);
     try {
-      const data = await api.apex.healthDimension(dimension);
+      const data = await api.apex.healthDimension(apexDimension);
       if (!data || data.score === null) {
         alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
         return;
