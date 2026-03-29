@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { FlipCard, FlipCardFront, FlipCardBack } from "@/components/ui/flip-card";
 import { api } from "@/lib/api";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse } from "@/lib/api";
@@ -26,11 +24,42 @@ const trendIcon = (trend: string, size = 14) => {
 
 const severityColor = (s: string) => s === 'critical' ? 'danger' : s === 'high' ? 'warning' : s === 'medium' ? 'info' : 'default';
 
+function DashCard({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+  return (
+    <div
+      className={`rounded-2xl p-5 ${className}`}
+      style={{
+        background: "var(--bg-card-solid)",
+        border: "1px solid var(--border-card)",
+        boxShadow: "0 2px 12px rgba(100, 120, 180, 0.07), 0 0 0 1px rgba(255,255,255,0.5)",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TintedCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl p-5 ${className}`}
+      style={{
+        background: "linear-gradient(135deg, rgba(74, 107, 90, 0.06), rgba(93, 138, 111, 0.03))",
+        border: "1px solid rgba(74, 107, 90, 0.10)",
+        boxShadow: "0 2px 12px rgba(74, 107, 90, 0.05)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const riskImpactLabel = (probability: number) => probability >= 0.7 ? 'Very High' : probability >= 0.5 ? 'High' : probability >= 0.3 ? 'Medium' : 'Low';
 const riskLikelihoodBar = (probability: number) => Math.round(probability * 100);
 
 export function ApexPage() {
- const { activeTab, setActiveTab } = useTabState('health');
+ const [activeTab, setActiveTab] = useState<string>('health');
  const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
  const [health, setHealth] = useState<HealthScore | null>(null);
  const [briefing, setBriefing] = useState<Briefing | null>(null);
@@ -209,14 +238,14 @@ export function ApexPage() {
  </div>
  </div>
  </div>
- <Card>
+ <DashCard>
  <div className="flex flex-col items-center justify-center py-16 text-center">
  <Crown className="w-12 h-12 t-muted mb-4 opacity-30" />
  <p className="text-sm font-medium t-primary">No data yet</p>
  <p className="text-xs t-muted mt-1">Connect an ERP system and run a sync to populate executive intelligence,</p>
  <p className="text-xs t-muted">or use the Catalysts page to generate insights.</p>
  </div>
- </Card>
+ </DashCard>
  </div>
  );
  }
@@ -255,11 +284,33 @@ export function ApexPage() {
  </div>
  )}
 
- <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+ <div className="flex items-center gap-2">
+  <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
+   {tabs.map((tab) => (
+    <button
+     key={tab.id}
+     onClick={() => setActiveTab(tab.id)}
+     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
+     style={
+      activeTab === tab.id
+       ? { background: "var(--bg-card-solid)", color: "var(--text-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }
+       : { color: "var(--text-muted)" }
+     }
+    >
+     {tab.icon}
+     <span>{tab.label}</span>
+     {tab.count !== undefined && (
+      <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${activeTab === tab.id ? 'bg-accent/10 text-accent' : 'bg-[var(--bg-secondary)] t-muted'}`}>
+       {tab.count}
+      </span>
+     )}
+    </button>
+   ))}
+  </div>
+ </div>
 
  {/* Business Health Tab */}
  {activeTab === 'health' && (
- <TabPanel>
  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
  {/* Overall Health Score - Interactive Flip Card */}
  <FlipCard
@@ -329,7 +380,7 @@ export function ApexPage() {
 
  {/* Performance Areas - Interactive Cards */}
  <div className="lg:col-span-2">
-  <Card>
+  <DashCard>
    <div className="flex items-center justify-between mb-4">
     <h3 className="text-lg font-semibold t-primary">Performance Areas</h3>
     <div className="flex items-center gap-2">
@@ -437,21 +488,19 @@ export function ApexPage() {
      />
     ))}
    </div>
-  </Card>
+  </DashCard>
  </div>
  </div>
- </TabPanel>
  )}
 
  {/* Executive Briefing Tab */}
  {activeTab === 'briefing' && (
- <TabPanel>
  <div className="space-y-6">
  {/* Narrative */}
- <Card variant="black">
+ <DashCard>
  <div className="flex items-center gap-2 mb-3">
  <FileText className="w-4 h-4 text-accent" />
- <h3 className="text-lg font-semibold">Daily Executive Briefing</h3>
+ <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
  <Badge variant="info">Today</Badge>
  </div>
  {briefing?.summary ? (
@@ -496,11 +545,11 @@ export function ApexPage() {
  <p className="text-xs t-muted mt-1">Run a catalyst to generate your first briefing.</p>
  </div>
  )}
- </Card>
+ </DashCard>
 
  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
  {/* KPI Movements */}
- <Card>
+ <DashCard>
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <TrendingUp className="w-4 h-4 text-accent" /> KPI Movements
  </h3>
@@ -515,10 +564,10 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </Card>
+ </DashCard>
 
  {/* Top Risks */}
- <Card>
+ <DashCard>
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <AlertTriangle className="w-4 h-4 text-red-400" /> Top Risks
  </h3>
@@ -532,10 +581,10 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </Card>
+ </DashCard>
 
  {/* Top Opportunities */}
- <Card variant="mint">
+ <TintedCard>
  <h3 className="text-base font-semibold t-primary mb-3 flex items-center gap-2">
  <Lightbulb className="w-4 h-4 text-emerald-400" /> Opportunities
  </h3>
@@ -549,12 +598,12 @@ export function ApexPage() {
  </div>
  ))}
  </div>
- </Card>
+ </TintedCard>
  </div>
 
  {/* Required Decisions */}
  {(briefing?.decisionsNeeded || []).length > 0 && (
- <Card variant="black">
+ <DashCard>
  <h3 className="text-base font-semibold flex items-center gap-2">
  <Shield className="w-4 h-4 text-accent" /> Decisions Required
  </h3>
@@ -563,15 +612,13 @@ export function ApexPage() {
  <h4 className="text-sm font-semibold text-amber-800">{dec}</h4>
  </div>
  ))}
- </Card>
+ </DashCard>
  )}
  </div>
- </TabPanel>
  )}
 
  {/* Risk Alerts Tab */}
  {activeTab === 'risks' && (
- <TabPanel>
  <div className="space-y-4">
  {risks.length === 0 && (
  <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -581,11 +628,15 @@ export function ApexPage() {
  </div>
  )}
  {risks.map((risk) => (
- <Card
+ <div
  key={risk.id}
- hover
  onClick={() => setExpandedRisk(expandedRisk === risk.id ? null : risk.id)}
- className={expandedRisk === risk.id ? 'border-accent/20' : ''}
+ className="rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-all"
+ style={{
+  background: 'var(--bg-card-solid)',
+  border: expandedRisk === risk.id ? '1px solid rgba(74, 107, 90, 0.20)' : '1px solid var(--border-card)',
+  boxShadow: '0 2px 12px rgba(100, 120, 180, 0.07), 0 0 0 1px rgba(255,255,255,0.5)',
+ }}
  >
  <div className="flex items-start gap-4">
  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -727,15 +778,13 @@ export function ApexPage() {
  )}
  </div>
  </div>
- </Card>
+ </div>
  ))}
  </div>
- </TabPanel>
  )}
 
  {/* Scenario Modelling Tab */}
  {activeTab === 'scenarios' && (
- <TabPanel>
  <div className="space-y-6">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">What-If Analysis</h3>
@@ -752,7 +801,7 @@ export function ApexPage() {
   const resultEntries = scenario.results ? Object.entries(scenario.results) : [];
   const hasResults = resultEntries.length > 0;
   return (
-   <Card key={scenario.id}>
+   <DashCard key={scenario.id}>
     <div className="flex items-start justify-between">
      <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
@@ -854,11 +903,10 @@ export function ApexPage() {
       <p className="text-sm t-muted">No results were generated for this scenario.</p>
      </div>
     )}
-   </Card>
+   </DashCard>
   );
  })}
  </div>
- </TabPanel>
  )}
 
  {/* Scenario Builder Modal */}
