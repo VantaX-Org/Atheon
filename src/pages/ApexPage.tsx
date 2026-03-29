@@ -391,7 +391,7 @@ export function ApexPage() {
     onFlip={() => toggleFlip('apex-health')}
     front={
      <Card variant="black" className="h-full flex flex-col items-center justify-center">
-      <ScoreRing score={overallScore} size="xl" label="Overall Health" sublabel="Composite Index" />
+      <ScoreRing score={overallScore} size="xl" label="Overall Health" />
       {health?.calculatedAt && healthHistory && (
        <div className="flex flex-col items-center gap-2 mt-4">
         {healthHistory.history.length > 1 && (
@@ -406,14 +406,12 @@ export function ApexPage() {
       {!health?.calculatedAt && overallScore === 0 && (
        <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
       )}
-      <p className="text-[9px] t-muted mt-3 opacity-50">Click to see breakdown</p>
      </Card>
     }
     back={
      <Card variant="black" className="h-full">
       <div className="flex items-center justify-between mb-3">
        <h4 className="text-sm font-semibold t-primary">Health Score Breakdown</h4>
-       <span className="text-[9px] t-muted opacity-50">Click to flip back</span>
       </div>
       <div className="space-y-2.5">
        {dimensions.map((dim) => (
@@ -496,14 +494,12 @@ export function ApexPage() {
        <Gauge size={14} className="text-accent" />
       </div>
       <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
-      <p className="text-[10px] t-muted mt-1">Being tracked</p>
      </Card>
     }
     back={
      <Card className="h-full">
       <div className="flex items-center justify-between mb-2">
        <span className="text-xs font-semibold t-primary">All Dimensions</span>
-       <span className="text-[9px] t-muted">Click to flip</span>
       </div>
       <div className="space-y-1 max-h-32 overflow-y-auto">
        {dimensions.map((d) => (
@@ -528,14 +524,12 @@ export function ApexPage() {
        <CheckCircle2 size={14} className="text-emerald-400" />
       </div>
       <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
-      <p className="text-[10px] t-muted mt-1">Score above 80</p>
      </Card>
     }
     back={
      <Card className="h-full">
       <div className="flex items-center justify-between mb-2">
        <span className="text-xs font-semibold text-emerald-400">Healthy Dimensions</span>
-       <span className="text-[9px] t-muted">Click to flip</span>
       </div>
       <div className="space-y-1 max-h-32 overflow-y-auto">
        {dimensions.filter(d => d.score >= 80).map((d) => (
@@ -560,14 +554,12 @@ export function ApexPage() {
        <AlertTriangle size={14} className="text-amber-400" />
       </div>
       <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
-      <p className="text-[10px] t-muted mt-1">Score 60–79</p>
      </Card>
     }
     back={
      <Card className="h-full">
       <div className="flex items-center justify-between mb-2">
        <span className="text-xs font-semibold text-amber-400">At Risk Dimensions</span>
-       <span className="text-[9px] t-muted">Click to flip</span>
       </div>
       <div className="space-y-1 max-h-32 overflow-y-auto">
        {dimensions.filter(d => d.score >= 60 && d.score < 80).map((d) => (
@@ -592,14 +584,12 @@ export function ApexPage() {
        <XCircle size={14} className="text-red-400" />
       </div>
       <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
-      <p className="text-[10px] t-muted mt-1">Score below 60</p>
      </Card>
     }
     back={
      <Card className="h-full">
       <div className="flex items-center justify-between mb-2">
        <span className="text-xs font-semibold text-red-400">Critical Dimensions</span>
-       <span className="text-[9px] t-muted">Click to flip</span>
       </div>
       <div className="space-y-1 max-h-32 overflow-y-auto">
        {dimensions.filter(d => d.score < 60).map((d) => (
@@ -621,7 +611,6 @@ export function ApexPage() {
     <div className="flex items-center gap-2 mb-3">
      <BarChart3 className="w-4 h-4 text-accent" />
      <h3 className="text-lg font-semibold">Executive Summary</h3>
-     <Badge variant="info">Live</Badge>
     </div>
     <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-muted)' }}>
      {briefing?.summary || `Atheon is monitoring ${dimensions.length} business dimensions across your enterprise. Overall health score is ${overallScore}/100. ${dimensions.filter(d => d.score < 60).length > 0 ? `${dimensions.filter(d => d.score < 60).length} dimension(s) require immediate attention.` : 'All dimensions are within acceptable thresholds.'} ${risks.length > 0 ? `There are ${risks.length} active risk alert(s) requiring review.` : 'No active risk alerts detected.'}`}
@@ -672,8 +661,7 @@ export function ApexPage() {
  <Card>
  <div className="flex items-center gap-2 mb-3">
  <FileText className="w-4 h-4 text-accent" />
- <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
- <Badge variant="info">Today</Badge>
+  <h3 className="text-lg font-semibold t-primary">Daily Executive Briefing</h3>
  </div>
  {briefing?.summary ? (
  <>

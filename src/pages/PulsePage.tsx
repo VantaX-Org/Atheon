@@ -639,7 +639,7 @@ export function PulsePage() {
               onFlip={() => toggleFlip('pulse-health')}
               front={
                 <Card variant="black" className="h-full flex flex-col items-center justify-center">
-                  <ScoreRing score={health.score} size="xl" label="Operational Health" sublabel="Composite Index" />
+                  <ScoreRing score={health.score} size="xl" label="Operational Health" />
                   <div className="flex items-center gap-2 mt-4">
                     {trendIcon(health.trend)}
                     <span className={`text-sm ${health.trend === 'improving' ? 'text-emerald-400' : health.trend === 'declining' ? 'text-red-400' : 'text-gray-400'}`}>
@@ -649,14 +649,12 @@ export function PulsePage() {
                   {health.score === 0 && (
                     <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
                   )}
-                  <p className="text-[9px] t-muted mt-3 opacity-50">Click to see breakdown</p>
                 </Card>
               }
               back={
                 <Card variant="black" className="h-full">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-semibold t-primary">Health Score Breakdown</h4>
-                    <span className="text-[9px] t-muted opacity-50">Click to flip back</span>
                   </div>
                   <div className="space-y-2.5">
                     {Object.entries(health.dimensions).map(([name, dim]) => (
@@ -739,14 +737,12 @@ export function PulsePage() {
                     <Activity size={14} className="text-accent" />
                   </div>
                   <p className="text-2xl font-bold t-primary">{summary?.totalMetrics ?? metrics.length}</p>
-                  <p className="text-[10px] t-muted mt-1">Being monitored</p>
                 </Card>
               }
               back={
                 <Card className="h-full">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold t-primary">All Metrics</span>
-                    <span className="text-[9px] t-muted">Click to flip</span>
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {metrics.slice(0, 8).map((m, i) => (
@@ -773,14 +769,12 @@ export function PulsePage() {
                     <CheckCircle2 size={14} className="text-emerald-400" />
                   </div>
                   <p className="text-2xl font-bold text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length}</p>
-                  <p className="text-[10px] t-muted mt-1">Within thresholds</p>
                 </Card>
               }
               back={
                 <Card className="h-full">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-emerald-400">Healthy Metrics</span>
-                    <span className="text-[9px] t-muted">Click to flip</span>
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {metrics.filter(m => m.status === 'green').slice(0, 8).map((m, i) => (
@@ -807,14 +801,12 @@ export function PulsePage() {
                     <AlertTriangle size={14} className="text-amber-400" />
                   </div>
                   <p className="text-2xl font-bold text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length}</p>
-                  <p className="text-[10px] t-muted mt-1">Approaching limits</p>
                 </Card>
               }
               back={
                 <Card className="h-full">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-amber-400">Warning Metrics</span>
-                    <span className="text-[9px] t-muted">Click to flip</span>
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {metrics.filter(m => m.status === 'amber').slice(0, 8).map((m, i) => (
@@ -841,14 +833,12 @@ export function PulsePage() {
                     <XCircle size={14} className="text-red-400" />
                   </div>
                   <p className="text-2xl font-bold text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}</p>
-                  <p className="text-[10px] t-muted mt-1">Breaching thresholds</p>
                 </Card>
               }
               back={
                 <Card className="h-full">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-red-400">Critical Metrics</span>
-                    <span className="text-[9px] t-muted">Click to flip</span>
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {metrics.filter(m => m.status === 'red').slice(0, 8).map((m, i) => (
@@ -873,7 +863,6 @@ export function PulsePage() {
               <div className="flex items-center gap-2 mb-3">
                 <BarChart3 className="w-4 h-4 text-accent" />
                 <h3 className="text-lg font-semibold">Operational Summary</h3>
-                <Badge variant="info">Live</Badge>
               </div>
               <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-muted)' }}>
                 {narrative}
