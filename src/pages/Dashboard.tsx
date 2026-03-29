@@ -312,7 +312,7 @@ export function Dashboard() {
                     <p className="text-sm font-bold t-primary">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</p>
                     <div className="flex items-center gap-1">
                       {trendIcon(m.trend)}
-                      <span className="text-[10px] t-muted">{m.impact}</span>
+                      <span className="text-[10px] t-muted">{m.status === 'red' ? 'Critical' : m.status === 'amber' ? 'Warning' : 'Healthy'}</span>
                     </div>
                   </div>
                 ))}

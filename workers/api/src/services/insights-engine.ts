@@ -881,7 +881,7 @@ export async function generateApexInsights(
 ): Promise<{
   executiveSummary: string;
   performanceDrivers: Array<{ dimension: string; driver: string; impact: string; direction: string; traceability: Record<string, unknown> }>;
-  issues: Array<{ title: string; severity: string; department: string; traceability: Record<string, unknown> }>;
+  issues: Array<{ title: string; severity: string; description: string; affectedDomain: string; traceability: Record<string, unknown> }>;
   crossDepartmentCorrelations: string[];
   strategicImplications: string[];
 }> {
@@ -922,12 +922,13 @@ export async function generateApexInsights(
   }
 
   // Build issues from critical insights
-  const issues: Array<{ title: string; severity: string; department: string; traceability: Record<string, unknown> }> = [];
+  const issues: Array<{ title: string; severity: string; description: string; affectedDomain: string; traceability: Record<string, unknown> }> = [];
   for (const insight of (criticalInsights.results || []).slice(0, 10)) {
     issues.push({
       title: insight.title as string,
       severity: insight.severity as string,
-      department: insight.domain as string || 'general',
+      description: (insight.description as string) || (insight.title as string),
+      affectedDomain: (insight.domain as string) || 'general',
       traceability: {
         source_run_id: insight.source_run_id,
         cluster_id: insight.cluster_id,
@@ -942,7 +943,8 @@ export async function generateApexInsights(
     issues.push({
       title: risk.title as string,
       severity: risk.severity as string,
-      department: risk.category as string,
+      description: (risk.title as string),
+      affectedDomain: (risk.category as string) || 'general',
       traceability: {
         source_run_id: risk.source_run_id || null,
         cluster_id: risk.cluster_id || null,

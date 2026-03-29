@@ -353,7 +353,7 @@ export function ApexPage() {
      <div className="flex flex-wrap gap-1.5">
       {execInsights.crossDepartmentCorrelations.map((c, i) => (
        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] text-[10px] t-muted border border-[var(--border-card)]">
-        {c.from} <ArrowRight size={8} /> {c.to}: {c.relationship}
+        {c}
        </span>
       ))}
      </div>

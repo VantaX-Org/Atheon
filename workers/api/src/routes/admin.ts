@@ -425,8 +425,7 @@ admin.get('/llm-config', async (c) => {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
 
-  const auth = c.get('auth') as AuthContext | undefined;
-  const tenantId = auth?.tenantId || '';
+  const tenantId = '__global__';
 
   try {
     const config = await loadLlmConfig(c.env.DB, tenantId);
@@ -460,8 +459,7 @@ admin.post('/llm-config', async (c) => {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
 
-  const auth = c.get('auth') as AuthContext | undefined;
-  const tenantId = auth?.tenantId || '';
+  const tenantId = '__global__';
 
   try {
     const body = await c.req.json<{

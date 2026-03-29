@@ -136,10 +136,7 @@ pulse.get('/domains', async (c) => {
   }
 
   return c.json({
-    domains: Array.from(domains).map(d => ({
-      domain: d,
-      metricCount: (result.results || []).find(r => r.domain === d)?.metric_count || 0,
-    })),
+    domains: Array.from(domains),
     total: domains.size,
   });
 });

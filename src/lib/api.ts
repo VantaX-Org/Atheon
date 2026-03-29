@@ -1754,8 +1754,8 @@ export interface PulseInsightsResponse {
 export interface ApexInsightsResponse {
   executiveSummary: string;
   performanceDrivers: Array<{ dimension: string; driver: string; impact: string; trend: string }>;
-  issues: Array<{ title: string; severity: string; description: string; affectedDomain: string }>;
-  crossDepartmentCorrelations: Array<{ from: string; to: string; relationship: string; impact: string }>;
+  issues: Array<{ title: string; severity: string; description: string; affectedDomain: string; traceability?: Record<string, unknown> }>;
+  crossDepartmentCorrelations: string[];
   strategicImplications: string[];
   generatedAt: string;
   poweredBy: string;
@@ -1763,8 +1763,8 @@ export interface ApexInsightsResponse {
 
 export interface DashboardIntelligenceResponse {
   summary: string;
-  keyMetrics: Array<{ name: string; value: number; trend: string; impact: string }>;
-  topRisks: Array<{ title: string; severity: string; probability: number }>;
+  keyMetrics: Array<{ name: string; value: number; trend: string; status: string; impact?: string }>;
+  topRisks: Array<{ title: string; severity: string; traceability?: Record<string, unknown> }>;
   recommendedActions: string[];
   generatedAt: string;
   poweredBy: string;
