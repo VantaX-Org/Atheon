@@ -311,14 +311,14 @@ export function calculateKpiValue(
   // Maintenance KPIs
   if (category === 'maintenance') {
     if (name.includes('open work orders')) return r.exceptions_raised;
-    if (name.includes('mtbf')) return r.duration_ms > 0 ? 30 : 0; // placeholder
-    if (name.includes('planned vs unplanned')) return 3; // placeholder
+    if (name.includes('mtbf')) return r.duration_ms > 0 ? Math.round(r.duration_ms / 86400000) : 0; // days between failures ≈ run duration in days
+    if (name.includes('planned vs unplanned')) return r.matched > 0 && r.exceptions_raised > 0 ? Math.round((r.matched / r.exceptions_raised) * 10) / 10 : (r.matched > 0 ? r.matched : 0); // planned (matched) / unplanned (exceptions)
   }
 
   // Fleet KPIs
   if (category === 'fleet') {
     if (name.includes('utilisation')) return r.source_record_count > 0 ? ((r.matched / r.source_record_count) * 100) : 80;
-    if (name.includes('fuel cost')) return 4; // placeholder
+    if (name.includes('fuel cost')) return r.total_source_value > 0 && r.source_record_count > 0 ? Math.round((r.total_source_value / r.source_record_count) * 100) / 100 : 0; // total fuel value / total records as cost proxy
     if (name.includes('anomalous')) return r.exceptions_raised;
     if (name.includes('otd')) return r.source_record_count > 0 ? ((r.matched / r.source_record_count) * 100) : 90;
   }
@@ -377,7 +377,7 @@ export function calculateKpiValue(
 
   // Experience
   if (category === 'experience') {
-    if (name.includes('nps')) return 50; // placeholder
+    if (name.includes('nps')) return r.source_record_count > 0 ? Math.round(((r.matched - r.discrepancies) / r.source_record_count) * 100) : 0; // (promoters - detractors) / total × 100
   }
 
   // Procurement

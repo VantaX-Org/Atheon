@@ -272,9 +272,10 @@ export function CatalystsPage() {
  const erpData = await api.erp.connections();
  const connected = erpData.connections.filter(c => c.status === 'connected');
  setErpConnections(connected);
- } catch {
- setErpConnections([]);
- }
+  } catch (err) {
+  console.error('Failed to load ERP connections', err);
+  setErpConnections([]);
+  }
  setDsError(null);
  setShowDataSourceConfig(true);
  };
@@ -471,8 +472,8 @@ export function CatalystsPage() {
        if (configRes.value.users) setHitlUsersMap(configRes.value.users);
      }
      if (usersRes.status === 'fulfilled') setHitlUsers(usersRes.value.users);
-   } catch { /* failed */ }
-   setHitlLoading(false);
+    } catch (err) { console.error('Failed to load HITL configs', err); }
+    setHitlLoading(false);
  };
 
  const loadRunAnalytics = async () => {
@@ -482,8 +483,8 @@ export function CatalystsPage() {
      const res = await api.catalysts.runAnalytics(clusterParam, undefined, 50);
      setRunAnalytics(res.runs);
      setRunAggregate(res.aggregate);
-   } catch { /* failed */ }
-   setAnalyticsLoading(false);
+    } catch (err) { console.error('Failed to load run analytics', err); }
+    setAnalyticsLoading(false);
  };
 
  const openHitlEdit = (clusterId: string, subName: string) => {
@@ -538,7 +539,7 @@ export function CatalystsPage() {
    try {
      await api.catalysts.deleteHitlConfig(clusterId, subName || undefined);
      await loadHitlConfigs();
-   } catch { /* failed */ }
+   } catch (err) { console.error('Failed to delete HITL config', err); }
  };
 
  // Schedule configuration state
@@ -733,7 +734,7 @@ export function CatalystsPage() {
  ? await api.catalysts.executionLogsForAction(actionId)
  : await api.catalysts.executionLogs();
  setExecutionLogs(result.logs);
- } catch { setExecutionLogs([]); }
+ } catch (err) { console.error('Failed to load execution logs', err); setExecutionLogs([]); }
  setLogsLoading(false);
  };
 
@@ -1645,8 +1646,8 @@ export function CatalystsPage() {
              try {
                const res = await api.catalysts.runAnalyticsDetail(run.runId);
                setRunDetailActions(prev => ({ ...prev, [run.runId]: res.actions }));
-             } catch { /* failed */ }
-             setRunDetailLoading(null);
+              } catch (err) { console.error('Failed to load run detail', err); }
+              setRunDetailLoading(null);
            }}>
              {runDetailLoading === run.runId ? <Loader2 size={10} className="animate-spin" /> : <Eye size={10} />} Load Items
            </Button>

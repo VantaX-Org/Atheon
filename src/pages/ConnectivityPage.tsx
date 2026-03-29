@@ -5,6 +5,7 @@ import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import type { ERPConnection } from "@/lib/api";
 import { Link2, Radio, Bot, CheckCircle, XCircle, Wifi, WifiOff, ArrowRight, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 interface MCPServer {
  id: string;
@@ -16,6 +17,7 @@ interface MCPServer {
 }
 
 export function ConnectivityPage() {
+ const toast = useToast();
  const { activeTab, setActiveTab } = useTabState('mcp');
  const [connections, setConnections] = useState<ERPConnection[]>([]);
  const [loading, setLoading] = useState(true);
@@ -26,11 +28,11 @@ export function ConnectivityPage() {
  try {
  const data = await api.erp.connections();
  setConnections(data.connections);
- } catch { /* ignore */ }
- setLoading(false);
- }
- load();
- }, []);
+  } catch (err) { console.error('Failed to load connections', err); toast.error('Failed to load connections'); }
+  setLoading(false);
+  }
+  load();
+  }, []);
 
  // Transform connections into MCP-like server view
  const mcpServers: MCPServer[] = connections.map(c => ({

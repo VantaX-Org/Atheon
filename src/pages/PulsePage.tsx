@@ -306,7 +306,8 @@ export function PulsePage() {
       }
       setDimTraceData(data);
       setShowDimTraceModal(true);
-    } catch {
+    } catch (err) {
+      console.error('Failed to load dimension traceability', err);
       alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
     } finally {
       setLoadingDimTrace(false);
@@ -368,7 +369,7 @@ export function PulsePage() {
             if (newM.status === 'fulfilled') setMetrics(newM.value.metrics);
             if (newS.status === 'fulfilled') setSummary(newS.value);
           }
-        } catch { /* refresh failed — show empty state */ }
+        } catch (err) { console.error('Pulse auto-refresh failed', err); }
       }
 
       setLoading(false);
@@ -405,7 +406,7 @@ export function PulsePage() {
         const data = await api.pulse.catalystRuns(undefined, filterParam);
         setCatalystRuns(data.runs);
         setCatalystSummary(data.summary);
-      } catch { /* failed */ }
+      } catch (err) { console.error('Failed to load catalyst runs', err); }
       setRunsLoading(false);
     }
     loadRuns();
@@ -431,7 +432,7 @@ export function PulsePage() {
         setCatalystRuns(data.runs);
         setCatalystSummary(data.summary);
       }
-    } catch { /* failed */ }
+    } catch (err) { console.error('Manual refresh failed', err); }
     setRefreshing(false);
   };
 

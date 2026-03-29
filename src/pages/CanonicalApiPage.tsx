@@ -6,6 +6,7 @@ import { api, getTenantOverride, API_URL } from "@/lib/api";
 import type { CanonicalEndpoint } from "@/lib/api";
 import { Code, Layers, ArrowRight, Globe, BookOpen, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { useAppStore } from "@/stores/appStore";
 
 const methodColor: Record<string, string> = {
@@ -31,6 +32,7 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  const [tryingEndpoint, setTryingEndpoint] = useState<string | null>(null);
  const [tryResult, setTryResult] = useState<{ endpointId: string; status: number; data: unknown } | null>(null);
  const [tryLoading, setTryLoading] = useState(false);
+ const toast = useToast();
  const user = useAppStore((s) => s.user);
  const activeTenantId = useAppStore((s) => s.activeTenantId);
 
@@ -40,13 +42,13 @@ export function CanonicalApiPage({ embedded }: { embedded?: boolean } = {}) {
  try {
  const data = await api.erp.canonical();
  setEndpoints(data.endpoints);
- } catch { /* ignore */ }
- setLoading(false);
- }
- load();
- }, []);
+  } catch (err) { console.error('Failed to load canonical endpoints', err); toast.error('Failed to load API endpoints'); }
+  setLoading(false);
+  }
+  load();
+  }, []);
 
- if (loading) {
+  if (loading) {
  return (
  <div className="flex items-center justify-center h-96">
  <Loader2 className="w-8 h-8 text-accent animate-spin" />

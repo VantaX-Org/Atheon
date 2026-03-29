@@ -156,7 +156,7 @@ export function ControlPlanePage() {
  try {
  const cl = await api.catalysts.clusters();
  setClusters(cl.clusters.map(c => ({ id: c.id, name: c.name })));
- } catch { /* ignore */ }
+ } catch (err) { console.error('Failed to load clusters', err); }
  setLoading(false);
  }
  load();
