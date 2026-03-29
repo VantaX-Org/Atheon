@@ -59,12 +59,10 @@ export function ApexPage() {
  const [scenarioVariables, setScenarioVariables] = useState<Array<{ name: string; baseValue: string }>>([{ name: '', baseValue: '' }]);
  
  const handleOpenDimensionTrace = async (dimension: string) => {
-  setLoadingTraceability(true);
   try {
    const data = await api.apex.healthDimension(dimension);
    if (!data || data.score === null) {
      console.warn('No traceability data available for dimension:', dimension);
-     // Show user-friendly message
      alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
      return;
    }
@@ -75,11 +73,9 @@ export function ApexPage() {
    console.error('Failed to load dimension traceability:', err);
    alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
   }
-  setLoadingTraceability(false);
  };
  
  const handleOpenRiskTrace = async (riskId: string) => {
-  setLoadingTraceability(true);
   try {
    const data = await api.apex.riskTrace(riskId);
    if (!data || !data.riskAlert) {
@@ -94,7 +90,6 @@ export function ApexPage() {
    console.error('Failed to load risk traceability:', err);
    alert('Failed to load risk traceability data.');
   }
-  setLoadingTraceability(false);
  };
 
  const resetScenarioBuilder = () => {
