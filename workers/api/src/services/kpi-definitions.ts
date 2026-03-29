@@ -311,7 +311,7 @@ export function calculateKpiValue(
   // Maintenance KPIs
   if (category === 'maintenance') {
     if (name.includes('open work orders')) return r.exceptions_raised;
-    if (name.includes('mtbf')) return r.duration_ms > 0 ? Math.round(r.duration_ms / 86400000) : 0; // days between failures ≈ run duration in days
+    if (name.includes('mtbf')) return r.exceptions_raised > 0 ? Math.round(r.source_record_count / r.exceptions_raised) : (r.source_record_count > 0 ? 30 : 0); // records per failure as MTBF proxy; defaults to 30 when no exceptions
     if (name.includes('planned vs unplanned')) return r.matched > 0 && r.exceptions_raised > 0 ? Math.round((r.matched / r.exceptions_raised) * 10) / 10 : (r.matched > 0 ? r.matched : 0); // planned (matched) / unplanned (exceptions)
   }
 
