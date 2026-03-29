@@ -477,13 +477,15 @@ admin.post('/llm-config', async (c) => {
       return c.json({ error: `Invalid provider. Must be one of: ${validProviders.join(', ')}` }, 400);
     }
 
+    // Merge with existing config to preserve fields not re-entered (e.g. API key)
+    const existing = await loadLlmConfig(c.env.DB, tenantId);
     await saveLlmConfig(c.env.DB, tenantId, {
       provider: normalizedProvider as LlmProviderType,
-      model_id: body.model,
-      api_key: body.apiKey,
-      api_base_url: body.baseUrl,
-      temperature: body.temperature,
-      max_tokens: body.maxTokens,
+      model_id: body.model ?? existing.model_id,
+      api_key: body.apiKey ?? existing.api_key,
+      api_base_url: body.baseUrl ?? existing.api_base_url,
+      temperature: body.temperature ?? existing.temperature,
+      max_tokens: body.maxTokens ?? existing.max_tokens,
     });
 
     return c.json({
