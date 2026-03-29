@@ -74,10 +74,14 @@ seed.post('/seed-vantax', async (c) => {
 
     let cleanupCount = 0;
     for (const table of cleanupTables) {
-      const result = await c.env.DB.prepare(
-        `DELETE FROM ${table} WHERE tenant_id = ?`
-      ).bind(tenantId).run();
-      cleanupCount += (result.meta as any)?.changes || 0;
+      try {
+        const result = await c.env.DB.prepare(
+          `DELETE FROM ${table} WHERE tenant_id = ?`
+        ).bind(tenantId).run();
+        cleanupCount += (result.meta as any)?.changes || 0;
+      } catch {
+        // Table may not exist yet — skip silently
+      }
     }
     console.log(`Cleaned ${cleanupCount} old records`);
 
@@ -92,7 +96,7 @@ seed.post('/seed-vantax', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, autonomy_tier, agent_count)
         VALUES (?, ?, ?, ?, ?, 'active', 'supervised', 3)
-      `).bind(tenantId, cluster.id, cluster.name, cluster.domain, cluster.description).run();
+      `).bind(cluster.id, tenantId, cluster.name, cluster.domain, cluster.description).run();
     }
 
     // Step 4: Create Sub-Catalysts with SAP scenarios
@@ -115,7 +119,7 @@ seed.post('/seed-vantax', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO sub_catalyst_kpis (id, tenant_id, cluster_id, sub_catalyst_name, total_runs, successful_runs, success_rate, avg_confidence, status, threshold_success_green, threshold_success_amber, threshold_success_red)
         VALUES (?, ?, ?, ?, 0, 0, 0, 0, 'green', 90, 70, 50)
-      `).bind(tenantId, sub.clusterId, sub.name, crypto.randomUUID()).run();
+      `).bind(crypto.randomUUID(), tenantId, sub.clusterId, sub.name).run();
     }
 
     // Step 5: Create POSITIVE scenario runs (clean matches - should pass all checks)
