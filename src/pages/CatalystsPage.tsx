@@ -1079,7 +1079,7 @@ export function CatalystsPage() {
  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-[10px] text-gray-400">Trust Score</span>
- <p className="text-sm font-bold t-primary">{cluster.trustScore}%</p>
+ <p className="text-sm font-bold t-primary">{Number(cluster.trustScore).toFixed(1)}%</p>
  </div>
  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-[10px] text-gray-400">Agents</span>
@@ -1091,14 +1091,14 @@ export function CatalystsPage() {
  </div>
  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-[10px] text-gray-400">Success Rate</span>
- <p className="text-sm font-bold text-emerald-400">{cluster.successRate}%</p>
+ <p className="text-sm font-bold text-emerald-400">{Number(cluster.successRate).toFixed(1)}%</p>
  </div>
  </div>
 
  <div className="mt-3">
  <div className="flex items-center justify-between text-[10px] text-gray-400 mb-1">
  <span>Trust Score</span>
- <span>{cluster.trustScore}%</span>
+ <span>{Number(cluster.trustScore).toFixed(1)}%</span>
  </div>
  <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : cluster.trustScore >= 80 ? 'blue' : 'amber'} size="sm" />
  </div>
@@ -1751,7 +1751,7 @@ export function CatalystsPage() {
  <span className="text-sm t-secondary truncate">{cluster.name}</span>
  <div className="flex items-center gap-2">
  <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : 'amber'} size="sm" className="w-20" />
- <span className="text-sm font-medium t-primary w-10 text-right">{cluster.trustScore}%</span>
+ <span className="text-sm font-medium t-primary w-10 text-right">{Number(cluster.trustScore).toFixed(1)}%</span>
  </div>
  </div>
  ))}
