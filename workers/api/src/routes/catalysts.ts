@@ -1606,6 +1606,14 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     console.error('auto run-analytics insert failed:', err);
   }
 
+  // ── Generate Apex/Pulse/Dashboard insights from this catalyst run ──
+  try {
+    const clusterDomain = (cluster.domain as string) || 'finance';
+    await generateInsightsForTenant(c.env.DB, targetTenant, subName, clusterDomain, undefined, runId, clusterId, subName);
+  } catch (err) {
+    console.error('Insight generation after sub-catalyst execution failed (non-critical):', err);
+  }
+
   // Always return 200 so the client can read the detailed result (status field indicates success/failure)
   return c.json(result, 200);
 });
