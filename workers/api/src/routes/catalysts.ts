@@ -1800,19 +1800,27 @@ async function performValidation(
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
   for (const row of data) {
-    // Basic validation checks
-    const hasAmount = row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '';
-    const hasDate = row['invoice_date'] || row['date'] || row['posting_date'];
-    const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'];
+    // Basic validation checks — accept any monetary field as valid
+    const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
+                      (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
+                      (row['credit_limit'] !== undefined && row['credit_limit'] !== null && row['credit_limit'] !== '') ||
+                      (row['credit_balance'] !== undefined && row['credit_balance'] !== null && row['credit_balance'] !== '') ||
+                      (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
+                      (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
+                      (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '') ||
+                      (row['cost_price'] !== undefined && row['cost_price'] !== null && row['cost_price'] !== '');
+    const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
+    const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
+                   row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
 
     if (!hasAmount || !hasDate || !hasRef) {
       issues++;
       if (discrepancies && discrepancies.length < 50) {
         discrepancies.push({
           source_record: row, target_record: null,
-          field: !hasAmount ? 'amount' : !hasDate ? 'date' : 'reference',
+          field: !hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference',
           source_value: null, target_value: null,
-          difference: `Missing required field: ${!hasAmount ? 'amount' : !hasDate ? 'date' : 'reference'}`,
+          difference: `Missing required field: ${!hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference'}`,
         });
       }
     }
@@ -1893,13 +1901,13 @@ async function fetchDataForSource(
 
       if (module.includes('invoice') || module.includes('accounts_payable') || module.includes('ap')) {
         const rows = await db.prepare(
-          'SELECT invoice_number, invoice_date, due_date, amount, tax_amount, status, vendor_name, description FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
+          'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar')) {
         const rows = await db.prepare(
-          'SELECT id, name, email, phone, account_number, credit_limit, outstanding_balance FROM erp_customers WHERE tenant_id = ? LIMIT 500'
+          'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
@@ -1911,7 +1919,7 @@ async function fetchDataForSource(
       }
       if (module.includes('supplier') || module.includes('vendor')) {
         const rows = await db.prepare(
-          'SELECT id, name, email, payment_terms, tax_number FROM erp_suppliers WHERE tenant_id = ? LIMIT 500'
+          'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
@@ -1942,7 +1950,7 @@ async function fetchDataForSource(
       }
       // Default: try invoices as a common ERP data set
       const rows = await db.prepare(
-        'SELECT invoice_number, invoice_date, amount, status, vendor_name FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
+        'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
       ).bind(tenantId).all();
       return rows.results as Record<string, unknown>[];
     }
