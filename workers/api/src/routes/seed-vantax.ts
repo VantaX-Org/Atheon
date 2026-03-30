@@ -444,7 +444,7 @@ seed.post('/seed-vantax', async (c) => {
         ],
         field_mappings: [
           { source_field: 'reference', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'contains', label: 'Bank Reference to Invoice Number' },
-          { source_field: 'credit', target_field: 'amount', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.50, label: 'Bank Credit to Invoice Amount' },
+          { source_field: 'credit', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.50, label: 'Bank Credit to Invoice Amount' },
         ],
         execution_config: { mode: 'reconciliation', parameters: { exception_discrepancy_threshold: 5 } },
       },
@@ -533,7 +533,7 @@ seed.post('/seed-vantax', async (c) => {
         ],
         field_mappings: [
           { source_field: 'invoice_number', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'SO Invoice to FI Invoice' },
-          { source_field: 'amount', target_field: 'amount', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'SO Amount to FI Amount' },
+          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'SO Amount to FI Amount' },
         ],
         execution_config: { mode: 'reconciliation' },
       },
