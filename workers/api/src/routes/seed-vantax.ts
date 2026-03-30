@@ -115,6 +115,21 @@ const GL_ACCOUNTS = [
   { code: '5300', name: 'Depreciation', type: 'expense', cls: 'expense', balance: 840000 },
 ];
 
+// Whitelist of allowed table names to prevent SQL injection via interpolation
+const ALLOWED_TABLES = new Set([
+  'sub_catalyst_run_items', 'run_comments', 'sub_catalyst_kpi_values',
+  'sub_catalyst_runs', 'catalyst_run_analytics', 'health_score_history',
+  'health_scores', 'risk_alerts', 'anomalies', 'process_metrics',
+  'process_flows', 'correlation_events', 'catalyst_actions',
+  'executive_briefings', 'scenarios', 'run_insights', 'catalyst_insights',
+  'catalyst_clusters', 'sub_catalyst_kpis', 'sub_catalyst_kpi_definitions',
+  'cross_system_correlations', 'execution_logs',
+  'erp_invoices', 'erp_purchase_orders', 'erp_suppliers', 'erp_customers',
+  'erp_products', 'erp_bank_transactions', 'erp_journal_entries',
+  'erp_gl_accounts', 'erp_employees', 'erp_tax_entries',
+  'erp_connections',
+]);
+
 /**
  * POST /api/v1/seed-vantax
  * Complete cleanup and reseed of VantaX demo environment with realistic SAP data.
@@ -132,22 +147,11 @@ seed.post('/seed-vantax', async (c) => {
     console.log('[VantaX Seeder] Starting seed for tenant:', tenantId);
 
     // STEP 1: Cleanup ALL old data for this tenant
-    const cleanupTables = [
-      'sub_catalyst_run_items', 'run_comments', 'sub_catalyst_kpi_values',
-      'sub_catalyst_runs', 'catalyst_run_analytics', 'health_score_history',
-      'health_scores', 'risk_alerts', 'anomalies', 'process_metrics',
-      'process_flows', 'correlation_events', 'catalyst_actions',
-      'executive_briefings', 'scenarios', 'run_insights', 'catalyst_insights',
-      'catalyst_clusters', 'sub_catalyst_kpis', 'sub_catalyst_kpi_definitions',
-      'cross_system_correlations', 'execution_logs',
-      'erp_invoices', 'erp_purchase_orders', 'erp_suppliers', 'erp_customers',
-      'erp_products', 'erp_bank_transactions', 'erp_journal_entries',
-      'erp_gl_accounts', 'erp_employees', 'erp_tax_entries',
-      'erp_connections',
-    ];
+    const cleanupTables = [...ALLOWED_TABLES];
 
     let cleanupCount = 0;
     for (const table of cleanupTables) {
+      if (!ALLOWED_TABLES.has(table)) continue;
       try {
         const result = await c.env.DB.prepare(
           `DELETE FROM ${table} WHERE tenant_id = ?`
@@ -642,6 +646,7 @@ seed.get('/vantax-status', async (c) => {
     ];
 
     for (const [key, table] of tables) {
+      if (!ALLOWED_TABLES.has(table)) continue;
       try {
         const row = await c.env.DB.prepare(`SELECT COUNT(*) as count FROM ${table} WHERE tenant_id = ?`).bind(tenantId).first();
         counts[key] = (row as any)?.count || 0;

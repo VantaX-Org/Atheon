@@ -1915,7 +1915,7 @@ async function fetchDataForSource(
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
-      if (module.includes('purchase_order') || module.includes('po') || module.includes('procurement')) {
+      if (module.includes('purchase_order') || module === 'po' || module.includes('procurement')) {
         const rows = await db.prepare(
           'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
@@ -1927,13 +1927,13 @@ async function fetchDataForSource(
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
-      if (module.includes('gl') || module.includes('general_ledger') || module.includes('journal')) {
+      if (module === 'gl' || module.includes('general_ledger') || module.includes('journal')) {
         const rows = await db.prepare(
           'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
-      if (module.includes('goods_receipt') || module.includes('gr') || module.includes('delivery')) {
+      if (module.includes('goods_receipt') || module === 'gr' || module.includes('delivery')) {
         // Goods receipts are tracked via purchase orders with delivery_status
         const rows = await db.prepare(
           'SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND delivery_status IS NOT NULL LIMIT 500'
