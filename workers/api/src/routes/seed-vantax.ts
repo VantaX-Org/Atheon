@@ -412,9 +412,9 @@ seed.post('/seed-vantax', async (c) => {
     const financeClusterId = crypto.randomUUID();
     const financeSubCatalysts = [
       {
-        name: 'GR/IR Reconciliation',
+        name: 'Invoice Reconciliation',
         enabled: true,
-        description: 'Goods Receipt vs Invoice Receipt matching - SAP MM/FI cross-module 3-way match',
+        description: '3-way match: PO, GRN, Invoice — cross-module reconciliation across SAP MM and FI',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', label: 'SAP MM - Purchase Orders' } },
           { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - Vendor Invoices' } },
@@ -426,18 +426,18 @@ seed.post('/seed-vantax', async (c) => {
         execution_config: { mode: 'reconciliation', parameters: { exception_discrepancy_threshold: 10, exception_match_rate_threshold: 50 } },
       },
       {
-        name: 'AP Invoice Validation',
+        name: 'Accounts Payable',
         enabled: true,
-        description: 'Accounts Payable invoice completeness, duplicate detection, and accuracy validation',
+        description: 'Invoice matching, payment scheduling, and AP completeness validation',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'accounts_payable', label: 'SAP FI - AP Invoices' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
-        name: 'Bank Reconciliation',
+        name: 'Reconciliation',
         enabled: true,
-        description: 'Bank statement vs SAP payment matching - FNB Corporate account 62-000-4521-01',
+        description: 'Bank and account reconciliation — FNB Corporate account 62-000-4521-01 vs SAP payments',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'bank_statement', label: 'FNB Bank Statement' } },
           { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - Payment Records' } },
@@ -452,16 +452,16 @@ seed.post('/seed-vantax', async (c) => {
 
     await c.env.DB.prepare(`
       INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, autonomy_tier, agent_count, sub_catalysts)
-      VALUES (?, ?, 'Finance', 'finance', 'Financial reconciliation and controls - SAP FI/CO modules. GR/IR 3-way match, AP invoice validation, bank reconciliation against FNB Corporate.', 'active', 'supervised', 3, ?)
+      VALUES (?, ?, 'Finance Operations Catalyst', 'finance', 'Automated invoice reconciliation, accounts payable processing, and bank reconciliation — SAP FI/CO modules.', 'active', 'transactional', 3, ?)
     `).bind(financeClusterId, tenantId, JSON.stringify(financeSubCatalysts)).run();
 
     // -- SUPPLY CHAIN CLUSTER --
     const supplyChainClusterId = crypto.randomUUID();
     const supplyChainSubCatalysts = [
       {
-        name: 'Inventory Reconciliation',
+        name: 'Inventory Management',
         enabled: true,
-        description: 'System inventory vs physical count - SAP MM warehouse verification (JHB-MAIN)',
+        description: 'Stock level monitoring and reorder optimization — SAP MM warehouse verification (JHB-MAIN)',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'inventory', label: 'SAP MM - Material Master' } },
           { type: 'erp', config: { erp_type: 'sap', module: 'inventory', label: 'SAP MM - Physical Count' } },
@@ -473,9 +473,9 @@ seed.post('/seed-vantax', async (c) => {
         execution_config: { mode: 'reconciliation' },
       },
       {
-        name: 'PO-to-GR Matching',
+        name: 'PO Automation',
         enabled: true,
-        description: 'Purchase Order to Goods Receipt matching - delivery verification and quantity check',
+        description: 'Purchase order creation, approval routing, and goods receipt matching',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', label: 'SAP MM - Purchase Orders' } },
           { type: 'erp', config: { erp_type: 'sap', module: 'goods_receipt', label: 'SAP MM - Goods Receipts' } },
@@ -487,9 +487,9 @@ seed.post('/seed-vantax', async (c) => {
         execution_config: { mode: 'reconciliation' },
       },
       {
-        name: 'Supplier Validation',
+        name: 'Supplier Scoring',
         enabled: true,
-        description: 'Vendor master data quality - tax numbers, payment terms, B-BBEE status, bank details',
+        description: 'Automated supplier risk and performance rating — tax numbers, payment terms, B-BBEE status',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'vendor', label: 'SAP MM - Vendor Master' } },
         ],
@@ -499,7 +499,7 @@ seed.post('/seed-vantax', async (c) => {
 
     await c.env.DB.prepare(`
       INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, autonomy_tier, agent_count, sub_catalysts)
-      VALUES (?, ?, 'Supply Chain', 'operations', 'Supply chain management and procurement - SAP MM/SD. Inventory verification, PO-to-GR matching, vendor master validation.', 'active', 'supervised', 3, ?)
+      VALUES (?, ?, 'Procurement Catalyst', 'procurement', 'Supplier evaluation, PO automation, and spend analytics — SAP MM/SD procurement and inventory management.', 'active', 'assisted', 3, ?)
     `).bind(supplyChainClusterId, tenantId, JSON.stringify(supplyChainSubCatalysts)).run();
 
     // -- REVENUE CLUSTER --
@@ -508,25 +508,25 @@ seed.post('/seed-vantax', async (c) => {
       {
         name: 'Revenue Recognition',
         enabled: true,
-        description: 'Revenue recognition compliance - IFRS 15 timing and completeness validation',
+        description: 'IFRS 15 compliant revenue recognition — timing and completeness validation',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'accounts_receivable', label: 'SAP SD - Customer Invoices' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
-        name: 'Customer Receivables',
+        name: 'Accounts Receivable',
         enabled: true,
-        description: 'Customer accounts receivable aging, credit limit monitoring, and collection tracking',
+        description: 'Automated AR aging, credit limit monitoring, and collection workflows',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'customer', label: 'SAP SD - Customer Master' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
-        name: 'Sales Order Matching',
+        name: 'Order Processing',
         enabled: true,
-        description: 'Sales order to invoice matching - order fulfilment and billing verification',
+        description: 'Customer order intake, fulfilment tracking, and billing verification',
         data_sources: [
           { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP SD - Sales Invoices' } },
           { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - AR Postings' } },
@@ -541,7 +541,7 @@ seed.post('/seed-vantax', async (c) => {
 
     await c.env.DB.prepare(`
       INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, autonomy_tier, agent_count, sub_catalysts)
-      VALUES (?, ?, 'Revenue', 'revenue', 'Revenue cycle management - SAP SD/FI. IFRS 15 compliance, AR aging, sales order-to-invoice matching.', 'active', 'supervised', 3, ?)
+      VALUES (?, ?, 'Sales & Distribution Catalyst', 'sales', 'Revenue cycle management — IFRS 15 compliance, AR aging, and order-to-invoice matching across SAP SD/FI.', 'active', 'assisted', 3, ?)
     `).bind(revenueClusterId, tenantId, JSON.stringify(revenueSubCatalysts)).run();
 
     // STEP 11: Create Sub-Catalyst KPIs (aggregate tracking)
