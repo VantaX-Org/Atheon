@@ -315,7 +315,7 @@ seed.post('/seed-vantax', async (c) => {
         orderDate, deliveryDate, subtotal, vatAmt, total,
         poStatuses[i % poStatuses.length],
         deliveryStatuses[i % deliveryStatuses.length],
-        invoiceRefs[i - 1] || null,
+        i <= 72 ? (invoiceRefs[i - 1] || null) : null,
         now,
       ).run();
     }
