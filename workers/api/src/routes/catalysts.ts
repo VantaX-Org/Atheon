@@ -6,6 +6,7 @@ import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
+import { stripCodeFences } from '../services/llm-provider';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -3963,7 +3964,7 @@ Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impac
       max_tokens: 500,
     });
 
-    const insights = JSON.parse((aiResponse as any).response || '{}');
+    const insights = JSON.parse(stripCodeFences((aiResponse as any).response || '{}'));
     
     // Save insights to database
     await c.env.DB.prepare(

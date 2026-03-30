@@ -17,7 +17,7 @@
  * The platform NEVER exposes which model is being used.
  */
 
-import { loadLlmConfig, llmChatWithFallback } from './llm-provider';
+import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
 
 // ── Types ──
@@ -840,7 +840,7 @@ Be specific with numbers. Focus on actionable intelligence. Never mention AI, mo
     ], { maxTokens: 1024, temperature: 0.3 });
 
     try {
-      const parsed = JSON.parse(result.text);
+      const parsed = JSON.parse(stripCodeFences(result.text));
       return {
         insights: parsed.summary || result.text,
         recommendations: parsed.recommendations || [],
@@ -977,7 +977,7 @@ Be specific, data-driven, and decisive. Never mention AI, models, or algorithms.
     ], { maxTokens: 1024, temperature: 0.3 });
 
     try {
-      const parsed = JSON.parse(result.text);
+      const parsed = JSON.parse(stripCodeFences(result.text));
       executiveSummary = parsed.executiveSummary || result.text;
       crossDepartmentCorrelations = parsed.crossDepartmentCorrelations || [];
       strategicImplications = parsed.strategicImplications || [];
