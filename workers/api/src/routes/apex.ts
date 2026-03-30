@@ -3,6 +3,7 @@ import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { withLlmFallback } from '../services/ollama';
 import { generateApexInsights, generateDashboardIntelligence } from '../services/insights-engine';
+import { stripCodeFences } from '../services/llm-provider';
 
 const apex = new Hono<AppBindings>();
 
@@ -616,7 +617,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
     }
     
     try {
-      const analysis = JSON.parse(text);
+      const analysis = JSON.parse(stripCodeFences(text));
       
       // Save analysis to database
       await c.env.DB.prepare(
@@ -783,7 +784,7 @@ apex.post('/scenarios', async (c) => {
       const text = aiResult?.response || '';
       if (!text) throw new Error('Empty AI response');
       try {
-        return { ...JSON.parse(text), generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+        return { ...JSON.parse(stripCodeFences(text)), generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
       } catch {
         return { recommendation: text, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
       }
