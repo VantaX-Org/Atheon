@@ -1800,9 +1800,15 @@ async function performValidation(
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
   for (const row of data) {
-    // Basic validation checks — accept 'amount' or 'total' for monetary value
+    // Basic validation checks — accept any monetary field as valid
     const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
-                      (row['total'] !== undefined && row['total'] !== null && row['total'] !== '');
+                      (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
+                      (row['credit_limit'] !== undefined && row['credit_limit'] !== null && row['credit_limit'] !== '') ||
+                      (row['credit_balance'] !== undefined && row['credit_balance'] !== null && row['credit_balance'] !== '') ||
+                      (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
+                      (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
+                      (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '') ||
+                      (row['cost_price'] !== undefined && row['cost_price'] !== null && row['cost_price'] !== '');
     const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
     const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
                    row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
