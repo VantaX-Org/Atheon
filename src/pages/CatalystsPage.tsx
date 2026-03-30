@@ -1378,7 +1378,7 @@ export function CatalystsPage() {
   <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
   {exSamples.map((d, i) => (
     <div key={i} className="text-[10px] p-1.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-      <span className="font-medium t-primary">{d.field || 'field'}</span>: source=<span className="text-emerald-600">{d.source_value || '—'}</span> vs target=<span className="text-red-500">{d.target_value || '—'}</span>
+      <span className="font-medium t-primary">{d.field || 'field'}</span>: source=<span className="text-emerald-600">{typeof d.source_value === 'number' ? d.source_value.toFixed(2) : (d.source_value || '—')}</span> vs target=<span className="text-red-500">{typeof d.target_value === 'number' ? d.target_value.toFixed(2) : (d.target_value || '—')}</span>
     </div>
   ))}
   </div>
@@ -2753,8 +2753,8 @@ export function CatalystsPage() {
  {d.difference && <span className="text-red-400 text-[10px]">{d.difference}</span>}
  </div>
  <div className="flex gap-4 mt-1 text-[10px]">
- <span className="t-secondary">Source: <span className="t-primary">{String(d.source_value ?? 'null')}</span></span>
- <span className="t-secondary">Target: <span className="t-primary">{String(d.target_value ?? 'null')}</span></span>
+  <span className="t-secondary">Source: <span className="t-primary">{typeof d.source_value === 'number' ? d.source_value.toFixed(2) : String(d.source_value ?? 'null')}</span></span>
+ <span className="t-secondary">Target: <span className="t-primary">{typeof d.target_value === 'number' ? d.target_value.toFixed(2) : String(d.target_value ?? 'null')}</span></span>
  </div>
  </div>
  ))}

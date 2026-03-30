@@ -268,28 +268,37 @@ seed.post('/seed-vantax', async (c) => {
 
     // Step 10: Create Executive Briefing
     await c.env.DB.prepare(`
-      INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO executive_briefings (id, tenant_id, title, summary, risks, opportunities, kpi_movements, decisions_needed, generated_at, health_delta, red_metric_count, anomaly_count, active_risk_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       crypto.randomUUID(), tenantId,
       'Daily Executive Briefing - ' + new Date().toLocaleDateString(),
       'VantaX SAP operations showing mixed performance. Critical attention needed in Supply Chain (inventory variance 21.7%) and Revenue Recognition (26.3% timing differences).',
-      JSON.stringify(risks),
       JSON.stringify([
-        { title: 'Process Automation', impact: 'High', timeline: 'Q2 2025', investment: 'R 2.5M' },
-        { title: 'System Integration', impact: 'Medium', timeline: 'Q3 2025', investment: 'R 1.8M' },
+        'High GR/IR Discrepancy Rate — 17% exceeds 10% threshold (Financial)',
+        'Inventory Shrinkage Detected — 21.7% variance indicates potential issues (Operational)',
+        'Revenue Recognition Delay — 26.3% not recognized in correct period (Compliance)',
+        'Duplicate Payment Risk — AP validation detected duplicates (Financial)',
       ]),
       JSON.stringify([
-        { kpi: 'Match Rate', change: -5.2, direction: 'down' },
-        { kpi: 'Exception Rate', change: 3.1, direction: 'up' },
-        { kpi: 'Processing Time', change: -12, direction: 'down' },
+        'Process Automation — estimated R 2.5M savings by Q2 2025',
+        'System Integration — estimated R 1.8M savings by Q3 2025',
+      ]),
+      JSON.stringify([
+        { kpi: 'Match Rate', movement: '-5.2%', period: 'vs last month' },
+        { kpi: 'Exception Rate', movement: '+3.1%', period: 'vs last month' },
+        { kpi: 'Processing Time', movement: '-12s', period: 'vs last month' },
       ]),
       JSON.stringify([
         'Approve inventory audit budget (R 500K)',
         'Review revenue recognition policy with CFO',
         'Prioritize GR/IR process improvement',
       ]),
-      now
+      now,
+      -1.2,  // health_delta
+      2,     // red_metric_count
+      1,     // anomaly_count
+      4      // active_risk_count
     ).run();
 
     return c.json({
