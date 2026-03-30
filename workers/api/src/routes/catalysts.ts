@@ -1936,7 +1936,7 @@ async function fetchDataForSource(
       if (module.includes('goods_receipt') || module === 'gr' || module.includes('delivery')) {
         // Goods receipts are tracked via purchase orders with delivery_status
         const rows = await db.prepare(
-          'SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND delivery_status IS NOT NULL LIMIT 500'
+          'SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND delivery_status IN (\'received\', \'partial\') LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
