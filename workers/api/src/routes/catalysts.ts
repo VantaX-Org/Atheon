@@ -1860,17 +1860,152 @@ async function performComparison(
   const sourceData = await fetchDataForSource(sources[0], tenantId, db);
   const targetData = await fetchDataForSource(sources[1], tenantId, db);
 
+  // If we have field mappings, do a real field-level comparison (same logic as reconciliation)
+  if (mappings.length > 0) {
+    const keyMappings = mappings.filter(m => m.source_index === 0 && m.target_index === 1);
+    if (keyMappings.length > 0) {
+      const primaryKey = keyMappings[0];
+      let matchedCount = 0;
+      let discrepancyCount = 0;
+      let skippedSource = 0;
+      const discrepancies: ExecutionResultRecord['discrepancies'] = [];
+      const matched_records: Array<{ source: Record<string, unknown>; target: Record<string, unknown>; confidence: number; matched_on: string }> = [];
+      const unmatched_source_records: Array<Record<string, unknown>> = [];
+      const matchedTargetIndices = new Set<number>();
+      const skippedTargetCount = targetData.filter(r => !String(r[primaryKey.target_field] ?? '').trim()).length;
+
+      for (const srcRow of sourceData) {
+        const srcVal = String(srcRow[primaryKey.source_field] ?? '').toLowerCase().trim();
+        if (!srcVal) { skippedSource++; continue; }
+        let foundMatch = false;
+
+        for (let ti = 0; ti < targetData.length; ti++) {
+          if (matchedTargetIndices.has(ti)) continue;
+          const tgtRow = targetData[ti];
+          const tgtVal = String(tgtRow[primaryKey.target_field] ?? '').toLowerCase().trim();
+          if (!tgtVal) continue;
+
+          const isMatch = primaryKey.match_type === 'exact' ? srcVal === tgtVal :
+            primaryKey.match_type === 'fuzzy' ? (srcVal.includes(tgtVal) || tgtVal.includes(srcVal)) :
+            primaryKey.match_type === 'contains' ? srcVal.includes(tgtVal) :
+            srcVal === tgtVal;
+
+          if (isMatch) {
+            foundMatch = true;
+            matchedTargetIndices.add(ti);
+            matchedCount++;
+            let hasDiscrepancy = false;
+            matched_records.push({ source: srcRow, target: tgtRow, confidence: 1.0, matched_on: primaryKey.source_field });
+
+            // Check remaining mappings for field-level differences
+            for (const fm of keyMappings.slice(1)) {
+              const sv = srcRow[fm.source_field];
+              const tv = tgtRow[fm.target_field];
+              if (fm.match_type === 'numeric_tolerance') {
+                const nSv = parseFloat(String(sv));
+                const nTv = parseFloat(String(tv));
+                const tol = fm.tolerance ?? 0.01;
+                if (!isNaN(nSv) && !isNaN(nTv) && Math.abs(nSv - nTv) > tol) {
+                  discrepancyCount++;
+                  hasDiscrepancy = true;
+                  discrepancies.push({
+                    source_record: srcRow, target_record: tgtRow,
+                    field: `${fm.source_field} vs ${fm.target_field}`,
+                    source_value: sv, target_value: tv,
+                    difference: `Difference: ${(nSv - nTv).toFixed(2)}`,
+                  });
+                }
+              } else {
+                const sSv = String(sv ?? '').toLowerCase().trim();
+                const sTv = String(tv ?? '').toLowerCase().trim();
+                if (sSv !== sTv) {
+                  discrepancyCount++;
+                  hasDiscrepancy = true;
+                  discrepancies.push({
+                    source_record: srcRow, target_record: tgtRow,
+                    field: `${fm.source_field} vs ${fm.target_field}`,
+                    source_value: sv, target_value: tv,
+                  });
+                }
+              }
+            }
+            if (hasDiscrepancy && matched_records.length > 0) {
+              matched_records[matched_records.length - 1].confidence = 0.7;
+            }
+            break;
+          }
+        }
+        if (!foundMatch) {
+          unmatched_source_records.push(srcRow);
+        }
+      }
+
+      const unmatched_target_records: Array<Record<string, unknown>> = [];
+      for (let ti = 0; ti < targetData.length; ti++) {
+        if (!matchedTargetIndices.has(ti)) {
+          const tgtVal = String(targetData[ti][primaryKey.target_field] ?? '').trim();
+          if (tgtVal) unmatched_target_records.push(targetData[ti]);
+        }
+      }
+
+      return {
+        id: crypto.randomUUID(), sub_catalyst: sub.name, cluster_id: clusterId,
+        executed_at: new Date().toISOString(), duration_ms: 0,
+        status: (discrepancyCount > 0 || unmatched_source_records.length > 0 || unmatched_target_records.length > 0) ? 'partial' : 'completed',
+        mode: 'compare',
+        summary: {
+          total_records_source: sourceData.length - skippedSource,
+          total_records_target: targetData.length - skippedTargetCount,
+          matched: matchedCount,
+          unmatched_source: sourceData.length - skippedSource - matchedCount,
+          unmatched_target: targetData.length - skippedTargetCount - matchedTargetIndices.size,
+          discrepancies: discrepancyCount,
+        },
+        discrepancies: discrepancies?.length ? discrepancies : undefined,
+        matched_records: matched_records.length ? matched_records : undefined,
+        unmatched_source_records: unmatched_source_records.length ? unmatched_source_records : undefined,
+        unmatched_target_records: unmatched_target_records.length ? unmatched_target_records : undefined,
+      };
+    }
+  }
+
+  // Fallback: no mappings — compare all fields of records by position
+  let matchedCount = 0;
+  let discrepancyCount = 0;
+  const discrepancies: ExecutionResultRecord['discrepancies'] = [];
+  const limit = Math.min(sourceData.length, targetData.length);
+  for (let i = 0; i < limit; i++) {
+    const src = sourceData[i];
+    const tgt = targetData[i];
+    let rowMatch = true;
+    for (const key of Object.keys(src)) {
+      if (key in tgt && String(src[key] ?? '') !== String(tgt[key] ?? '')) {
+        rowMatch = false;
+        discrepancyCount++;
+        if (discrepancies.length < 100) {
+          discrepancies.push({
+            source_record: src, target_record: tgt,
+            field: key, source_value: src[key], target_value: tgt[key],
+          });
+        }
+        break;
+      }
+    }
+    if (rowMatch) matchedCount++;
+  }
+
   return {
     id: crypto.randomUUID(), sub_catalyst: sub.name, cluster_id: clusterId,
     executed_at: new Date().toISOString(), duration_ms: 0,
-    status: 'completed', mode: 'compare',
+    status: discrepancyCount > 0 ? 'partial' : 'completed', mode: 'compare',
     summary: {
       total_records_source: sourceData.length, total_records_target: targetData.length,
-      matched: Math.min(sourceData.length, targetData.length),
+      matched: matchedCount,
       unmatched_source: Math.max(0, sourceData.length - targetData.length),
       unmatched_target: Math.max(0, targetData.length - sourceData.length),
-      discrepancies: Math.abs(sourceData.length - targetData.length),
+      discrepancies: discrepancyCount,
     },
+    discrepancies: discrepancies?.length ? discrepancies : undefined,
   };
 }
 
@@ -1881,20 +2016,71 @@ async function performExtraction(
   tenantId: string,
   db: D1Database
 ): Promise<ExecutionResultRecord> {
+  // Extract data from all sources, validate each record, and report quality issues
   let totalRecords = 0;
+  let validRecords = 0;
+  let issueRecords = 0;
+  const discrepancies: ExecutionResultRecord['discrepancies'] = [];
+  const exception_records: ExecutionResultRecord['exception_records'] = [];
+
   for (const src of sources) {
     const data = await fetchDataForSource(src, tenantId, db);
     totalRecords += data.length;
+
+    for (const row of data) {
+      // Check for completeness: required fields should not be null/empty
+      // Skip known optional/nullable fields that are legitimately empty
+      const optionalFields = new Set([
+        'notes', 'contact_phone', 'bank_name', 'bank_account', 'reference',
+        'contact_email', 'contact_name', 'description', 'posted_by',
+        'delivery_date', 'province', 'country', 'currency', 'uom',
+        'product_group', 'warehouse', 'reorder_quantity', 'vat_rate',
+      ]);
+      const emptyFields: string[] = [];
+      for (const [key, val] of Object.entries(row)) {
+        if (optionalFields.has(key)) continue;
+        if (val === null || val === undefined || String(val).trim() === '') {
+          emptyFields.push(key);
+        }
+      }
+
+      if (emptyFields.length > 0) {
+        issueRecords++;
+        if (discrepancies.length < 100) {
+          discrepancies.push({
+            source_record: row, target_record: null,
+            field: emptyFields.join(', '),
+            source_value: null, target_value: null,
+            difference: `Missing/empty fields: ${emptyFields.join(', ')}`,
+          });
+        }
+
+        // Raise as exception if >30% of fields are empty
+        if (emptyFields.length > Object.keys(row).length * 0.3 && exception_records.length < 50) {
+          exception_records.push({
+            record: row, type: 'data_quality',
+            severity: emptyFields.length > Object.keys(row).length * 0.5 ? 'high' : 'medium',
+            detail: `${emptyFields.length} of ${Object.keys(row).length} fields empty: ${emptyFields.slice(0, 5).join(', ')}`,
+          });
+        }
+      } else {
+        validRecords++;
+      }
+    }
   }
 
   return {
     id: crypto.randomUUID(), sub_catalyst: sub.name, cluster_id: clusterId,
     executed_at: new Date().toISOString(), duration_ms: 0,
-    status: 'completed', mode: sub.execution_config?.mode || 'extract',
+    status: issueRecords > 0 ? 'partial' : 'completed',
+    mode: sub.execution_config?.mode || 'extract',
     summary: {
       total_records_source: totalRecords, total_records_target: 0,
-      matched: totalRecords, unmatched_source: 0, unmatched_target: 0, discrepancies: 0,
+      matched: validRecords, unmatched_source: issueRecords, unmatched_target: 0,
+      discrepancies: issueRecords,
     },
+    discrepancies: discrepancies?.length ? discrepancies : undefined,
+    exception_records: exception_records?.length ? exception_records : undefined,
   };
 }
 
@@ -1904,68 +2090,97 @@ async function fetchDataForSource(
   db: D1Database
 ): Promise<Record<string, unknown>[]> {
   try {
+    // source_filter: when set, adds a WHERE source_system = ? clause to differentiate
+    // datasets seeded for the same table (e.g., 'SAP' vs 'PHYSICAL_COUNT')
+    const sourceFilter = source.config.source_filter ? String(source.config.source_filter) : null;
+
     if (source.type === 'erp') {
-      // erp_type available in source.config.erp_type for adapter selection
       const module = String(source.config.module || '').toLowerCase();
 
       if (module.includes('invoice') || module.includes('accounts_payable') || module.includes('ap')) {
-        const rows = await db.prepare(
-          'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar')) {
-        const rows = await db.prepare(
-          'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('product') || module.includes('inventory') || module.includes('stock')) {
-        const rows = await db.prepare(
-          'SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('supplier') || module.includes('vendor')) {
-        const rows = await db.prepare(
-          'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('purchase_order') || module === 'po' || module.includes('procurement')) {
-        const rows = await db.prepare(
-          'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('bank') || module.includes('bank_statement') || module.includes('cash')) {
-        const rows = await db.prepare(
-          'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module === 'gl' || module.includes('general_ledger') || module.includes('journal')) {
-        const rows = await db.prepare(
-          'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? LIMIT 500'
-        ).bind(tenantId).all();
+        const q = sourceFilter
+          ? 'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+          : 'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? LIMIT 500';
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('goods_receipt') || module === 'gr' || module.includes('delivery')) {
-        // Goods receipts are tracked via purchase orders with delivery_status
-        const rows = await db.prepare(
-          'SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND delivery_status IN (\'received\', \'partial\') LIMIT 500'
-        ).bind(tenantId).all();
+        const baseWhere = sourceFilter
+          ? `tenant_id = ? AND source_system = ? AND delivery_status IN ('received', 'partial')`
+          : `tenant_id = ? AND delivery_status IN ('received', 'partial')`;
+        const q = `SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE ${baseWhere} LIMIT 500`;
+        const rows = sourceFilter
+          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+          : await db.prepare(q).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       // Default: try invoices as a common ERP data set
-      const rows = await db.prepare(
-        'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
-      ).bind(tenantId).all();
+      const q = sourceFilter
+        ? 'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? AND source_system = ? LIMIT 500'
+        : 'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? LIMIT 500';
+      const rows = sourceFilter
+        ? await db.prepare(q).bind(tenantId, sourceFilter).all()
+        : await db.prepare(q).bind(tenantId).all();
       return rows.results as Record<string, unknown>[];
     }
 
     if (source.type === 'custom_system') {
-      // For custom/bank systems, pull from process_metrics as a proxy data source
       const rows = await db.prepare(
         'SELECT metric_name as reference, metric_value as amount, status, updated_at as date, dimension as category FROM process_metrics WHERE tenant_id = ? LIMIT 500'
       ).bind(tenantId).all();
