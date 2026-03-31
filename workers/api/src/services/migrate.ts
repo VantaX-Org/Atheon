@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v34';
+export const MIGRATION_VERSION = 'v35';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -191,6 +191,101 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     `CREATE TABLE IF NOT EXISTS erp_bank_transactions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', bank_account TEXT NOT NULL, transaction_date TEXT NOT NULL, description TEXT, reference TEXT, debit REAL DEFAULT 0, credit REAL DEFAULT 0, balance REAL DEFAULT 0, reconciled INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
     `CREATE TABLE IF NOT EXISTS erp_tax_entries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source_system TEXT NOT NULL DEFAULT 'manual', tax_period TEXT NOT NULL, tax_type TEXT NOT NULL DEFAULT 'VAT', output_vat REAL DEFAULT 0, input_vat REAL DEFAULT 0, net_vat REAL DEFAULT 0, status TEXT DEFAULT 'draft', submitted_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
   ];
+
+  // ── SAP Native Tables (actual SAP table structures for realistic demo) ──
+  const sapTables = [
+    // FI - Accounting Document Header (BKPF)
+    `CREATE TABLE IF NOT EXISTS sap_bkpf (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BUKRS TEXT NOT NULL, BELNR TEXT NOT NULL, GJAHR TEXT NOT NULL, BLART TEXT, BUDAT TEXT, BLDAT TEXT, MONAT TEXT, CPUDT TEXT, XBLNR TEXT, BSTAT TEXT, WAERS TEXT DEFAULT 'ZAR', KURSF REAL DEFAULT 1, USNAM TEXT, TCODE TEXT, STBLG TEXT, AWTYP TEXT, AWKEY TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // FI - Accounting Document Line Item (BSEG)
+    `CREATE TABLE IF NOT EXISTS sap_bseg (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BUKRS TEXT NOT NULL, BELNR TEXT NOT NULL, GJAHR TEXT NOT NULL, BUZEI TEXT NOT NULL, BSCHL TEXT, KOART TEXT, KONTO TEXT, DMBTR REAL DEFAULT 0, WRBTR REAL DEFAULT 0, MWSKZ TEXT, MWSTS REAL DEFAULT 0, ZUONR TEXT, SGTXT TEXT, LIFNR TEXT, KUNNR TEXT, MATNR TEXT, EBELN TEXT, EBELP TEXT, SHKZG TEXT, AUGDT TEXT, AUGBL TEXT, ZFBDT TEXT, ZBD1T INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // FI - Customer Open Items (BSID)
+    `CREATE TABLE IF NOT EXISTS sap_bsid (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BUKRS TEXT NOT NULL, KUNNR TEXT NOT NULL, UMSKS TEXT, UMSKZ TEXT, AUGDT TEXT, AUGBL TEXT, ZUONR TEXT, GJAHR TEXT, BELNR TEXT, BUZEI TEXT, BUDAT TEXT, BLDAT TEXT, WAERS TEXT DEFAULT 'ZAR', SHKZG TEXT, DMBTR REAL DEFAULT 0, WRBTR REAL DEFAULT 0, SGTXT TEXT, ZFBDT TEXT, ZBD1T INTEGER DEFAULT 0, REBZG TEXT, XBLNR TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // FI - Vendor Open Items (BSIK)
+    `CREATE TABLE IF NOT EXISTS sap_bsik (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BUKRS TEXT NOT NULL, LIFNR TEXT NOT NULL, UMSKS TEXT, UMSKZ TEXT, AUGDT TEXT, AUGBL TEXT, ZUONR TEXT, GJAHR TEXT, BELNR TEXT, BUZEI TEXT, BUDAT TEXT, BLDAT TEXT, WAERS TEXT DEFAULT 'ZAR', SHKZG TEXT, DMBTR REAL DEFAULT 0, WRBTR REAL DEFAULT 0, SGTXT TEXT, ZFBDT TEXT, ZBD1T INTEGER DEFAULT 0, REBZG TEXT, EBELN TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // FI - Bank Statement Line Items (FEBEP)
+    `CREATE TABLE IF NOT EXISTS sap_febep (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BUKRS TEXT NOT NULL, HESSION TEXT, AESSION TEXT, VALUT TEXT, KWBTR REAL DEFAULT 0, WRBTR REAL DEFAULT 0, WAERS TEXT DEFAULT 'ZAR', VWEZW TEXT, BVTYP TEXT, ESESSION TEXT, GSESSION TEXT, ZUESSION TEXT, XBLNR TEXT, SGTXT TEXT, AUESSION TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // MM - Purchasing Document Header (EKKO)
+    `CREATE TABLE IF NOT EXISTS sap_ekko (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), EBELN TEXT NOT NULL, BUKRS TEXT NOT NULL, BSTYP TEXT DEFAULT 'F', BSART TEXT DEFAULT 'NB', LOEKZ TEXT, STATU TEXT, AEDAT TEXT, ERNAM TEXT, LIFNR TEXT, EKGRP TEXT, WAERS TEXT DEFAULT 'ZAR', BEDAT TEXT, KDATB TEXT, KDATE TEXT, MEMORY TEXT, RLWRT REAL DEFAULT 0, ZTERM TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // MM - Purchasing Document Item (EKPO)
+    `CREATE TABLE IF NOT EXISTS sap_ekpo (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), EBELN TEXT NOT NULL, EBELP TEXT NOT NULL, LOEKZ TEXT, MATNR TEXT, TXZ01 TEXT, MENGE REAL DEFAULT 0, MEINS TEXT DEFAULT 'EA', NETPR REAL DEFAULT 0, PEINH REAL DEFAULT 1, NETWR REAL DEFAULT 0, BPRME TEXT, MATKL TEXT, WERKS TEXT, LGORT TEXT, MWSKZ TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // MM - History per Purchasing Document (EKBE)
+    `CREATE TABLE IF NOT EXISTS sap_ekbe (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), EBELN TEXT NOT NULL, EBELP TEXT NOT NULL, ZEESSION TEXT, VGABE TEXT, GJAHR TEXT, BELNR TEXT, BUZEI TEXT, BEWTP TEXT, MENGE REAL DEFAULT 0, WRBTR REAL DEFAULT 0, WAERS TEXT DEFAULT 'ZAR', AREWR REAL DEFAULT 0, BUDAT TEXT, XBLNR TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // MM - Storage Location Data for Material (MARD)
+    `CREATE TABLE IF NOT EXISTS sap_mard (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), MATNR TEXT NOT NULL, WERKS TEXT NOT NULL, LGORT TEXT NOT NULL, LABST REAL DEFAULT 0, INSME REAL DEFAULT 0, SPEME REAL DEFAULT 0, EINME REAL DEFAULT 0, RETME REAL DEFAULT 0, UMLME REAL DEFAULT 0, LFGJA TEXT, LFMON TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // SD - Sales Document Header (VBAK)
+    `CREATE TABLE IF NOT EXISTS sap_vbak (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), VBELN TEXT NOT NULL, AUART TEXT DEFAULT 'TA', VKORG TEXT, VTWEG TEXT, SPART TEXT, KUNNR TEXT, BSTNK TEXT, AUDAT TEXT, VDATU TEXT, GUEBG TEXT, NETWR REAL DEFAULT 0, WAERK TEXT DEFAULT 'ZAR', VBTYP TEXT DEFAULT 'C', ABSTK TEXT, ERNAM TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // SD - Sales Document Item (VBAP)
+    `CREATE TABLE IF NOT EXISTS sap_vbap (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), VBELN TEXT NOT NULL, POSNR TEXT NOT NULL, MATNR TEXT, ARKTX TEXT, KWMENG REAL DEFAULT 0, VRKME TEXT DEFAULT 'EA', NETPR REAL DEFAULT 0, NETWR REAL DEFAULT 0, WAERK TEXT DEFAULT 'ZAR', WERKS TEXT, MATKL TEXT, ABGRU TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // SD - Billing Document Header (VBRK)
+    `CREATE TABLE IF NOT EXISTS sap_vbrk (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), VBELN TEXT NOT NULL, FKART TEXT DEFAULT 'F2', FKTYP TEXT, VKORG TEXT, VTWEG TEXT, SPART TEXT, KUNAG TEXT, KUNRG TEXT, FKDAT TEXT, RFBSK TEXT, NETWR REAL DEFAULT 0, MWSBK REAL DEFAULT 0, WAERK TEXT DEFAULT 'ZAR', BUKRS TEXT, XBLNR TEXT, ERNAM TEXT, FKSTO TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // SD - Billing Document Item (VBRP)
+    `CREATE TABLE IF NOT EXISTS sap_vbrp (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), VBELN TEXT NOT NULL, POSNR TEXT NOT NULL, FKIMG REAL DEFAULT 0, VRKME TEXT DEFAULT 'EA', NETWR REAL DEFAULT 0, MWSBP REAL DEFAULT 0, MATNR TEXT, ARKTX TEXT, AUBEL TEXT, AUPOS TEXT, WERKS TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Vendor Master - General Data (LFA1)
+    `CREATE TABLE IF NOT EXISTS sap_lfa1 (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), LIFNR TEXT NOT NULL, LAND1 TEXT DEFAULT 'ZA', NAME1 TEXT NOT NULL, NAME2 TEXT, ORT01 TEXT, PSTLZ TEXT, REGIO TEXT, STCD1 TEXT, STCD2 TEXT, TELF1 TEXT, TELFX TEXT, ADRNR TEXT, KTOKK TEXT, LOEVM TEXT, SPERR TEXT, SPERM TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Vendor Master - Company Code Data (LFB1)
+    `CREATE TABLE IF NOT EXISTS sap_lfb1 (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), LIFNR TEXT NOT NULL, BUKRS TEXT NOT NULL, AKONT TEXT, ZTERM TEXT, ZWELS TEXT, REPRF TEXT, LNRZB TEXT, HBKID TEXT, ZAHLS TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Customer Master - General Data (KNA1)
+    `CREATE TABLE IF NOT EXISTS sap_kna1 (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), KUNNR TEXT NOT NULL, LAND1 TEXT DEFAULT 'ZA', NAME1 TEXT NOT NULL, NAME2 TEXT, ORT01 TEXT, PSTLZ TEXT, REGIO TEXT, STCD1 TEXT, TELF1 TEXT, TELFX TEXT, KTOKD TEXT, LOEVM TEXT, SPERR TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Customer Master - Company Code Data (KNB1)
+    `CREATE TABLE IF NOT EXISTS sap_knb1 (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), KUNNR TEXT NOT NULL, BUKRS TEXT NOT NULL, AKONT TEXT, ZTERM TEXT, KLIMK REAL DEFAULT 0, CTLPC TEXT, KNRZE TEXT, ZAMIM TEXT, ZAMIV TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Physical inventory document (for warehouse count comparison)
+    `CREATE TABLE IF NOT EXISTS sap_iseg (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), IBLNR TEXT NOT NULL, GJAHR TEXT NOT NULL, ZEESSION TEXT NOT NULL, MATNR TEXT NOT NULL, WERKS TEXT, LGORT TEXT, MENGE REAL DEFAULT 0, MEINS TEXT DEFAULT 'EA', BUCHM REAL DEFAULT 0, XNULL TEXT, XDIFF TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ];
+
+  for (const tbl of sapTables) {
+    try {
+      await db.prepare(tbl).run();
+      result.tablesCreated++;
+    } catch (err) {
+      result.errors.push(`SAP table: ${(err as Error).message}`);
+    }
+  }
+
+  // ── SAP Table Indexes ──
+  const sapIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_sap_bkpf_tenant ON sap_bkpf(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bkpf_doc ON sap_bkpf(tenant_id, BUKRS, BELNR, GJAHR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bseg_tenant ON sap_bseg(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bseg_doc ON sap_bseg(tenant_id, BUKRS, BELNR, GJAHR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bseg_vendor ON sap_bseg(tenant_id, LIFNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bseg_customer ON sap_bseg(tenant_id, KUNNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bsid_tenant ON sap_bsid(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bsid_customer ON sap_bsid(tenant_id, KUNNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bsik_tenant ON sap_bsik(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_bsik_vendor ON sap_bsik(tenant_id, LIFNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_febep_tenant ON sap_febep(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekko_tenant ON sap_ekko(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekko_po ON sap_ekko(tenant_id, EBELN)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekpo_tenant ON sap_ekpo(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekpo_po ON sap_ekpo(tenant_id, EBELN)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekbe_tenant ON sap_ekbe(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_ekbe_po ON sap_ekbe(tenant_id, EBELN)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_mard_tenant ON sap_mard(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_mard_mat ON sap_mard(tenant_id, MATNR, WERKS)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbak_tenant ON sap_vbak(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbak_order ON sap_vbak(tenant_id, VBELN)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbap_tenant ON sap_vbap(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbrk_tenant ON sap_vbrk(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbrk_billing ON sap_vbrk(tenant_id, VBELN)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_vbrp_tenant ON sap_vbrp(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_lfa1_tenant ON sap_lfa1(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_lfa1_vendor ON sap_lfa1(tenant_id, LIFNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_lfb1_tenant ON sap_lfb1(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_kna1_tenant ON sap_kna1(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_kna1_customer ON sap_kna1(tenant_id, KUNNR)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_knb1_tenant ON sap_knb1(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_iseg_tenant ON sap_iseg(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sap_iseg_mat ON sap_iseg(tenant_id, MATNR)',
+  ];
+
+  for (const idx of sapIndexes) {
+    try {
+      await db.prepare(idx).run();
+      result.indexesCreated++;
+    } catch (err) {
+      result.errors.push(`SAP index: ${(err as Error).message}`);
+    }
+  }
 
   for (const tbl of erpTables) {
     try {

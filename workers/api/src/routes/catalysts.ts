@@ -2208,6 +2208,160 @@ async function fetchDataForSource(
     if (source.type === 'erp') {
       const module = String(source.config.module || '').toLowerCase();
 
+      // ── SAP Native Table Queries ──
+      // These read directly from sap_* tables with authentic SAP field names.
+      // The module name in data_sources config maps to the SAP table + optional filter.
+
+      if (module === 'sap_bseg_vendor') {
+        // BSEG vendor line items (KOART = 'K') joined with BKPF header
+        const rows = await db.prepare(
+          `SELECT b.BUKRS, b.BELNR, b.GJAHR, b.BUZEI, b.BSCHL, b.KOART, b.KONTO, b.DMBTR, b.WRBTR,
+                  b.MWSKZ, b.MWSTS, b.SGTXT, b.LIFNR, b.EBELN, b.SHKZG, b.ZFBDT, b.ZBD1T,
+                  h.BLART, h.BUDAT, h.BLDAT, h.XBLNR, h.BSTAT, h.WAERS, h.USNAM
+           FROM sap_bseg b
+           LEFT JOIN sap_bkpf h ON b.tenant_id = h.tenant_id AND b.BUKRS = h.BUKRS AND b.BELNR = h.BELNR AND b.GJAHR = h.GJAHR
+           WHERE b.tenant_id = ? AND b.KOART = 'K'
+           LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_bsik') {
+        const rows = await db.prepare(
+          `SELECT BUKRS, LIFNR, AUGDT, AUGBL, GJAHR, BELNR, BUZEI, BUDAT, BLDAT, WAERS,
+                  SHKZG, DMBTR, WRBTR, SGTXT, ZFBDT, ZBD1T, EBELN
+           FROM sap_bsik WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_bsid') {
+        const rows = await db.prepare(
+          `SELECT BUKRS, KUNNR, AUGDT, AUGBL, GJAHR, BELNR, BUZEI, BUDAT, BLDAT, WAERS,
+                  SHKZG, DMBTR, WRBTR, SGTXT, ZFBDT, ZBD1T, XBLNR
+           FROM sap_bsid WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_febep') {
+        const rows = await db.prepare(
+          `SELECT BUKRS, HESSION, AESSION, VALUT, KWBTR, WRBTR, WAERS, VWEZW, XBLNR, SGTXT
+           FROM sap_febep WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_ekko') {
+        const rows = await db.prepare(
+          `SELECT EBELN, BUKRS, BSTYP, BSART, LOEKZ, STATU, AEDAT, LIFNR, EKGRP, WAERS,
+                  BEDAT, RLWRT, ZTERM
+           FROM sap_ekko WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_ekpo') {
+        const rows = await db.prepare(
+          `SELECT EBELN, EBELP, MATNR, TXZ01, MENGE, MEINS, NETPR, PEINH, NETWR, MATKL, WERKS, LGORT
+           FROM sap_ekpo WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_ekbe_gr') {
+        // EKBE Goods Receipts only (VGABE = '1')
+        const rows = await db.prepare(
+          `SELECT EBELN, EBELP, ZEESSION, VGABE, GJAHR, BELNR, BEWTP, MENGE, WRBTR, WAERS, BUDAT
+           FROM sap_ekbe WHERE tenant_id = ? AND VGABE = '1' LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_ekbe_ir') {
+        // EKBE Invoice Receipts only (VGABE = '2')
+        const rows = await db.prepare(
+          `SELECT EBELN, EBELP, ZEESSION, VGABE, GJAHR, BELNR, BEWTP, MENGE, WRBTR, WAERS, BUDAT
+           FROM sap_ekbe WHERE tenant_id = ? AND VGABE = '2' LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_mard') {
+        const rows = await db.prepare(
+          `SELECT MATNR, WERKS, LGORT, LABST, INSME, SPEME, EINME, RETME, LFGJA, LFMON
+           FROM sap_mard WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_iseg') {
+        const rows = await db.prepare(
+          `SELECT IBLNR, GJAHR, ZEESSION, MATNR, WERKS, LGORT, MENGE, MEINS, BUCHM, XNULL, XDIFF
+           FROM sap_iseg WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_vbak') {
+        const rows = await db.prepare(
+          `SELECT VBELN, AUART, VKORG, VTWEG, SPART, KUNNR, BSTNK, AUDAT, VDATU, NETWR, WAERK, VBTYP
+           FROM sap_vbak WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_vbap') {
+        const rows = await db.prepare(
+          `SELECT VBELN, POSNR, MATNR, ARKTX, KWMENG, VRKME, NETPR, NETWR, WAERK, WERKS, MATKL
+           FROM sap_vbap WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_vbrk') {
+        // Billing document headers — include AUBEL from VBRP for order-to-bill matching
+        const rows = await db.prepare(
+          `SELECT k.VBELN, k.FKART, k.VKORG, k.KUNAG, k.FKDAT, k.RFBSK, k.NETWR, k.MWSBK, k.WAERK, k.BUKRS, k.XBLNR,
+                  p.AUBEL, p.AUPOS, p.MATNR, p.ARKTX, p.FKIMG, p.NETWR as ITEM_NETWR
+           FROM sap_vbrk k
+           LEFT JOIN sap_vbrp p ON k.tenant_id = p.tenant_id AND k.VBELN = p.VBELN
+           WHERE k.tenant_id = ?
+           LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_lfa1') {
+        // Vendor master with company code data
+        const rows = await db.prepare(
+          `SELECT a.LIFNR, a.LAND1, a.NAME1, a.NAME2, a.ORT01, a.PSTLZ, a.REGIO, a.STCD1, a.STCD2,
+                  a.TELF1, a.KTOKK, a.LOEVM, a.SPERR, a.SPERM,
+                  b.AKONT, b.ZTERM, b.ZWELS, b.REPRF, b.HBKID
+           FROM sap_lfa1 a
+           LEFT JOIN sap_lfb1 b ON a.tenant_id = b.tenant_id AND a.LIFNR = b.LIFNR
+           WHERE a.tenant_id = ?
+           LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      if (module === 'sap_kna1') {
+        // Customer master with company code data
+        const rows = await db.prepare(
+          `SELECT a.KUNNR, a.LAND1, a.NAME1, a.NAME2, a.ORT01, a.PSTLZ, a.REGIO, a.STCD1,
+                  a.TELF1, a.KTOKD, a.LOEVM, a.SPERR,
+                  b.AKONT, b.ZTERM, b.KLIMK, b.CTLPC
+           FROM sap_kna1 a
+           LEFT JOIN sap_knb1 b ON a.tenant_id = b.tenant_id AND a.KUNNR = b.KUNNR
+           WHERE a.tenant_id = ?
+           LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      // ── Legacy ERP Table Queries (backward compatibility) ──
+
       if (module.includes('invoice') || module.includes('accounts_payable') || module.includes('ap')) {
         const q = sourceFilter
           ? 'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? AND source_system = ? LIMIT 500'
