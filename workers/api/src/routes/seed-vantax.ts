@@ -195,39 +195,72 @@ seed.post('/seed-vantax', async (c) => {
     ).run();
 
     // STEP 3: Seed SAP Suppliers (Vendor Master)
+    // Deliberate data quality issues for validation:
+    // - Suppliers 0-7: complete records (bank details, contact, VAT)
+    // - Suppliers 8-10: missing bank details
+    // - Suppliers 11-12: missing VAT number
+    // - Suppliers 13-14: missing contact info
     const supplierIds: string[] = [];
     for (let i = 0; i < SA_SUPPLIERS.length; i++) {
       const s = SA_SUPPLIERS[i];
       const id = crypto.randomUUID();
       supplierIds.push(id);
+      const hasBankDetails = i < 8;
+      const hasVat = i < 11 || i > 12;
+      const hasContact = i < 13;
       await c.env.DB.prepare(
-        `INSERT INTO erp_suppliers (id, tenant_id, external_id, source_system, name, supplier_group, vat_number, payment_terms, currency, city, province, country, contact_name, contact_email, status, synced_at)
-         VALUES (?, ?, ?, 'SAP', ?, ?, ?, ?, 'ZAR', ?, ?, 'ZA', ?, ?, 'active', ?)`
+        `INSERT INTO erp_suppliers (id, tenant_id, external_id, source_system, name, supplier_group, vat_number, payment_terms, currency, city, province, country, contact_name, contact_email, bank_name, bank_account, status, synced_at)
+         VALUES (?, ?, ?, 'SAP', ?, ?, ?, ?, 'ZAR', ?, ?, 'ZA', ?, ?, ?, ?, 'active', ?)`
       ).bind(
         id, tenantId, `SAP-V${(10000 + i).toString()}`,
-        s.name, s.group, s.vat, s.terms,
+        s.name, s.group,
+        hasVat ? s.vat : null,
+        s.terms,
         s.city, s.province,
-        'Accounts Dept', `accounts@${s.name.toLowerCase().replace(/[^a-z]/g, '')}.co.za`,
+        hasContact ? 'Accounts Dept' : null,
+        hasContact ? `accounts@${s.name.toLowerCase().replace(/[^a-z]/g, '')}.co.za` : null,
+        hasBankDetails ? 'First National Bank' : null,
+        hasBankDetails ? `62-${(10000 + i * 37).toString()}-${(4521 + i * 13).toString()}` : null,
         now,
       ).run();
     }
 
     // STEP 4: Seed SAP Customers (Customer Master)
+    // Deliberate data quality issues for validation:
+    // - Customers 0-11: normal (credit balance within limits)
+    // - Customers 12-14: credit balance EXCEEDS credit limit (over-exposed)
+    // - Customers 15-17: no credit limit set (0)
+    // - Customers 18-19: missing registration number
     const customerIds: string[] = [];
     for (let i = 0; i < SA_CUSTOMERS.length; i++) {
       const cu = SA_CUSTOMERS[i];
       const id = crypto.randomUUID();
       customerIds.push(id);
-      const creditLimit = (500000 + Math.floor(i * 150000 + 50000));
-      const outstanding = Math.floor(creditLimit * (0.15 + (i % 5) * 0.1));
+      let creditLimit = (500000 + Math.floor(i * 150000 + 50000));
+      let outstanding = Math.floor(creditLimit * (0.15 + (i % 5) * 0.1));
+      const hasRegNum = i < 18;
+      const hasContact = i < 17;
+
+      if (i >= 12 && i <= 14) {
+        // Over-exposed: credit balance exceeds limit
+        outstanding = Math.floor(creditLimit * (1.15 + (i - 12) * 0.12));
+      } else if (i >= 15 && i <= 17) {
+        // No credit limit set
+        creditLimit = 0;
+        outstanding = Math.floor(250000 * (0.3 + i * 0.05));
+      }
+
       await c.env.DB.prepare(
         `INSERT INTO erp_customers (id, tenant_id, external_id, source_system, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, currency, city, province, country, contact_name, contact_email, status, synced_at)
          VALUES (?, ?, ?, 'SAP', ?, ?, ?, ?, ?, 'Net 30', 'ZAR', ?, ?, 'ZA', ?, ?, 'active', ?)`
       ).bind(
         id, tenantId, `SAP-C${(20000 + i).toString()}`,
-        cu.name, cu.reg, cu.group, creditLimit, outstanding,
+        cu.name,
+        hasRegNum ? cu.reg : null,
+        cu.group, creditLimit, outstanding,
         cu.city, cu.province,
-        'Procurement', `procurement@${cu.name.toLowerCase().replace(/[^a-z]/g, '')}.co.za`,
+        hasContact ? 'Procurement' : null,
+        hasContact ? `procurement@${cu.name.toLowerCase().replace(/[^a-z]/g, '')}.co.za` : null,
         now,
       ).run();
     }
