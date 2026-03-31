@@ -7,6 +7,7 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { cleanLlmText } from "@/lib/utils";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
@@ -318,7 +319,7 @@ export function ApexPage() {
     </div>
     <span className="text-[10px] t-muted">{execInsights.poweredBy}</span>
    </div>
-   <p className="text-sm t-secondary mb-3 whitespace-pre-line">{execInsights.executiveSummary}</p>
+   <p className="text-sm t-secondary mb-3 whitespace-pre-line">{cleanLlmText(execInsights.executiveSummary)}</p>
    {execInsights.performanceDrivers.length > 0 && (
     <div className="mb-3">
      <p className="text-xs font-medium t-primary mb-1.5">Performance Drivers</p>

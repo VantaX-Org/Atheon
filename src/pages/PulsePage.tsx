@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { cleanLlmText } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
@@ -597,7 +598,7 @@ export function PulsePage() {
             </div>
             <span className="text-[10px] t-muted">{aiInsights.poweredBy}</span>
           </div>
-          <p className="text-sm t-secondary mb-3 whitespace-pre-line">{aiInsights.insights}</p>
+          <p className="text-sm t-secondary mb-3 whitespace-pre-line">{cleanLlmText(aiInsights.insights)}</p>
           {aiInsights.recommendations.length > 0 && (
             <div className="mb-3">
               <p className="text-xs font-medium t-primary mb-1.5">Recommendations</p>
