@@ -835,13 +835,20 @@ catalysts.post('/deploy-template', async (c) => {
     }));
   }
 
-  // Check for existing clusters for this tenant — warn but don't block
+  // Check for existing clusters for this tenant — skip duplicates by name
   const existing = await c.env.DB.prepare(
-    'SELECT COUNT(*) as count FROM catalyst_clusters WHERE tenant_id = ?'
-  ).bind(body.tenant_id).first<{ count: number }>();
+    'SELECT id, name FROM catalyst_clusters WHERE tenant_id = ?'
+  ).bind(body.tenant_id).all<{ id: string; name: string }>();
+  const existingNames = new Set((existing.results || []).map(r => r.name));
 
   const createdIds: string[] = [];
+  const skippedNames: string[] = [];
   for (const cl of clustersToCreate) {
+    // Skip if a cluster with this name already exists for this tenant
+    if (existingNames.has(cl.name)) {
+      skippedNames.push(cl.name);
+      continue;
+    }
     const id = crypto.randomUUID();
     await c.env.DB.prepare(
       'INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, agent_count, tasks_completed, tasks_in_progress, success_rate, trust_score, autonomy_tier, sub_catalysts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -851,6 +858,7 @@ catalysts.post('/deploy-template', async (c) => {
       JSON.stringify(cl.sub_catalysts)
     ).run();
     createdIds.push(id);
+    existingNames.add(cl.name);
 
     // Seed KPI definitions for each sub-catalyst in this cluster
     try {
@@ -888,7 +896,8 @@ catalysts.post('/deploy-template', async (c) => {
     industry: body.industry,
     clustersCreated: createdIds.length,
     clusterIds: createdIds,
-    existingClusters: existing?.count || 0,
+    existingClusters: (existing.results || []).length,
+    skippedDuplicates: skippedNames,
   }, 201);
 });
 

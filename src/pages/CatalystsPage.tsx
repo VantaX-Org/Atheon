@@ -125,8 +125,7 @@ export function CatalystsPage() {
 
  const result = await api.catalysts.manualExecute(formData);
  setQuickRunSuccess(result.message);
- const ind = industry !== 'general' ? industry : undefined;
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, undefined);
  setActions(a.actions);
  setTimeout(() => {
  setShowQuickRun(false);
@@ -146,7 +145,7 @@ export function CatalystsPage() {
  setActionError(null);
  try {
  await api.catalysts.approveAction(actionId);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  } catch (err) {
@@ -161,7 +160,7 @@ export function CatalystsPage() {
  setActionError(null);
  try {
  await api.catalysts.rejectAction(actionId);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  } catch (err) {
@@ -190,7 +189,7 @@ export function CatalystsPage() {
 
  const result = await api.catalysts.manualExecute(formData);
  setExecSuccess(result.message);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  setTimeout(() => {
@@ -205,7 +204,7 @@ export function CatalystsPage() {
  setExecuting(false);
  };
 
- const industry = useAppStore((s) => s.industry);
+ // Industry filter removed — Catalysts page always shows all functional areas
  const [togglingSubCatalyst, setTogglingSubCatalyst] = useState<string | null>(null);
 
   // Currently selected sub-catalyst for configuration
@@ -328,7 +327,7 @@ export function CatalystsPage() {
    }
  }
  }
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
@@ -344,7 +343,7 @@ export function CatalystsPage() {
  setDsError(null);
  try {
  await api.catalysts.removeDataSource(dsClusterId, dsSubName);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
@@ -371,7 +370,7 @@ export function CatalystsPage() {
  useEffect(() => {
  async function load() {
  setLoading(true);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const [c, a, g] = await Promise.allSettled([
  api.catalysts.clusters(undefined, ind), api.catalysts.actions(undefined, undefined, ind), api.catalysts.governance(undefined, ind),
  ]);
@@ -390,7 +389,7 @@ export function CatalystsPage() {
  setLoading(false);
  }
  load();
- }, [industry]);
+ }, []); // Load once on mount — no industry filter needed, catalysts show all functional areas
 
  const handleToggleSubCatalyst = async (clusterId: string, subName: string) => {
  const key = `${clusterId}:${subName}`;
@@ -398,7 +397,7 @@ export function CatalystsPage() {
  setTogglingSubCatalyst(key);
  try {
  await api.catalysts.toggleSubCatalyst(clusterId, subName);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const c = await api.catalysts.clusters(undefined, ind);
  setClusters(c.clusters);
  } catch (err) {
@@ -558,7 +557,7 @@ export function CatalystsPage() {
        ...(schedFrequency === 'monthly' ? { day_of_month: schedDayOfMonth } : {}),
        ...(schedFrequency !== 'manual' ? { time_of_day: schedTimeOfDay } : {}),
      });
-     const ind = industry !== 'general' ? industry : undefined;
+     const ind = undefined; // Catalysts page shows all functional areas regardless of industry
      const c = await api.catalysts.clusters(undefined, ind);
      setClusters(c.clusters);
      setShowScheduleConfig(false);
@@ -574,7 +573,7 @@ export function CatalystsPage() {
    setSchedError(null);
    try {
      await api.catalysts.removeSchedule(schedClusterId, schedSubName);
-     const ind = industry !== 'general' ? industry : undefined;
+     const ind = undefined; // Catalysts page shows all functional areas regardless of industry
      const c = await api.catalysts.clusters(undefined, ind);
      setClusters(c.clusters);
      setShowScheduleConfig(false);
@@ -635,7 +634,7 @@ export function CatalystsPage() {
    setFmError(null);
    try {
      await api.catalysts.setFieldMappings(fmClusterId, fmSubName, fmMappings);
-     const ind = industry !== 'general' ? industry : undefined;
+     const ind = undefined; // Catalysts page shows all functional areas regardless of industry
      const c = await api.catalysts.clusters(undefined, ind);
      setClusters(c.clusters);
      setShowFieldMappingConfig(false);
@@ -663,7 +662,7 @@ export function CatalystsPage() {
    setExecCfgError(null);
    try {
      await api.catalysts.setExecutionConfig(execClusterId, execSubName, { mode: execMode });
-     const ind = industry !== 'general' ? industry : undefined;
+     const ind = undefined; // Catalysts page shows all functional areas regardless of industry
      const c = await api.catalysts.clusters(undefined, ind);
      setClusters(c.clusters);
      setShowExecutionConfig(false);
@@ -682,7 +681,7 @@ export function CatalystsPage() {
      setExecResult(result);
      setShowExecResult(true);
      // Refresh clusters to get updated last_execution
-     const ind = industry !== 'general' ? industry : undefined;
+     const ind = undefined; // Catalysts page shows all functional areas regardless of industry
      const c = await api.catalysts.clusters(undefined, ind);
      setClusters(c.clusters);
    } catch (err) {
@@ -716,7 +715,7 @@ export function CatalystsPage() {
  setResolvingAction(actionId);
  try {
  await api.catalysts.resolveException(actionId, (activeNotesAction === actionId ? resolveNotes : '') || undefined);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  setResolveNotes('');
@@ -730,7 +729,7 @@ export function CatalystsPage() {
  setEscalatingAction(actionId);
  try {
  await api.catalysts.escalateException(actionId);
- const ind = industry !== 'general' ? industry : undefined;
+ const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  } catch (err) {
