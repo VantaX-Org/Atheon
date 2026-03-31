@@ -6,6 +6,7 @@ import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
+import { stripCodeFences } from '../services/llm-provider';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -1606,6 +1607,14 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     console.error('auto run-analytics insert failed:', err);
   }
 
+  // ── Generate Apex/Pulse/Dashboard insights from this catalyst run ──
+  try {
+    const clusterDomain = (cluster.domain as string) || 'finance';
+    await generateInsightsForTenant(c.env.DB, targetTenant, subName, clusterDomain, undefined, runId, clusterId, subName);
+  } catch (err) {
+    console.error('Insight generation after sub-catalyst execution failed (non-critical):', err);
+  }
+
   // Always return 200 so the client can read the detailed result (status field indicates success/failure)
   return c.json(result, 200);
 });
@@ -1800,19 +1809,27 @@ async function performValidation(
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
   for (const row of data) {
-    // Basic validation checks
-    const hasAmount = row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '';
-    const hasDate = row['invoice_date'] || row['date'] || row['posting_date'];
-    const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'];
+    // Basic validation checks — accept any monetary field as valid
+    const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
+                      (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
+                      (row['credit_limit'] !== undefined && row['credit_limit'] !== null && row['credit_limit'] !== '') ||
+                      (row['credit_balance'] !== undefined && row['credit_balance'] !== null && row['credit_balance'] !== '') ||
+                      (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
+                      (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
+                      (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '') ||
+                      (row['cost_price'] !== undefined && row['cost_price'] !== null && row['cost_price'] !== '');
+    const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
+    const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
+                   row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
 
     if (!hasAmount || !hasDate || !hasRef) {
       issues++;
       if (discrepancies && discrepancies.length < 50) {
         discrepancies.push({
           source_record: row, target_record: null,
-          field: !hasAmount ? 'amount' : !hasDate ? 'date' : 'reference',
+          field: !hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference',
           source_value: null, target_value: null,
-          difference: `Missing required field: ${!hasAmount ? 'amount' : !hasDate ? 'date' : 'reference'}`,
+          difference: `Missing required field: ${!hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference'}`,
         });
       }
     }
@@ -1893,13 +1910,13 @@ async function fetchDataForSource(
 
       if (module.includes('invoice') || module.includes('accounts_payable') || module.includes('ap')) {
         const rows = await db.prepare(
-          'SELECT invoice_number, invoice_date, due_date, amount, tax_amount, status, vendor_name, description FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
+          'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar')) {
         const rows = await db.prepare(
-          'SELECT id, name, email, phone, account_number, credit_limit, outstanding_balance FROM erp_customers WHERE tenant_id = ? LIMIT 500'
+          'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
@@ -1911,13 +1928,38 @@ async function fetchDataForSource(
       }
       if (module.includes('supplier') || module.includes('vendor')) {
         const rows = await db.prepare(
-          'SELECT id, name, email, payment_terms, tax_number FROM erp_suppliers WHERE tenant_id = ? LIMIT 500'
+          'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? LIMIT 500'
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module.includes('purchase_order') || module === 'po' || module.includes('procurement')) {
+        const rows = await db.prepare(
+          'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? LIMIT 500'
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module.includes('bank') || module.includes('bank_statement') || module.includes('cash')) {
+        const rows = await db.prepare(
+          'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? LIMIT 500'
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'gl' || module.includes('general_ledger') || module.includes('journal')) {
+        const rows = await db.prepare(
+          'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? LIMIT 500'
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module.includes('goods_receipt') || module === 'gr' || module.includes('delivery')) {
+        // Goods receipts are tracked via purchase orders with delivery_status
+        const rows = await db.prepare(
+          'SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND delivery_status IN (\'received\', \'partial\') LIMIT 500'
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
       // Default: try invoices as a common ERP data set
       const rows = await db.prepare(
-        'SELECT invoice_number, invoice_date, amount, status, vendor_name FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
+        'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? LIMIT 500'
       ).bind(tenantId).all();
       return rows.results as Record<string, unknown>[];
     }
@@ -3922,7 +3964,7 @@ Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impac
       max_tokens: 500,
     });
 
-    const insights = JSON.parse((aiResponse as any).response || '{}');
+    const insights = JSON.parse(stripCodeFences((aiResponse as any).response || '{}'));
     
     // Save insights to database
     await c.env.DB.prepare(

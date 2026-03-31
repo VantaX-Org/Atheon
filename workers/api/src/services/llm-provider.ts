@@ -315,3 +315,14 @@ async function callWorkersAI(ai: Ai, messages: LlmMessage[], maxTokens: number, 
 function estimateTokens(messages: LlmMessage[]): number {
   return Math.ceil(messages.reduce((acc, m) => acc + m.content.length, 0) / 4);
 }
+
+/**
+ * Strip markdown code fences from LLM responses before JSON parsing.
+ * LLMs often wrap JSON in ```json ... ``` which breaks JSON.parse().
+ */
+export function stripCodeFences(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json|JSON)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
