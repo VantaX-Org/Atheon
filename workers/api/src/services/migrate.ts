@@ -287,6 +287,195 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     }
   }
 
+  // ── Odoo Native Tables (Odoo 17/18 field names) ──
+  const odooTables = [
+    // Accounting: Journal Entries / Invoices (account.move)
+    `CREATE TABLE IF NOT EXISTS odoo_account_move (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, move_type TEXT NOT NULL DEFAULT 'entry', partner_id TEXT, partner_name TEXT, invoice_date TEXT, date TEXT, invoice_date_due TEXT, ref TEXT, narration TEXT, state TEXT DEFAULT 'draft', amount_untaxed REAL DEFAULT 0, amount_tax REAL DEFAULT 0, amount_total REAL DEFAULT 0, amount_residual REAL DEFAULT 0, amount_paid REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', journal_id TEXT, company_id TEXT, payment_state TEXT DEFAULT 'not_paid', invoice_origin TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Accounting: Journal Items (account.move.line)
+    `CREATE TABLE IF NOT EXISTS odoo_account_move_line (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), move_id TEXT NOT NULL, move_name TEXT, account_id TEXT, account_name TEXT, partner_id TEXT, name TEXT, debit REAL DEFAULT 0, credit REAL DEFAULT 0, balance REAL DEFAULT 0, amount_currency REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', date_maturity TEXT, date TEXT, reconciled INTEGER DEFAULT 0, tax_line_id TEXT, product_id TEXT, quantity REAL DEFAULT 0, price_unit REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Partners: Customers & Suppliers (res.partner)
+    `CREATE TABLE IF NOT EXISTS odoo_res_partner (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, display_name TEXT, partner_type TEXT DEFAULT 'contact', is_company INTEGER DEFAULT 0, supplier_rank INTEGER DEFAULT 0, customer_rank INTEGER DEFAULT 0, vat TEXT, company_registry TEXT, street TEXT, city TEXT, state_id TEXT, zip TEXT, country_id TEXT DEFAULT 'ZA', phone TEXT, email TEXT, website TEXT, property_payment_term_id TEXT, property_account_receivable_id TEXT, property_account_payable_id TEXT, credit_limit REAL DEFAULT 0, active INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Products (product.product)
+    `CREATE TABLE IF NOT EXISTS odoo_product_product (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), default_code TEXT, name TEXT NOT NULL, product_tmpl_id TEXT, barcode TEXT, type TEXT DEFAULT 'product', categ_id TEXT, categ_name TEXT, list_price REAL DEFAULT 0, standard_price REAL DEFAULT 0, uom_id TEXT DEFAULT 'Units', weight REAL DEFAULT 0, volume REAL DEFAULT 0, active INTEGER DEFAULT 1, qty_available REAL DEFAULT 0, virtual_available REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Inventory: Stock Quantities (stock.quant)
+    `CREATE TABLE IF NOT EXISTS odoo_stock_quant (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), product_id TEXT NOT NULL, product_name TEXT, location_id TEXT NOT NULL, location_name TEXT, lot_id TEXT, package_id TEXT, quantity REAL DEFAULT 0, reserved_quantity REAL DEFAULT 0, inventory_date TEXT, inventory_quantity REAL DEFAULT 0, inventory_diff_quantity REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchasing: Purchase Orders (purchase.order)
+    `CREATE TABLE IF NOT EXISTS odoo_purchase_order (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, partner_id TEXT, partner_name TEXT, date_order TEXT, date_planned TEXT, date_approve TEXT, origin TEXT, state TEXT DEFAULT 'draft', amount_untaxed REAL DEFAULT 0, amount_tax REAL DEFAULT 0, amount_total REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', invoice_status TEXT, receipt_status TEXT, company_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchasing: PO Lines (purchase.order.line)
+    `CREATE TABLE IF NOT EXISTS odoo_purchase_order_line (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), order_id TEXT NOT NULL, product_id TEXT, product_name TEXT, product_qty REAL DEFAULT 0, qty_received REAL DEFAULT 0, qty_invoiced REAL DEFAULT 0, product_uom TEXT DEFAULT 'Units', price_unit REAL DEFAULT 0, price_subtotal REAL DEFAULT 0, price_tax REAL DEFAULT 0, price_total REAL DEFAULT 0, date_planned TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Sales: Sale Orders (sale.order)
+    `CREATE TABLE IF NOT EXISTS odoo_sale_order (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, partner_id TEXT, partner_name TEXT, date_order TEXT, commitment_date TEXT, validity_date TEXT, origin TEXT, client_order_ref TEXT, state TEXT DEFAULT 'draft', amount_untaxed REAL DEFAULT 0, amount_tax REAL DEFAULT 0, amount_total REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', invoice_status TEXT, delivery_status TEXT, company_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Sales: SO Lines (sale.order.line)
+    `CREATE TABLE IF NOT EXISTS odoo_sale_order_line (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), order_id TEXT NOT NULL, product_id TEXT, product_name TEXT, product_uom_qty REAL DEFAULT 0, qty_delivered REAL DEFAULT 0, qty_invoiced REAL DEFAULT 0, product_uom TEXT DEFAULT 'Units', price_unit REAL DEFAULT 0, price_subtotal REAL DEFAULT 0, price_tax REAL DEFAULT 0, price_total REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Bank Statement Lines (account.bank.statement.line)
+    `CREATE TABLE IF NOT EXISTS odoo_account_bank_statement_line (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), statement_id TEXT, journal_id TEXT, date TEXT, payment_ref TEXT, partner_id TEXT, partner_name TEXT, amount REAL DEFAULT 0, amount_currency REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', account_number TEXT, narration TEXT, is_reconciled INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Payments (account.payment)
+    `CREATE TABLE IF NOT EXISTS odoo_account_payment (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT, payment_type TEXT DEFAULT 'inbound', partner_type TEXT, partner_id TEXT, partner_name TEXT, amount REAL DEFAULT 0, currency_id TEXT DEFAULT 'ZAR', date TEXT, ref TEXT, journal_id TEXT, payment_method_id TEXT, state TEXT DEFAULT 'draft', reconciled_invoice_ids TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ];
+
+  for (const tbl of odooTables) {
+    try { await db.prepare(tbl).run(); result.tablesCreated++; }
+    catch (err) { result.errors.push(`Odoo table: ${(err as Error).message}`); }
+  }
+
+  const odooIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_odoo_move_tenant ON odoo_account_move(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_move_type ON odoo_account_move(tenant_id, move_type)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_move_line_tenant ON odoo_account_move_line(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_move_line_move ON odoo_account_move_line(tenant_id, move_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_partner_tenant ON odoo_res_partner(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_product_tenant ON odoo_product_product(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_quant_tenant ON odoo_stock_quant(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_quant_product ON odoo_stock_quant(tenant_id, product_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_po_tenant ON odoo_purchase_order(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_po_line_tenant ON odoo_purchase_order_line(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_so_tenant ON odoo_sale_order(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_so_line_tenant ON odoo_sale_order_line(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_bank_line_tenant ON odoo_account_bank_statement_line(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_odoo_payment_tenant ON odoo_account_payment(tenant_id)',
+  ];
+
+  for (const idx of odooIndexes) {
+    try { await db.prepare(idx).run(); result.indexesCreated++; }
+    catch (err) { result.errors.push(`Odoo index: ${(err as Error).message}`); }
+  }
+
+  // ── Sage Native Tables (Sage 50/200/300 field names) ──
+  const sageTables = [
+    // Sales Ledger: Customer Accounts
+    `CREATE TABLE IF NOT EXISTS sage_customer (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), AccountReference TEXT NOT NULL, CompanyName TEXT NOT NULL, ContactName TEXT, AddressLine1 TEXT, AddressLine2 TEXT, City TEXT, County TEXT, Postcode TEXT, Country TEXT DEFAULT 'ZA', TelephoneNumber TEXT, FaxNumber TEXT, EmailAddress TEXT, VATRegistrationNumber TEXT, CreditLimit REAL DEFAULT 0, Balance REAL DEFAULT 0, TermsAgreed INTEGER DEFAULT 30, AccountType TEXT DEFAULT 'Customer', NominalCode TEXT, CurrencyCode TEXT DEFAULT 'ZAR', AccountStatus TEXT DEFAULT 'Active', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchase Ledger: Supplier Accounts
+    `CREATE TABLE IF NOT EXISTS sage_supplier (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), AccountReference TEXT NOT NULL, CompanyName TEXT NOT NULL, ContactName TEXT, AddressLine1 TEXT, City TEXT, County TEXT, Postcode TEXT, Country TEXT DEFAULT 'ZA', TelephoneNumber TEXT, EmailAddress TEXT, VATRegistrationNumber TEXT, CreditLimit REAL DEFAULT 0, Balance REAL DEFAULT 0, TermsAgreed INTEGER DEFAULT 30, NominalCode TEXT, CurrencyCode TEXT DEFAULT 'ZAR', BankName TEXT, BankAccountNumber TEXT, BankSortCode TEXT, AccountStatus TEXT DEFAULT 'Active', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Nominal Ledger: GL Accounts
+    `CREATE TABLE IF NOT EXISTS sage_nominal_ledger (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), NominalCode TEXT NOT NULL, NominalName TEXT NOT NULL, NominalType TEXT DEFAULT 'Profit and Loss', CategoryCode TEXT, Balance REAL DEFAULT 0, BudgetBalance REAL DEFAULT 0, PriorYearBalance REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Sales Invoices
+    `CREATE TABLE IF NOT EXISTS sage_sales_invoice (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), InvoiceNumber TEXT NOT NULL, AccountReference TEXT, CustomerName TEXT, InvoiceDate TEXT, DueDate TEXT, NetAmount REAL DEFAULT 0, TaxAmount REAL DEFAULT 0, GrossAmount REAL DEFAULT 0, AmountPaid REAL DEFAULT 0, AmountOutstanding REAL DEFAULT 0, TaxCode TEXT, NominalCode TEXT, Reference TEXT, Details TEXT, Status TEXT DEFAULT 'Outstanding', CurrencyCode TEXT DEFAULT 'ZAR', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchase Invoices
+    `CREATE TABLE IF NOT EXISTS sage_purchase_invoice (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), InvoiceNumber TEXT NOT NULL, AccountReference TEXT, SupplierName TEXT, InvoiceDate TEXT, DueDate TEXT, NetAmount REAL DEFAULT 0, TaxAmount REAL DEFAULT 0, GrossAmount REAL DEFAULT 0, AmountPaid REAL DEFAULT 0, AmountOutstanding REAL DEFAULT 0, TaxCode TEXT, NominalCode TEXT, Reference TEXT, Details TEXT, Status TEXT DEFAULT 'Outstanding', CurrencyCode TEXT DEFAULT 'ZAR', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Stock Items
+    `CREATE TABLE IF NOT EXISTS sage_stock_item (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), ProductCode TEXT NOT NULL, Description TEXT NOT NULL, Category TEXT, SalePrice REAL DEFAULT 0, CostPrice REAL DEFAULT 0, QuantityInStock REAL DEFAULT 0, ReorderLevel REAL DEFAULT 0, ReorderQuantity REAL DEFAULT 0, UnitOfMeasure TEXT DEFAULT 'Each', TaxCode TEXT, NominalCode TEXT, Location TEXT, BinNumber TEXT, WeightKg REAL DEFAULT 0, InactiveFlag INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Bank Transactions
+    `CREATE TABLE IF NOT EXISTS sage_bank_transaction (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BankAccountReference TEXT NOT NULL, TransactionDate TEXT NOT NULL, TransactionType TEXT, Reference TEXT, Details TEXT, NetAmount REAL DEFAULT 0, TaxAmount REAL DEFAULT 0, GrossAmount REAL DEFAULT 0, PaymentMethod TEXT, NominalCode TEXT, Reconciled INTEGER DEFAULT 0, ExchangeRate REAL DEFAULT 1, CurrencyCode TEXT DEFAULT 'ZAR', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchase Orders
+    `CREATE TABLE IF NOT EXISTS sage_purchase_order (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), OrderNumber TEXT NOT NULL, AccountReference TEXT, SupplierName TEXT, OrderDate TEXT, DeliveryDate TEXT, NetAmount REAL DEFAULT 0, TaxAmount REAL DEFAULT 0, GrossAmount REAL DEFAULT 0, Status TEXT DEFAULT 'Open', DeliveryStatus TEXT DEFAULT 'Pending', Reference TEXT, CurrencyCode TEXT DEFAULT 'ZAR', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Goods Received Notes
+    `CREATE TABLE IF NOT EXISTS sage_goods_received (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), GRNNumber TEXT NOT NULL, OrderNumber TEXT, SupplierName TEXT, ReceivedDate TEXT, ProductCode TEXT, Description TEXT, QuantityOrdered REAL DEFAULT 0, QuantityReceived REAL DEFAULT 0, UnitCost REAL DEFAULT 0, TotalCost REAL DEFAULT 0, Status TEXT DEFAULT 'Complete', created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ];
+
+  for (const tbl of sageTables) {
+    try { await db.prepare(tbl).run(); result.tablesCreated++; }
+    catch (err) { result.errors.push(`Sage table: ${(err as Error).message}`); }
+  }
+
+  const sageIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_sage_customer_tenant ON sage_customer(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_supplier_tenant ON sage_supplier(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_nominal_tenant ON sage_nominal_ledger(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_si_tenant ON sage_sales_invoice(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_pi_tenant ON sage_purchase_invoice(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_stock_tenant ON sage_stock_item(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_bank_tenant ON sage_bank_transaction(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_po_tenant ON sage_purchase_order(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sage_grn_tenant ON sage_goods_received(tenant_id)',
+  ];
+
+  for (const idx of sageIndexes) {
+    try { await db.prepare(idx).run(); result.indexesCreated++; }
+    catch (err) { result.errors.push(`Sage index: ${(err as Error).message}`); }
+  }
+
+  // ── Xero Native Tables (Xero API field names) ──
+  const xeroTables = [
+    // Invoices (Sales & Purchase)
+    `CREATE TABLE IF NOT EXISTS xero_invoice (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), InvoiceID TEXT, InvoiceNumber TEXT NOT NULL, Type TEXT DEFAULT 'ACCREC', Reference TEXT, ContactID TEXT, ContactName TEXT, Date TEXT, DueDate TEXT, Status TEXT DEFAULT 'DRAFT', LineAmountTypes TEXT DEFAULT 'Exclusive', SubTotal REAL DEFAULT 0, TotalTax REAL DEFAULT 0, Total REAL DEFAULT 0, AmountDue REAL DEFAULT 0, AmountPaid REAL DEFAULT 0, AmountCredited REAL DEFAULT 0, CurrencyCode TEXT DEFAULT 'ZAR', CurrencyRate REAL DEFAULT 1, SentToContact INTEGER DEFAULT 0, HasAttachments INTEGER DEFAULT 0, Payments TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Contacts (Customers & Suppliers)
+    `CREATE TABLE IF NOT EXISTS xero_contact (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), ContactID TEXT, ContactNumber TEXT, ContactStatus TEXT DEFAULT 'ACTIVE', Name TEXT NOT NULL, FirstName TEXT, LastName TEXT, EmailAddress TEXT, IsSupplier INTEGER DEFAULT 0, IsCustomer INTEGER DEFAULT 0, TaxNumber TEXT, AccountsReceivableTaxType TEXT, AccountsPayableTaxType TEXT, DefaultCurrency TEXT DEFAULT 'ZAR', Phone TEXT, Fax TEXT, AddressLine1 TEXT, City TEXT, Region TEXT, PostalCode TEXT, Country TEXT DEFAULT 'ZA', BankAccountDetails TEXT, Balances_AccountsReceivable_Outstanding REAL DEFAULT 0, Balances_AccountsPayable_Outstanding REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Bank Transactions
+    `CREATE TABLE IF NOT EXISTS xero_bank_transaction (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), BankTransactionID TEXT, Type TEXT DEFAULT 'SPEND', ContactID TEXT, ContactName TEXT, BankAccountID TEXT, BankAccountName TEXT, Date TEXT, Reference TEXT, IsReconciled INTEGER DEFAULT 0, Status TEXT DEFAULT 'AUTHORISED', SubTotal REAL DEFAULT 0, TotalTax REAL DEFAULT 0, Total REAL DEFAULT 0, CurrencyCode TEXT DEFAULT 'ZAR', LineItems TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Payments
+    `CREATE TABLE IF NOT EXISTS xero_payment (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), PaymentID TEXT, PaymentType TEXT DEFAULT 'ACCRECPAYMENT', InvoiceID TEXT, InvoiceNumber TEXT, Date TEXT, Amount REAL DEFAULT 0, CurrencyRate REAL DEFAULT 1, Reference TEXT, Status TEXT DEFAULT 'AUTHORISED', BankAccountID TEXT, BankAccountName TEXT, AccountID TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Items (Products)
+    `CREATE TABLE IF NOT EXISTS xero_item (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), ItemID TEXT, Code TEXT NOT NULL, Name TEXT NOT NULL, Description TEXT, PurchaseDescription TEXT, PurchaseUnitPrice REAL DEFAULT 0, SalesUnitPrice REAL DEFAULT 0, QuantityOnHand REAL DEFAULT 0, TotalCostPool REAL DEFAULT 0, IsTrackedAsInventory INTEGER DEFAULT 0, IsSold INTEGER DEFAULT 1, IsPurchased INTEGER DEFAULT 1, SalesAccountCode TEXT, PurchaseAccountCode TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Manual Journals
+    `CREATE TABLE IF NOT EXISTS xero_manual_journal (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), ManualJournalID TEXT, Date TEXT, Narration TEXT NOT NULL, Status TEXT DEFAULT 'DRAFT', JournalLines TEXT, ShowOnCashBasisReports INTEGER DEFAULT 1, HasAttachments INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Chart of Accounts
+    `CREATE TABLE IF NOT EXISTS xero_account (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), AccountID TEXT, Code TEXT, Name TEXT NOT NULL, Type TEXT NOT NULL, TaxType TEXT, Status TEXT DEFAULT 'ACTIVE', Description TEXT, Class TEXT, BankAccountType TEXT, CurrencyCode TEXT DEFAULT 'ZAR', EnablePaymentsToAccount INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchase Orders
+    `CREATE TABLE IF NOT EXISTS xero_purchase_order (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), PurchaseOrderID TEXT, PurchaseOrderNumber TEXT NOT NULL, ContactID TEXT, ContactName TEXT, Date TEXT, DeliveryDate TEXT, Reference TEXT, Status TEXT DEFAULT 'DRAFT', SubTotal REAL DEFAULT 0, TotalTax REAL DEFAULT 0, Total REAL DEFAULT 0, CurrencyCode TEXT DEFAULT 'ZAR', SentToContact INTEGER DEFAULT 0, DeliveryAddress TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ];
+
+  for (const tbl of xeroTables) {
+    try { await db.prepare(tbl).run(); result.tablesCreated++; }
+    catch (err) { result.errors.push(`Xero table: ${(err as Error).message}`); }
+  }
+
+  const xeroIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_xero_invoice_tenant ON xero_invoice(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_invoice_type ON xero_invoice(tenant_id, Type)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_contact_tenant ON xero_contact(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_bank_txn_tenant ON xero_bank_transaction(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_payment_tenant ON xero_payment(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_item_tenant ON xero_item(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_journal_tenant ON xero_manual_journal(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_account_tenant ON xero_account(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_xero_po_tenant ON xero_purchase_order(tenant_id)',
+  ];
+
+  for (const idx of xeroIndexes) {
+    try { await db.prepare(idx).run(); result.indexesCreated++; }
+    catch (err) { result.errors.push(`Xero index: ${(err as Error).message}`); }
+  }
+
+  // ── QuickBooks Native Tables (QuickBooks Online API field names) ──
+  const qbTables = [
+    // Invoices (Sales)
+    `CREATE TABLE IF NOT EXISTS qb_invoice (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT NOT NULL, TxnDate TEXT, DueDate TEXT, CustomerRef_name TEXT, CustomerRef_value TEXT, TotalAmt REAL DEFAULT 0, Balance REAL DEFAULT 0, Deposit REAL DEFAULT 0, TaxCodeRef TEXT, TxnTaxDetail_TotalTax REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', ExchangeRate REAL DEFAULT 1, ShipDate TEXT, TrackingNum TEXT, PrintStatus TEXT, EmailStatus TEXT, BillEmail TEXT, SalesTermRef TEXT, DepartmentRef TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Bills (Purchase Invoices)
+    `CREATE TABLE IF NOT EXISTS qb_bill (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT NOT NULL, TxnDate TEXT, DueDate TEXT, VendorRef_name TEXT, VendorRef_value TEXT, TotalAmt REAL DEFAULT 0, Balance REAL DEFAULT 0, TxnTaxDetail_TotalTax REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', APAccountRef TEXT, SalesTermRef TEXT, DepartmentRef TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Customers
+    `CREATE TABLE IF NOT EXISTS qb_customer (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DisplayName TEXT NOT NULL, CompanyName TEXT, GivenName TEXT, FamilyName TEXT, PrimaryEmailAddr TEXT, PrimaryPhone TEXT, BillAddr_Line1 TEXT, BillAddr_City TEXT, BillAddr_CountrySubDivisionCode TEXT, BillAddr_PostalCode TEXT, BillAddr_Country TEXT DEFAULT 'ZA', TaxExemptionReasonId TEXT, Balance REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', PreferredDeliveryMethod TEXT, PaymentMethodRef TEXT, Active INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Vendors (Suppliers)
+    `CREATE TABLE IF NOT EXISTS qb_vendor (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DisplayName TEXT NOT NULL, CompanyName TEXT, GivenName TEXT, FamilyName TEXT, PrimaryEmailAddr TEXT, PrimaryPhone TEXT, BillAddr_Line1 TEXT, BillAddr_City TEXT, BillAddr_Country TEXT DEFAULT 'ZA', TaxIdentifier TEXT, AcctNum TEXT, Balance REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', TermRef TEXT, Active INTEGER DEFAULT 1, Vendor1099 INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Items (Products & Services)
+    `CREATE TABLE IF NOT EXISTS qb_item (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), Name TEXT NOT NULL, Sku TEXT, Type TEXT DEFAULT 'Inventory', Description TEXT, PurchaseDesc TEXT, UnitPrice REAL DEFAULT 0, PurchaseCost REAL DEFAULT 0, QtyOnHand REAL DEFAULT 0, ReorderPoint REAL DEFAULT 0, IncomeAccountRef TEXT, ExpenseAccountRef TEXT, AssetAccountRef TEXT, TrackQtyOnHand INTEGER DEFAULT 0, Taxable INTEGER DEFAULT 1, Active INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Payments (Received)
+    `CREATE TABLE IF NOT EXISTS qb_payment (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT, TxnDate TEXT, CustomerRef_name TEXT, CustomerRef_value TEXT, TotalAmt REAL DEFAULT 0, UnappliedAmt REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', PaymentMethodRef TEXT, DepositToAccountRef TEXT, PaymentRefNum TEXT, LinkedTxns TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Bill Payments
+    `CREATE TABLE IF NOT EXISTS qb_bill_payment (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT, TxnDate TEXT, VendorRef_name TEXT, VendorRef_value TEXT, TotalAmt REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', PayType TEXT DEFAULT 'Check', CheckPayment_BankAccountRef TEXT, CreditCardPayment_CCAccountRef TEXT, LinkedTxns TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Journal Entries
+    `CREATE TABLE IF NOT EXISTS qb_journal_entry (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT, TxnDate TEXT, TotalAmt REAL DEFAULT 0, Adjustment INTEGER DEFAULT 0, PrivateNote TEXT, CurrencyRef TEXT DEFAULT 'ZAR', ExchangeRate REAL DEFAULT 1, Lines TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Chart of Accounts
+    `CREATE TABLE IF NOT EXISTS qb_account (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), Name TEXT NOT NULL, AccountType TEXT NOT NULL, AccountSubType TEXT, AcctNum TEXT, Description TEXT, Classification TEXT, CurrencyRef TEXT DEFAULT 'ZAR', CurrentBalance REAL DEFAULT 0, Active INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Purchase Orders
+    `CREATE TABLE IF NOT EXISTS qb_purchase_order (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), DocNumber TEXT NOT NULL, TxnDate TEXT, VendorRef_name TEXT, VendorRef_value TEXT, TotalAmt REAL DEFAULT 0, TxnTaxDetail_TotalTax REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', POStatus TEXT DEFAULT 'Open', ShipAddr_Line1 TEXT, DueDate TEXT, Memo TEXT, Lines TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Deposits (Bank)
+    `CREATE TABLE IF NOT EXISTS qb_deposit (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), TxnDate TEXT, DepositToAccountRef_name TEXT, DepositToAccountRef_value TEXT, TotalAmt REAL DEFAULT 0, CurrencyRef TEXT DEFAULT 'ZAR', PrivateNote TEXT, CashBack_Amount REAL DEFAULT 0, Lines TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+  ];
+
+  for (const tbl of qbTables) {
+    try { await db.prepare(tbl).run(); result.tablesCreated++; }
+    catch (err) { result.errors.push(`QB table: ${(err as Error).message}`); }
+  }
+
+  const qbIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_qb_invoice_tenant ON qb_invoice(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_bill_tenant ON qb_bill(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_customer_tenant ON qb_customer(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_vendor_tenant ON qb_vendor(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_item_tenant ON qb_item(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_payment_tenant ON qb_payment(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_bill_payment_tenant ON qb_bill_payment(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_journal_tenant ON qb_journal_entry(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_account_tenant ON qb_account(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_po_tenant ON qb_purchase_order(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_qb_deposit_tenant ON qb_deposit(tenant_id)',
+  ];
+
+  for (const idx of qbIndexes) {
+    try { await db.prepare(idx).run(); result.indexesCreated++; }
+    catch (err) { result.errors.push(`QB index: ${(err as Error).message}`); }
+  }
+
   for (const tbl of erpTables) {
     try {
       await db.prepare(tbl).run();
