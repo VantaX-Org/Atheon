@@ -128,6 +128,11 @@ const ALLOWED_TABLES = new Set([
   'erp_products', 'erp_bank_transactions', 'erp_journal_entries',
   'erp_gl_accounts', 'erp_employees', 'erp_tax_entries',
   'erp_connections',
+  // SAP native tables
+  'sap_bkpf', 'sap_bseg', 'sap_bsid', 'sap_bsik', 'sap_febep',
+  'sap_ekko', 'sap_ekpo', 'sap_ekbe', 'sap_mard', 'sap_iseg',
+  'sap_vbak', 'sap_vbap', 'sap_vbrk', 'sap_vbrp',
+  'sap_lfa1', 'sap_lfb1', 'sap_kna1', 'sap_knb1',
 ]);
 
 /**
@@ -518,6 +523,475 @@ seed.post('/seed-vantax', async (c) => {
       ).run();
     }
 
+    // ── SAP NATIVE TABLE SEEDING ──
+    // Populate actual SAP table structures so the LLM sees real SAP field names
+    // and sub-catalysts process authentic SAP data.
+
+    // SAP-SEED-1: LFA1 — Vendor Master General Data
+    // Quality gaps: vendors 11-12 missing STCD1 (tax number), vendors 13-14 missing TELF1
+    for (let i = 0; i < SA_SUPPLIERS.length; i++) {
+      const s = SA_SUPPLIERS[i];
+      const lifnr = (10000 + i).toString().padStart(10, '0');
+      await c.env.DB.prepare(
+        `INSERT INTO sap_lfa1 (id, tenant_id, LIFNR, LAND1, NAME1, NAME2, ORT01, PSTLZ, REGIO, STCD1, STCD2, TELF1, KTOKK, LOEVM, SPERR, SPERM)
+         VALUES (?, ?, ?, 'ZA', ?, ?, ?, ?, ?, ?, ?, ?, 'KRED', ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, lifnr,
+        s.name, s.group,
+        s.city, s.city === 'Johannesburg' ? '2001' : s.city === 'Cape Town' ? '8001' : '0001',
+        s.province,
+        (i < 11 || i > 12) ? s.vat : null,  // missing tax number for 11-12
+        (i < 11 || i > 12) ? `IT${s.vat}` : null,
+        i < 13 ? `+27${(11 + i).toString()}${(1000000 + i * 12345).toString().slice(0, 7)}` : null,  // missing phone for 13-14
+        null, null,  // LOEVM, SPERR
+        i === 14 ? 'X' : null,  // payment block on last vendor
+      ).run();
+    }
+
+    // SAP-SEED-2: LFB1 — Vendor Master Company Code Data
+    // Quality gaps: vendors 8-10 missing AKONT (recon account), vendor 14 missing ZTERM
+    for (let i = 0; i < SA_SUPPLIERS.length; i++) {
+      const lifnr = (10000 + i).toString().padStart(10, '0');
+      const zterms = ['ZB30', 'ZB45', 'ZB30', 'ZB60', 'ZB30', 'ZB45', 'ZB30', 'ZB60'];
+      await c.env.DB.prepare(
+        `INSERT INTO sap_lfb1 (id, tenant_id, LIFNR, BUKRS, AKONT, ZTERM, ZWELS, REPRF, HBKID)
+         VALUES (?, ?, ?, '1000', ?, ?, 'CT', ?, 'FNB1')`
+      ).bind(
+        crypto.randomUUID(), tenantId, lifnr,
+        (i >= 8 && i <= 10) ? null : '2000',  // missing recon account
+        i === 14 ? null : zterms[i % zterms.length],  // missing payment terms
+        i < 8 ? 'X' : null,  // double-invoice check
+      ).run();
+    }
+
+    // SAP-SEED-3: KNA1 — Customer Master General Data
+    // Quality gaps: customers 18-19 missing STCD1, customer 15-17 missing ORT01
+    for (let i = 0; i < SA_CUSTOMERS.length; i++) {
+      const cu = SA_CUSTOMERS[i];
+      const kunnr = (20000 + i).toString().padStart(10, '0');
+      await c.env.DB.prepare(
+        `INSERT INTO sap_kna1 (id, tenant_id, KUNNR, LAND1, NAME1, NAME2, ORT01, PSTLZ, REGIO, STCD1, TELF1, KTOKD, LOEVM, SPERR)
+         VALUES (?, ?, ?, 'ZA', ?, ?, ?, ?, ?, ?, ?, 'DEBI', ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, kunnr,
+        cu.name, cu.group,
+        (i >= 15 && i <= 17) ? null : cu.city,  // missing city
+        cu.city === 'Cape Town' ? '8001' : cu.city === 'Sandton' ? '2196' : '0001',
+        cu.province,
+        i < 18 ? cu.reg : null,  // missing tax/reg number
+        i < 17 ? `+27${(21 + i).toString()}${(2000000 + i * 54321).toString().slice(0, 7)}` : null,
+        null, null,
+      ).run();
+    }
+
+    // SAP-SEED-4: KNB1 — Customer Master Company Code Data
+    // Quality gaps: customers 12-14 KLIMK exceeded, customers 15-17 KLIMK = 0
+    for (let i = 0; i < SA_CUSTOMERS.length; i++) {
+      const kunnr = (20000 + i).toString().padStart(10, '0');
+      let klimk = 500000 + i * 150000 + 50000;
+      if (i >= 15 && i <= 17) klimk = 0;
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_knb1 (id, tenant_id, KUNNR, BUKRS, AKONT, ZTERM, KLIMK, CTLPC)
+         VALUES (?, ?, ?, '1000', '1100', 'ZB30', ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, kunnr,
+        klimk,
+        klimk > 0 ? 'A' : null,  // no credit control for zero-limit customers
+      ).run();
+    }
+
+    // SAP-SEED-5: BKPF — Accounting Document Headers (80 vendor invoices)
+    // Quality gaps: docs 73-80 missing XBLNR (external reference)
+    const bkpfBelnrs: string[] = [];
+    for (let i = 1; i <= 80; i++) {
+      const belnr = (5100000000 + i).toString();
+      bkpfBelnrs.push(belnr);
+      const daysAgo = 3 + Math.floor((i * 37) % 90);
+      const budat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      const bldat = new Date(Date.now() - (daysAgo + 2) * 86400000).toISOString().split('T')[0];
+      const monat = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(5, 7);
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_bkpf (id, tenant_id, BUKRS, BELNR, GJAHR, BLART, BUDAT, BLDAT, MONAT, CPUDT, XBLNR, BSTAT, WAERS, USNAM, TCODE, AWTYP, AWKEY)
+         VALUES (?, ?, '1000', ?, '2026', ?, ?, ?, ?, ?, ?, ?, 'ZAR', 'SAPUSER', 'FB60', 'BKPF', ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, belnr,
+        i <= 40 ? 'KR' : 'KG',  // KR=vendor invoice, KG=vendor credit
+        budat, bldat, monat, budat,
+        i <= 72 ? `PO-${(50000 + i).toString()}` : null,  // missing XBLNR for 73-80
+        i <= 65 ? '' : 'V',  // V = parked (not posted)
+        belnr,
+      ).run();
+    }
+
+    // SAP-SEED-6: BSEG — Accounting Document Line Items (2 lines per doc: vendor + expense)
+    // Quality gaps: items 56-65 have DMBTR that differs from WRBTR (forex variance)
+    for (let i = 1; i <= 80; i++) {
+      const belnr = bkpfBelnrs[i - 1];
+      const suppIdx = i % SA_SUPPLIERS.length;
+      const lifnr = (10000 + suppIdx).toString().padStart(10, '0');
+      const subtotal = Math.round((5000 + (i * 1423.17) % 115000) * 100) / 100;
+      const vat = Math.round(subtotal * 0.15 * 100) / 100;
+      const total = Math.round((subtotal + vat) * 100) / 100;
+      let dmbtr = total;
+      if (i >= 56 && i <= 65) {
+        // Forex variance: DMBTR differs from WRBTR by 2-8%
+        const variancePct = 0.02 + ((i - 56) * 0.007);
+        dmbtr = Math.round(total * (1 + variancePct * (i % 2 === 0 ? 1 : -1)) * 100) / 100;
+      }
+
+      // Line 1: Vendor posting (BSCHL 31 = vendor credit)
+      await c.env.DB.prepare(
+        `INSERT INTO sap_bseg (id, tenant_id, BUKRS, BELNR, GJAHR, BUZEI, BSCHL, KOART, KONTO, DMBTR, WRBTR, MWSKZ, MWSTS, SGTXT, LIFNR, EBELN, SHKZG, ZFBDT, ZBD1T)
+         VALUES (?, ?, '1000', ?, '2026', '001', '31', 'K', ?, ?, ?, 'I2', ?, ?, ?, ?, 'H', ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, belnr,
+        lifnr, dmbtr, total, vat,
+        `Invoice ${SA_SUPPLIERS[suppIdx].name}`,
+        lifnr,
+        i <= 72 ? `PO-${(50000 + i).toString()}` : null,
+        new Date(Date.now() - (3 + Math.floor((i * 37) % 90) - 30) * 86400000).toISOString().split('T')[0],
+        30,
+      ).run();
+
+      // Line 2: Expense posting (BSCHL 40 = debit)
+      await c.env.DB.prepare(
+        `INSERT INTO sap_bseg (id, tenant_id, BUKRS, BELNR, GJAHR, BUZEI, BSCHL, KOART, KONTO, DMBTR, WRBTR, MWSKZ, MWSTS, SGTXT, SHKZG)
+         VALUES (?, ?, '1000', ?, '2026', '002', '40', 'S', '5000', ?, ?, 'I2', 0, ?, 'S')`
+      ).bind(
+        crypto.randomUUID(), tenantId, belnr,
+        Math.round((dmbtr - vat) * 100) / 100, Math.round((total - vat) * 100) / 100,
+        `Cost of Sales - ${SA_SUPPLIERS[suppIdx].name}`,
+      ).run();
+    }
+
+    // SAP-SEED-7: BSIK — Vendor Open Items
+    // Quality gaps: items 66-72 have wrong SHKZG (debit/credit indicator), 73-80 missing EBELN
+    for (let i = 1; i <= 80; i++) {
+      const belnr = bkpfBelnrs[i - 1];
+      const suppIdx = i % SA_SUPPLIERS.length;
+      const lifnr = (10000 + suppIdx).toString().padStart(10, '0');
+      const subtotal = Math.round((5000 + (i * 1423.17) % 115000) * 100) / 100;
+      const vat = Math.round(subtotal * 0.15 * 100) / 100;
+      const total = Math.round((subtotal + vat) * 100) / 100;
+      const daysAgo = 3 + Math.floor((i * 37) % 90);
+      const budat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      const statusMap = ['', '', '', 'C', 'C', 'C', '', '', ''];  // C = cleared
+      const augbl = statusMap[i % statusMap.length] === 'C' ? belnr : null;
+      const augdt = augbl ? new Date(Date.now() - (daysAgo - 15) * 86400000).toISOString().split('T')[0] : null;
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_bsik (id, tenant_id, BUKRS, LIFNR, AUGDT, AUGBL, GJAHR, BELNR, BUZEI, BUDAT, BLDAT, WAERS, SHKZG, DMBTR, WRBTR, SGTXT, ZFBDT, ZBD1T, EBELN)
+         VALUES (?, ?, '1000', ?, ?, ?, '2026', ?, '001', ?, ?, 'ZAR', ?, ?, ?, ?, ?, 30, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, lifnr,
+        augdt, augbl, belnr,
+        budat, budat,
+        (i >= 66 && i <= 72) ? 'S' : 'H',  // wrong indicator for 66-72
+        total, total,
+        `Vendor invoice - ${SA_SUPPLIERS[suppIdx].name}`,
+        new Date(Date.now() - (daysAgo - 30) * 86400000).toISOString().split('T')[0],
+        i <= 72 ? `PO-${(50000 + i).toString()}` : null,  // missing EBELN for 73-80
+      ).run();
+    }
+
+    // SAP-SEED-8: EKKO — Purchase Order Headers (80 POs)
+    for (let i = 1; i <= 80; i++) {
+      const ebeln = (4500000000 + i).toString();
+      const suppIdx = i % SA_SUPPLIERS.length;
+      const lifnr = (10000 + suppIdx).toString().padStart(10, '0');
+      const daysAgo = 10 + Math.floor((i * 43) % 120);
+      const bedat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_ekko (id, tenant_id, EBELN, BUKRS, BSTYP, BSART, LOEKZ, STATU, AEDAT, ERNAM, LIFNR, EKGRP, WAERS, BEDAT, RLWRT, ZTERM)
+         VALUES (?, ?, ?, '1000', 'F', 'NB', ?, ?, ?, 'SAPBUYER', ?, ?, 'ZAR', ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, ebeln,
+        i > 75 ? 'L' : null,  // L = deletion flag on last 5
+        i <= 65 ? 'B' : 'A',  // B = PO completed, A = active
+        bedat, lifnr,
+        `E${(100 + suppIdx % 10).toString()}`,
+        bedat,
+        invoiceAmounts[i - 1] || Math.round((8000 + (i * 2731.41) % 45000) * 100) / 100,
+        ['ZB30', 'ZB45', 'ZB60'][i % 3],
+      ).run();
+    }
+
+    // SAP-SEED-9: EKPO — Purchase Order Items (1-2 items per PO)
+    for (let i = 1; i <= 80; i++) {
+      const ebeln = (4500000000 + i).toString();
+      const prodIdx = i % SA_PRODUCTS.length;
+      const p = SA_PRODUCTS[prodIdx];
+      const total = invoiceAmounts[i - 1] || Math.round((8000 + (i * 2731.41) % 45000) * 100) / 100;
+      const qty = Math.max(1, Math.floor(total / p.cost));
+      const netpr = Math.round(total / qty * 100) / 100;
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_ekpo (id, tenant_id, EBELN, EBELP, MATNR, TXZ01, MENGE, MEINS, NETPR, PEINH, NETWR, MATKL, WERKS, LGORT, MWSKZ)
+         VALUES (?, ?, ?, '00010', ?, ?, ?, ?, ?, 1, ?, ?, 'JHB1', '0001', 'I2')`
+      ).bind(
+        crypto.randomUUID(), tenantId, ebeln,
+        p.sku, p.name, qty, p.uom, netpr, Math.round(netpr * qty * 100) / 100,
+        p.cat,
+      ).run();
+    }
+
+    // SAP-SEED-10: EKBE — PO History (Goods Receipt + Invoice Receipt)
+    // Quality gaps: POs 66-72 have GR qty mismatch, POs 73-80 no IR entry
+    for (let i = 1; i <= 80; i++) {
+      const ebeln = (4500000000 + i).toString();
+      const prodIdx = i % SA_PRODUCTS.length;
+      const p = SA_PRODUCTS[prodIdx];
+      const total = invoiceAmounts[i - 1] || Math.round((8000 + (i * 2731.41) % 45000) * 100) / 100;
+      const qty = Math.max(1, Math.floor(total / p.cost));
+      const daysAgo = 10 + Math.floor((i * 43) % 120);
+      const budat = new Date(Date.now() - (daysAgo - 7) * 86400000).toISOString().split('T')[0];
+
+      // Goods Receipt (VGABE = '1')
+      let grQty = qty;
+      if (i >= 66 && i <= 72) {
+        // GR qty mismatch: received 5-15% less than ordered
+        grQty = Math.max(1, Math.floor(qty * (0.85 + (i - 66) * 0.015)));
+      }
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_ekbe (id, tenant_id, EBELN, EBELP, ZEESSION, VGABE, GJAHR, BELNR, BUZEI, BEWTP, MENGE, WRBTR, WAERS, BUDAT)
+         VALUES (?, ?, ?, '00010', '0001', '1', '2026', ?, '001', 'E', ?, ?, 'ZAR', ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, ebeln,
+        (5000000000 + i).toString(),
+        grQty, Math.round(grQty * (total / qty) * 100) / 100, budat,
+      ).run();
+
+      // Invoice Receipt (VGABE = '2') — only for POs 1-72
+      if (i <= 72) {
+        let irAmt = total;
+        if (i >= 66 && i <= 72) {
+          // IR amount differs from PO by 3-7%
+          const variancePct = 0.03 + ((i * 13) % 5) * 0.01;
+          irAmt = Math.round(total * (1 + variancePct * (i % 2 === 0 ? 1 : -1)) * 100) / 100;
+        }
+        await c.env.DB.prepare(
+          `INSERT INTO sap_ekbe (id, tenant_id, EBELN, EBELP, ZEESSION, VGABE, GJAHR, BELNR, BUZEI, BEWTP, MENGE, WRBTR, WAERS, BUDAT)
+           VALUES (?, ?, ?, '00010', '0002', '2', '2026', ?, '001', 'Q', ?, ?, 'ZAR', ?)`
+        ).bind(
+          crypto.randomUUID(), tenantId, ebeln,
+          bkpfBelnrs[i - 1],
+          qty, irAmt, budat,
+        ).run();
+      }
+    }
+
+    // SAP-SEED-11: MARD — Material Warehouse Stock
+    for (let i = 0; i < SA_PRODUCTS.length; i++) {
+      const p = SA_PRODUCTS[i];
+      await c.env.DB.prepare(
+        `INSERT INTO sap_mard (id, tenant_id, MATNR, WERKS, LGORT, LABST, INSME, SPEME, EINME, RETME, LFGJA, LFMON)
+         VALUES (?, ?, ?, 'JHB1', '0001', ?, ?, ?, 0, 0, '2026', '03')`
+      ).bind(
+        crypto.randomUUID(), tenantId,
+        p.sku, p.stock,
+        i >= 10 && i < 14 ? Math.floor(p.stock * 0.05) : 0,  // quality inspection stock
+        i >= 14 ? Math.floor(p.stock * 0.03) : 0,  // blocked stock
+      ).run();
+    }
+
+    // SAP-SEED-12: ISEG — Physical Inventory Count (deliberate variances)
+    for (let i = 0; i < SA_PRODUCTS.length; i++) {
+      const p = SA_PRODUCTS[i];
+      let physQty: number;
+      if (i < 10) {
+        physQty = p.stock;  // exact match
+      } else if (i < 14) {
+        const shrinkagePct = 0.08 + (i - 10) * 0.047;
+        physQty = Math.floor(p.stock * (1 - shrinkagePct));  // shortage
+      } else {
+        const surplusPct = 0.05 + (i - 14) * 0.033;
+        physQty = Math.floor(p.stock * (1 + surplusPct));  // surplus
+      }
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_iseg (id, tenant_id, IBLNR, GJAHR, ZEESSION, MATNR, WERKS, LGORT, MENGE, MEINS, BUCHM, XNULL, XDIFF)
+         VALUES (?, ?, ?, '2026', ?, ?, 'JHB1', '0001', ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId,
+        (4000000 + i).toString(),
+        (i + 1).toString().padStart(4, '0'),
+        p.sku, physQty, p.uom,
+        physQty === p.stock ? physQty : 0,  // BUCHM = posted qty (0 if diff)
+        physQty === 0 ? 'X' : null,  // XNULL = zero count flag
+        physQty !== p.stock ? 'X' : null,  // XDIFF = difference flag
+      ).run();
+    }
+
+    // SAP-SEED-13: VBAK — Sales Order Headers (80 sales orders)
+    const vbakVbelns: string[] = [];
+    for (let i = 1; i <= 80; i++) {
+      const vbeln = (800000 + i).toString().padStart(10, '0');
+      vbakVbelns.push(vbeln);
+      const custIdx = i % SA_CUSTOMERS.length;
+      const kunnr = (20000 + custIdx).toString().padStart(10, '0');
+      const daysAgo = 5 + Math.floor((i * 31) % 90);
+      const audat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      const total = invoiceAmounts[i - 1] || Math.round((10000 + (i * 1847.63) % 80000) * 100) / 100;
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_vbak (id, tenant_id, VBELN, AUART, VKORG, VTWEG, SPART, KUNNR, BSTNK, AUDAT, VDATU, NETWR, WAERK, VBTYP, ERNAM)
+         VALUES (?, ?, ?, 'TA', '1000', '10', '00', ?, ?, ?, ?, ?, 'ZAR', 'C', 'SAPSALES')`
+      ).bind(
+        crypto.randomUUID(), tenantId, vbeln,
+        kunnr,
+        `CUST-PO-${(60000 + i).toString()}`,
+        audat,
+        new Date(Date.now() - (daysAgo - 14) * 86400000).toISOString().split('T')[0],
+        total,
+      ).run();
+    }
+
+    // SAP-SEED-14: VBAP — Sales Order Items
+    for (let i = 1; i <= 80; i++) {
+      const vbeln = vbakVbelns[i - 1];
+      const prodIdx = i % SA_PRODUCTS.length;
+      const p = SA_PRODUCTS[prodIdx];
+      const total = invoiceAmounts[i - 1] || Math.round((10000 + (i * 1847.63) % 80000) * 100) / 100;
+      const qty = Math.max(1, Math.floor(total / p.sell));
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_vbap (id, tenant_id, VBELN, POSNR, MATNR, ARKTX, KWMENG, VRKME, NETPR, NETWR, WAERK, WERKS, MATKL)
+         VALUES (?, ?, ?, '000010', ?, ?, ?, ?, ?, ?, 'ZAR', 'JHB1', ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, vbeln,
+        p.sku, p.name, qty, p.uom,
+        Math.round(total / qty * 100) / 100, total,
+        p.cat,
+      ).run();
+    }
+
+    // SAP-SEED-15: VBRK — Billing Documents (only 72 of 80 orders billed)
+    // Quality gaps: billing 56-65 have amount variance, 66-72 wrong RFBSK status, 73-80 not billed
+    const vbrkVbelns: string[] = [];
+    for (let i = 1; i <= 72; i++) {
+      const billingVbeln = (9000000 + i).toString().padStart(10, '0');
+      vbrkVbelns.push(billingVbeln);
+      const custIdx = i % SA_CUSTOMERS.length;
+      const kunnr = (20000 + custIdx).toString().padStart(10, '0');
+      const daysAgo = 3 + Math.floor((i * 29) % 60);
+      const fkdat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      let netwr = invoiceAmounts[i - 1] || Math.round((10000 + (i * 1847.63) % 80000) * 100) / 100;
+
+      if (i >= 56 && i <= 65) {
+        // Amount variance 2-8%
+        const variancePct = 0.02 + ((i - 56) * 0.007);
+        netwr = Math.round(netwr * (1 + variancePct * (i % 2 === 0 ? 1 : -1)) * 100) / 100;
+      }
+
+      const rfbsk = (i >= 66 && i <= 72) ? 'A' : 'C';  // A = not transferred, C = cleared
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_vbrk (id, tenant_id, VBELN, FKART, VKORG, KUNAG, KUNRG, FKDAT, RFBSK, NETWR, MWSBK, WAERK, BUKRS, XBLNR, ERNAM)
+         VALUES (?, ?, ?, 'F2', '1000', ?, ?, ?, ?, ?, ?, 'ZAR', '1000', ?, 'SAPSALES')`
+      ).bind(
+        crypto.randomUUID(), tenantId, billingVbeln,
+        kunnr, kunnr, fkdat, rfbsk,
+        netwr, Math.round(netwr * 0.15 * 100) / 100,
+        `INV-${(100000 + i).toString()}`,
+      ).run();
+    }
+
+    // SAP-SEED-16: VBRP — Billing Document Items
+    for (let i = 1; i <= 72; i++) {
+      const billingVbeln = vbrkVbelns[i - 1];
+      const prodIdx = i % SA_PRODUCTS.length;
+      const p = SA_PRODUCTS[prodIdx];
+      let netwr = invoiceAmounts[i - 1] || Math.round((10000 + (i * 1847.63) % 80000) * 100) / 100;
+      if (i >= 56 && i <= 65) {
+        const variancePct = 0.02 + ((i - 56) * 0.007);
+        netwr = Math.round(netwr * (1 + variancePct * (i % 2 === 0 ? 1 : -1)) * 100) / 100;
+      }
+      const qty = Math.max(1, Math.floor(netwr / p.sell));
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_vbrp (id, tenant_id, VBELN, POSNR, FKIMG, VRKME, NETWR, MWSBP, MATNR, ARKTX, AUBEL, AUPOS, WERKS)
+         VALUES (?, ?, ?, '000010', ?, ?, ?, ?, ?, ?, ?, '000010', 'JHB1')`
+      ).bind(
+        crypto.randomUUID(), tenantId, billingVbeln,
+        qty, p.uom, netwr, Math.round(netwr * 0.15 * 100) / 100,
+        p.sku, p.name,
+        vbakVbelns[i - 1],
+      ).run();
+    }
+
+    // SAP-SEED-17: BSID — Customer Open Items
+    // Quality gaps: items 12-14 over credit limit, items 66-72 overdue
+    for (let i = 1; i <= 72; i++) {
+      const custIdx = i % SA_CUSTOMERS.length;
+      const kunnr = (20000 + custIdx).toString().padStart(10, '0');
+      const belnr = (6100000000 + i).toString();
+      const daysAgo = 3 + Math.floor((i * 29) % 60);
+      const budat = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      const total = invoiceAmounts[i - 1] || Math.round((10000 + (i * 1847.63) % 80000) * 100) / 100;
+      const statusMap = ['', '', '', 'C', 'C', 'C', '', '', ''];
+      const augbl = statusMap[i % statusMap.length] === 'C' ? belnr : null;
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_bsid (id, tenant_id, BUKRS, KUNNR, AUGDT, AUGBL, GJAHR, BELNR, BUZEI, BUDAT, BLDAT, WAERS, SHKZG, DMBTR, WRBTR, SGTXT, ZFBDT, ZBD1T, XBLNR)
+         VALUES (?, ?, '1000', ?, ?, ?, '2026', ?, '001', ?, ?, 'ZAR', 'S', ?, ?, ?, ?, 30, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, kunnr,
+        augbl ? new Date(Date.now() - (daysAgo - 15) * 86400000).toISOString().split('T')[0] : null,
+        augbl, belnr,
+        budat, budat,
+        total, total,
+        `Customer invoice - ${SA_CUSTOMERS[custIdx].name}`,
+        new Date(Date.now() - (daysAgo - 30) * 86400000).toISOString().split('T')[0],
+        `INV-${(100000 + i).toString()}`,
+      ).run();
+    }
+
+    // SAP-SEED-18: FEBEP — Bank Statement Line Items
+    // Quality gaps: items 56-65 bank charges (no matching FI doc), items 66-80 unmatched
+    for (let i = 1; i <= 80; i++) {
+      const daysAgo = 1 + Math.floor((i * 29) % 60);
+      const valut = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      let kwbtr = 0;
+      let vwezw = '';
+      let xblnr = '';
+      let sgtxt = '';
+
+      if (i <= 55) {
+        kwbtr = -(invoiceAmounts[i - 1] || 0);  // negative = outgoing payment
+        vwezw = '0010';  // bank transfer
+        // Use PO reference format so FEBEP.XBLNR matches BSIK.EBELN for bank reconciliation
+        xblnr = `PO-${(50000 + i).toString()}`;
+        sgtxt = `Payment: ${xblnr} - ${SA_SUPPLIERS[i % SA_SUPPLIERS.length].name}`;
+      } else if (i <= 65) {
+        kwbtr = Math.round((150 + (i * 317.23) % 3500) * 100) / 100;  // positive = bank charge
+        vwezw = '0020';  // bank charge
+        xblnr = `BNK-FEE-${(90000 + i).toString()}`;
+        sgtxt = ['Monthly service fee', 'SWIFT charge', 'Card processing fee', 'Cash handling', 'Statement fee'][(i - 56) % 5];
+      } else {
+        kwbtr = -(Math.round((5000 + (i * 2187.49) % 40000) * 100) / 100);
+        vwezw = '0010';
+        xblnr = `EFT-${(80000 + i).toString()}`;
+        sgtxt = `EFT Payment - ${SA_SUPPLIERS[(i + 3) % SA_SUPPLIERS.length].name}`;
+      }
+
+      await c.env.DB.prepare(
+        `INSERT INTO sap_febep (id, tenant_id, BUKRS, HESSION, AESSION, VALUT, KWBTR, WRBTR, WAERS, VWEZW, XBLNR, SGTXT)
+         VALUES (?, ?, '1000', ?, ?, ?, ?, ?, 'ZAR', ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId,
+        (7000000 + i).toString(),  // HESSION = bank statement number
+        (i).toString().padStart(5, '0'),  // AESSION = line item
+        valut, kwbtr, Math.abs(kwbtr),
+        vwezw, xblnr, sgtxt,
+      ).run();
+    }
+
+    console.log('[VantaX Seeder] SAP native tables seeded');
+
     // STEP 10: Create Catalyst Clusters with CONFIGURED sub-catalysts
     // Each sub-catalyst has data_sources and field_mappings for real execution
 
@@ -527,37 +1001,37 @@ seed.post('/seed-vantax', async (c) => {
       {
         name: 'GR/IR Reconciliation',
         enabled: true,
-        description: 'Goods Receipt vs Invoice Receipt matching - SAP MM/FI cross-module 3-way match',
+        description: 'Goods Receipt vs Invoice Receipt matching - SAP EKKO/EKPO vs EKBE (VGABE 1 vs 2)',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', source_filter: 'SAP', label: 'SAP MM - Purchase Orders' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP FI - Vendor Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_ekbe_gr', label: 'SAP EKBE — Goods Receipts (VGABE=1)' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_ekbe_ir', label: 'SAP EKBE — Invoice Receipts (VGABE=2)' } },
         ],
         field_mappings: [
-          { source_field: 'reference', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Reference to Invoice Number' },
-          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'PO Total to Invoice Total' },
+          { source_field: 'EBELN', target_field: 'EBELN', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Number (EKBE GR to EKBE IR)' },
+          { source_field: 'WRBTR', target_field: 'WRBTR', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'GR Amount vs IR Amount' },
         ],
         execution_config: { mode: 'reconciliation', parameters: { exception_discrepancy_threshold: 10, exception_match_rate_threshold: 50 } },
       },
       {
         name: 'AP Invoice Validation',
         enabled: true,
-        description: 'Accounts Payable invoice completeness, duplicate detection, and accuracy validation',
+        description: 'Accounts Payable validation — SAP BKPF/BSEG vendor postings (KOART=K) completeness and accuracy',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_payable', source_filter: 'SAP', label: 'SAP FI - AP Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_bseg_vendor', label: 'SAP BSEG — Vendor Line Items (KOART=K)' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
         name: 'Bank Reconciliation',
         enabled: true,
-        description: 'Bank statement vs SAP payment matching - FNB Corporate account 62-000-4521-01',
+        description: 'Bank statement (FEBEP) vs SAP FI vendor payments (BSIK) — FNB Corporate',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'bank_statement', source_filter: 'SAP', label: 'FNB Bank Statement' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP FI - Payment Records' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_febep', label: 'SAP FEBEP — Bank Statement Items' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_bsik', label: 'SAP BSIK — Vendor Open Items' } },
         ],
         field_mappings: [
-          { source_field: 'reference', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'contains', label: 'Bank Reference to Invoice Number' },
-          { source_field: 'credit', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.50, label: 'Bank Credit to Invoice Amount' },
+          { source_field: 'XBLNR', target_field: 'EBELN', source_index: 0, target_index: 1, match_type: 'contains', label: 'Bank Reference to PO Number' },
+          { source_field: 'WRBTR', target_field: 'WRBTR', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.50, label: 'Bank Amount vs Vendor Amount' },
         ],
         execution_config: { mode: 'reconciliation', parameters: { exception_discrepancy_threshold: 5 } },
       },
@@ -574,37 +1048,37 @@ seed.post('/seed-vantax', async (c) => {
       {
         name: 'Inventory Reconciliation',
         enabled: true,
-        description: 'System inventory vs physical count - SAP MM warehouse verification (JHB-MAIN)',
+        description: 'SAP MARD (system stock) vs ISEG (physical count) — warehouse JHB1/0001',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', source_filter: 'SAP', label: 'SAP MM - Material Master (System)' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', source_filter: 'PHYSICAL_COUNT', label: 'Warehouse Physical Count (JHB-MAIN)' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_mard', label: 'SAP MARD — Material Warehouse Stock' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_iseg', label: 'SAP ISEG — Physical Inventory Count' } },
         ],
         field_mappings: [
-          { source_field: 'sku', target_field: 'sku', source_index: 0, target_index: 1, match_type: 'exact', label: 'Material Number to Material Number' },
-          { source_field: 'stock_on_hand', target_field: 'stock_on_hand', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 1, label: 'System Stock to Physical Count' },
+          { source_field: 'MATNR', target_field: 'MATNR', source_index: 0, target_index: 1, match_type: 'exact', label: 'Material Number (MARD to ISEG)' },
+          { source_field: 'LABST', target_field: 'MENGE', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 1, label: 'System Stock vs Physical Count' },
         ],
         execution_config: { mode: 'reconciliation' },
       },
       {
         name: 'PO-to-GR Matching',
         enabled: true,
-        description: 'Purchase Order to Goods Receipt matching - delivery verification and quantity check',
+        description: 'SAP EKPO (PO items) vs EKBE (GR history VGABE=1) — delivery verification',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', source_filter: 'SAP', label: 'SAP MM - Purchase Orders' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'goods_receipt', source_filter: 'SAP', label: 'SAP MM - Goods Receipts' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_ekpo', label: 'SAP EKPO — Purchase Order Items' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_ekbe_gr', label: 'SAP EKBE — Goods Receipts (VGABE=1)' } },
         ],
         field_mappings: [
-          { source_field: 'po_number', target_field: 'po_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Number to GR PO Reference' },
-          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'PO Amount to GR Amount' },
+          { source_field: 'EBELN', target_field: 'EBELN', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Number (EKPO to EKBE)' },
+          { source_field: 'NETWR', target_field: 'WRBTR', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'PO Amount vs GR Amount' },
         ],
         execution_config: { mode: 'reconciliation' },
       },
       {
         name: 'Supplier Validation',
         enabled: true,
-        description: 'Vendor master data quality - tax numbers, payment terms, B-BBEE status, bank details',
+        description: 'SAP LFA1/LFB1 vendor master data quality — STCD1, ZTERM, AKONT, SPERR checks',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'vendor', source_filter: 'SAP', label: 'SAP MM - Vendor Master' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_lfa1', label: 'SAP LFA1 — Vendor Master General' } },
         ],
         execution_config: { mode: 'validation' },
       },
@@ -621,32 +1095,32 @@ seed.post('/seed-vantax', async (c) => {
       {
         name: 'Revenue Recognition',
         enabled: true,
-        description: 'Revenue recognition compliance - IFRS 15 timing and completeness validation',
+        description: 'IFRS 15 revenue recognition — SAP VBRK/VBRP billing document validation',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_receivable', source_filter: 'SAP', label: 'SAP SD - Customer Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_vbrk', label: 'SAP VBRK — Billing Document Headers' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
         name: 'Customer Receivables',
         enabled: true,
-        description: 'Customer accounts receivable aging, credit limit monitoring, and collection tracking',
+        description: 'SAP KNA1/KNB1 + BSID — customer credit monitoring, aging analysis, collection tracking',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'customer', source_filter: 'SAP', label: 'SAP SD - Customer Master' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_kna1', label: 'SAP KNA1 — Customer Master General' } },
         ],
         execution_config: { mode: 'validation' },
       },
       {
         name: 'Sales Order Matching',
         enabled: true,
-        description: 'Sales order to invoice matching - SD invoices vs FI-AR postings verification',
+        description: 'SAP VBAK/VBAP (sales orders) vs VBRK/VBRP (billing docs) — order-to-bill reconciliation',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP SD - Sales Invoices' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP-AR', label: 'SAP FI - AR Postings' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_vbak', label: 'SAP VBAK — Sales Order Headers' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'sap_vbrk', label: 'SAP VBRK — Billing Document Headers' } },
         ],
         field_mappings: [
-          { source_field: 'invoice_number', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'SD Invoice to AR Invoice' },
-          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'SD Amount to AR Amount' },
+          { source_field: 'VBELN', target_field: 'AUBEL', source_index: 0, target_index: 1, match_type: 'exact', label: 'Sales Order to Billing Reference' },
+          { source_field: 'NETWR', target_field: 'NETWR', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'Order Amount vs Billing Amount' },
         ],
         execution_config: { mode: 'reconciliation' },
       },
@@ -794,6 +1268,25 @@ seed.get('/vantax-status', async (c) => {
       ['connections', 'erp_connections'],
       ['glAccounts', 'erp_gl_accounts'],
       ['journalEntries', 'erp_journal_entries'],
+      // SAP native tables
+      ['sap_bkpf', 'sap_bkpf'],
+      ['sap_bseg', 'sap_bseg'],
+      ['sap_bsid', 'sap_bsid'],
+      ['sap_bsik', 'sap_bsik'],
+      ['sap_febep', 'sap_febep'],
+      ['sap_ekko', 'sap_ekko'],
+      ['sap_ekpo', 'sap_ekpo'],
+      ['sap_ekbe', 'sap_ekbe'],
+      ['sap_mard', 'sap_mard'],
+      ['sap_iseg', 'sap_iseg'],
+      ['sap_vbak', 'sap_vbak'],
+      ['sap_vbap', 'sap_vbap'],
+      ['sap_vbrk', 'sap_vbrk'],
+      ['sap_vbrp', 'sap_vbrp'],
+      ['sap_lfa1', 'sap_lfa1'],
+      ['sap_lfb1', 'sap_lfb1'],
+      ['sap_kna1', 'sap_kna1'],
+      ['sap_knb1', 'sap_knb1'],
     ];
 
     for (const [key, table] of tables) {
