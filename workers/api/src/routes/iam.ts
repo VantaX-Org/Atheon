@@ -242,6 +242,12 @@ iam.put('/users/:id', async (c) => {
     return c.json({ error: 'Forbidden', message: 'Cannot modify a user with higher privilege than your own' }, 403);
   }
 
+  // Company admins cannot modify peer admins (same level) — only superadmins can
+  const callerRole = auth?.role || '';
+  if (callerRole === 'admin' && targetLevel >= callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Company admins cannot modify other admins' }, 403);
+  }
+
   // Validate new role if provided
   if (body.role) {
     if (!VALID_ROLES.has(body.role)) {
@@ -303,6 +309,12 @@ iam.delete('/users/:id', async (c) => {
   const targetLevel = ROLE_LEVELS[target.role] ?? 0;
   if (targetLevel > callerLevel) {
     return c.json({ error: 'Forbidden', message: 'Cannot delete a user with higher privilege than your own' }, 403);
+  }
+
+  // Company admins cannot delete peer admins (same level) — only superadmins can
+  const callerRole = auth?.role || '';
+  if (callerRole === 'admin' && targetLevel >= callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Company admins cannot delete other admins' }, 403);
   }
 
   await c.env.DB.prepare('DELETE FROM users WHERE id = ? AND tenant_id = ?').bind(id, tenantId).run();
