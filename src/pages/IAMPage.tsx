@@ -71,7 +71,10 @@ export function IAMPage() {
  /** Check if the current user can manage the target user */
  const canManageUser = (targetUser: IAMUser): boolean => {
    if (currentUser?.id === targetUser.id) return false;
-   if (isSuperAdmin) return true;
+   if (currentRole === 'superadmin') return true;
+   if (currentRole === 'support_admin') {
+     return targetUser.role !== 'superadmin';
+   }
    if (isCompanyAdmin) {
      const nonManageable = ['superadmin', 'support_admin', 'admin'];
      return !nonManageable.includes(targetUser.role || '');

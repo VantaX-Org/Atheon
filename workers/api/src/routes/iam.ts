@@ -333,11 +333,25 @@ iam.delete('/users/:id', async (c) => {
 iam.post('/users/:id/resend-welcome', async (c) => {
   const tenantId = getTenantId(c);
   const userId = c.req.param('id');
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
 
   const user = await c.env.DB.prepare(
     'SELECT id, email, name, role FROM users WHERE id = ? AND tenant_id = ?'
   ).bind(userId, tenantId).first<{ id: string; email: string; name: string; role: string }>();
   if (!user) return c.json({ error: 'User not found' }, 404);
+
+  // Prevent resetting password for users with higher privilege
+  const targetLevel = ROLE_LEVELS[user.role] ?? 0;
+  if (targetLevel > callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Cannot reset password for a user with higher privilege than your own' }, 403);
+  }
+
+  // Company admins cannot reset passwords for peer admins
+  const callerRole = auth?.role || '';
+  if (callerRole === 'admin' && targetLevel >= callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Company admins cannot reset passwords for other admins' }, 403);
+  }
 
   // Generate new temporary password
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
