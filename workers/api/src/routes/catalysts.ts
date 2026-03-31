@@ -1808,28 +1808,97 @@ async function performValidation(
   let issues = 0;
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
-  for (const row of data) {
-    // Basic validation checks — accept any monetary field as valid
-    const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
-                      (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
-                      (row['credit_limit'] !== undefined && row['credit_limit'] !== null && row['credit_limit'] !== '') ||
-                      (row['credit_balance'] !== undefined && row['credit_balance'] !== null && row['credit_balance'] !== '') ||
-                      (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
-                      (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
-                      (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '') ||
-                      (row['cost_price'] !== undefined && row['cost_price'] !== null && row['cost_price'] !== '');
-    const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
-    const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
-                   row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
+  // Detect the data type from the data source config to apply appropriate validation rules
+  const module = String(sources[0]?.config?.module || '').toLowerCase();
+  const isSupplierData = module.includes('vendor') || module.includes('supplier');
+  const isCustomerData = module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar');
+  const isProductData = module.includes('product') || module.includes('inventory') || module.includes('stock');
 
-    if (!hasAmount || !hasDate || !hasRef) {
+  for (const row of data) {
+    const rowIssues: string[] = [];
+
+    if (isSupplierData) {
+      // Supplier / Vendor master validation: tax, payment terms, bank details, contact info
+      const hasName = !!row['name'];
+      const hasVat = row['vat_number'] !== null && row['vat_number'] !== undefined && String(row['vat_number']).trim() !== '';
+      const hasPayTerms = !!row['payment_terms'];
+      const hasBankName = row['bank_name'] !== null && row['bank_name'] !== undefined && String(row['bank_name']).trim() !== '';
+      const hasBankAccount = row['bank_account'] !== null && row['bank_account'] !== undefined && String(row['bank_account']).trim() !== '';
+      const hasContact = !!row['contact_name'] || !!row['contact_email'];
+
+      if (!hasName) rowIssues.push('Missing supplier name');
+      if (!hasVat) rowIssues.push('Missing VAT/tax number');
+      if (!hasPayTerms) rowIssues.push('Missing payment terms');
+      if (!hasBankName || !hasBankAccount) rowIssues.push('Incomplete bank details');
+      if (!hasContact) rowIssues.push('Missing contact information');
+    } else if (isCustomerData) {
+      // Customer / AR validation: credit limits, contact info, payment terms
+      const hasName = !!row['name'];
+      const creditLimit = Number(row['credit_limit'] || 0);
+      const creditBalance = Number(row['credit_balance'] || 0);
+      const hasPayTerms = !!row['payment_terms'];
+      const hasContact = !!row['contact_name'] || !!row['contact_email'];
+      const hasRegNum = row['registration_number'] !== null && row['registration_number'] !== undefined && String(row['registration_number']).trim() !== '';
+
+      if (!hasName) rowIssues.push('Missing customer name');
+      if (!hasRegNum) rowIssues.push('Missing registration number');
+      if (creditLimit > 0 && creditBalance > creditLimit) rowIssues.push(`Credit balance ${creditBalance} exceeds limit ${creditLimit}`);
+      if (creditLimit <= 0) rowIssues.push('No credit limit set');
+      if (!hasPayTerms) rowIssues.push('Missing payment terms');
+      if (!hasContact) rowIssues.push('Missing contact information');
+    } else if (isProductData) {
+      // Product / Inventory validation: pricing, stock levels, categorization
+      const hasSku = !!row['sku'];
+      const hasName = !!row['name'];
+      const costPrice = Number(row['cost_price'] || 0);
+      const sellingPrice = Number(row['selling_price'] || 0);
+      const stockOnHand = Number(row['stock_on_hand'] || 0);
+      const reorderLevel = Number(row['reorder_level'] || 0);
+
+      if (!hasSku) rowIssues.push('Missing SKU');
+      if (!hasName) rowIssues.push('Missing product name');
+      if (costPrice <= 0) rowIssues.push('Invalid cost price');
+      if (sellingPrice <= 0) rowIssues.push('Invalid selling price');
+      if (sellingPrice > 0 && costPrice > 0 && sellingPrice < costPrice) rowIssues.push(`Selling price ${sellingPrice} below cost ${costPrice}`);
+      if (stockOnHand < reorderLevel) rowIssues.push(`Stock ${stockOnHand} below reorder level ${reorderLevel}`);
+    } else {
+      // Financial record validation (invoices, payments, bank transactions)
+      const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
+                        (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
+                        (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
+                        (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
+                        (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '');
+      const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
+      const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
+                     row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
+
+      if (!hasAmount) rowIssues.push('Missing amount/total');
+      if (!hasDate) rowIssues.push('Missing date');
+      if (!hasRef) rowIssues.push('Missing reference');
+
+      // Check for overdue invoices
+      if (row['due_date'] && row['payment_status'] !== 'paid' && row['amount_due'] && Number(row['amount_due']) > 0) {
+        const dueDate = new Date(String(row['due_date']));
+        if (dueDate < new Date()) rowIssues.push(`Overdue invoice — due ${String(row['due_date'])}`);
+      }
+      // Check for amount mismatches
+      if (row['subtotal'] && row['vat_amount'] && row['total']) {
+        const expected = Number(row['subtotal']) + Number(row['vat_amount']);
+        const actual = Number(row['total']);
+        if (Math.abs(expected - actual) > 0.02) rowIssues.push(`Total ${actual} != subtotal ${row['subtotal']} + VAT ${row['vat_amount']}`);
+      }
+    }
+
+    if (rowIssues.length > 0) {
       issues++;
       if (discrepancies && discrepancies.length < 50) {
+        const refField = row['name'] || row['invoice_number'] || row['sku'] || row['reference'] || row['id'] || 'unknown';
         discrepancies.push({
           source_record: row, target_record: null,
-          field: !hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference',
-          source_value: null, target_value: null,
-          difference: `Missing required field: ${!hasAmount ? 'amount/total' : !hasDate ? 'date' : 'reference'}`,
+          field: rowIssues[0].split(' ')[0].toLowerCase(),
+          source_value: String(refField),
+          target_value: null,
+          difference: rowIssues.join('; '),
         });
       }
     }
