@@ -887,7 +887,7 @@ catalysts.post('/deploy-template', async (c) => {
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(
     crypto.randomUUID(), body.tenant_id, 'catalyst.template.deployed', 'catalysts', body.tenant_id,
-    JSON.stringify({ industry: body.industry, clusters_created: createdIds.length, existing_clusters: existing?.count || 0 }),
+    JSON.stringify({ industry: body.industry, clusters_created: createdIds.length, existing_clusters: (existing.results || []).length, skipped_duplicates: skippedNames }),
     'success'
   ).run().catch(() => {});
 
