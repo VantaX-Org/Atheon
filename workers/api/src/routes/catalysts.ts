@@ -2332,13 +2332,13 @@ async function performExtraction(
   db: D1Database
 ): Promise<ExecutionResultRecord> {
   // Extract data from all sources, validate each record, and report quality issues
-  // First check if any source returns data at all
-  let allEmpty = true;
+  // Fetch all source data once upfront (avoids double-fetching for emptiness check)
+  const allSourceData: Array<{ source: typeof sources[0]; data: Record<string, unknown>[] }> = [];
   for (const src of sources) {
-    const probe = await fetchDataForSource(src, tenantId, db);
-    if (probe.length > 0) { allEmpty = false; break; }
+    const data = await fetchDataForSource(src, tenantId, db);
+    allSourceData.push({ source: src, data });
   }
-  if (allEmpty) {
+  if (allSourceData.every(d => d.data.length === 0)) {
     throw new Error(`No data found for extraction. All ERP data source tables are empty for this tenant. Please sync data from your ERP system first (Connectivity → Sync Now).`);
   }
 
@@ -2348,8 +2348,7 @@ async function performExtraction(
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
   const exception_records: ExecutionResultRecord['exception_records'] = [];
 
-  for (const src of sources) {
-    const data = await fetchDataForSource(src, tenantId, db);
+  for (const { data } of allSourceData) {
     totalRecords += data.length;
 
     for (const row of data) {
