@@ -2639,8 +2639,11 @@ export function CatalystsPage() {
  </div>
 
  {execResult.error && (
- <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2 mb-4">
- <AlertTriangle size={14} /> {execResult.error}
+ <div className={`p-4 ${execResult.status === 'failed' ? 'bg-red-500/15 border-red-500/40' : 'bg-red-500/10 border-red-500/20'} border rounded-lg text-red-400 text-sm mb-4`}>
+ <div className="flex items-center gap-2 font-semibold mb-1">
+ <AlertTriangle size={16} /> {execResult.status === 'failed' ? 'Execution Failed' : 'Warning'}
+ </div>
+ <p className="text-red-300/90 text-xs leading-relaxed">{execResult.error}</p>
  </div>
  )}
 

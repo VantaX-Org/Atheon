@@ -1595,6 +1595,11 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     result.status === 'failed' ? 'failure' : 'success'
   ).run().catch(() => {});
 
+  // ── Skip post-processing pipeline for failed runs — no fake data in analytics ──
+  if (result.status === 'failed') {
+    return c.json(result, 200);
+  }
+
   // ── Exception pipeline: auto-raise exceptions for problematic results ──
   const exceptionIds = await raiseExecutionExceptions(c.env.DB, targetTenant, clusterId, subName, result, execConfig);
   if (exceptionIds.length > 0) {
@@ -1699,6 +1704,11 @@ async function performReconciliation(
   // Pull data from the first two data sources using ERP canonical tables
   const sourceData = await fetchDataForSource(sources[0], tenantId, db);
   const targetData = await fetchDataForSource(sources[1], tenantId, db);
+
+  // Fail fast if no data was returned — likely means ERP data hasn't been synced
+  if (sourceData.length === 0 && targetData.length === 0) {
+    throw new Error(`No data found for reconciliation. The ERP data source tables are empty for this tenant. Please sync data from your ERP system first (Connectivity → Sync Now).`);
+  }
 
   let matchedCount = 0;
   let discrepancyCount = 0;
@@ -1847,6 +1857,12 @@ async function performValidation(
   db: D1Database
 ): Promise<ExecutionResultRecord> {
   const data = await fetchDataForSource(sources[0], tenantId, db);
+
+  // Fail fast if no data was returned — likely means ERP data hasn't been synced
+  if (data.length === 0) {
+    throw new Error(`No data found for validation. The ERP data source table is empty for this tenant. Please sync data from your ERP system first (Connectivity → Sync Now).`);
+  }
+
   let issues = 0;
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
@@ -2154,6 +2170,11 @@ async function performComparison(
   const sourceData = await fetchDataForSource(sources[0], tenantId, db);
   const targetData = await fetchDataForSource(sources[1], tenantId, db);
 
+  // Fail fast if no data was returned — likely means ERP data hasn't been synced
+  if (sourceData.length === 0 && targetData.length === 0) {
+    throw new Error(`No data found for comparison. The ERP data source tables are empty for this tenant. Please sync data from your ERP system first (Connectivity → Sync Now).`);
+  }
+
   // If we have field mappings, do a real field-level comparison (same logic as reconciliation)
   if (mappings.length > 0) {
     const keyMappings = mappings.filter(m => m.source_index === 0 && m.target_index === 1);
@@ -2311,6 +2332,16 @@ async function performExtraction(
   db: D1Database
 ): Promise<ExecutionResultRecord> {
   // Extract data from all sources, validate each record, and report quality issues
+  // First check if any source returns data at all
+  let allEmpty = true;
+  for (const src of sources) {
+    const probe = await fetchDataForSource(src, tenantId, db);
+    if (probe.length > 0) { allEmpty = false; break; }
+  }
+  if (allEmpty) {
+    throw new Error(`No data found for extraction. All ERP data source tables are empty for this tenant. Please sync data from your ERP system first (Connectivity → Sync Now).`);
+  }
+
   let totalRecords = 0;
   let validRecords = 0;
   let issueRecords = 0;
@@ -2983,7 +3014,7 @@ async function fetchDataForSource(
     return rows.results as Record<string, unknown>[];
   } catch (err) {
     console.error(`fetchDataForSource error for type=${source.type}:`, err);
-    return [];
+    throw new Error(`Data source fetch failed (type=${source.type}, module=${source.config.module || 'unknown'}): ${(err as Error).message}`);
   }
 }
 
