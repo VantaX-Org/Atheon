@@ -591,6 +591,7 @@ export function Dashboard() {
                   <YAxis tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)", borderRadius: "12px", fontSize: "11px" }} />
                   <Area type="monotone" dataKey="value" name={primaryMetricLabel} stroke={ACCENT} strokeWidth={2} fill={`url(#${pieId}-revGrad)`} />
+                  {secondaryMetricLabel && <Area type="monotone" dataKey="secondary" name={secondaryMetricLabel} stroke={CHART_LIGHT} strokeWidth={2} fill="none" />}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
