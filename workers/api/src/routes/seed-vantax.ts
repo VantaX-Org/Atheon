@@ -496,8 +496,8 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Goods Receipt vs Invoice Receipt matching - SAP MM/FI cross-module 3-way match',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', label: 'SAP MM - Purchase Orders' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - Vendor Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', source_filter: 'SAP', label: 'SAP MM - Purchase Orders' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP FI - Vendor Invoices' } },
         ],
         field_mappings: [
           { source_field: 'reference', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Reference to Invoice Number' },
@@ -510,7 +510,7 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Accounts Payable invoice completeness, duplicate detection, and accuracy validation',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_payable', label: 'SAP FI - AP Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_payable', source_filter: 'SAP', label: 'SAP FI - AP Invoices' } },
         ],
         execution_config: { mode: 'validation' },
       },
@@ -519,8 +519,8 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Bank statement vs SAP payment matching - FNB Corporate account 62-000-4521-01',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'bank_statement', label: 'FNB Bank Statement' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - Payment Records' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'bank_statement', source_filter: 'SAP', label: 'FNB Bank Statement' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP FI - Payment Records' } },
         ],
         field_mappings: [
           { source_field: 'reference', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'contains', label: 'Bank Reference to Invoice Number' },
@@ -557,8 +557,8 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Purchase Order to Goods Receipt matching - delivery verification and quantity check',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', label: 'SAP MM - Purchase Orders' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'goods_receipt', label: 'SAP MM - Goods Receipts' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'purchase_order', source_filter: 'SAP', label: 'SAP MM - Purchase Orders' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'goods_receipt', source_filter: 'SAP', label: 'SAP MM - Goods Receipts' } },
         ],
         field_mappings: [
           { source_field: 'po_number', target_field: 'po_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'PO Number to GR PO Reference' },
@@ -571,7 +571,7 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Vendor master data quality - tax numbers, payment terms, B-BBEE status, bank details',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'vendor', label: 'SAP MM - Vendor Master' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'vendor', source_filter: 'SAP', label: 'SAP MM - Vendor Master' } },
         ],
         execution_config: { mode: 'validation' },
       },
@@ -590,7 +590,7 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Revenue recognition compliance - IFRS 15 timing and completeness validation',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_receivable', label: 'SAP SD - Customer Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'accounts_receivable', source_filter: 'SAP', label: 'SAP SD - Customer Invoices' } },
         ],
         execution_config: { mode: 'validation' },
       },
@@ -599,7 +599,7 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'Customer accounts receivable aging, credit limit monitoring, and collection tracking',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'customer', label: 'SAP SD - Customer Master' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'customer', source_filter: 'SAP', label: 'SAP SD - Customer Master' } },
         ],
         execution_config: { mode: 'validation' },
       },

@@ -2029,8 +2029,16 @@ async function performExtraction(
 
     for (const row of data) {
       // Check for completeness: required fields should not be null/empty
+      // Skip known optional/nullable fields that are legitimately empty
+      const optionalFields = new Set([
+        'notes', 'contact_phone', 'bank_name', 'bank_account', 'reference',
+        'contact_email', 'contact_name', 'description', 'posted_by',
+        'delivery_date', 'province', 'country', 'currency', 'uom',
+        'product_group', 'warehouse', 'reorder_quantity', 'vat_rate',
+      ]);
       const emptyFields: string[] = [];
       for (const [key, val] of Object.entries(row)) {
+        if (optionalFields.has(key)) continue;
         if (val === null || val === undefined || String(val).trim() === '') {
           emptyFields.push(key);
         }
