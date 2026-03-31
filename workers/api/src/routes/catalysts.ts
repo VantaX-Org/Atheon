@@ -1857,26 +1857,59 @@ async function performValidation(
   const sampleRow = data[0] || {};
   const hasField = (candidates: string[]) => candidates.some(f => f in sampleRow);
 
-  // Supplier/Vendor data: detected by vendor-specific fields
-  const isSupplierData = hasField(['LIFNR', 'KTOKK', 'SPERM']) ||  // SAP LFA1/LFB1
-    (module.includes('vendor') || module.includes('supplier')) && !module.includes('bseg');
-  // Customer data: detected by customer-specific fields
-  const isCustomerData = hasField(['KUNNR', 'KTOKD', 'KLIMK']) ||  // SAP KNA1/KNB1
-    module.includes('customer') || module.includes('accounts_receivable') || module === 'ar';
-  // Product/Inventory data: detected by product-specific fields
-  const isProductData = hasField(['MATNR', 'LABST', 'LGORT']) ||  // SAP MARD
-    module.includes('product') || module.includes('inventory') || module.includes('stock');
-  // SAP financial documents: detected by SAP FI-specific fields
-  const isSapFinancialData = hasField(['BELNR', 'BUKRS', 'GJAHR', 'DMBTR']) ||  // SAP BKPF/BSEG
-    hasField(['VBELN', 'FKART', 'NETWR', 'MWSBK']) ||  // SAP VBRK/VBRP
-    module.startsWith('sap_bseg') || module.startsWith('sap_vbrk');
+  // ── Priority-ordered detection: SAP financial FIRST (they contain LIFNR/MATNR from JOINs) ──
+  // SAP financial documents: checked first because BSEG has LIFNR and VBRK JOINs bring MATNR
+  const isSapFinancialData = module.startsWith('sap_bseg') || module.startsWith('sap_vbrk') ||
+    (hasField(['BELNR', 'BUKRS', 'GJAHR']) && hasField(['DMBTR'])) ||  // SAP BKPF/BSEG
+    (hasField(['FKART', 'FKTYP']) && hasField(['NETWR']));  // SAP VBRK (billing-specific fields)
+  // Supplier/Vendor data: detected by vendor master fields (KTOKK = account group, unique to LFA1)
+  const isSupplierData = !isSapFinancialData && (
+    hasField(['KTOKK', 'SPERM']) ||  // SAP LFA1/LFB1 (KTOKK is vendor account group, not in BSEG)
+    (module.includes('vendor') || module.includes('supplier')) && !module.includes('bseg')
+  );
+  // Customer data: detected by customer master fields (KTOKD = account group, unique to KNA1)
+  const isCustomerData = !isSapFinancialData && (
+    hasField(['KTOKD', 'KLIMK']) ||  // SAP KNA1/KNB1 (KTOKD is customer account group)
+    module.includes('customer') || module.includes('accounts_receivable') || module === 'ar'
+  );
+  // Product/Inventory data: detected by warehouse-specific fields (LABST = unrestricted stock)
+  const isProductData = !isSapFinancialData && (
+    hasField(['LABST', 'LGORT']) ||  // SAP MARD (LABST is unique to warehouse data)
+    module.includes('product') || module.includes('inventory') || module.includes('stock')
+  );
 
   for (const row of data) {
     const rowIssues: string[] = [];
     // Helper: check if a field has a non-empty value
     const val = (key: string) => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '';
 
-    if (isSupplierData) {
+    if (isSapFinancialData) {
+      // SAP financial document validation (BSEG, VBRK, etc.) — checked FIRST
+      const hasAmount = val('DMBTR') || val('WRBTR') || val('NETWR');
+      const hasDate = val('BUDAT') || val('BLDAT') || val('FKDAT') || val('CPUDT');
+      const hasRef = val('BELNR') || val('VBELN') || val('EBELN') || val('XBLNR');
+      const dmbtr = Number(row['DMBTR'] || 0);
+      const wrbtr = Number(row['WRBTR'] || 0);
+      const bstat = String(row['BSTAT'] || '');
+
+      if (!hasAmount) rowIssues.push('Missing amount (DMBTR/WRBTR/NETWR)');
+      if (!hasDate) rowIssues.push('Missing posting/document date');
+      if (!hasRef) rowIssues.push('Missing document reference');
+      // Forex variance check: DMBTR vs WRBTR
+      if (dmbtr > 0 && wrbtr > 0 && Math.abs(dmbtr - wrbtr) / wrbtr > 0.01) {
+        rowIssues.push(`Forex variance: local ${dmbtr} vs doc ${wrbtr} (${((Math.abs(dmbtr - wrbtr) / wrbtr) * 100).toFixed(1)}%)`);
+      }
+      // Parked document check
+      if (bstat === 'V') rowIssues.push('Document is parked (not posted)');
+      // Missing external reference
+      if (!val('XBLNR') && val('BELNR')) rowIssues.push('Missing external reference (XBLNR)');
+      // VAT check for billing docs
+      if (val('MWSBK') && val('NETWR')) {
+        const netwr = Number(row['NETWR']);
+        const mwsbk = Number(row['MWSBK']);
+        if (netwr > 0 && mwsbk <= 0) rowIssues.push('Missing VAT on billing document');
+      }
+    } else if (isSupplierData) {
       // Supplier / Vendor master validation — works with both legacy and SAP field names
       const hasName = val('name') || val('NAME1');
       const hasVat = val('vat_number') || val('STCD1');
@@ -1922,32 +1955,6 @@ async function performValidation(
       if (costPrice > 0 && sellingPrice > 0 && sellingPrice < costPrice) rowIssues.push(`Selling price ${sellingPrice} below cost ${costPrice}`);
       if (stockOnHand < reorderLevel && reorderLevel > 0) rowIssues.push(`Stock ${stockOnHand} below reorder level ${reorderLevel}`);
       if (hasBlockedStock) rowIssues.push(`Blocked stock: ${row['SPEME']} units`);
-    } else if (isSapFinancialData) {
-      // SAP financial document validation (BSEG, VBRK, etc.)
-      const hasAmount = val('DMBTR') || val('WRBTR') || val('NETWR');
-      const hasDate = val('BUDAT') || val('BLDAT') || val('FKDAT') || val('CPUDT');
-      const hasRef = val('BELNR') || val('VBELN') || val('EBELN') || val('XBLNR');
-      const dmbtr = Number(row['DMBTR'] || 0);
-      const wrbtr = Number(row['WRBTR'] || 0);
-      const bstat = String(row['BSTAT'] || '');
-
-      if (!hasAmount) rowIssues.push('Missing amount (DMBTR/WRBTR/NETWR)');
-      if (!hasDate) rowIssues.push('Missing posting/document date');
-      if (!hasRef) rowIssues.push('Missing document reference');
-      // Forex variance check: DMBTR vs WRBTR
-      if (dmbtr > 0 && wrbtr > 0 && Math.abs(dmbtr - wrbtr) / wrbtr > 0.01) {
-        rowIssues.push(`Forex variance: local ${dmbtr} vs doc ${wrbtr} (${((Math.abs(dmbtr - wrbtr) / wrbtr) * 100).toFixed(1)}%)`);
-      }
-      // Parked document check
-      if (bstat === 'V') rowIssues.push('Document is parked (not posted)');
-      // Missing external reference
-      if (!val('XBLNR') && val('BELNR')) rowIssues.push('Missing external reference (XBLNR)');
-      // VAT check for billing docs
-      if (val('MWSBK') && val('NETWR')) {
-        const netwr = Number(row['NETWR']);
-        const mwsbk = Number(row['MWSBK']);
-        if (netwr > 0 && mwsbk <= 0) rowIssues.push('Missing VAT on billing document');
-      }
     } else {
       // Generic financial record validation (invoices, payments, bank transactions)
       const hasAmount = val('amount') || val('total') || val('debit') || val('credit') || val('total_debit');
