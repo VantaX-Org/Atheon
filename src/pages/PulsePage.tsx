@@ -1868,7 +1868,7 @@ export function PulsePage() {
                               />
                             </div>
                             <span className={`text-xs font-medium ${cat.successRate >= 80 ? 'text-emerald-400' : cat.successRate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
-                              {cat.successRate}%
+                              {Number(cat.successRate).toFixed(1)}%
                             </span>
                           </div>
                         </td>
