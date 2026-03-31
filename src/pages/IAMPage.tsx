@@ -27,8 +27,8 @@ const ROLE_PERMISSIONS: Record<string, { pages: string[]; actions: string[] }> =
 
 /** Roles an admin-level user can assign to new users */
 const ASSIGNABLE_ROLES: Record<string, string[]> = {
-  superadmin: ['admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
-  support_admin: ['admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
+  superadmin: ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
+  support_admin: ['support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
   admin: ['executive', 'manager', 'analyst', 'operator', 'viewer'],
 };
 
@@ -133,7 +133,7 @@ export function IAMPage() {
  const handleUpdateUser = async (userId: string, updates: Record<string, unknown>) => {
    setSavingUser(true);
    try {
-     await api.iam.updateUser(userId, updates);
+     await api.iam.updateUser(userId, updates, tenantId);
      const u = await api.iam.users(tenantId);
      setUsers(u.users);
      setEditingUserId(null);
@@ -149,7 +149,7 @@ export function IAMPage() {
  const handleDeleteUser = async (user: IAMUser) => {
    if (!confirm(`Are you sure you want to delete ${user.name} (${user.email})? This cannot be undone.`)) return;
    try {
-     await api.iam.deleteUser(user.id);
+     await api.iam.deleteUser(user.id, tenantId);
      setUsers(prev => prev.filter(u => u.id !== user.id));
      showFeedback('success', `User ${user.email} deleted`);
    } catch (err) {
@@ -161,7 +161,7 @@ export function IAMPage() {
 
  const handleResendWelcome = async (user: IAMUser) => {
    try {
-     const result = await api.iam.resendWelcome(user.id) as { success: boolean; tempPassword?: string };
+     const result = await api.iam.resendWelcome(user.id, tenantId) as { success: boolean; tempPassword?: string };
      if (result.tempPassword) {
        setInviteResult({ email: user.email, tempPassword: result.tempPassword });
        setShowInviteUser(true);
