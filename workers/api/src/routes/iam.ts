@@ -235,6 +235,10 @@ iam.put('/users/:id', async (c) => {
   if (auth?.userId === userId && body.role && ROLE_LEVELS[body.role] < ROLE_LEVELS['admin']) {
     return c.json({ error: 'Forbidden', message: 'Cannot demote your own account below admin' }, 403);
   }
+  // Prevent self-suspension (protect against accidental lockout)
+  if (auth?.userId === userId && body.status && body.status !== 'active') {
+    return c.json({ error: 'Forbidden', message: 'Cannot suspend or deactivate your own account' }, 403);
+  }
 
   // Prevent modifying users with higher privilege than caller
   const targetLevel = ROLE_LEVELS[target.role] ?? 0;
