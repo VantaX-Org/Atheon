@@ -149,10 +149,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // Auth
 export const api = {
   auth: {
-    login: (email: string, password: string) =>
-      request<{ token: string; user: AuthUser }>('/api/auth/login', {
+    login: (email: string, password: string, tenantSlug?: string) =>
+      request<{ token: string; user: AuthUser; tenantSelectionRequired?: boolean; tenants?: { slug: string; name: string }[] }>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(tenantSlug ? { tenant_slug: tenantSlug } : {}) }),
       }),
     register: (email: string, password: string, name: string, tenantSlug?: string) =>
       request<{ token: string; user: AuthUser }>('/api/auth/register', {

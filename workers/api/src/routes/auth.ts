@@ -174,11 +174,12 @@ auth.post('/login', async (c) => {
       'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
     ).bind(body.email, loginTenantRow.id, 'active').first();
   } else {
-    const matches = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users WHERE email = ? AND status = ?'
-    ).bind(body.email, 'active').first<{ count: number }>();
-    if ((matches?.count || 0) > 1) {
-      return c.json({ error: 'Tenant selection required', message: 'This email exists in multiple workspaces. Please provide tenant_slug.' }, 400);
+    const tenantRows = await c.env.DB.prepare(
+      'SELECT t.slug, t.name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
+    ).bind(body.email, 'active').all();
+    if ((tenantRows?.results?.length || 0) > 1) {
+      const tenants = tenantRows.results.map((r: Record<string, unknown>) => ({ slug: r.slug as string, name: r.name as string }));
+      return c.json({ error: 'Tenant selection required', tenantSelectionRequired: true, tenants, message: 'This email exists in multiple workspaces. Please select one.' }, 400);
     }
     user = await c.env.DB.prepare(
       'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
