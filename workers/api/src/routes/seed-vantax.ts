@@ -661,7 +661,7 @@ seed.post('/seed-vantax', async (c) => {
          VALUES (?, ?, '1000', ?, '2026', '002', '40', 'S', '5000', ?, ?, 'I2', 0, ?, 'S')`
       ).bind(
         crypto.randomUUID(), tenantId, belnr,
-        Math.round(dmbtr - vat), Math.round((total - vat) * 100) / 100,
+        Math.round((dmbtr - vat) * 100) / 100, Math.round((total - vat) * 100) / 100,
         `Cost of Sales - ${SA_SUPPLIERS[suppIdx].name}`,
       ).run();
     }
@@ -963,7 +963,8 @@ seed.post('/seed-vantax', async (c) => {
       if (i <= 55) {
         kwbtr = -(invoiceAmounts[i - 1] || 0);  // negative = outgoing payment
         vwezw = '0010';  // bank transfer
-        xblnr = invoiceRefs[i - 1] || '';
+        // Use PO reference format so FEBEP.XBLNR matches BSIK.EBELN for bank reconciliation
+        xblnr = `PO-${(50000 + i).toString()}`;
         sgtxt = `Payment: ${xblnr} - ${SA_SUPPLIERS[i % SA_SUPPLIERS.length].name}`;
       } else if (i <= 65) {
         kwbtr = Math.round((150 + (i * 317.23) % 3500) * 100) / 100;  // positive = bank charge
