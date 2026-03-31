@@ -232,7 +232,7 @@ seed.post('/seed-vantax', async (c) => {
       ).run();
     }
 
-    // STEP 5: Seed SAP Products (Material Master)
+    // STEP 5: Seed SAP Products (Material Master) — system inventory
     for (let i = 0; i < SA_PRODUCTS.length; i++) {
       const p = SA_PRODUCTS[i];
       await c.env.DB.prepare(
@@ -241,6 +241,36 @@ seed.post('/seed-vantax', async (c) => {
       ).bind(
         crypto.randomUUID(), tenantId, `SAP-M${(30000 + i).toString()}`,
         p.sku, p.name, p.cat, p.cat, p.uom, p.cost, p.sell, p.stock, p.reorder, Math.floor(p.reorder * 1.5),
+        now,
+      ).run();
+    }
+
+    // STEP 5b: Seed Physical Count records (PHYSICAL_COUNT source_system)
+    // These simulate warehouse physical count with deliberate stock variances:
+    // - Products 0-9: exact match (good warehouse discipline)
+    // - Products 10-13: -8% to -22% shortage (shrinkage / theft / damage)
+    // - Products 14-17: +5% to +15% surplus (receiving errors / miscounts)
+    for (let i = 0; i < SA_PRODUCTS.length; i++) {
+      const p = SA_PRODUCTS[i];
+      let physicalStock: number;
+      if (i < 10) {
+        // Exact match with SAP system
+        physicalStock = p.stock;
+      } else if (i < 14) {
+        // Shortage: shrinkage detected
+        const shrinkagePct = 0.08 + (i - 10) * 0.047;  // 8%, 12.7%, 17.4%, 22.1%
+        physicalStock = Math.floor(p.stock * (1 - shrinkagePct));
+      } else {
+        // Surplus: receiving errors
+        const surplusPct = 0.05 + (i - 14) * 0.033;  // 5%, 8.3%, 11.6%, 14.9%
+        physicalStock = Math.floor(p.stock * (1 + surplusPct));
+      }
+      await c.env.DB.prepare(
+        `INSERT INTO erp_products (id, tenant_id, external_id, source_system, sku, name, category, product_group, uom, cost_price, selling_price, vat_rate, stock_on_hand, reorder_level, reorder_quantity, warehouse, is_active, synced_at)
+         VALUES (?, ?, ?, 'PHYSICAL_COUNT', ?, ?, ?, ?, ?, ?, ?, 15, ?, ?, ?, 'JHB-MAIN', 1, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, `PHY-M${(30000 + i).toString()}`,
+        p.sku, p.name, p.cat, p.cat, p.uom, p.cost, p.sell, physicalStock, p.reorder, Math.floor(p.reorder * 1.5),
         now,
       ).run();
     }
@@ -276,6 +306,56 @@ seed.post('/seed-vantax', async (c) => {
         status, status === 'paid' ? 'paid' : 'unpaid',
         `PO-${(50000 + i).toString()}`,
         `SAP Document ${(100000 + i).toString()} - ${SA_SUPPLIERS[suppIdx].name}`,
+        now,
+      ).run();
+    }
+
+    // STEP 6b: Seed AR Posting records (SAP-AR source_system)
+    // These simulate the FI-AR module postings with deliberate differences vs SD invoices:
+    // - Invoices 1-55: exact match (clean posting)
+    // - Invoices 56-65: amount variance 2-8% (rounding, forex, partial payments posted differently)
+    // - Invoices 66-72: different status (posted vs paid mismatch)
+    // - Invoices 73-80: no AR posting (missing from AR module — unmatched)
+    for (let i = 1; i <= 72; i++) {
+      const invNum = `SAP-INV-${(100000 + i).toString()}`;
+      const suppIdx = i % SA_SUPPLIERS.length;
+      const daysAgo = 3 + Math.floor((i * 37) % 90);
+      const invDate = new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0];
+      const dueDate = new Date(Date.now() - (daysAgo - 30) * 86400000).toISOString().split('T')[0];
+
+      const subtotal = Math.round((5000 + (i * 1423.17) % 115000) * 100) / 100;
+      const vat = Math.round(subtotal * 0.15 * 100) / 100;
+      let arTotal = Math.round((subtotal + vat) * 100) / 100;
+
+      const statusMap = ['posted', 'posted', 'posted', 'paid', 'paid', 'paid', 'pending', 'overdue', 'posted'];
+      let arStatus = statusMap[i % statusMap.length];
+
+      if (i >= 56 && i <= 65) {
+        // Amount variance: 2-8% difference in AR posting
+        const variancePct = 0.02 + ((i - 56) * 0.007);
+        const direction = i % 2 === 0 ? 1 : -1;
+        arTotal = Math.round(arTotal * (1 + variancePct * direction) * 100) / 100;
+      } else if (i >= 66 && i <= 72) {
+        // Status mismatch: AR shows different status
+        arStatus = arStatus === 'paid' ? 'posted' : 'paid';
+      }
+
+      const amountPaid = arStatus === 'paid' ? arTotal : arStatus === 'pending' ? 0 : (arStatus === 'overdue' ? Math.round(arTotal * 0.3 * 100) / 100 : 0);
+
+      await c.env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, external_id, source_system, invoice_number, customer_id, customer_name, invoice_date, due_date, subtotal, vat_amount, total, amount_paid, amount_due, status, payment_status, reference, notes, synced_at)
+         VALUES (?, ?, ?, 'SAP-AR', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, `SAP-AR-${(100000 + i).toString()}`,
+        invNum, supplierIds[suppIdx], SA_SUPPLIERS[suppIdx].name,
+        invDate, dueDate,
+        Math.round(arTotal / 1.15 * 100) / 100,
+        Math.round((arTotal - arTotal / 1.15) * 100) / 100,
+        arTotal,
+        amountPaid, Math.round((arTotal - amountPaid) * 100) / 100,
+        arStatus, arStatus === 'paid' ? 'paid' : 'unpaid',
+        `PO-${(50000 + i).toString()}`,
+        `SAP-AR Posting ${(100000 + i).toString()} - ${SA_SUPPLIERS[suppIdx].name}`,
         now,
       ).run();
     }
@@ -463,8 +543,8 @@ seed.post('/seed-vantax', async (c) => {
         enabled: true,
         description: 'System inventory vs physical count - SAP MM warehouse verification (JHB-MAIN)',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', label: 'SAP MM - Material Master' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', label: 'SAP MM - Physical Count' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', source_filter: 'SAP', label: 'SAP MM - Material Master (System)' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'inventory', source_filter: 'PHYSICAL_COUNT', label: 'Warehouse Physical Count (JHB-MAIN)' } },
         ],
         field_mappings: [
           { source_field: 'sku', target_field: 'sku', source_index: 0, target_index: 1, match_type: 'exact', label: 'Material Number to Material Number' },
@@ -526,14 +606,14 @@ seed.post('/seed-vantax', async (c) => {
       {
         name: 'Sales Order Matching',
         enabled: true,
-        description: 'Sales order to invoice matching - order fulfilment and billing verification',
+        description: 'Sales order to invoice matching - SD invoices vs FI-AR postings verification',
         data_sources: [
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP SD - Sales Invoices' } },
-          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', label: 'SAP FI - AR Postings' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP', label: 'SAP SD - Sales Invoices' } },
+          { type: 'erp', config: { erp_type: 'sap', module: 'invoice', source_filter: 'SAP-AR', label: 'SAP FI - AR Postings' } },
         ],
         field_mappings: [
-          { source_field: 'invoice_number', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'SO Invoice to FI Invoice' },
-          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'SO Amount to FI Amount' },
+          { source_field: 'invoice_number', target_field: 'invoice_number', source_index: 0, target_index: 1, match_type: 'exact', label: 'SD Invoice to AR Invoice' },
+          { source_field: 'total', target_field: 'total', source_index: 0, target_index: 1, match_type: 'numeric_tolerance', tolerance: 0.01, label: 'SD Amount to AR Amount' },
         ],
         execution_config: { mode: 'reconciliation' },
       },
@@ -600,7 +680,8 @@ seed.post('/seed-vantax', async (c) => {
     ).run();
 
     // Summary
-    const totalErpRecords = SA_SUPPLIERS.length + SA_CUSTOMERS.length + SA_PRODUCTS.length + 80 + 80 + 80 + GL_ACCOUNTS.length + 40;
+    // Products: SAP (18) + PHYSICAL_COUNT (18) = 36; Invoices: SAP (80) + SAP-AR (72) = 152
+    const totalErpRecords = SA_SUPPLIERS.length + SA_CUSTOMERS.length + (SA_PRODUCTS.length * 2) + 80 + 72 + 80 + 80 + GL_ACCOUNTS.length + 40;
 
     return c.json({
       success: true,
@@ -613,20 +694,20 @@ seed.post('/seed-vantax', async (c) => {
           total: totalErpRecords,
           suppliers: SA_SUPPLIERS.length,
           customers: SA_CUSTOMERS.length,
-          products: SA_PRODUCTS.length,
-          invoices: 80,
+          products_system: SA_PRODUCTS.length,
+          products_physical_count: SA_PRODUCTS.length,
+          invoices_sap: 80,
+          invoices_ar: 72,
           purchaseOrders: 80,
           bankTransactions: 80,
           glAccounts: GL_ACCOUNTS.length,
           journalEntries: 40,
         },
         dataQuality: {
-          cleanMatches: '65 of 80 POs match invoices exactly (81.25%)',
-          priceVariances: '7 POs have 3-7% price variance vs invoice (8.75%)',
-          unmatchedPOs: '8 POs have no matching invoice (10%)',
-          reconciledBankTx: '55 of 80 bank transactions reconciled (68.75%)',
-          bankCharges: '10 bank charges/fees unreconciled',
-          unmatchedPayments: '15 EFT payments unmatched',
+          grir: '65 of 80 POs match invoices exactly (81.25%), 7 price variances (8.75%), 8 unmatched (10%)',
+          bank: '55 of 80 bank transactions reconciled (68.75%), 10 bank fees, 15 unmatched EFTs',
+          inventory: '10 of 18 products match exactly (55.6%), 4 shortage (shrinkage), 4 surplus (receiving errors)',
+          salesOrder: '55 of 80 SD invoices match AR postings exactly (68.75%), 10 amount variances, 7 status mismatches, 8 unmatched',
         },
         catalysts: {
           clusters: 3,
@@ -639,10 +720,12 @@ seed.post('/seed-vantax', async (c) => {
       },
       nextSteps: [
         'Go to Catalysts page and execute any sub-catalyst',
-        'GR/IR Reconciliation: will find ~81% match rate, ~9% price variances, ~10% unmatched',
-        'Bank Reconciliation: will find ~69% reconciled, ~31% unreconciled',
-        'AP Invoice Validation: will validate 80 invoices for completeness',
-        'Pulse metrics, Apex health scores, risks, and briefings will update from actual results',
+        'GR/IR Reconciliation: ~81% match, ~9% price variances, ~10% unmatched POs',
+        'Bank Reconciliation: ~69% reconciled, 10 bank fees, 15 unmatched EFTs',
+        'Inventory Reconciliation: ~56% exact match, 4 shrinkage, 4 surplus items',
+        'Sales Order Matching: ~69% SD-to-AR match, 10 amount variances, 8 unmatched',
+        'AP Invoice Validation: validates 80 invoices for field completeness',
+        'All modes (reconciliation, validation, comparison, extraction) do real field-level work',
       ],
     });
   } catch (err) {
