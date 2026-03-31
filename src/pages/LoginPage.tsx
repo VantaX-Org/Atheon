@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppStore } from "@/stores/appStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, Loader2, UserPlus } from "lucide-react";
+import { ArrowRight, Building2, Loader2, UserPlus } from "lucide-react";
 import { api, setToken, getToken, setTenantOverride } from "@/lib/api";
 import type { IndustryVertical, UserRole } from "@/types";
 
@@ -17,6 +17,8 @@ export function LoginPage() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tenantOptions, setTenantOptions] = useState<{ slug: string; name: string }[] | null>(null);
+  const [selectedTenant, setSelectedTenant] = useState<string | null>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const setUser = useAppStore((s) => s.setUser);
@@ -73,8 +75,28 @@ export function LoginPage() {
         const res = await api.auth.register(email, password, name);
         handleAuthResult(res);
       } else {
-        const res = await api.auth.login(email, password);
-        handleAuthResult(res);
+        try {
+          const res = await api.auth.login(email, password, selectedTenant || undefined);
+          handleAuthResult(res);
+        } catch (loginErr: unknown) {
+          // Check if this is a tenant selection required response
+          const errMsg = loginErr instanceof Error ? loginErr.message : '';
+          if (errMsg.includes('Tenant selection required')) {
+            // Re-fetch with raw fetch to get tenant list from response body
+            const rawRes = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/auth/login`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+            });
+            const body = await rawRes.json() as { tenantSelectionRequired?: boolean; tenants?: { slug: string; name: string }[] };
+            if (body.tenantSelectionRequired && body.tenants) {
+              setTenantOptions(body.tenants);
+              setError(null);
+              setLoading(false);
+              return;
+            }
+          }
+          throw loginErr;
+        }
       }
     } catch (err) { setError(err instanceof Error ? err.message : 'Authentication failed'); }
     finally { setLoading(false); }
@@ -176,19 +198,59 @@ export function LoginPage() {
           <h2 className="text-xl font-semibold t-primary mb-1">{mode === 'register' ? 'Create your account' : 'Welcome back'}</h2>
           <p className="text-xs t-muted mb-6">{mode === 'register' ? 'Register for your Atheon workspace' : 'Sign in to your Atheon workspace'}</p>
           {error && <div className="mb-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">{error}</div>}
-          {mode === 'login' && (
+          {tenantOptions && (
+            <div className="mb-5 space-y-3">
+              <p className="text-xs t-secondary">This email exists in multiple workspaces. Please select one:</p>
+              <div className="space-y-2">
+                {tenantOptions.map((t) => (
+                  <button
+                    key={t.slug}
+                    type="button"
+                    onClick={async () => {
+                      setSelectedTenant(t.slug);
+                      setTenantOptions(null);
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        const res = await api.auth.login(email, password, t.slug);
+                        handleAuthResult(res);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Authentication failed');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium t-secondary transition-all hover:bg-[var(--bg-secondary)]"
+                    style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}
+                  >
+                    <Building2 size={14} className="t-muted flex-shrink-0" />
+                    <span className="t-primary">{t.name}</span>
+                    <span className="t-muted ml-auto text-[10px]">{t.slug}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {selectedTenant && (
+            <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)' }}>
+              <Building2 size={12} style={{ color: 'var(--accent)' }} />
+              <span className="t-secondary">Workspace: <strong className="t-primary">{selectedTenant}</strong></span>
+              <button type="button" onClick={() => setSelectedTenant(null)} className="ml-auto text-[10px] t-muted hover:t-primary">&times;</button>
+            </div>
+          )}
+          {!tenantOptions && mode === 'login' && (
             <div className="space-y-2 mb-5">
               <button onClick={() => handleSSO('azure')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium t-secondary transition-all hover:bg-[var(--bg-secondary)]" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
                 <div className="w-4 h-4 rounded bg-sky-600 flex items-center justify-center text-[8px] font-bold text-white">M</div>Continue with Azure AD
               </button>
             </div>
           )}
-          {mode === 'login' && (
+          {!tenantOptions && mode === 'login' && (
             <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px" style={{ background: 'var(--divider)' }} /><span className="text-[10px] t-muted">or sign in with email</span><div className="flex-1 h-px" style={{ background: 'var(--divider)' }} />
             </div>
           )}
-          <form onSubmit={handleLogin} className="space-y-3">
+          {!tenantOptions && <form onSubmit={handleLogin} className="space-y-3">
             {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />}
             <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -202,7 +264,7 @@ export function LoginPage() {
               {loading ? <Loader2 size={14} className="animate-spin" /> : null}
               {mode === 'register' ? <><UserPlus size={14} /> Create Account</> : <>Sign In <ArrowRight size={14} /></>}
             </Button>
-          </form>
+          </form>}
           {showResetPw && (
             <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
               <div className="rounded-xl p-5 w-full max-w-sm space-y-3" style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-modal)' }}>
