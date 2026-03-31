@@ -138,11 +138,6 @@ export function CatalystsPage() {
  setQuickRunning(false);
  };
 
- // Deploy Catalyst state
- const [showDeployCatalyst, setShowDeployCatalyst] = useState(false);
- const [deployForm, setDeployForm] = useState({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
- const [deploying, setDeploying] = useState(false);
- const [deployError, setDeployError] = useState<string | null>(null);
  const [actionError, setActionError] = useState<string | null>(null);
 
  const handleApprove = async (actionId: string) => {
@@ -208,27 +203,6 @@ export function CatalystsPage() {
  setExecError(err instanceof Error ? err.message : 'Execution failed');
  }
  setExecuting(false);
- };
-
- const handleDeployCatalyst = async () => {
- if (!deployForm.name.trim() || deploying) return;
- setDeploying(true);
- setDeployError(null);
- try {
- await api.catalysts.createCluster({
- name: deployForm.name.trim(),
- domain: deployForm.domain,
- autonomy_tier: deployForm.autonomy_tier,
- description: deployForm.description || `${deployForm.name} catalyst cluster`});
- const ind2 = industry !== 'general' ? industry : undefined;
- const c = await api.catalysts.clusters(undefined, ind2);
- setClusters(c.clusters);
- setShowDeployCatalyst(false);
- setDeployForm({ name: '', domain: 'finance', autonomy_tier: 'assisted', description: '' });
- } catch (err) {
- setDeployError(err instanceof Error ? err.message : 'Failed to deploy catalyst');
- }
- setDeploying(false);
  };
 
  const industry = useAppStore((s) => s.industry);
@@ -920,13 +894,6 @@ export function CatalystsPage() {
  </div>
  </div>
  </div>
- {isAdmin && (
- <div className="flex gap-2">
- <Button variant="primary" size="sm" onClick={() => setShowDeployCatalyst(true)} title="Create a new catalyst cluster">
- <Plus size={14} /> New Cluster
- </Button>
- </div>
- )}
  </div>
 
  {actionError && (
@@ -1017,31 +984,6 @@ export function CatalystsPage() {
  </div></Portal>
  )}
 
- {showDeployCatalyst && (
- <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
- <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
- <div className="flex items-center justify-between">
- <h3 className="text-lg font-semibold t-primary">Deploy New Catalyst</h3>
- <button onClick={() => { setShowDeployCatalyst(false); setDeployError(null); }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
- </div>
- <div className="space-y-3">
- <div><label className="text-xs t-muted">Cluster Name</label><input className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={deployForm.name} onChange={e => setDeployForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Finance Catalyst" /></div>
- <div><label className="text-xs t-muted">Domain</label><select className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={deployForm.domain} onChange={e => setDeployForm(p => ({ ...p, domain: e.target.value }))}><option value="finance">Finance</option><option value="procurement">Procurement</option><option value="supply-chain">Supply Chain</option><option value="hr">HR</option><option value="sales">Sales</option><option value="operations">Operations</option><option value="compliance">Compliance</option></select></div>
- <div><label className="text-xs t-muted">Autonomy Tier</label><select className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={deployForm.autonomy_tier} onChange={e => setDeployForm(p => ({ ...p, autonomy_tier: e.target.value }))}><option value="read-only">Read-Only</option><option value="assisted">Assisted</option><option value="transactional">Transactional</option></select></div>
- <div><label className="text-xs t-muted">Description (optional)</label><textarea className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary resize-none" rows={2} value={deployForm.description} onChange={e => setDeployForm(p => ({ ...p, description: e.target.value }))} placeholder="What does this catalyst do?" /></div>
- </div>
- {deployError && (
- <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2"><AlertTriangle size={14} /> {deployError}</div>
- )}
- <div className="flex gap-3 pt-2">
- <Button variant="secondary" size="sm" onClick={() => { setShowDeployCatalyst(false); setDeployError(null); }}>Cancel</Button>
- <Button variant="primary" size="sm" onClick={handleDeployCatalyst} disabled={deploying || !deployForm.name.trim()}>
- {deploying ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Deploy
- </Button>
- </div>
- </div>
- </div></Portal>
- )}
 
  <Tabs tabs={tabs}activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -1515,7 +1457,7 @@ export function CatalystsPage() {
  <div className="text-center py-12 text-gray-500">
  <Users size={32} className="mx-auto mb-2 opacity-50" />
  <p className="text-sm">No catalyst clusters configured</p>
- <p className="text-xs t-muted mt-1">Deploy a catalyst cluster first, then assign HITL permissions.</p>
+ <p className="text-xs t-muted mt-1">Catalyst clusters are auto-provisioned when a system is connected. Assign HITL permissions once clusters appear.</p>
  </div>
  )}
  </div>
