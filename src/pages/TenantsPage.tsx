@@ -131,10 +131,9 @@ export function TenantsPage() {
  setAddingUser(true);
  try {
  await api.iam.createUser({
- tenant_id: showManageUsers,
  email: addUserForm.email.trim(),
  name: addUserForm.name.trim(),
- role: addUserForm.role});
+ role: addUserForm.role}, showManageUsers);
  const res = await api.iam.users(showManageUsers);
  setTenantUsers(res.users);
  setAddUserForm({ email: '', name: '', role: 'analyst' });

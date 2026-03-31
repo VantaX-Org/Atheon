@@ -241,8 +241,8 @@ export const api = {
       request<{ users: IAMUser[]; total: number }>(`/api/iam/users${qs({ tenant_id: tenantId })}`),
     sso: (tenantId?: string) =>
       request<{ configs: SSOConfig[] }>(`/api/iam/sso${qs({ tenant_id: tenantId })}`),
-    createUser: (data: Record<string, unknown>) =>
-      request<{ id: string }>('/api/iam/users', { method: 'POST', body: JSON.stringify(data) }),
+    createUser: (data: Record<string, unknown>, tenantId?: string) =>
+      request<{ id: string }>(`/api/iam/users${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify(data) }),
     createPolicy: (data: Record<string, unknown>) =>
       request<{ id: string; name: string }>('/api/iam/policies', { method: 'POST', body: JSON.stringify(data) }),
     deletePolicy: (id: string) =>
@@ -250,8 +250,8 @@ export const api = {
     // Phase 4.5: User management
     updateUser: (id: string, data: Record<string, unknown>, tenantId?: string) =>
       request<{ success: boolean }>(`/api/iam/users/${id}${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
-    deleteUser: (id: string) =>
-      request<{ success: boolean }>(`/api/iam/users/${id}`, { method: 'DELETE' }),
+    deleteUser: (id: string, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/iam/users/${id}${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
     resendWelcome: (id: string, tenantId?: string) =>
       request<{ success: boolean }>(`/api/iam/users/${id}/resend-welcome${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
   },
