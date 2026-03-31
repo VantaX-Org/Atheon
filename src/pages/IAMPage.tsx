@@ -8,316 +8,702 @@ import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import type { IAMPolicy, SSOConfig, IAMRole, IAMUser } from "@/lib/api";
 import {
- Shield, Key, Users, UserCheck, Lock, Unlock, Plus,
- ShieldCheck, Globe, Loader2, X, Pencil, Trash2, Save
+ Shield, Key, Users, UserCheck, Lock, Unlock, Plus, UserPlus,
+ ShieldCheck, Globe, Loader2, X, Pencil, Trash2, Save, Mail,
+ Ban, CheckCircle, RotateCcw, Eye, ChevronDown, ChevronUp
 } from "lucide-react";
 
+/** Per-role permission map */
+const ROLE_PERMISSIONS: Record<string, { pages: string[]; actions: string[] }> = {
+  superadmin: { pages: ['All pages', 'Tenant management', 'System config'], actions: ['Full CRUD', 'Create/delete tenants', 'Manage company admins', 'System configuration'] },
+  support_admin: { pages: ['All pages except Tenant management'], actions: ['Full CRUD within tenants', 'Manage users/roles', 'Configure ERP connections', 'Run catalysts'] },
+  admin: { pages: ['Dashboard', 'Catalysts', 'Pulse', 'Apex', 'IAM', 'Connectivity', 'Memory', 'Mind', 'Settings'], actions: ['Full CRUD within own tenant', 'Manage company users', 'Configure ERP', 'Run catalysts', 'Approve HITL'] },
+  executive: { pages: ['Dashboard', 'Apex', 'Pulse', 'Catalysts (read)', 'Mind'], actions: ['Read dashboards', 'View briefings', 'Approve escalations', 'AI conversations'] },
+  manager: { pages: ['Dashboard', 'Catalysts', 'Pulse', 'Mind', 'Memory'], actions: ['Read/write catalysts', 'Run sub-catalysts', 'View process metrics', 'AI conversations'] },
+  analyst: { pages: ['Dashboard', 'Catalysts (read)', 'Pulse (read)', 'Mind'], actions: ['Read dashboards', 'View catalyst results', 'AI conversations'] },
+  operator: { pages: ['Dashboard', 'Catalysts', 'Pulse (read)'], actions: ['Read dashboards', 'Execute catalyst tasks', 'View process monitoring'] },
+  viewer: { pages: ['Dashboard (read-only)'], actions: ['View dashboard overview only'] },
+};
+
+/** Roles an admin-level user can assign to new users */
+const ASSIGNABLE_ROLES: Record<string, string[]> = {
+  superadmin: ['admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
+  support_admin: ['admin', 'executive', 'manager', 'analyst', 'operator', 'viewer'],
+  admin: ['executive', 'manager', 'analyst', 'operator', 'viewer'],
+};
+
 export function IAMPage() {
- const { activeTab, setActiveTab } = useTabState('policies');
+ const { activeTab, setActiveTab } = useTabState('users');
  const [policies, setPolicies] = useState<IAMPolicy[]>([]);
  const [ssoConfigs, setSsoConfigs] = useState<SSOConfig[]>([]);
  const [roles, setRoles] = useState<IAMRole[]>([]);
  const [users, setUsers] = useState<IAMUser[]>([]);
  const [loading, setLoading] = useState(true);
  const [showNewPolicy, setShowNewPolicy] = useState(false);
- // Phase 4.5: User edit state
+ const [showInviteUser, setShowInviteUser] = useState(false);
  const [editingUserId, setEditingUserId] = useState<string | null>(null);
  const [editRole, setEditRole] = useState('');
+ const [editStatus, setEditStatus] = useState('');
  const [savingUser, setSavingUser] = useState(false);
  const [creatingPolicy, setCreatingPolicy] = useState(false);
+ const [inviting, setInviting] = useState(false);
+ const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'analyst', sendWelcome: true });
+ const [inviteResult, setInviteResult] = useState<{ email: string; tempPassword: string } | null>(null);
  const [policyForm, setPolicyForm] = useState({ name: '', description: '', type: 'rbac' });
+ const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
+ const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
  const activeTenantId = useAppStore((s) => s.activeTenantId);
  const userTenantId = useAppStore((s) => s.user?.tenantId);
  const tenantId = activeTenantId || userTenantId || '';
+ const currentUser = useAppStore((s) => s.user);
+ const currentRole = currentUser?.role || 'viewer';
+ const isSuperAdmin = currentRole === 'superadmin' || currentRole === 'support_admin';
+ const isCompanyAdmin = currentRole === 'admin';
+ const isAdmin = isSuperAdmin || isCompanyAdmin;
+ const assignableRoles = ASSIGNABLE_ROLES[currentRole] || [];
+
+ const showFeedback = (type: 'success' | 'error', message: string) => {
+   setActionFeedback({ type, message });
+   setTimeout(() => setActionFeedback(null), 4000);
+ };
+
+ /** Check if the current user can manage the target user */
+ const canManageUser = (targetUser: IAMUser): boolean => {
+   if (currentUser?.id === targetUser.id) return false;
+   if (isSuperAdmin) return true;
+   if (isCompanyAdmin) {
+     const nonManageable = ['superadmin', 'support_admin', 'admin'];
+     return !nonManageable.includes(targetUser.role || '');
+   }
+   return false;
+ };
 
  const handleCreatePolicy = async () => {
- if (!policyForm.name.trim() || creatingPolicy) return;
- setCreatingPolicy(true);
- try {
- await api.iam.createPolicy({
- tenant_id: tenantId,
- name: policyForm.name.trim(),
- description: policyForm.description.trim(),
- type: policyForm.type,
- rules: []});
- const p = await api.iam.policies(tenantId);
- setPolicies(p.policies);
- setPolicyForm({ name: '', description: '', type: 'rbac' });
- setShowNewPolicy(false);
-  } catch (err) {
-  console.error('Failed to create policy', err);
-  }
-  setCreatingPolicy(false);
+   if (!policyForm.name.trim() || creatingPolicy) return;
+   setCreatingPolicy(true);
+   try {
+     await api.iam.createPolicy({
+       tenant_id: tenantId,
+       name: policyForm.name.trim(),
+       description: policyForm.description.trim(),
+       type: policyForm.type,
+       rules: [],
+     });
+     const p = await api.iam.policies(tenantId);
+     setPolicies(p.policies);
+     setPolicyForm({ name: '', description: '', type: 'rbac' });
+     setShowNewPolicy(false);
+     showFeedback('success', 'Policy created successfully');
+   } catch (err) {
+     console.error('Failed to create policy', err);
+     showFeedback('error', 'Failed to create policy');
+   }
+   setCreatingPolicy(false);
+ };
+
+ const handleInviteUser = async () => {
+   if (!inviteForm.name.trim() || !inviteForm.email.trim() || inviting) return;
+   setInviting(true);
+   setInviteResult(null);
+   try {
+     const result = await api.iam.createUser({
+       name: inviteForm.name.trim(),
+       email: inviteForm.email.trim(),
+       role: inviteForm.role,
+       send_welcome_email: inviteForm.sendWelcome,
+     }, tenantId) as { id: string; email?: string; tempPassword?: string };
+     const u = await api.iam.users(tenantId);
+     setUsers(u.users);
+     if (result.tempPassword) {
+       setInviteResult({ email: result.email || inviteForm.email, tempPassword: result.tempPassword });
+     } else {
+       setShowInviteUser(false);
+       setInviteForm({ name: '', email: '', role: 'analyst', sendWelcome: true });
+     }
+     showFeedback('success', `User ${inviteForm.email} invited successfully`);
+   } catch (err) {
+     const message = err instanceof Error ? err.message : 'Failed to invite user';
+     console.error('Failed to invite user', err);
+     showFeedback('error', message);
+   }
+   setInviting(false);
+ };
+
+ const handleUpdateUser = async (userId: string, updates: Record<string, unknown>) => {
+   setSavingUser(true);
+   try {
+     await api.iam.updateUser(userId, updates);
+     const u = await api.iam.users(tenantId);
+     setUsers(u.users);
+     setEditingUserId(null);
+     showFeedback('success', 'User updated successfully');
+   } catch (err) {
+     const message = err instanceof Error ? err.message : 'Failed to update user';
+     console.error('Failed to update user', err);
+     showFeedback('error', message);
+   }
+   setSavingUser(false);
+ };
+
+ const handleDeleteUser = async (user: IAMUser) => {
+   if (!confirm(`Are you sure you want to delete ${user.name} (${user.email})? This cannot be undone.`)) return;
+   try {
+     await api.iam.deleteUser(user.id);
+     setUsers(prev => prev.filter(u => u.id !== user.id));
+     showFeedback('success', `User ${user.email} deleted`);
+   } catch (err) {
+     const message = err instanceof Error ? err.message : 'Failed to delete user';
+     console.error('Failed to delete user', err);
+     showFeedback('error', message);
+   }
+ };
+
+ const handleResendWelcome = async (user: IAMUser) => {
+   try {
+     const result = await api.iam.resendWelcome(user.id) as { success: boolean; tempPassword?: string };
+     if (result.tempPassword) {
+       setInviteResult({ email: user.email, tempPassword: result.tempPassword });
+       setShowInviteUser(true);
+     }
+     showFeedback('success', `Welcome email resent to ${user.email}`);
+   } catch (err) {
+     console.error('Failed to resend welcome', err);
+     showFeedback('error', 'Failed to resend welcome email');
+   }
+ };
+
+ const handleToggleStatus = async (user: IAMUser) => {
+   const newStatus = user.status === 'active' ? 'suspended' : 'active';
+   const label = newStatus === 'suspended' ? 'suspend' : 'reactivate';
+   if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} user ${user.name}?`)) return;
+   await handleUpdateUser(user.id, { status: newStatus });
  };
 
  useEffect(() => {
- async function load() {
- setLoading(true);
- const [p, s, r, u] = await Promise.allSettled([
- api.iam.policies(tenantId), api.iam.sso(tenantId), api.iam.roles(tenantId), api.iam.users(tenantId),
- ]);
- if (p.status === 'fulfilled') setPolicies(p.value.policies);
- if (s.status === 'fulfilled') setSsoConfigs(s.value.configs);
- if (r.status === 'fulfilled') setRoles(r.value.roles);
- if (u.status === 'fulfilled') setUsers(u.value.users);
- setLoading(false);
- }
- load();
+   async function load() {
+     setLoading(true);
+     const [p, s, r, u] = await Promise.allSettled([
+       api.iam.policies(tenantId), api.iam.sso(tenantId), api.iam.roles(tenantId), api.iam.users(tenantId),
+     ]);
+     if (p.status === 'fulfilled') setPolicies(p.value.policies);
+     if (s.status === 'fulfilled') setSsoConfigs(s.value.configs);
+     if (r.status === 'fulfilled') setRoles(r.value.roles);
+     if (u.status === 'fulfilled') setUsers(u.value.users);
+     setLoading(false);
+   }
+   load();
  }, [tenantId]);
 
  const tabs = [
- { id: 'policies', label: 'Policies', icon: <Shield size={14} />, count: policies.length },
- { id: 'users', label: 'Users', icon: <Users size={14} />, count: users.length },
- { id: 'sso', label: 'SSO / Identity', icon: <Key size={14} /> },
- { id: 'roles', label: 'Roles & Permissions', icon: <Users size={14} /> },
+   { id: 'users', label: 'Users', icon: <Users size={14} />, count: users.length },
+   { id: 'roles', label: 'Roles & Permissions', icon: <ShieldCheck size={14} />, count: roles.length },
+   { id: 'policies', label: 'Policies', icon: <Shield size={14} />, count: policies.length },
+   { id: 'sso', label: 'SSO / Identity', icon: <Key size={14} /> },
  ];
 
  if (loading) {
- return (
- <div className="flex items-center justify-center h-96">
- <Loader2 className="w-8 h-8 text-accent animate-spin" />
- </div>
- );
+   return (
+     <div className="flex items-center justify-center h-96">
+       <Loader2 className="w-8 h-8 text-accent animate-spin" />
+     </div>
+   );
  }
 
  return (
- <div className="space-y-6 animate-fadeIn">
- <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
- <div className="flex items-center gap-3">
- <div className=" w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
- <ShieldCheck className="w-5 h-5 text-accent"/>
- </div>
- <div>
- <h1 className="text-2xl font-bold t-primary">Identity & Access Management</h1>
- <p className="text-sm t-muted">RBAC/ABAC policies, SSO federation, per-tenant isolation</p>
- </div>
- </div>
- <Button variant="primary" size="sm" onClick={() => setShowNewPolicy(true)} title="Create a new access policy"><Plus size={14} /> New Policy</Button>
- </div>
-
- {/* New Policy Modal */}
- {showNewPolicy && (
- <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
- <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
- <div className="flex items-center justify-between">
- <h3 className="text-lg font-semibold t-primary">Create New Policy</h3>
- <button onClick={() => setShowNewPolicy(false)} className="text-gray-400 hover:text-gray-400"><X size={18} /></button>
- </div>
- <div className="space-y-3">
- <div><label className="text-xs t-muted">Policy Name</label><input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm" value={policyForm.name} onChange={e => setPolicyForm(p => ({ ...p, name: e.target.value }))} placeholder="Read-only analysts" /></div>
- <div><label className="text-xs t-muted">Description</label><input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm" value={policyForm.description} onChange={e => setPolicyForm(p => ({ ...p, description: e.target.value }))} placeholder="Policy description" /></div>
- <div><label className="text-xs t-muted">Type</label><select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] text-sm" value={policyForm.type} onChange={e => setPolicyForm(p => ({ ...p, type: e.target.value }))}><option value="rbac">RBAC (Role-Based)</option><option value="abac">ABAC (Attribute-Based)</option></select></div>
- </div>
- <p className="text-[10px] text-gray-400">Rules can be added after creating the policy.</p>
- <div className="flex gap-3 pt-2">
- <Button variant="secondary" size="sm" onClick={() => setShowNewPolicy(false)}>Cancel</Button>
- <Button variant="primary" size="sm" onClick={handleCreatePolicy} disabled={!policyForm.name.trim() || creatingPolicy}>
- {creatingPolicy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create Policy
- </Button>
- </div>
- </div>
- </div></Portal>
- )}
-
- {/* Summary */}
- <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
- <Card>
- <span className="text-xs t-secondary">Active Policies</span>
- <p className="text-2xl font-bold t-primary mt-1">{policies.length}</p>
- </Card>
- <Card>
- <span className="text-xs t-secondary">SSO Providers</span>
- <p className="text-2xl font-bold t-primary mt-1">{ssoConfigs.filter(s => s.enabled).length}</p>
- </Card>
- <Card>
- <span className="text-xs t-secondary">User Roles</span>
- <p className="text-2xl font-bold t-primary mt-1">{roles.length}</p>
- </Card>
- <Card>
- <span className="text-xs t-secondary">Total Rules</span>
- <p className="text-2xl font-bold t-primary mt-1">{policies.reduce((s, p) => s + (Array.isArray(p.rules) ? p.rules.length : 0), 0)}</p>
- </Card>
- </div>
-
- <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-
- {activeTab === 'policies' && (
- <TabPanel>
- <div className="space-y-4">
- {policies.map((policy) => (
- <Card key={policy.id}>
- <div className="flex items-start justify-between">
- <div>
- <div className="flex items-center gap-2">
- <h3 className="text-base font-semibold t-primary">{policy.name}</h3>
- <Badge variant={policy.type === 'rbac' ? 'info' : 'warning'} size="sm">{policy.type.toUpperCase()}</Badge>
- </div>
- <p className="text-xs t-muted mt-1">{policy.description}</p>
- <span className="text-[10px] text-gray-400">Tenant: {policy.tenantId}</span>
- </div>
- <Badge variant="outline">{Array.isArray(policy.rules) ? policy.rules.length : 0} rules</Badge>
- </div>
-
- <div className="mt-3 space-y-2">
- {(Array.isArray(policy.rules) ? policy.rules : []).map((rule, idx) => {
- const r = rule as Record<string, unknown>;
- return (
- <div key={idx} className="flex items-center gap-3 p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- {r.effect === 'allow' ? (
- <Unlock size={14} className="text-emerald-400" />
- ) : (
- <Lock size={14} className="text-red-400" />
- )}
- <span className="text-xs font-mono text-gray-400">{String(r.resource || '')}</span>
- <div className="flex gap-1">
- {(Array.isArray(r.actions) ? r.actions : []).map((a: unknown) => (
- <Badge key={String(a)} variant={r.effect === 'allow' ? 'success' : 'danger'} size="sm">{String(a)}</Badge>
- ))}
- </div>
- </div>
- );
- })}
- </div>
- </Card>
- ))}
- </div>
- </TabPanel>
- )}
-
- {/* Phase 4.5: Users Tab */}
- {activeTab === 'users' && (
- <TabPanel>
- <div className="space-y-3">
- {users.length === 0 && (
-   <div className="text-center py-12 text-gray-400">
-     <Users className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-     <p className="text-sm">No users found for this tenant</p>
-   </div>
- )}
- {users.map((user) => (
- <Card key={user.id}>
- <div className="flex items-center justify-between">
-   <div className="flex items-center gap-3">
-     <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
-       <UserCheck className="w-4 h-4 text-accent" />
+   <div className="space-y-6 animate-fadeIn">
+     {/* Header */}
+     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+       <div className="flex items-center gap-3">
+         <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+           <ShieldCheck className="w-5 h-5 text-accent" />
+         </div>
+         <div>
+           <h1 className="text-2xl font-bold t-primary">Identity & Access Management</h1>
+           <p className="text-sm t-muted">
+             {isSuperAdmin ? 'Manage company admins, users, roles, and policies' :
+              isCompanyAdmin ? 'Manage your company users, roles, and policies' :
+              'View users, roles, and policies'}
+           </p>
+         </div>
+       </div>
+       {isAdmin && (
+         <div className="flex gap-2">
+           <Button variant="primary" size="sm" onClick={() => { setInviteResult(null); setInviteForm({ name: '', email: '', role: assignableRoles[0] || 'analyst', sendWelcome: true }); setShowInviteUser(true); }} title="Invite a new user">
+             <UserPlus size={14} /> {isSuperAdmin ? 'Add Admin' : 'Add User'}
+           </Button>
+           <Button variant="secondary" size="sm" onClick={() => setShowNewPolicy(true)} title="Create a new access policy">
+             <Plus size={14} /> New Policy
+           </Button>
+         </div>
+       )}
      </div>
-     <div>
-       <p className="text-sm font-medium t-primary">{user.name}</p>
-       <p className="text-xs t-muted">{user.email}</p>
+
+     {/* Feedback banner */}
+     {actionFeedback && (
+       <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${actionFeedback.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+         {actionFeedback.type === 'success' ? <CheckCircle size={14} /> : <Ban size={14} />}
+         {actionFeedback.message}
+         <button onClick={() => setActionFeedback(null)} className="ml-auto"><X size={14} /></button>
+       </div>
+     )}
+
+     {/* Invite User Modal */}
+     {showInviteUser && (
+       <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+         <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+           <div className="flex items-center justify-between">
+             <h3 className="text-lg font-semibold t-primary">{inviteResult ? 'User Created' : isSuperAdmin ? 'Add Company Admin' : 'Add Company User'}</h3>
+             <button onClick={() => { setShowInviteUser(false); setInviteResult(null); }} className="text-gray-400 hover:text-gray-300"><X size={18} /></button>
+           </div>
+
+           {inviteResult ? (
+             <div className="space-y-4">
+               <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                 <p className="text-sm text-emerald-400 font-medium mb-2">User created successfully</p>
+                 <div className="space-y-2">
+                   <div>
+                     <span className="text-xs text-gray-400">Email</span>
+                     <p className="text-sm t-primary font-mono">{inviteResult.email}</p>
+                   </div>
+                   <div>
+                     <span className="text-xs text-gray-400">Temporary Password</span>
+                     <p className="text-sm t-primary font-mono bg-[var(--bg-secondary)] px-2 py-1 rounded select-all">{inviteResult.tempPassword}</p>
+                   </div>
+                 </div>
+               </div>
+               <p className="text-[10px] text-gray-400">Share these credentials securely. The user will be prompted to change their password on first login.</p>
+               <Button variant="primary" size="sm" className="w-full" onClick={() => { setShowInviteUser(false); setInviteResult(null); setInviteForm({ name: '', email: '', role: assignableRoles[0] || 'analyst', sendWelcome: true }); }}>Done</Button>
+             </div>
+           ) : (
+             <>
+               <div className="space-y-3">
+                 <div>
+                   <label className="text-xs t-muted block mb-1">Full Name</label>
+                   <input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={inviteForm.name} onChange={e => setInviteForm(p => ({ ...p, name: e.target.value }))} placeholder="John Smith" />
+                 </div>
+                 <div>
+                   <label className="text-xs t-muted block mb-1">Email Address</label>
+                   <input type="email" className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={inviteForm.email} onChange={e => setInviteForm(p => ({ ...p, email: e.target.value }))} placeholder="john@company.co.za" />
+                 </div>
+                 <div>
+                   <label className="text-xs t-muted block mb-1">Role</label>
+                   <select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={inviteForm.role} onChange={e => setInviteForm(p => ({ ...p, role: e.target.value }))}>
+                     {roles.filter(r => assignableRoles.includes(r.id)).map(r => (
+                       <option key={r.id} value={r.id}>{r.name}</option>
+                     ))}
+                   </select>
+                   <p className="text-[10px] text-gray-400 mt-1">
+                     {ROLE_PERMISSIONS[inviteForm.role]?.actions.slice(0, 2).join(', ')}
+                   </p>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <input type="checkbox" id="sendWelcome" checked={inviteForm.sendWelcome} onChange={e => setInviteForm(p => ({ ...p, sendWelcome: e.target.checked }))} className="rounded" />
+                   <label htmlFor="sendWelcome" className="text-xs t-muted">Send welcome email with login credentials</label>
+                 </div>
+               </div>
+               <div className="flex gap-3 pt-2">
+                 <Button variant="secondary" size="sm" onClick={() => setShowInviteUser(false)}>Cancel</Button>
+                 <Button variant="primary" size="sm" onClick={handleInviteUser} disabled={!inviteForm.name.trim() || !inviteForm.email.trim() || inviting}>
+                   {inviting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} {isSuperAdmin ? 'Add Admin' : 'Add User'}
+                 </Button>
+               </div>
+             </>
+           )}
+         </div>
+       </div></Portal>
+     )}
+
+     {/* New Policy Modal */}
+     {showNewPolicy && (
+       <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+         <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+           <div className="flex items-center justify-between">
+             <h3 className="text-lg font-semibold t-primary">Create New Policy</h3>
+             <button onClick={() => setShowNewPolicy(false)} className="text-gray-400 hover:text-gray-300"><X size={18} /></button>
+           </div>
+           <div className="space-y-3">
+             <div><label className="text-xs t-muted block mb-1">Policy Name</label><input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={policyForm.name} onChange={e => setPolicyForm(p => ({ ...p, name: e.target.value }))} placeholder="Read-only analysts" /></div>
+             <div><label className="text-xs t-muted block mb-1">Description</label><input className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={policyForm.description} onChange={e => setPolicyForm(p => ({ ...p, description: e.target.value }))} placeholder="Policy description" /></div>
+             <div><label className="text-xs t-muted block mb-1">Type</label><select className="w-full px-3 py-2 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] text-sm t-primary" value={policyForm.type} onChange={e => setPolicyForm(p => ({ ...p, type: e.target.value }))}><option value="rbac">RBAC (Role-Based)</option><option value="abac">ABAC (Attribute-Based)</option></select></div>
+           </div>
+           <p className="text-[10px] text-gray-400">Rules can be added after creating the policy.</p>
+           <div className="flex gap-3 pt-2">
+             <Button variant="secondary" size="sm" onClick={() => setShowNewPolicy(false)}>Cancel</Button>
+             <Button variant="primary" size="sm" onClick={handleCreatePolicy} disabled={!policyForm.name.trim() || creatingPolicy}>
+               {creatingPolicy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Create Policy
+             </Button>
+           </div>
+         </div>
+       </div></Portal>
+     )}
+
+     {/* Summary Cards */}
+     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+       <Card>
+         <span className="text-xs t-secondary">Active Users</span>
+         <p className="text-2xl font-bold t-primary mt-1">{users.filter(u => u.status === 'active').length}</p>
+         <span className="text-[10px] text-gray-400">{users.filter(u => u.status === 'suspended').length} suspended</span>
+       </Card>
+       <Card>
+         <span className="text-xs t-secondary">User Roles</span>
+         <p className="text-2xl font-bold t-primary mt-1">{roles.filter(r => r.userCount > 0).length}</p>
+         <span className="text-[10px] text-gray-400">{roles.length} total defined</span>
+       </Card>
+       <Card>
+         <span className="text-xs t-secondary">Active Policies</span>
+         <p className="text-2xl font-bold t-primary mt-1">{policies.length}</p>
+         <span className="text-[10px] text-gray-400">{policies.reduce((s, p) => s + (Array.isArray(p.rules) ? p.rules.length : 0), 0)} rules</span>
+       </Card>
+       <Card>
+         <span className="text-xs t-secondary">SSO Providers</span>
+         <p className="text-2xl font-bold t-primary mt-1">{ssoConfigs.filter(s => s.enabled).length}</p>
+         <span className="text-[10px] text-gray-400">{ssoConfigs.length} configured</span>
+       </Card>
      </div>
-   </div>
-   <div className="flex items-center gap-2">
-     {editingUserId === user.id ? (
-       <>
-         <select
-           value={editRole}
-           onChange={(e) => setEditRole(e.target.value)}
-           className="px-2 py-1 rounded-lg border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
-         >
-           {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
-         </select>
-         <Button variant="primary" size="sm" disabled={savingUser} onClick={async () => {
-           setSavingUser(true);
-           try {
-             await api.iam.updateUser(user.id, { role: editRole });
-             setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: editRole } : u));
-           } catch (err) { console.error('Failed to update user role', err); }
-           setEditingUserId(null);
-           setSavingUser(false);
-         }} title="Save role change">
-           {savingUser ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-         </Button>
-         <Button variant="secondary" size="sm" onClick={() => setEditingUserId(null)} title="Cancel editing"><X size={12} /></Button>
-       </>
-     ) : (
-       <>
-         <Badge variant={user.role?.includes('admin') ? 'danger' : user.role?.includes('exec') ? 'warning' : 'info'} size="sm">{user.role || 'viewer'}</Badge>
-         <Button variant="secondary" size="sm" onClick={() => { setEditingUserId(user.id); setEditRole(user.role || 'viewer'); }} title="Edit user role"><Pencil size={12} /></Button>
-         <Button variant="secondary" size="sm" onClick={async () => {
-           if (!confirm(`Delete user ${user.name}?`)) return;
-           try {
-             await api.iam.deleteUser(user.id);
-             setUsers(prev => prev.filter(u => u.id !== user.id));
-           } catch (err) { console.error('Failed to delete user', err); }
-         }} title="Delete user"><Trash2 size={12} className="text-red-400" /></Button>
-       </>
+
+     <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+
+     {/* Users Tab */}
+     {activeTab === 'users' && (
+       <TabPanel>
+         <div className="space-y-3">
+           {isAdmin && users.length > 0 && (
+             <div className="flex items-center justify-between px-1">
+               <span className="text-xs t-muted">{users.length} user{users.length !== 1 ? 's' : ''} in this tenant</span>
+               <Button variant="primary" size="sm" onClick={() => { setInviteResult(null); setInviteForm({ name: '', email: '', role: assignableRoles[0] || 'analyst', sendWelcome: true }); setShowInviteUser(true); }}>
+                 <UserPlus size={12} /> {isSuperAdmin ? 'Add Admin' : 'Add User'}
+               </Button>
+             </div>
+           )}
+
+           {users.length === 0 && (
+             <div className="text-center py-12 text-gray-400">
+               <Users className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+               <p className="text-sm">No users found for this tenant</p>
+               {isAdmin && (
+                 <Button variant="primary" size="sm" className="mt-4" onClick={() => setShowInviteUser(true)}>
+                   <UserPlus size={14} /> {isSuperAdmin ? 'Add First Admin' : 'Add First User'}
+                 </Button>
+               )}
+             </div>
+           )}
+
+           {users.map((user) => {
+             const isSelf = currentUser?.id === user.id;
+             const isEditing = editingUserId === user.id;
+             const manageable = canManageUser(user);
+
+             return (
+               <Card key={user.id}>
+                 <div className="flex items-center justify-between flex-wrap gap-2">
+                   <div className="flex items-center gap-3 min-w-0">
+                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${user.status === 'active' ? 'bg-accent/10' : 'bg-red-500/10'}`}>
+                       {user.status === 'active' ? (
+                         <UserCheck className="w-4 h-4 text-accent" />
+                       ) : (
+                         <Ban className="w-4 h-4 text-red-400" />
+                       )}
+                     </div>
+                     <div className="min-w-0">
+                       <div className="flex items-center gap-2">
+                         <p className="text-sm font-medium t-primary truncate">{user.name}</p>
+                         {isSelf && <Badge variant="outline" size="sm">You</Badge>}
+                       </div>
+                       <p className="text-xs t-muted truncate">{user.email}</p>
+                       <div className="flex items-center gap-2 mt-0.5">
+                         {user.lastLogin ? (
+                           <span className="text-[10px] text-gray-400">Last login: {new Date(user.lastLogin).toLocaleDateString()}</span>
+                         ) : (
+                           <span className="text-[10px] text-amber-400">Never logged in</span>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="flex items-center gap-2 flex-wrap">
+                     {isEditing ? (
+                       <>
+                         <select
+                           value={editRole}
+                           onChange={(e) => setEditRole(e.target.value)}
+                           className="px-2 py-1 rounded-lg border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+                         >
+                           {roles.filter(r => assignableRoles.includes(r.id)).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                         </select>
+                         <select
+                           value={editStatus}
+                           onChange={(e) => setEditStatus(e.target.value)}
+                           className="px-2 py-1 rounded-lg border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+                         >
+                           <option value="active">Active</option>
+                           <option value="suspended">Suspended</option>
+                         </select>
+                         <Button variant="primary" size="sm" disabled={savingUser} onClick={() => {
+                           const updates: Record<string, unknown> = {};
+                           if (editRole !== user.role) updates.role = editRole;
+                           if (editStatus !== user.status) updates.status = editStatus;
+                           if (Object.keys(updates).length > 0) {
+                             handleUpdateUser(user.id, updates);
+                           } else {
+                             setEditingUserId(null);
+                           }
+                         }} title="Save changes">
+                           {savingUser ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                         </Button>
+                         <Button variant="secondary" size="sm" onClick={() => setEditingUserId(null)} title="Cancel"><X size={12} /></Button>
+                       </>
+                     ) : (
+                       <>
+                         <Badge variant={user.status === 'active' ? 'success' : 'danger'} size="sm">
+                           {user.status || 'active'}
+                         </Badge>
+                         <Badge variant={user.role?.includes('admin') ? 'danger' : user.role?.includes('exec') ? 'warning' : 'info'} size="sm">
+                           {user.role || 'viewer'}
+                         </Badge>
+
+                         {manageable && (
+                           <>
+                             <Button variant="secondary" size="sm" onClick={() => { setEditingUserId(user.id); setEditRole(user.role || 'viewer'); setEditStatus(user.status || 'active'); }} title="Edit user">
+                               <Pencil size={12} />
+                             </Button>
+                             <Button variant="secondary" size="sm" onClick={() => handleToggleStatus(user)} title={user.status === 'active' ? 'Suspend user' : 'Reactivate user'}>
+                               {user.status === 'active' ? <Ban size={12} className="text-amber-400" /> : <RotateCcw size={12} className="text-emerald-400" />}
+                             </Button>
+                             {!user.lastLogin && (
+                               <Button variant="secondary" size="sm" onClick={() => handleResendWelcome(user)} title="Resend welcome email">
+                                 <Mail size={12} />
+                               </Button>
+                             )}
+                             <Button variant="secondary" size="sm" onClick={() => handleDeleteUser(user)} title="Delete user">
+                               <Trash2 size={12} className="text-red-400" />
+                             </Button>
+                           </>
+                         )}
+
+                         {!isAdmin && (
+                           <Button variant="secondary" size="sm" title="View permissions" onClick={() => setExpandedRoleId(expandedRoleId === user.id ? null : user.id)}>
+                             <Eye size={12} />
+                           </Button>
+                         )}
+                       </>
+                     )}
+                   </div>
+                 </div>
+
+                 {expandedRoleId === user.id && ROLE_PERMISSIONS[user.role || 'viewer'] && (
+                   <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       <div>
+                         <span className="text-[10px] text-gray-400 uppercase tracking-wider">Page Access</span>
+                         <div className="flex flex-wrap gap-1 mt-1">
+                           {ROLE_PERMISSIONS[user.role || 'viewer'].pages.map(p => (
+                             <Badge key={p} variant="outline" size="sm">{p}</Badge>
+                           ))}
+                         </div>
+                       </div>
+                       <div>
+                         <span className="text-[10px] text-gray-400 uppercase tracking-wider">Allowed Actions</span>
+                         <div className="flex flex-wrap gap-1 mt-1">
+                           {ROLE_PERMISSIONS[user.role || 'viewer'].actions.map(a => (
+                             <Badge key={a} variant="info" size="sm">{a}</Badge>
+                           ))}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
+               </Card>
+             );
+           })}
+         </div>
+       </TabPanel>
+     )}
+
+     {/* Roles & Permissions Tab */}
+     {activeTab === 'roles' && (
+       <TabPanel>
+         <div className="space-y-4">
+           {roles.map((role) => {
+             const Icon = role.name.toLowerCase().includes('admin') ? ShieldCheck : role.name.toLowerCase().includes('exec') ? Shield : role.name.toLowerCase().includes('manager') ? UserCheck : Users;
+             const color = role.name.toLowerCase().includes('admin') ? 'text-red-400' : role.name.toLowerCase().includes('exec') ? 'text-amber-400' : role.name.toLowerCase().includes('manager') ? 'text-accent' : 'text-accent';
+             const isExpanded = expandedRoleId === role.id;
+             const perms = ROLE_PERMISSIONS[role.id];
+
+             return (
+               <Card key={role.id}>
+                 <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedRoleId(isExpanded ? null : role.id)}>
+                   <div className="flex items-center gap-3">
+                     <Icon className={`w-5 h-5 ${color}`} />
+                     <div>
+                       <h3 className="text-base font-semibold t-primary">{role.name}</h3>
+                       <p className="text-xs t-muted">{role.description}</p>
+                     </div>
+                   </div>
+                   <div className="flex items-center gap-3">
+                     <Badge variant="outline" size="sm">Level {role.level}</Badge>
+                     <Badge variant="info" size="sm">{role.userCount} user{role.userCount !== 1 ? 's' : ''}</Badge>
+                     {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                   </div>
+                 </div>
+
+                 {isExpanded && perms && (
+                   <div className="mt-4 pt-4 border-t border-[var(--border-card)] space-y-4">
+                     <div>
+                       <span className="text-[10px] text-gray-400 uppercase tracking-wider">Page Access</span>
+                       <div className="flex flex-wrap gap-1.5 mt-2">
+                         {perms.pages.map(p => (
+                           <div key={p} className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                             <Unlock size={10} className="text-emerald-400" />
+                             <span className="text-xs t-secondary">{p}</span>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                     <div>
+                       <span className="text-[10px] text-gray-400 uppercase tracking-wider">Allowed Actions</span>
+                       <div className="flex flex-wrap gap-1.5 mt-2">
+                         {perms.actions.map(a => (
+                           <div key={a} className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                             <CheckCircle size={10} className="text-accent" />
+                             <span className="text-xs t-secondary">{a}</span>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                     {role.userCount > 0 && (
+                       <div>
+                         <span className="text-[10px] text-gray-400 uppercase tracking-wider">Users with this role</span>
+                         <div className="flex flex-wrap gap-1.5 mt-2">
+                           {users.filter(u => u.role === role.id).map(u => (
+                             <Badge key={u.id} variant="outline" size="sm">{u.name}</Badge>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 )}
+               </Card>
+             );
+           })}
+         </div>
+       </TabPanel>
+     )}
+
+     {/* Policies Tab */}
+     {activeTab === 'policies' && (
+       <TabPanel>
+         <div className="space-y-4">
+           {policies.length === 0 && (
+             <div className="text-center py-12 text-gray-400">
+               <Shield className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+               <p className="text-sm">No policies configured</p>
+               {isAdmin && (
+                 <Button variant="primary" size="sm" className="mt-4" onClick={() => setShowNewPolicy(true)}>
+                   <Plus size={14} /> Create First Policy
+                 </Button>
+               )}
+             </div>
+           )}
+           {policies.map((policy) => (
+             <Card key={policy.id}>
+               <div className="flex items-start justify-between">
+                 <div>
+                   <div className="flex items-center gap-2">
+                     <h3 className="text-base font-semibold t-primary">{policy.name}</h3>
+                     <Badge variant={policy.type === 'rbac' ? 'info' : 'warning'} size="sm">{policy.type.toUpperCase()}</Badge>
+                   </div>
+                   <p className="text-xs t-muted mt-1">{policy.description}</p>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <Badge variant="outline">{Array.isArray(policy.rules) ? policy.rules.length : 0} rules</Badge>
+                   {isAdmin && (
+                     <Button variant="secondary" size="sm" onClick={async () => {
+                       if (!confirm(`Delete policy "${policy.name}"?`)) return;
+                       try {
+                         await api.iam.deletePolicy(policy.id);
+                         setPolicies(prev => prev.filter(p => p.id !== policy.id));
+                         showFeedback('success', `Policy "${policy.name}" deleted`);
+                       } catch (err) { console.error('Failed to delete policy', err); showFeedback('error', 'Failed to delete policy'); }
+                     }} title="Delete policy"><Trash2 size={12} className="text-red-400" /></Button>
+                   )}
+                 </div>
+               </div>
+
+               <div className="mt-3 space-y-2">
+                 {(Array.isArray(policy.rules) ? policy.rules : []).map((rule, idx) => {
+                   const r = rule as Record<string, unknown>;
+                   return (
+                     <div key={idx} className="flex items-center gap-3 p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                       {r.effect === 'allow' ? (
+                         <Unlock size={14} className="text-emerald-400" />
+                       ) : (
+                         <Lock size={14} className="text-red-400" />
+                       )}
+                       <span className="text-xs font-mono text-gray-400">{String(r.resource || '')}</span>
+                       <div className="flex gap-1">
+                         {(Array.isArray(r.actions) ? r.actions : []).map((a: unknown) => (
+                           <Badge key={String(a)} variant={r.effect === 'allow' ? 'success' : 'danger'} size="sm">{String(a)}</Badge>
+                         ))}
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+             </Card>
+           ))}
+         </div>
+       </TabPanel>
+     )}
+
+     {/* SSO Tab */}
+     {activeTab === 'sso' && (
+       <TabPanel>
+         <div className="space-y-4">
+           {ssoConfigs.length === 0 && (
+             <div className="text-center py-12 text-gray-400">
+               <Globe className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+               <p className="text-sm">No SSO providers configured</p>
+               <p className="text-xs text-gray-500 mt-1">Configure SAML/OIDC providers for single sign-on</p>
+             </div>
+           )}
+           {ssoConfigs.map((sso, i) => (
+             <Card key={i}>
+               <div className="flex items-start justify-between">
+                 <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                     <Globe className="w-5 h-5 text-accent" />
+                   </div>
+                   <div>
+                     <h3 className="text-base font-semibold t-primary">{sso.provider.replace('_', ' ').toUpperCase()}</h3>
+                     <span className="text-xs t-muted">{sso.domainHint}</span>
+                   </div>
+                 </div>
+                 <Badge variant={sso.enabled ? 'success' : 'default'}>{sso.enabled ? 'Active' : 'Disabled'}</Badge>
+               </div>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                 <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                   <span className="text-[10px] text-gray-400">Client ID</span>
+                   <p className="text-xs t-secondary font-mono truncate">{sso.clientId}</p>
+                 </div>
+                 <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                   <span className="text-[10px] text-gray-400">Issuer URL</span>
+                   <p className="text-xs t-secondary font-mono truncate">{sso.issuerUrl}</p>
+                 </div>
+                 <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                   <span className="text-[10px] text-gray-400">Auto-Provision</span>
+                   <p className="text-xs t-secondary">{sso.autoProvision ? 'Yes' : 'No'}</p>
+                 </div>
+                 <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                   <span className="text-[10px] text-gray-400">Default Role</span>
+                   <p className="text-xs t-secondary">{sso.defaultRole}</p>
+                 </div>
+               </div>
+             </Card>
+           ))}
+         </div>
+       </TabPanel>
      )}
    </div>
- </div>
- </Card>
- ))}
- </div>
- </TabPanel>
- )}
-
- {activeTab === 'sso' && (
- <TabPanel>
- <div className="space-y-4">
- {ssoConfigs.map((sso, i) => (
- <Card key={i}>
- <div className="flex items-start justify-between">
- <div className="flex items-center gap-3">
- <div className=" w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
- <Globe className="w-5 h-5 text-accent"/>
- </div>
- <div>
- <h3 className="text-base font-semibold t-primary">{sso.provider.replace('_', ' ').toUpperCase()}</h3>
- <span className="text-xs t-muted">{sso.domainHint}</span>
- </div>
- </div>
- <Badge variant={sso.enabled ? 'success' : 'default'}>{sso.enabled ? 'Active' : 'Disabled'}</Badge>
- </div>
- <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
- <div className=" p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <span className="text-[10px] text-gray-400">Client ID</span>
- <p className="text-xs t-secondary font-mono truncate">{sso.clientId}</p>
- </div>
- <div className=" p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <span className="text-[10px] text-gray-400">Issuer URL</span>
- <p className="text-xs t-secondary font-mono truncate">{sso.issuerUrl}</p>
- </div>
- <div className=" p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <span className="text-[10px] text-gray-400">Auto-Provision</span>
- <p className="text-xs t-secondary">{sso.autoProvision ? 'Yes' : 'No'}</p>
- </div>
- <div className=" p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <span className="text-[10px] text-gray-400">Default Role</span>
- <p className="text-xs t-secondary">{sso.defaultRole}</p>
- </div>
- </div>
- </Card>
- ))}
- </div>
- </TabPanel>
- )}
-
- {activeTab === 'roles' && (
- <TabPanel>
- <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
- {roles.map((role) => {
- const Icon = role.name.toLowerCase().includes('admin') ? ShieldCheck : role.name.toLowerCase().includes('exec') ? Shield : role.name.toLowerCase().includes('manager') ? UserCheck : Users;
- const color = role.name.toLowerCase().includes('admin') ? 'text-red-400' : role.name.toLowerCase().includes('exec') ? 'text-accent' : role.name.toLowerCase().includes('manager') ? 'text-accent' : 'text-accent';
- return (
- <Card key={role.id}>
- <div className="flex items-center justify-between mb-2">
- <div className="flex items-center gap-3">
- <Icon className={`w-5 h-5 ${color}`} />
- <h3 className="text-base font-semibold t-primary">{role.name}</h3>
- </div>
- <Badge variant="outline" size="sm">Level {role.level}</Badge>
- </div>
- <p className="text-xs t-muted">{role.description}</p>
- <div className="mt-3 flex items-center justify-between">
- <span className="text-[10px] text-gray-400">Users</span>
- <Badge variant="info" size="sm">{role.userCount}</Badge>
- </div>
- </Card>
- );
- })}
- </div>
- </TabPanel>
- )}
- </div>
  );
 }

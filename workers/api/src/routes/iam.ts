@@ -209,11 +209,111 @@ iam.post('/users', async (c) => {
   return c.json({ id, email: body.email, name: body.name, role, tempPassword }, 201);
 });
 
+// PUT /api/iam/users/:id — Update user role, status, name, or permissions
+iam.put('/users/:id', async (c) => {
+  const tenantId = getTenantId(c);
+  const userId = c.req.param('id');
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+
+  const { data: body, errors } = await getValidatedJsonBody<{
+    role?: string; status?: string; name?: string; permissions?: string[];
+  }>(c, [
+    { field: 'role', type: 'string', required: false, maxLength: 32 },
+    { field: 'status', type: 'string', required: false, maxLength: 32 },
+    { field: 'name', type: 'string', required: false, maxLength: 100 },
+  ]);
+  if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
+
+  // Fetch the target user to verify they exist and check current role
+  const target = await c.env.DB.prepare(
+    'SELECT id, role, email FROM users WHERE id = ? AND tenant_id = ?'
+  ).bind(userId, tenantId).first<{ id: string; role: string; email: string }>();
+  if (!target) return c.json({ error: 'User not found' }, 404);
+
+  // Prevent self-demotion below admin (protect against accidental lockout)
+  if (auth?.userId === userId && body.role && ROLE_LEVELS[body.role] < ROLE_LEVELS['admin']) {
+    return c.json({ error: 'Forbidden', message: 'Cannot demote your own account below admin' }, 403);
+  }
+
+  // Prevent modifying users with higher privilege than caller
+  const targetLevel = ROLE_LEVELS[target.role] ?? 0;
+  if (targetLevel > callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Cannot modify a user with higher privilege than your own' }, 403);
+  }
+
+  // Validate new role if provided
+  if (body.role) {
+    if (!VALID_ROLES.has(body.role)) {
+      return c.json({ error: 'Invalid role', message: `Role "${body.role}" is not valid. Valid roles: ${[...VALID_ROLES].join(', ')}` }, 400);
+    }
+    const requestedLevel = ROLE_LEVELS[body.role] ?? 0;
+    if (requestedLevel > callerLevel) {
+      return c.json({ error: 'Forbidden', message: `Cannot assign role "${body.role}" — exceeds your own privilege level` }, 403);
+    }
+  }
+
+  // Validate status if provided
+  if (body.status && !['active', 'suspended', 'inactive'].includes(body.status)) {
+    return c.json({ error: 'Invalid status', message: 'Status must be active, suspended, or inactive' }, 400);
+  }
+
+  // Build dynamic UPDATE
+  const updates: string[] = [];
+  const values: (string | null)[] = [];
+  if (body.role) { updates.push('role = ?'); values.push(body.role); }
+  if (body.status) { updates.push('status = ?'); values.push(body.status); }
+  if (body.name) { updates.push('name = ?'); values.push(body.name); }
+  if (body.permissions) { updates.push('permissions = ?'); values.push(JSON.stringify(body.permissions)); }
+
+  if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+
+  const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`;
+  values.push(userId, tenantId);
+  await c.env.DB.prepare(sql).bind(...values).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), tenantId, auth?.userId || '', 'user_updated', 'iam', 'user',
+    JSON.stringify({ targetUserId: userId, targetEmail: target.email, changes: body }), 'success'
+  ).run().catch(() => {});
+
+  return c.json({ success: true, userId, changes: body });
+});
+
 // DELETE /api/iam/users/:id
 iam.delete('/users/:id', async (c) => {
   const tenantId = getTenantId(c);
   const id = c.req.param('id');
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+
+  // Prevent self-deletion
+  if (auth?.userId === id) {
+    return c.json({ error: 'Forbidden', message: 'Cannot delete your own account' }, 403);
+  }
+
+  // Prevent deleting users with higher privilege
+  const target = await c.env.DB.prepare(
+    'SELECT id, role, email FROM users WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first<{ id: string; role: string; email: string }>();
+  if (!target) return c.json({ error: 'User not found' }, 404);
+
+  const targetLevel = ROLE_LEVELS[target.role] ?? 0;
+  if (targetLevel > callerLevel) {
+    return c.json({ error: 'Forbidden', message: 'Cannot delete a user with higher privilege than your own' }, 403);
+  }
+
   await c.env.DB.prepare('DELETE FROM users WHERE id = ? AND tenant_id = ?').bind(id, tenantId).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), tenantId, auth?.userId || '', 'user_deleted', 'iam', 'user',
+    JSON.stringify({ deletedUserId: id, deletedEmail: target.email, deletedRole: target.role }), 'success'
+  ).run().catch(() => {});
+
   return c.json({ success: true });
 });
 
