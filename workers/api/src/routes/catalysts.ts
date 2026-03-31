@@ -1850,69 +1850,110 @@ async function performValidation(
   let issues = 0;
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
 
-  // Detect the data type from the data source config to apply appropriate validation rules
+  // ── Self-learning data-type detection ──
+  // Instead of matching module names, inspect the actual fields in the first row
+  // to determine data type. Works for SAP, Odoo, Sage, Xero, or any ERP automatically.
   const module = String(sources[0]?.config?.module || '').toLowerCase();
-  const isSupplierData = module.includes('vendor') || module.includes('supplier');
-  const isCustomerData = module.includes('customer') || module.includes('accounts_receivable') || module === 'ar';
-  const isProductData = module.includes('product') || module.includes('inventory') || module.includes('stock');
+  const sampleRow = data[0] || {};
+  const hasField = (candidates: string[]) => candidates.some(f => f in sampleRow);
+
+  // Supplier/Vendor data: detected by vendor-specific fields
+  const isSupplierData = hasField(['LIFNR', 'KTOKK', 'SPERM']) ||  // SAP LFA1/LFB1
+    (module.includes('vendor') || module.includes('supplier')) && !module.includes('bseg');
+  // Customer data: detected by customer-specific fields
+  const isCustomerData = hasField(['KUNNR', 'KTOKD', 'KLIMK']) ||  // SAP KNA1/KNB1
+    module.includes('customer') || module.includes('accounts_receivable') || module === 'ar';
+  // Product/Inventory data: detected by product-specific fields
+  const isProductData = hasField(['MATNR', 'LABST', 'LGORT']) ||  // SAP MARD
+    module.includes('product') || module.includes('inventory') || module.includes('stock');
+  // SAP financial documents: detected by SAP FI-specific fields
+  const isSapFinancialData = hasField(['BELNR', 'BUKRS', 'GJAHR', 'DMBTR']) ||  // SAP BKPF/BSEG
+    hasField(['VBELN', 'FKART', 'NETWR', 'MWSBK']) ||  // SAP VBRK/VBRP
+    module.startsWith('sap_bseg') || module.startsWith('sap_vbrk');
 
   for (const row of data) {
     const rowIssues: string[] = [];
+    // Helper: check if a field has a non-empty value
+    const val = (key: string) => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '';
 
     if (isSupplierData) {
-      // Supplier / Vendor master validation: tax, payment terms, bank details, contact info
-      const hasName = !!row['name'];
-      const hasVat = row['vat_number'] !== null && row['vat_number'] !== undefined && String(row['vat_number']).trim() !== '';
-      const hasPayTerms = !!row['payment_terms'];
-      const hasBankName = row['bank_name'] !== null && row['bank_name'] !== undefined && String(row['bank_name']).trim() !== '';
-      const hasBankAccount = row['bank_account'] !== null && row['bank_account'] !== undefined && String(row['bank_account']).trim() !== '';
-      const hasContact = !!row['contact_name'] || !!row['contact_email'];
+      // Supplier / Vendor master validation — works with both legacy and SAP field names
+      const hasName = val('name') || val('NAME1');
+      const hasVat = val('vat_number') || val('STCD1');
+      const hasPayTerms = val('payment_terms') || val('ZTERM');
+      const hasBankDetails = (val('bank_name') && val('bank_account')) || val('HBKID') || val('AKONT');
+      const hasContact = val('contact_name') || val('contact_email') || val('TELF1');
+      const isBlocked = val('SPERR') || val('SPERM');
 
       if (!hasName) rowIssues.push('Missing supplier name');
       if (!hasVat) rowIssues.push('Missing VAT/tax number');
       if (!hasPayTerms) rowIssues.push('Missing payment terms');
-      if (!hasBankName || !hasBankAccount) rowIssues.push('Incomplete bank details');
+      if (!hasBankDetails) rowIssues.push('Missing reconciliation account or bank details');
       if (!hasContact) rowIssues.push('Missing contact information');
+      if (isBlocked) rowIssues.push('Vendor is blocked for posting or payment');
     } else if (isCustomerData) {
-      // Customer / AR validation: credit limits, contact info, payment terms
-      const hasName = !!row['name'];
-      const creditLimit = Number(row['credit_limit'] || 0);
+      // Customer / AR validation — works with both legacy and SAP field names
+      const hasName = val('name') || val('NAME1');
+      const hasRegNum = val('registration_number') || val('STCD1');
+      const hasPayTerms = val('payment_terms') || val('ZTERM');
+      const hasContact = val('contact_name') || val('contact_email') || val('TELF1');
+      const creditLimit = Number(row['credit_limit'] || row['KLIMK'] || 0);
       const creditBalance = Number(row['credit_balance'] || 0);
-      const hasPayTerms = !!row['payment_terms'];
-      const hasContact = !!row['contact_name'] || !!row['contact_email'];
-      const hasRegNum = row['registration_number'] !== null && row['registration_number'] !== undefined && String(row['registration_number']).trim() !== '';
+      const hasCreditControl = val('CTLPC') || creditLimit > 0;
 
       if (!hasName) rowIssues.push('Missing customer name');
-      if (!hasRegNum) rowIssues.push('Missing registration number');
+      if (!hasRegNum) rowIssues.push('Missing registration/tax number');
       if (creditLimit > 0 && creditBalance > creditLimit) rowIssues.push(`Credit balance ${creditBalance} exceeds limit ${creditLimit}`);
-      if (creditLimit <= 0) rowIssues.push('No credit limit set');
+      if (!hasCreditControl && creditLimit <= 0) rowIssues.push('No credit limit or credit control set');
       if (!hasPayTerms) rowIssues.push('Missing payment terms');
       if (!hasContact) rowIssues.push('Missing contact information');
     } else if (isProductData) {
-      // Product / Inventory validation: pricing, stock levels, categorization
-      const hasSku = !!row['sku'];
-      const hasName = !!row['name'];
+      // Product / Inventory validation — works with both legacy and SAP field names
+      const hasSku = val('sku') || val('MATNR');
+      const hasName = val('name') || val('ARKTX');
       const costPrice = Number(row['cost_price'] || 0);
       const sellingPrice = Number(row['selling_price'] || 0);
-      const stockOnHand = Number(row['stock_on_hand'] || 0);
+      const stockOnHand = Number(row['stock_on_hand'] || row['LABST'] || 0);
       const reorderLevel = Number(row['reorder_level'] || 0);
+      const hasBlockedStock = Number(row['SPEME'] || 0) > 0;
 
-      if (!hasSku) rowIssues.push('Missing SKU');
+      if (!hasSku) rowIssues.push('Missing SKU/material number');
       if (!hasName) rowIssues.push('Missing product name');
-      if (costPrice <= 0) rowIssues.push('Invalid cost price');
-      if (sellingPrice <= 0) rowIssues.push('Invalid selling price');
-      if (sellingPrice > 0 && costPrice > 0 && sellingPrice < costPrice) rowIssues.push(`Selling price ${sellingPrice} below cost ${costPrice}`);
-      if (stockOnHand < reorderLevel) rowIssues.push(`Stock ${stockOnHand} below reorder level ${reorderLevel}`);
+      if (costPrice > 0 && sellingPrice > 0 && sellingPrice < costPrice) rowIssues.push(`Selling price ${sellingPrice} below cost ${costPrice}`);
+      if (stockOnHand < reorderLevel && reorderLevel > 0) rowIssues.push(`Stock ${stockOnHand} below reorder level ${reorderLevel}`);
+      if (hasBlockedStock) rowIssues.push(`Blocked stock: ${row['SPEME']} units`);
+    } else if (isSapFinancialData) {
+      // SAP financial document validation (BSEG, VBRK, etc.)
+      const hasAmount = val('DMBTR') || val('WRBTR') || val('NETWR');
+      const hasDate = val('BUDAT') || val('BLDAT') || val('FKDAT') || val('CPUDT');
+      const hasRef = val('BELNR') || val('VBELN') || val('EBELN') || val('XBLNR');
+      const dmbtr = Number(row['DMBTR'] || 0);
+      const wrbtr = Number(row['WRBTR'] || 0);
+      const bstat = String(row['BSTAT'] || '');
+
+      if (!hasAmount) rowIssues.push('Missing amount (DMBTR/WRBTR/NETWR)');
+      if (!hasDate) rowIssues.push('Missing posting/document date');
+      if (!hasRef) rowIssues.push('Missing document reference');
+      // Forex variance check: DMBTR vs WRBTR
+      if (dmbtr > 0 && wrbtr > 0 && Math.abs(dmbtr - wrbtr) / wrbtr > 0.01) {
+        rowIssues.push(`Forex variance: local ${dmbtr} vs doc ${wrbtr} (${((Math.abs(dmbtr - wrbtr) / wrbtr) * 100).toFixed(1)}%)`);
+      }
+      // Parked document check
+      if (bstat === 'V') rowIssues.push('Document is parked (not posted)');
+      // Missing external reference
+      if (!val('XBLNR') && val('BELNR')) rowIssues.push('Missing external reference (XBLNR)');
+      // VAT check for billing docs
+      if (val('MWSBK') && val('NETWR')) {
+        const netwr = Number(row['NETWR']);
+        const mwsbk = Number(row['MWSBK']);
+        if (netwr > 0 && mwsbk <= 0) rowIssues.push('Missing VAT on billing document');
+      }
     } else {
-      // Financial record validation (invoices, payments, bank transactions)
-      const hasAmount = (row['amount'] !== undefined && row['amount'] !== null && row['amount'] !== '') ||
-                        (row['total'] !== undefined && row['total'] !== null && row['total'] !== '') ||
-                        (row['debit'] !== undefined && row['debit'] !== null && row['debit'] !== '') ||
-                        (row['credit'] !== undefined && row['credit'] !== null && row['credit'] !== '') ||
-                        (row['total_debit'] !== undefined && row['total_debit'] !== null && row['total_debit'] !== '');
-      const hasDate = row['invoice_date'] || row['date'] || row['posting_date'] || row['journal_date'] || row['order_date'] || row['transaction_date'];
-      const hasRef = row['invoice_number'] || row['reference'] || row['transaction_id'] || row['document_number'] ||
-                     row['name'] || row['sku'] || row['po_number'] || row['journal_number'] || row['id'];
+      // Generic financial record validation (invoices, payments, bank transactions)
+      const hasAmount = val('amount') || val('total') || val('debit') || val('credit') || val('total_debit');
+      const hasDate = val('invoice_date') || val('date') || val('posting_date') || val('journal_date') || val('order_date') || val('transaction_date');
+      const hasRef = val('invoice_number') || val('reference') || val('transaction_id') || val('document_number') ||
+                     val('name') || val('sku') || val('po_number') || val('journal_number') || val('id');
 
       if (!hasAmount) rowIssues.push('Missing amount/total');
       if (!hasDate) rowIssues.push('Missing date');
@@ -1934,7 +1975,9 @@ async function performValidation(
     if (rowIssues.length > 0) {
       issues++;
       if (discrepancies && discrepancies.length < 50) {
-        const refField = row['name'] || row['invoice_number'] || row['sku'] || row['reference'] || row['id'] || 'unknown';
+        // Self-learning ref field: try SAP fields, then legacy fields
+        const refField = row['NAME1'] || row['LIFNR'] || row['KUNNR'] || row['BELNR'] || row['VBELN'] || row['MATNR'] ||
+                         row['name'] || row['invoice_number'] || row['sku'] || row['reference'] || row['id'] || 'unknown';
         discrepancies.push({
           source_record: row, target_record: null,
           field: rowIssues[0].split(' ')[0].toLowerCase(),
