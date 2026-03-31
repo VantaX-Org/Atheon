@@ -376,13 +376,6 @@ export function CatalystsPage() {
  ]);
  if (c.status === 'fulfilled') {
   setClusters(c.value.clusters);
-  // A4-1: Update ops panel cluster name after clusters load
-  if (opsPanel) {
-   const cluster = c.value.clusters.find((cl: ClusterItem) => cl.id === opsPanel.clusterId);
-   if (cluster && opsPanel.clusterName === opsPanel.clusterId) {
-    setOpsPanel({ ...opsPanel, clusterName: cluster.name });
-   }
-  }
  }
  if (a.status === 'fulfilled') setActions(a.value.actions);
  if (g.status === 'fulfilled') setGovernance(g.value);
@@ -390,6 +383,16 @@ export function CatalystsPage() {
  }
  load();
  }, []); // Load once on mount — no industry filter needed, catalysts show all functional areas
+
+ // A4-1: Resolve ops panel cluster name once clusters are loaded
+ useEffect(() => {
+   if (opsPanel && clusters.length > 0 && opsPanel.clusterName === opsPanel.clusterId) {
+     const cluster = clusters.find((cl: ClusterItem) => cl.id === opsPanel.clusterId);
+     if (cluster) {
+       setOpsPanel({ ...opsPanel, clusterName: cluster.name });
+     }
+   }
+ }, [opsPanel, clusters]);
 
  const handleToggleSubCatalyst = async (clusterId: string, subName: string) => {
  const key = `${clusterId}:${subName}`;
