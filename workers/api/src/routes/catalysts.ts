@@ -1857,24 +1857,71 @@ async function performValidation(
   const sampleRow = data[0] || {};
   const hasField = (candidates: string[]) => candidates.some(f => f in sampleRow);
 
-  // ── Priority-ordered detection: SAP financial FIRST (they contain LIFNR/MATNR from JOINs) ──
+  // ── Priority-ordered detection: ERP financial data FIRST (they may contain partner/product refs from JOINs) ──
+
   // SAP financial documents: checked first because BSEG has LIFNR and VBRK JOINs bring MATNR
   const isSapFinancialData = module.startsWith('sap_bseg') || module.startsWith('sap_vbrk') ||
     (hasField(['BELNR', 'BUKRS', 'GJAHR']) && hasField(['DMBTR'])) ||  // SAP BKPF/BSEG
     (hasField(['FKART', 'FKTYP']) && hasField(['NETWR']));  // SAP VBRK (billing-specific fields)
-  // Supplier/Vendor data: detected by vendor master fields (KTOKK = account group, unique to LFA1)
-  const isSupplierData = !isSapFinancialData && (
-    hasField(['KTOKK', 'SPERM']) ||  // SAP LFA1/LFB1 (KTOKK is vendor account group, not in BSEG)
+
+  // Odoo financial data: account.move (invoices/journal entries)
+  const isOdooFinancialData = !isSapFinancialData && (
+    module.startsWith('odoo_account_move') ||
+    (hasField(['move_type', 'amount_total']) && hasField(['payment_state'])) ||  // Odoo account.move
+    (hasField(['debit', 'credit', 'balance']) && hasField(['move_id', 'account_id']))  // Odoo account.move.line
+  );
+
+  // Sage financial data: sales/purchase invoices
+  const isSageFinancialData = !isSapFinancialData && !isOdooFinancialData && (
+    module.startsWith('sage_sales_invoice') || module.startsWith('sage_purchase_invoice') ||
+    (hasField(['InvoiceNumber', 'NetAmount', 'TaxAmount', 'GrossAmount'])) ||  // Sage invoices
+    (hasField(['NominalCode', 'NominalName', 'NominalType']))  // Sage nominal ledger
+  );
+
+  // Xero financial data: invoices
+  const isXeroFinancialData = !isSapFinancialData && !isOdooFinancialData && !isSageFinancialData && (
+    module.startsWith('xero_invoice') ||
+    (hasField(['InvoiceNumber', 'SubTotal', 'TotalTax', 'Total']) && hasField(['AmountDue'])) ||  // Xero invoices
+    (hasField(['ManualJournalID', 'Narration', 'JournalLines']))  // Xero manual journals
+  );
+
+  // QuickBooks financial data: invoices/bills
+  const isQBFinancialData = !isSapFinancialData && !isOdooFinancialData && !isSageFinancialData && !isXeroFinancialData && (
+    module.startsWith('qb_invoice') || module.startsWith('qb_bill') || module.startsWith('qb_journal') ||
+    (hasField(['DocNumber', 'TxnDate', 'TotalAmt']) && (hasField(['CustomerRef_name']) || hasField(['VendorRef_name'])))
+  );
+
+  // Any ERP financial data (union of all)
+  const isAnyFinancialData = isSapFinancialData || isOdooFinancialData || isSageFinancialData || isXeroFinancialData || isQBFinancialData;
+
+  // Supplier/Vendor data: detected by vendor master fields across all ERPs
+  const isSupplierData = !isAnyFinancialData && (
+    hasField(['KTOKK', 'SPERM']) ||  // SAP LFA1/LFB1
+    (hasField(['supplier_rank']) && hasField(['vat'])) ||  // Odoo res.partner (supplier)
+    (hasField(['AccountReference', 'BankSortCode']) && hasField(['CompanyName'])) ||  // Sage supplier
+    (hasField(['IsSupplier', 'TaxNumber']) && hasField(['ContactStatus'])) ||  // Xero contact (supplier)
+    (hasField(['TaxIdentifier', 'Vendor1099']) && hasField(['DisplayName'])) ||  // QuickBooks vendor
     (module.includes('vendor') || module.includes('supplier')) && !module.includes('bseg')
   );
-  // Customer data: detected by customer master fields (KTOKD = account group, unique to KNA1)
-  const isCustomerData = !isSapFinancialData && (
-    hasField(['KTOKD', 'KLIMK']) ||  // SAP KNA1/KNB1 (KTOKD is customer account group)
+
+  // Customer data: detected by customer master fields across all ERPs
+  const isCustomerData = !isAnyFinancialData && (
+    hasField(['KTOKD', 'KLIMK']) ||  // SAP KNA1/KNB1
+    (hasField(['customer_rank']) && hasField(['property_account_receivable_id'])) ||  // Odoo res.partner (customer)
+    (hasField(['AccountReference', 'CreditLimit']) && hasField(['AccountType'])) ||  // Sage customer
+    (hasField(['IsCustomer', 'Balances_AccountsReceivable_Outstanding'])) ||  // Xero contact (customer)
+    (hasField(['DisplayName', 'PreferredDeliveryMethod']) && hasField(['Balance'])) ||  // QuickBooks customer
     module.includes('customer') || module.includes('accounts_receivable') || module === 'ar'
   );
-  // Product/Inventory data: detected by warehouse-specific fields (LABST = unrestricted stock)
-  const isProductData = !isSapFinancialData && (
-    hasField(['LABST', 'LGORT']) ||  // SAP MARD (LABST is unique to warehouse data)
+
+  // Product/Inventory data: detected by stock/inventory fields across all ERPs
+  const isProductData = !isAnyFinancialData && (
+    hasField(['LABST', 'LGORT']) ||  // SAP MARD
+    (hasField(['qty_available', 'standard_price']) && hasField(['default_code'])) ||  // Odoo product
+    (hasField(['inventory_quantity', 'inventory_diff_quantity'])) ||  // Odoo stock.quant
+    (hasField(['ProductCode', 'QuantityInStock', 'ReorderLevel'])) ||  // Sage stock item
+    (hasField(['QuantityOnHand', 'IsTrackedAsInventory'])) ||  // Xero item
+    (hasField(['QtyOnHand', 'ReorderPoint', 'TrackQtyOnHand'])) ||  // QuickBooks item
     module.includes('product') || module.includes('inventory') || module.includes('stock')
   );
 
@@ -1884,7 +1931,7 @@ async function performValidation(
     const val = (key: string) => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '';
 
     if (isSapFinancialData) {
-      // SAP financial document validation (BSEG, VBRK, etc.) — checked FIRST
+      // SAP financial document validation (BSEG, VBRK, etc.)
       const hasAmount = val('DMBTR') || val('WRBTR') || val('NETWR');
       const hasDate = val('BUDAT') || val('BLDAT') || val('FKDAT') || val('CPUDT');
       const hasRef = val('BELNR') || val('VBELN') || val('EBELN') || val('XBLNR');
@@ -1895,43 +1942,124 @@ async function performValidation(
       if (!hasAmount) rowIssues.push('Missing amount (DMBTR/WRBTR/NETWR)');
       if (!hasDate) rowIssues.push('Missing posting/document date');
       if (!hasRef) rowIssues.push('Missing document reference');
-      // Forex variance check: DMBTR vs WRBTR
       if (dmbtr > 0 && wrbtr > 0 && Math.abs(dmbtr - wrbtr) / wrbtr > 0.01) {
         rowIssues.push(`Forex variance: local ${dmbtr} vs doc ${wrbtr} (${((Math.abs(dmbtr - wrbtr) / wrbtr) * 100).toFixed(1)}%)`);
       }
-      // Parked document check
       if (bstat === 'V') rowIssues.push('Document is parked (not posted)');
-      // Missing external reference
       if (!val('XBLNR') && val('BELNR')) rowIssues.push('Missing external reference (XBLNR)');
-      // VAT check for billing docs
       if (val('MWSBK') && val('NETWR')) {
         const netwr = Number(row['NETWR']);
         const mwsbk = Number(row['MWSBK']);
         if (netwr > 0 && mwsbk <= 0) rowIssues.push('Missing VAT on billing document');
       }
+    } else if (isOdooFinancialData) {
+      // Odoo account.move / account.move.line validation
+      const hasAmount = val('amount_total') || val('debit') || val('credit');
+      const hasDate = val('invoice_date') || val('date');
+      const hasRef = val('name') || val('move_name') || val('ref');
+      const state = String(row['state'] || '');
+      const paymentState = String(row['payment_state'] || '');
+      const residual = Number(row['amount_residual'] || 0);
+      const total = Number(row['amount_total'] || 0);
+
+      if (!hasAmount) rowIssues.push('Missing amount (amount_total/debit/credit)');
+      if (!hasDate) rowIssues.push('Missing invoice/posting date');
+      if (!hasRef) rowIssues.push('Missing document reference');
+      if (state === 'draft') rowIssues.push('Document is still in draft state');
+      if (state === 'cancel') rowIssues.push('Document has been cancelled');
+      if (paymentState === 'not_paid' && residual > 0 && val('invoice_date_due')) {
+        const due = new Date(String(row['invoice_date_due']));
+        if (due < new Date()) rowIssues.push(`Overdue: ${residual.toFixed(2)} unpaid since ${row['invoice_date_due']}`);
+      }
+      if (total > 0 && Number(row['amount_tax'] || 0) <= 0) rowIssues.push('Missing tax on document');
+    } else if (isSageFinancialData) {
+      // Sage sales/purchase invoice validation
+      const hasAmount = val('NetAmount') || val('GrossAmount');
+      const hasDate = val('InvoiceDate');
+      const hasRef = val('InvoiceNumber') || val('Reference') || val('NominalCode');
+      const outstanding = Number(row['AmountOutstanding'] || 0);
+      const status = String(row['Status'] || '');
+
+      if (!hasAmount) rowIssues.push('Missing amount (NetAmount/GrossAmount)');
+      if (!hasDate) rowIssues.push('Missing invoice date');
+      if (!hasRef) rowIssues.push('Missing invoice number or reference');
+      if (val('NetAmount') && val('TaxAmount') && val('GrossAmount')) {
+        const expected = Number(row['NetAmount']) + Number(row['TaxAmount']);
+        const actual = Number(row['GrossAmount']);
+        if (Math.abs(expected - actual) > 0.02) rowIssues.push(`Gross ${actual} != Net ${row['NetAmount']} + Tax ${row['TaxAmount']}`);
+      }
+      if (outstanding > 0 && val('DueDate')) {
+        const due = new Date(String(row['DueDate']));
+        if (due < new Date()) rowIssues.push(`Overdue: ${outstanding.toFixed(2)} outstanding since ${row['DueDate']}`);
+      }
+      if (status === 'Void' || status === 'Deleted') rowIssues.push(`Document status: ${status}`);
+    } else if (isXeroFinancialData) {
+      // Xero invoice / journal validation
+      const hasAmount = val('Total') || val('SubTotal');
+      const hasDate = val('Date');
+      const hasRef = val('InvoiceNumber') || val('Reference') || val('Narration');
+      const amountDue = Number(row['AmountDue'] || 0);
+      const status = String(row['Status'] || '');
+
+      if (!hasAmount) rowIssues.push('Missing amount (Total/SubTotal)');
+      if (!hasDate) rowIssues.push('Missing date');
+      if (!hasRef) rowIssues.push('Missing invoice number or reference');
+      if (status === 'DRAFT') rowIssues.push('Invoice is still in DRAFT status');
+      if (status === 'VOIDED') rowIssues.push('Invoice has been voided');
+      if (amountDue > 0 && val('DueDate')) {
+        const due = new Date(String(row['DueDate']));
+        if (due < new Date()) rowIssues.push(`Overdue: ${amountDue.toFixed(2)} due since ${row['DueDate']}`);
+      }
+      if (val('SubTotal') && val('TotalTax') && val('Total')) {
+        const expected = Number(row['SubTotal']) + Number(row['TotalTax']);
+        const actual = Number(row['Total']);
+        if (Math.abs(expected - actual) > 0.02) rowIssues.push(`Total ${actual} != SubTotal ${row['SubTotal']} + Tax ${row['TotalTax']}`);
+      }
+    } else if (isQBFinancialData) {
+      // QuickBooks invoice/bill validation
+      const hasAmount = val('TotalAmt');
+      const hasDate = val('TxnDate');
+      const hasRef = val('DocNumber');
+      const balance = Number(row['Balance'] || 0);
+      const totalAmt = Number(row['TotalAmt'] || 0);
+
+      if (!hasAmount) rowIssues.push('Missing TotalAmt');
+      if (!hasDate) rowIssues.push('Missing TxnDate');
+      if (!hasRef) rowIssues.push('Missing DocNumber');
+      if (balance > 0 && val('DueDate')) {
+        const due = new Date(String(row['DueDate']));
+        if (due < new Date()) rowIssues.push(`Overdue: ${balance.toFixed(2)} balance due since ${row['DueDate']}`);
+      }
+      if (totalAmt > 0 && Number(row['TxnTaxDetail_TotalTax'] || 0) <= 0) rowIssues.push('Missing tax on transaction');
+      if (!val('CustomerRef_name') && !val('VendorRef_name')) rowIssues.push('Missing customer/vendor reference');
     } else if (isSupplierData) {
-      // Supplier / Vendor master validation — works with both legacy and SAP field names
-      const hasName = val('name') || val('NAME1');
-      const hasVat = val('vat_number') || val('STCD1');
-      const hasPayTerms = val('payment_terms') || val('ZTERM');
-      const hasBankDetails = (val('bank_name') && val('bank_account')) || val('HBKID') || val('AKONT');
-      const hasContact = val('contact_name') || val('contact_email') || val('TELF1');
-      const isBlocked = val('SPERR') || val('SPERM');
+      // Supplier / Vendor master validation — works with all ERP field names
+      const hasName = val('name') || val('NAME1') || val('CompanyName') || val('Name') || val('DisplayName');
+      const hasVat = val('vat_number') || val('STCD1') || val('vat') || val('VATRegistrationNumber') || val('TaxNumber') || val('TaxIdentifier');
+      const hasPayTerms = val('payment_terms') || val('ZTERM') || val('property_payment_term_id') || val('TermsAgreed') || val('TermRef');
+      const hasBankDetails = (val('bank_name') && val('bank_account')) || val('HBKID') || val('AKONT') ||
+        val('property_account_payable_id') || (val('BankName') && val('BankAccountNumber')) || val('BankAccountDetails') || val('AcctNum');
+      const hasContact = val('contact_name') || val('contact_email') || val('TELF1') || val('email') || val('phone') ||
+        val('EmailAddress') || val('TelephoneNumber') || val('PrimaryEmailAddr') || val('PrimaryPhone');
+      const isBlocked = val('SPERR') || val('SPERM') || (Number(row['active'] ?? row['Active'] ?? 1) === 0);
 
       if (!hasName) rowIssues.push('Missing supplier name');
       if (!hasVat) rowIssues.push('Missing VAT/tax number');
       if (!hasPayTerms) rowIssues.push('Missing payment terms');
       if (!hasBankDetails) rowIssues.push('Missing reconciliation account or bank details');
       if (!hasContact) rowIssues.push('Missing contact information');
-      if (isBlocked) rowIssues.push('Vendor is blocked for posting or payment');
+      if (isBlocked) rowIssues.push('Vendor is blocked or inactive');
     } else if (isCustomerData) {
-      // Customer / AR validation — works with both legacy and SAP field names
-      const hasName = val('name') || val('NAME1');
-      const hasRegNum = val('registration_number') || val('STCD1');
-      const hasPayTerms = val('payment_terms') || val('ZTERM');
-      const hasContact = val('contact_name') || val('contact_email') || val('TELF1');
-      const creditLimit = Number(row['credit_limit'] || row['KLIMK'] || 0);
-      const creditBalance = Number(row['credit_balance'] || 0);
+      // Customer / AR validation — works with all ERP field names
+      const hasName = val('name') || val('NAME1') || val('CompanyName') || val('Name') || val('DisplayName');
+      const hasRegNum = val('registration_number') || val('STCD1') || val('vat') || val('company_registry') ||
+        val('VATRegistrationNumber') || val('TaxNumber') || val('TaxExemptionReasonId');
+      const hasPayTerms = val('payment_terms') || val('ZTERM') || val('property_payment_term_id') || val('TermsAgreed');
+      const hasContact = val('contact_name') || val('contact_email') || val('TELF1') || val('email') || val('phone') ||
+        val('EmailAddress') || val('TelephoneNumber') || val('PrimaryEmailAddr') || val('PrimaryPhone');
+      const creditLimit = Number(row['credit_limit'] || row['KLIMK'] || row['CreditLimit'] || 0);
+      const creditBalance = Number(row['credit_balance'] || row['Balance'] ||
+        row['Balances_AccountsReceivable_Outstanding'] || 0);
       const hasCreditControl = val('CTLPC') || creditLimit > 0;
 
       if (!hasName) rowIssues.push('Missing customer name');
@@ -1941,20 +2069,25 @@ async function performValidation(
       if (!hasPayTerms) rowIssues.push('Missing payment terms');
       if (!hasContact) rowIssues.push('Missing contact information');
     } else if (isProductData) {
-      // Product / Inventory validation — works with both legacy and SAP field names
-      const hasSku = val('sku') || val('MATNR');
-      const hasName = val('name') || val('ARKTX');
-      const costPrice = Number(row['cost_price'] || 0);
-      const sellingPrice = Number(row['selling_price'] || 0);
-      const stockOnHand = Number(row['stock_on_hand'] || row['LABST'] || 0);
-      const reorderLevel = Number(row['reorder_level'] || 0);
+      // Product / Inventory validation — works with all ERP field names
+      const hasSku = val('sku') || val('MATNR') || val('default_code') || val('ProductCode') || val('Code') || val('Sku');
+      const hasName = val('name') || val('ARKTX') || val('Name') || val('Description');
+      const costPrice = Number(row['cost_price'] || row['standard_price'] || row['CostPrice'] || row['PurchaseCost'] ||
+        row['PurchaseUnitPrice'] || 0);
+      const sellingPrice = Number(row['selling_price'] || row['list_price'] || row['SalePrice'] || row['UnitPrice'] ||
+        row['SalesUnitPrice'] || 0);
+      const stockOnHand = Number(row['stock_on_hand'] || row['LABST'] || row['qty_available'] || row['quantity'] ||
+        row['QuantityInStock'] || row['QuantityOnHand'] || row['QtyOnHand'] || 0);
+      const reorderLevel = Number(row['reorder_level'] || row['ReorderLevel'] || row['ReorderPoint'] || 0);
       const hasBlockedStock = Number(row['SPEME'] || 0) > 0;
+      const isInactive = Number(row['InactiveFlag'] || 0) > 0 || Number(row['active'] ?? row['Active'] ?? 1) === 0;
 
       if (!hasSku) rowIssues.push('Missing SKU/material number');
       if (!hasName) rowIssues.push('Missing product name');
       if (costPrice > 0 && sellingPrice > 0 && sellingPrice < costPrice) rowIssues.push(`Selling price ${sellingPrice} below cost ${costPrice}`);
       if (stockOnHand < reorderLevel && reorderLevel > 0) rowIssues.push(`Stock ${stockOnHand} below reorder level ${reorderLevel}`);
       if (hasBlockedStock) rowIssues.push(`Blocked stock: ${row['SPEME']} units`);
+      if (isInactive) rowIssues.push('Product is inactive/discontinued');
     } else {
       // Generic financial record validation (invoices, payments, bank transactions)
       const hasAmount = val('amount') || val('total') || val('debit') || val('credit') || val('total_debit');
@@ -2406,6 +2539,347 @@ async function fetchDataForSource(
            LEFT JOIN sap_knb1 b ON a.tenant_id = b.tenant_id AND a.KUNNR = b.KUNNR
            WHERE a.tenant_id = ?
            LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      // ── Odoo Native Table Queries ──
+      if (module === 'odoo_account_move' || module === 'odoo_account_move_invoice') {
+        const typeFilter = module.includes('invoice') ? "AND move_type IN ('in_invoice','in_refund')" : '';
+        const rows = await db.prepare(
+          `SELECT name, move_type, partner_id, partner_name, invoice_date, date, invoice_date_due, ref,
+                  state, amount_untaxed, amount_tax, amount_total, amount_residual, amount_paid,
+                  currency_id, payment_state, invoice_origin
+           FROM odoo_account_move WHERE tenant_id = ? ${typeFilter} LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_account_move_line') {
+        const rows = await db.prepare(
+          `SELECT l.move_id, l.move_name, l.account_id, l.account_name, l.partner_id, l.name,
+                  l.debit, l.credit, l.balance, l.amount_currency, l.date_maturity, l.date,
+                  l.reconciled, l.product_id, l.quantity, l.price_unit
+           FROM odoo_account_move_line l WHERE l.tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_res_partner' || module === 'odoo_res_partner_supplier') {
+        const rankFilter = module.includes('supplier') ? 'AND supplier_rank > 0' : '';
+        const rows = await db.prepare(
+          `SELECT name, display_name, partner_type, is_company, supplier_rank, customer_rank,
+                  vat, company_registry, street, city, zip, country_id, phone, email,
+                  property_payment_term_id, property_account_receivable_id, property_account_payable_id,
+                  credit_limit, active
+           FROM odoo_res_partner WHERE tenant_id = ? ${rankFilter} LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_res_partner_customer') {
+        const rows = await db.prepare(
+          `SELECT name, display_name, partner_type, is_company, customer_rank,
+                  vat, company_registry, street, city, zip, country_id, phone, email,
+                  property_payment_term_id, property_account_receivable_id, credit_limit, active
+           FROM odoo_res_partner WHERE tenant_id = ? AND customer_rank > 0 LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_product_product') {
+        const rows = await db.prepare(
+          `SELECT default_code, name, barcode, type, categ_name, list_price, standard_price,
+                  uom_id, qty_available, virtual_available, active
+           FROM odoo_product_product WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_stock_quant') {
+        const rows = await db.prepare(
+          `SELECT product_id, product_name, location_id, location_name, lot_id,
+                  quantity, reserved_quantity, inventory_date, inventory_quantity, inventory_diff_quantity
+           FROM odoo_stock_quant WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_purchase_order') {
+        const rows = await db.prepare(
+          `SELECT name, partner_id, partner_name, date_order, date_planned, state,
+                  amount_untaxed, amount_tax, amount_total, currency_id, invoice_status, receipt_status
+           FROM odoo_purchase_order WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_purchase_order_line') {
+        const rows = await db.prepare(
+          `SELECT l.order_id, l.product_id, l.product_name, l.product_qty, l.qty_received,
+                  l.qty_invoiced, l.product_uom, l.price_unit, l.price_subtotal, l.price_total, l.date_planned
+           FROM odoo_purchase_order_line l WHERE l.tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_sale_order') {
+        const rows = await db.prepare(
+          `SELECT name, partner_id, partner_name, date_order, commitment_date, client_order_ref,
+                  state, amount_untaxed, amount_tax, amount_total, currency_id, invoice_status, delivery_status
+           FROM odoo_sale_order WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_sale_order_line') {
+        const rows = await db.prepare(
+          `SELECT order_id, product_id, product_name, product_uom_qty, qty_delivered,
+                  qty_invoiced, product_uom, price_unit, price_subtotal, price_total
+           FROM odoo_sale_order_line WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_account_bank_statement_line') {
+        const rows = await db.prepare(
+          `SELECT statement_id, journal_id, date, payment_ref, partner_name, amount,
+                  amount_currency, currency_id, account_number, is_reconciled
+           FROM odoo_account_bank_statement_line WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'odoo_account_payment') {
+        const rows = await db.prepare(
+          `SELECT name, payment_type, partner_type, partner_name, amount, currency_id,
+                  date, ref, state
+           FROM odoo_account_payment WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      // ── Sage Native Table Queries ──
+      if (module === 'sage_customer') {
+        const rows = await db.prepare(
+          `SELECT AccountReference, CompanyName, ContactName, City, Country, TelephoneNumber,
+                  EmailAddress, VATRegistrationNumber, CreditLimit, Balance, TermsAgreed,
+                  NominalCode, CurrencyCode, AccountStatus
+           FROM sage_customer WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_supplier') {
+        const rows = await db.prepare(
+          `SELECT AccountReference, CompanyName, ContactName, City, Country, TelephoneNumber,
+                  EmailAddress, VATRegistrationNumber, CreditLimit, Balance, TermsAgreed,
+                  NominalCode, BankName, BankAccountNumber, BankSortCode, AccountStatus
+           FROM sage_supplier WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_sales_invoice') {
+        const rows = await db.prepare(
+          `SELECT InvoiceNumber, AccountReference, CustomerName, InvoiceDate, DueDate,
+                  NetAmount, TaxAmount, GrossAmount, AmountPaid, AmountOutstanding,
+                  TaxCode, NominalCode, Reference, Status, CurrencyCode
+           FROM sage_sales_invoice WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_purchase_invoice') {
+        const rows = await db.prepare(
+          `SELECT InvoiceNumber, AccountReference, SupplierName, InvoiceDate, DueDate,
+                  NetAmount, TaxAmount, GrossAmount, AmountPaid, AmountOutstanding,
+                  TaxCode, NominalCode, Reference, Status, CurrencyCode
+           FROM sage_purchase_invoice WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_stock_item') {
+        const rows = await db.prepare(
+          `SELECT ProductCode, Description, Category, SalePrice, CostPrice,
+                  QuantityInStock, ReorderLevel, ReorderQuantity, UnitOfMeasure,
+                  Location, InactiveFlag
+           FROM sage_stock_item WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_bank_transaction') {
+        const rows = await db.prepare(
+          `SELECT BankAccountReference, TransactionDate, TransactionType, Reference, Details,
+                  NetAmount, TaxAmount, GrossAmount, PaymentMethod, NominalCode, Reconciled, CurrencyCode
+           FROM sage_bank_transaction WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_purchase_order') {
+        const rows = await db.prepare(
+          `SELECT OrderNumber, AccountReference, SupplierName, OrderDate, DeliveryDate,
+                  NetAmount, TaxAmount, GrossAmount, Status, DeliveryStatus, Reference, CurrencyCode
+           FROM sage_purchase_order WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_goods_received') {
+        const rows = await db.prepare(
+          `SELECT GRNNumber, OrderNumber, SupplierName, ReceivedDate, ProductCode,
+                  Description, QuantityOrdered, QuantityReceived, UnitCost, TotalCost, Status
+           FROM sage_goods_received WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'sage_nominal_ledger') {
+        const rows = await db.prepare(
+          `SELECT NominalCode, NominalName, NominalType, CategoryCode, Balance, BudgetBalance, PriorYearBalance
+           FROM sage_nominal_ledger WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      // ── Xero Native Table Queries ──
+      if (module === 'xero_invoice' || module === 'xero_invoice_accrec') {
+        const typeFilter = module.includes('accrec') ? "AND Type = 'ACCREC'" : '';
+        const rows = await db.prepare(
+          `SELECT InvoiceNumber, Type, Reference, ContactName, Date, DueDate, Status,
+                  SubTotal, TotalTax, Total, AmountDue, AmountPaid, AmountCredited,
+                  CurrencyCode, CurrencyRate, SentToContact
+           FROM xero_invoice WHERE tenant_id = ? ${typeFilter} LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_invoice_accpay') {
+        const rows = await db.prepare(
+          `SELECT InvoiceNumber, Type, Reference, ContactName, Date, DueDate, Status,
+                  SubTotal, TotalTax, Total, AmountDue, AmountPaid, CurrencyCode
+           FROM xero_invoice WHERE tenant_id = ? AND Type = 'ACCPAY' LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_contact' || module === 'xero_contact_supplier') {
+        const supplierFilter = module.includes('supplier') ? 'AND IsSupplier = 1' : '';
+        const rows = await db.prepare(
+          `SELECT Name, ContactNumber, ContactStatus, EmailAddress, IsSupplier, IsCustomer,
+                  TaxNumber, DefaultCurrency, Phone, City, Country,
+                  Balances_AccountsReceivable_Outstanding, Balances_AccountsPayable_Outstanding
+           FROM xero_contact WHERE tenant_id = ? ${supplierFilter} LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_contact_customer') {
+        const rows = await db.prepare(
+          `SELECT Name, ContactNumber, ContactStatus, EmailAddress, IsCustomer,
+                  TaxNumber, DefaultCurrency, Phone, City, Country,
+                  Balances_AccountsReceivable_Outstanding
+           FROM xero_contact WHERE tenant_id = ? AND IsCustomer = 1 LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_bank_transaction') {
+        const rows = await db.prepare(
+          `SELECT Type, ContactName, BankAccountName, Date, Reference, IsReconciled,
+                  Status, SubTotal, TotalTax, Total, CurrencyCode
+           FROM xero_bank_transaction WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_payment') {
+        const rows = await db.prepare(
+          `SELECT PaymentType, InvoiceNumber, Date, Amount, Reference, Status, BankAccountName
+           FROM xero_payment WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_item') {
+        const rows = await db.prepare(
+          `SELECT Code, Name, Description, PurchaseUnitPrice, SalesUnitPrice,
+                  QuantityOnHand, TotalCostPool, IsTrackedAsInventory, IsSold, IsPurchased
+           FROM xero_item WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_manual_journal') {
+        const rows = await db.prepare(
+          `SELECT Date, Narration, Status, JournalLines, ShowOnCashBasisReports
+           FROM xero_manual_journal WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'xero_purchase_order') {
+        const rows = await db.prepare(
+          `SELECT PurchaseOrderNumber, ContactName, Date, DeliveryDate, Reference,
+                  Status, SubTotal, TotalTax, Total, CurrencyCode, SentToContact
+           FROM xero_purchase_order WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+
+      // ── QuickBooks Native Table Queries ──
+      if (module === 'qb_invoice') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, DueDate, CustomerRef_name, TotalAmt, Balance,
+                  TxnTaxDetail_TotalTax, CurrencyRef, SalesTermRef, PrintStatus, EmailStatus
+           FROM qb_invoice WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_bill') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, DueDate, VendorRef_name, TotalAmt, Balance,
+                  TxnTaxDetail_TotalTax, CurrencyRef, APAccountRef, SalesTermRef
+           FROM qb_bill WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_customer') {
+        const rows = await db.prepare(
+          `SELECT DisplayName, CompanyName, GivenName, FamilyName, PrimaryEmailAddr,
+                  PrimaryPhone, BillAddr_City, BillAddr_Country, Balance, CurrencyRef,
+                  PreferredDeliveryMethod, Active
+           FROM qb_customer WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_vendor') {
+        const rows = await db.prepare(
+          `SELECT DisplayName, CompanyName, PrimaryEmailAddr, PrimaryPhone,
+                  BillAddr_City, BillAddr_Country, TaxIdentifier, AcctNum, Balance,
+                  CurrencyRef, TermRef, Active, Vendor1099
+           FROM qb_vendor WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_item') {
+        const rows = await db.prepare(
+          `SELECT Name, Sku, Type, Description, UnitPrice, PurchaseCost,
+                  QtyOnHand, ReorderPoint, TrackQtyOnHand, Taxable, Active
+           FROM qb_item WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_payment') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, CustomerRef_name, TotalAmt, UnappliedAmt,
+                  CurrencyRef, PaymentRefNum
+           FROM qb_payment WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_bill_payment') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, VendorRef_name, TotalAmt, CurrencyRef, PayType
+           FROM qb_bill_payment WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_journal_entry') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, TotalAmt, Adjustment, PrivateNote, CurrencyRef
+           FROM qb_journal_entry WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_purchase_order') {
+        const rows = await db.prepare(
+          `SELECT DocNumber, TxnDate, VendorRef_name, TotalAmt, TxnTaxDetail_TotalTax,
+                  CurrencyRef, POStatus, DueDate, Memo
+           FROM qb_purchase_order WHERE tenant_id = ? LIMIT 500`
+        ).bind(tenantId).all();
+        return rows.results as Record<string, unknown>[];
+      }
+      if (module === 'qb_deposit') {
+        const rows = await db.prepare(
+          `SELECT TxnDate, DepositToAccountRef_name, TotalAmt, CurrencyRef, PrivateNote
+           FROM qb_deposit WHERE tenant_id = ? LIMIT 500`
         ).bind(tenantId).all();
         return rows.results as Record<string, unknown>[];
       }
