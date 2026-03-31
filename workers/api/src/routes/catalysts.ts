@@ -6,7 +6,8 @@ import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
-import { stripCodeFences } from '../services/llm-provider';
+import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from '../services/llm-provider';
+import type { LlmMessage } from '../services/llm-provider';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -1002,6 +1003,14 @@ type ExecutionResultRecord = {
   unmatched_source_records?: Array<Record<string, unknown>>;
   unmatched_target_records?: Array<Record<string, unknown>>;
   exception_records?: Array<{ record: Record<string, unknown>; type: string; severity: string; detail: string }>;
+  llm_analysis?: {
+    reasoning: string;
+    recommendations: string[];
+    risk_factors: string[];
+    industry_context: string;
+    confidence_assessment: string;
+    erp_specific_notes: string;
+  };
 };
 
 type SubCatalystRecord = {
@@ -1523,6 +1532,23 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     }
 
     result.duration_ms = Date.now() - startTime;
+
+    // ── LLM-powered analysis: send data sample + results to Atheon model ──
+    try {
+      const clusterDomain = (cluster.domain as string) || 'finance';
+      const clusterIndustry = (cluster.industry as string) || 'general';
+      const llmResult = await llmAnalyzeExecution(
+        result, sub.name, clusterDomain, clusterIndustry, execConfig.mode,
+        targetTenant, c.env.DB, c.env.AI,
+      );
+      if (llmResult) {
+        result.llm_analysis = llmResult;
+        result.reasoning = llmResult.reasoning;
+        result.recommendations = llmResult.recommendations;
+      }
+    } catch (llmErr) {
+      console.error('LLM analysis failed (non-critical, rules-based results preserved):', llmErr);
+    }
   } catch (err) {
     result = {
       id: crypto.randomUUID(),
@@ -1594,6 +1620,13 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
     if (summary.discrepancies > 0) insights.push(`${summary.discrepancies} discrepancy(ies) detected — review and resolve.`);
     if (summary.unmatched_source > 0) insights.push(`${summary.unmatched_source} unmatched source record(s) need attention.`);
+    // Append LLM-generated reasoning and recommendations to analytics insights
+    if (result.llm_analysis) {
+      if (result.llm_analysis.reasoning) insights.push(`AI Analysis: ${result.llm_analysis.reasoning}`);
+      for (const rec of result.llm_analysis.recommendations) insights.push(`AI Recommendation: ${rec}`);
+      for (const risk of result.llm_analysis.risk_factors) insights.push(`AI Risk: ${risk}`);
+      if (result.llm_analysis.industry_context) insights.push(`Industry Context: ${result.llm_analysis.industry_context}`);
+    }
     const analyticsId = crypto.randomUUID();
     await c.env.DB.prepare(
       `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1811,7 +1844,7 @@ async function performValidation(
   // Detect the data type from the data source config to apply appropriate validation rules
   const module = String(sources[0]?.config?.module || '').toLowerCase();
   const isSupplierData = module.includes('vendor') || module.includes('supplier');
-  const isCustomerData = module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar');
+  const isCustomerData = module.includes('customer') || module.includes('accounts_receivable') || module === 'ar';
   const isProductData = module.includes('product') || module.includes('inventory') || module.includes('stock');
 
   for (const row of data) {
@@ -2265,6 +2298,103 @@ async function fetchDataForSource(
     console.error(`fetchDataForSource error for type=${source.type}:`, err);
     return [];
   }
+}
+
+// ── LLM-Powered Execution Analysis ──
+// Uses the tenant's configured LLM provider (Atheon model trained on ERP/industry data)
+// to analyze sub-catalyst results and provide intelligent, context-aware insights.
+// Falls back gracefully — rules-based results are always preserved if LLM is unavailable.
+
+async function llmAnalyzeExecution(
+  result: ExecutionResultRecord,
+  subCatalystName: string,
+  domain: string,
+  industry: string,
+  mode: string,
+  tenantId: string,
+  db: D1Database,
+  ai: Ai,
+): Promise<ExecutionResultRecord['llm_analysis'] | null> {
+  const config = await loadLlmConfig(db, tenantId);
+
+  // Build a concise data sample for the LLM (max 5 discrepancies to keep token usage low)
+  const sampleDiscrepancies = (result.discrepancies || []).slice(0, 5).map(d => ({
+    field: d.field,
+    source_value: d.source_value,
+    target_value: d.target_value,
+    difference: d.difference,
+  }));
+
+  const sampleUnmatched = (result.unmatched_source_records || []).slice(0, 3).map(r => {
+    const keys = Object.keys(r).slice(0, 6);
+    const sample: Record<string, unknown> = {};
+    for (const k of keys) sample[k] = r[k];
+    return sample;
+  });
+
+  const systemPrompt = `You are Atheon Intelligence, an ERP data analysis engine trained on ${industry} industry data. You analyze sub-catalyst execution results and provide actionable insights.
+
+Context:
+- Industry: ${industry}
+- Domain: ${domain}
+- Sub-catalyst: ${subCatalystName}
+- Execution mode: ${mode}
+
+You MUST respond with valid JSON only (no markdown, no code fences). Use this exact schema:
+{
+  "reasoning": "2-3 sentence analysis of what the results mean for this specific industry/ERP context",
+  "recommendations": ["actionable recommendation 1", "actionable recommendation 2", "actionable recommendation 3"],
+  "risk_factors": ["specific risk based on the data patterns"],
+  "industry_context": "How these findings relate to ${industry} industry standards and compliance",
+  "confidence_assessment": "How confident the system is in these results and why",
+  "erp_specific_notes": "ERP-specific observations about data quality, field completeness, or integration issues"
+}`;
+
+  const userPrompt = `Analyze this ${mode} execution for "${subCatalystName}" in the ${domain} domain:
+
+Summary:
+- Source records: ${result.summary.total_records_source}
+- Target records: ${result.summary.total_records_target}
+- Matched: ${result.summary.matched}
+- Unmatched source: ${result.summary.unmatched_source}
+- Unmatched target: ${result.summary.unmatched_target}
+- Discrepancies: ${result.summary.discrepancies}
+- Status: ${result.status}
+
+${sampleDiscrepancies.length > 0 ? `Sample discrepancies:\n${JSON.stringify(sampleDiscrepancies, null, 1)}` : 'No discrepancies found.'}
+${sampleUnmatched.length > 0 ? `\nSample unmatched records:\n${JSON.stringify(sampleUnmatched, null, 1)}` : ''}
+
+Provide your analysis as JSON.`;
+
+  const messages: LlmMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+
+  const llmResponse = await llmChatWithFallback(config, ai, messages, {
+    maxTokens: 1024,
+    temperature: 0.3,
+    timeoutMs: 12000,
+  });
+
+  const cleaned = stripCodeFences(llmResponse.text);
+  const parsed = JSON.parse(cleaned) as {
+    reasoning?: string;
+    recommendations?: string[];
+    risk_factors?: string[];
+    industry_context?: string;
+    confidence_assessment?: string;
+    erp_specific_notes?: string;
+  };
+
+  return {
+    reasoning: parsed.reasoning || 'Analysis completed.',
+    recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+    risk_factors: Array.isArray(parsed.risk_factors) ? parsed.risk_factors : [],
+    industry_context: parsed.industry_context || '',
+    confidence_assessment: parsed.confidence_assessment || '',
+    erp_specific_notes: parsed.erp_specific_notes || '',
+  };
 }
 
 // ── Exception Pipeline: Auto-raise exceptions from execution results ──
