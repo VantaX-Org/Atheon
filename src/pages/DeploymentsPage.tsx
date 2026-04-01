@@ -252,7 +252,10 @@ function ProvisionView({ onCreated, onError }: {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    api.tenants.list().then(d => setTenants(d.tenants.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))).catch(() => {});
+    api.tenants.list().then(d => setTenants(d.tenants.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))).catch((err) => {
+      console.error('Failed to load tenants', err);
+      // Non-critical - deployment can proceed without tenant list
+    });
   }, []);
 
   const submit = async () => {
