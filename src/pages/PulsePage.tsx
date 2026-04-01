@@ -301,7 +301,10 @@ export function PulsePage() {
 
   // Load domains on mount
   useEffect(() => {
-    api.pulse.domains().then(d => setAvailableDomains(d.domains || [])).catch(() => {});
+    api.pulse.domains().then(d => setAvailableDomains(d.domains || [])).catch((err) => { 
+      console.error('Failed to load domains', err);
+      // Non-critical -不影响主要功能 - silently fail but log for debugging
+    });
   }, []);
 
   const handleOpenMetricTrace = async (metricId: string) => {

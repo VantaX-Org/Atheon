@@ -255,9 +255,15 @@ function NewAssessmentWizard({ onCreated, onError }: {
     // Load default config
     api.assessments.getDefaultConfig().then(d => {
       if (d && typeof d === 'object') setConfig(prev => ({ ...prev, ...(d as Record<string, unknown>) }));
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error('Failed to load default assessment config', err);
+      // Non-critical - system can operate with default values
+    });
     // Load ERP connections
-    api.erp.connections().then(d => setErpConnections((d.connections || []).map((c: ERPConnection) => ({ id: c.id, erp_type: c.adapterSystem || c.adapterName, company_name: c.name })))).catch(() => {});
+    api.erp.connections().then(d => setErpConnections((d.connections || []).map((c: ERPConnection) => ({ id: c.id, erp_type: c.adapterSystem || c.adapterName, company_name: c.name })))).catch((err) => {
+      console.error('Failed to load ERP connections', err);
+      // Non-critical - ERP connections are optional for assessment
+    });
   }, []);
 
   const submit = async () => {
