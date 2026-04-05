@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v36';
+export const MIGRATION_VERSION = 'v37';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -91,6 +91,20 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS catalyst_patterns (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), pattern_type TEXT NOT NULL DEFAULT 'recurring_issue', title TEXT NOT NULL, description TEXT NOT NULL, frequency INTEGER NOT NULL DEFAULT 1, first_seen TEXT NOT NULL DEFAULT (datetime('now')), last_seen TEXT NOT NULL DEFAULT (datetime('now')), affected_clusters TEXT NOT NULL DEFAULT '[]', affected_sub_catalysts TEXT NOT NULL DEFAULT '[]', severity TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL DEFAULT 'active', recommended_actions TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS catalyst_effectiveness (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, runs_count INTEGER NOT NULL DEFAULT 0, success_rate REAL NOT NULL DEFAULT 0, avg_match_rate REAL NOT NULL DEFAULT 0, avg_duration_ms INTEGER NOT NULL DEFAULT 0, total_value_processed REAL NOT NULL DEFAULT 0, total_exceptions INTEGER NOT NULL DEFAULT 0, improvement_trend REAL NOT NULL DEFAULT 0, roi_estimate REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name, period_start));
     CREATE TABLE IF NOT EXISTS catalyst_dependencies (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source_cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), source_sub_catalyst TEXT NOT NULL, target_cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), target_sub_catalyst TEXT NOT NULL, dependency_type TEXT NOT NULL DEFAULT 'data_flow', strength REAL NOT NULL DEFAULT 0, description TEXT, discovered_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS external_signals (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), category TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL, source_url TEXT, source_name TEXT, reliability_score REAL NOT NULL DEFAULT 0.5, relevance_score REAL NOT NULL DEFAULT 0.5, sentiment TEXT NOT NULL DEFAULT 'neutral', raw_data TEXT NOT NULL DEFAULT '{}', detected_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT);
+    CREATE TABLE IF NOT EXISTS signal_impacts (id TEXT PRIMARY KEY, signal_id TEXT NOT NULL REFERENCES external_signals(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), health_dimension TEXT NOT NULL, impact_magnitude INTEGER NOT NULL DEFAULT 1, impact_direction TEXT NOT NULL DEFAULT 'headwind', impact_timeline TEXT NOT NULL DEFAULT 'near-term', confidence REAL NOT NULL DEFAULT 0.5, recommended_response TEXT, analysis TEXT NOT NULL DEFAULT '{}', computed_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS competitors (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, industry TEXT, estimated_revenue TEXT, market_share REAL, strengths TEXT NOT NULL DEFAULT '[]', weaknesses TEXT NOT NULL DEFAULT '[]', last_updated TEXT NOT NULL DEFAULT (datetime('now')), signals_count INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS market_benchmarks (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), industry TEXT NOT NULL, metric_name TEXT NOT NULL, benchmark_value REAL NOT NULL, benchmark_unit TEXT, percentile_25 REAL, percentile_50 REAL, percentile_75 REAL, source TEXT, measured_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS regulatory_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), title TEXT NOT NULL, description TEXT NOT NULL, jurisdiction TEXT, affected_dimensions TEXT NOT NULL DEFAULT '[]', effective_date TEXT, compliance_deadline TEXT, readiness_score REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'upcoming', source_url TEXT);
+    CREATE TABLE IF NOT EXISTS root_cause_analyses (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), metric_id TEXT NOT NULL, metric_name TEXT NOT NULL, trigger_status TEXT NOT NULL, causal_chain TEXT NOT NULL DEFAULT '[]', confidence REAL NOT NULL DEFAULT 0, impact_summary TEXT, prescription TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'active', source_data_refs TEXT NOT NULL DEFAULT '{}', generated_at TEXT NOT NULL DEFAULT (datetime('now')), resolved_at TEXT);
+    CREATE TABLE IF NOT EXISTS causal_factors (id TEXT PRIMARY KEY, rca_id TEXT NOT NULL REFERENCES root_cause_analyses(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), layer TEXT NOT NULL, factor_type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '{}', impact_value REAL, impact_unit TEXT DEFAULT 'ZAR', confidence REAL NOT NULL DEFAULT 0, source_run_ids TEXT NOT NULL DEFAULT '[]', source_metric_ids TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS diagnostic_prescriptions (id TEXT PRIMARY KEY, rca_id TEXT NOT NULL REFERENCES root_cause_analyses(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), priority TEXT NOT NULL DEFAULT 'short-term', title TEXT NOT NULL, description TEXT NOT NULL, expected_impact TEXT, effort_level TEXT NOT NULL DEFAULT 'medium', responsible_domain TEXT, deadline_suggested TEXT, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS catalyst_prescriptions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), pattern_id TEXT REFERENCES catalyst_patterns(id), cluster_id TEXT NOT NULL, sub_catalyst_name TEXT NOT NULL, prescription_type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, steps TEXT NOT NULL DEFAULT '[]', sap_transactions TEXT NOT NULL DEFAULT '[]', expected_impact TEXT, effort_level TEXT NOT NULL DEFAULT 'medium', priority TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS roi_tracking (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), period TEXT NOT NULL, total_discrepancy_value_identified REAL NOT NULL DEFAULT 0, total_discrepancy_value_recovered REAL NOT NULL DEFAULT 0, total_downstream_losses_prevented REAL NOT NULL DEFAULT 0, total_person_hours_saved REAL NOT NULL DEFAULT 0, total_catalyst_runs INTEGER NOT NULL DEFAULT 0, licence_cost_annual REAL NOT NULL DEFAULT 0, roi_multiple REAL NOT NULL DEFAULT 0, calculated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, period));
+    CREATE TABLE IF NOT EXISTS board_reports (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), title TEXT NOT NULL, report_type TEXT NOT NULL DEFAULT 'monthly', content TEXT NOT NULL DEFAULT '{}', r2_key TEXT, generated_by TEXT, generated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS industry_radar_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL, source_name TEXT, default_dimensions TEXT NOT NULL DEFAULT '[]', default_magnitude INTEGER NOT NULL DEFAULT 5, default_direction TEXT NOT NULL DEFAULT 'headwind', region TEXT NOT NULL DEFAULT 'ZA');
+    CREATE TABLE IF NOT EXISTS industry_benchmark_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, metric_name TEXT NOT NULL, benchmark_value REAL NOT NULL, benchmark_unit TEXT, percentile_25 REAL, percentile_50 REAL, percentile_75 REAL, source TEXT, region TEXT NOT NULL DEFAULT 'ZA');
+    CREATE TABLE IF NOT EXISTS industry_regulatory_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, jurisdiction TEXT NOT NULL DEFAULT 'South Africa', affected_dimensions TEXT NOT NULL DEFAULT '[]', recurring INTEGER NOT NULL DEFAULT 0, typical_deadline_month INTEGER);
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -202,6 +216,32 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_tenant ON catalyst_dependencies(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_source ON catalyst_dependencies(source_cluster_id)',
     'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_target ON catalyst_dependencies(target_cluster_id)',
+    // V2 Spec: external_signals + signal_impacts indexes
+    'CREATE INDEX IF NOT EXISTS idx_ext_signals_tenant ON external_signals(tenant_id, category)',
+    'CREATE INDEX IF NOT EXISTS idx_ext_signals_detected ON external_signals(detected_at)',
+    'CREATE INDEX IF NOT EXISTS idx_sig_impacts_tenant ON signal_impacts(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sig_impacts_signal ON signal_impacts(signal_id)',
+    // V2 Spec: competitors, benchmarks, regulatory indexes
+    'CREATE INDEX IF NOT EXISTS idx_competitors_tenant ON competitors(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_market_benchmarks_tenant ON market_benchmarks(tenant_id, industry)',
+    'CREATE INDEX IF NOT EXISTS idx_regulatory_events_tenant ON regulatory_events(tenant_id, status)',
+    // V2 Spec: root_cause_analyses + causal_factors + prescriptions indexes
+    'CREATE INDEX IF NOT EXISTS idx_rca_tenant ON root_cause_analyses(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_rca_metric ON root_cause_analyses(metric_id)',
+    'CREATE INDEX IF NOT EXISTS idx_causal_factors_rca ON causal_factors(rca_id)',
+    'CREATE INDEX IF NOT EXISTS idx_causal_factors_tenant ON causal_factors(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_prescriptions_rca ON diagnostic_prescriptions(rca_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_prescriptions_tenant ON diagnostic_prescriptions(tenant_id, status)',
+    // V2 Spec: catalyst_prescriptions indexes
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_prescriptions_tenant ON catalyst_prescriptions(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_prescriptions_pattern ON catalyst_prescriptions(pattern_id)',
+    // V2 Spec: roi_tracking + board_reports indexes
+    'CREATE INDEX IF NOT EXISTS idx_roi_tracking_tenant ON roi_tracking(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_board_reports_tenant ON board_reports(tenant_id)',
+    // V2 Spec: industry seed indexes
+    'CREATE INDEX IF NOT EXISTS idx_industry_radar_seeds ON industry_radar_seeds(industry)',
+    'CREATE INDEX IF NOT EXISTS idx_industry_benchmark_seeds ON industry_benchmark_seeds(industry)',
+    'CREATE INDEX IF NOT EXISTS idx_industry_regulatory_seeds ON industry_regulatory_seeds(industry)',
   ];
 
   for (const idx of indexes) {

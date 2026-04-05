@@ -1,0 +1,64 @@
+/**
+ * Board Report Routes
+ */
+
+import { Hono } from 'hono';
+import type { AppBindings, AuthContext } from '../types';
+import { generateBoardReport } from '../services/board-report-engine';
+
+const boardReport = new Hono<AppBindings>();
+
+const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
+function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
+  if (CROSS_TENANT_ROLES.has(auth?.role || '')) {
+    return c.req.query('tenant_id') || defaultTenantId;
+  }
+  return defaultTenantId;
+}
+
+// POST /api/board-report/generate
+boardReport.post('/generate', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  const auth = c.get('auth') as AuthContext | undefined;
+  try {
+    const result = await generateBoardReport(c.env.DB, tenantId, c.env, auth?.email || undefined);
+    return c.json(result, 201);
+  } catch (err) {
+    return c.json({ error: 'Board report generation failed', detail: (err as Error).message }, 500);
+  }
+});
+
+// GET /api/board-report/ — List reports
+boardReport.get('/', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  const limit = Math.min(parseInt(c.req.query('limit') || '10', 10) || 10, 50);
+  const results = await c.env.DB.prepare(
+    'SELECT id, tenant_id, title, report_type, r2_key, generated_by, generated_at FROM board_reports WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT ?'
+  ).bind(tenantId, limit).all();
+  const reports = results.results.map((r: Record<string, unknown>) => ({
+    id: r.id, title: r.title, reportType: r.report_type,
+    r2Key: r.r2_key, generatedBy: r.generated_by, generatedAt: r.generated_at,
+  }));
+  return c.json({ reports, total: reports.length });
+});
+
+// GET /api/board-report/:id — Get specific report
+boardReport.get('/:id', async (c) => {
+  const tenantId = getTenantId(c);
+  const reportId = c.req.param('id');
+  const report = await c.env.DB.prepare(
+    'SELECT * FROM board_reports WHERE id = ? AND tenant_id = ?'
+  ).bind(reportId, tenantId).first();
+  if (!report) return c.json({ error: 'Report not found' }, 404);
+  return c.json({
+    id: report.id, title: report.title, reportType: report.report_type,
+    content: JSON.parse(report.content as string || '{}'),
+    r2Key: report.r2_key, generatedBy: report.generated_by, generatedAt: report.generated_at,
+  });
+});
+
+export default boardReport;

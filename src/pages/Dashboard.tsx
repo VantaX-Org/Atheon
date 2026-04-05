@@ -8,12 +8,12 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
-import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse } from "@/lib/api";
+import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse } from "@/lib/api";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight,
-  CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope,
+  CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -88,6 +88,7 @@ export function Dashboard() {
   // New engine summary state
   const [radarCtx, setRadarCtx] = useState<RadarContextResponse | null>(null);
   const [diagSummary, setDiagSummary] = useState<DiagnosticSummaryResponse | null>(null);
+  const [roiData, setRoiData] = useState<ROITrackingResponse | null>(null);
 
   // Flip card state for dashboard cards
   const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
@@ -159,9 +160,11 @@ export function Dashboard() {
     Promise.allSettled([
       api.radar.getContext(),
       api.diagnostics.getSummary(),
-    ]).then(([rc, ds]) => {
+      api.roi.get(),
+    ]).then(([rc, ds, roi]) => {
       if (rc.status === 'fulfilled') setRadarCtx(rc.value);
       if (ds.status === 'fulfilled') setDiagSummary(ds.value);
+      if (roi.status === 'fulfilled') setRoiData(roi.value);
     });
   }, []);
 
@@ -635,6 +638,118 @@ export function Dashboard() {
               </div>
             ) : (
               <p className="text-xs t-muted">No diagnostics run yet. Visit Pulse → Diagnostics.</p>
+            )}
+          </DashCard>
+        </Link>
+      </div>
+
+
+      {/* V2 Engine Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Strategic Context Card */}
+        <Link to="/apex" className="block">
+          <DashCard className="h-full hover:border-accent/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Radar size={16} className="text-accent" />
+                <span className="text-sm font-semibold t-primary">Strategic Context</span>
+              </div>
+              <ChevronRight size={14} className="t-muted" />
+            </div>
+            {radarCtx ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold t-primary">{radarCtx.signals?.length ?? 0}</span>
+                  <span className="text-xs t-muted">active signals</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={radarCtx.context?.sentiment === 'negative' ? 'danger' : radarCtx.context?.sentiment === 'positive' ? 'success' : 'warning'} size="sm">
+                    {radarCtx.context?.sentiment ?? 'neutral'}
+                  </Badge>
+                  <span className="text-[10px] t-muted">market sentiment</span>
+                </div>
+                {radarCtx.context?.confidence != null && (
+                  <Progress value={radarCtx.context.confidence} color={radarCtx.context.confidence >= 70 ? 'emerald' : 'amber'} size="sm" />
+                )}
+              </div>
+            ) : (
+              <p className="text-xs t-muted">No signals detected yet</p>
+            )}
+          </DashCard>
+        </Link>
+
+        {/* Active Diagnostics Card */}
+        <Link to="/pulse" className="block">
+          <DashCard className="h-full hover:border-accent/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Stethoscope size={16} className="text-purple-400" />
+                <span className="text-sm font-semibold t-primary">Active Diagnostics</span>
+              </div>
+              <ChevronRight size={14} className="t-muted" />
+            </div>
+            {diagSummary ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold t-primary">{diagSummary.totalAnalyses ?? 0}</span>
+                  <span className="text-xs t-muted">analyses completed</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {diagSummary.criticalFindings > 0 && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-red-400" />
+                      <span className="text-xs text-red-400">{diagSummary.criticalFindings} critical</span>
+                    </div>
+                  )}
+                  {diagSummary.pendingAnalyses > 0 && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span className="text-xs text-amber-400">{diagSummary.pendingAnalyses} pending</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs t-muted">No diagnostics yet</p>
+            )}
+          </DashCard>
+        </Link>
+
+        {/* ROI Card */}
+        <Link to="/catalysts" className="block">
+          <DashCard className="h-full hover:border-accent/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Coins size={16} className="text-emerald-400" />
+                <span className="text-sm font-semibold t-primary">ROI Tracking</span>
+              </div>
+              <ChevronRight size={14} className="t-muted" />
+            </div>
+            {roiData?.roiMultiple != null ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-emerald-400">
+                    {roiData.roiMultiple}x
+                  </span>
+                  <span className="text-xs t-muted">return multiple</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] t-muted">Recovered</p>
+                    <p className="text-xs font-medium text-emerald-400">
+                      R{((roiData.totalDiscrepancyValueRecovered ?? 0) / 1000000).toFixed(1)}M
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] t-muted">Prevented</p>
+                    <p className="text-xs font-medium text-accent">
+                      R{((roiData.totalPreventedLosses ?? 0) / 1000000).toFixed(1)}M
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs t-muted">No ROI data yet</p>
             )}
           </DashCard>
         </Link>

@@ -682,6 +682,30 @@ export const api = {
       request<{ dependencies: CatalystDependencyItem[]; discovered: number }>(`/api/catalyst-intelligence/dependencies/discover${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
     getOverview: (tenantId?: string) =>
       request<CatalystIntelligenceOverview>(`/api/catalyst-intelligence/overview${qs({ tenant_id: tenantId })}`),
+    getPrescriptions: (tenantId?: string, status?: string) =>
+      request<{ prescriptions: CatalystPrescriptionItem[]; total: number }>(`/api/catalyst-intelligence/prescriptions${qs({ tenant_id: tenantId, status })}`),
+    updatePrescription: (prescriptionId: string, data: { status?: string }, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/catalyst-intelligence/prescriptions/${prescriptionId}/status${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
+  },
+
+  // ── ROI Tracking ────────────────────────────────────────────────────
+  roi: {
+    get: (tenantId?: string) =>
+      request<ROITrackingResponse>(`/api/roi${qs({ tenant_id: tenantId })}`),
+    history: (tenantId?: string, limit?: number) =>
+      request<{ history: ROITrackingItem[]; total: number }>(`/api/roi/history${qs({ tenant_id: tenantId, limit: limit?.toString() })}`),
+    exportCsv: (tenantId?: string) =>
+      request<{ csv: string; generatedAt: string }>(`/api/roi/export${qs({ tenant_id: tenantId })}`),
+  },
+
+  // ── Board Report ───────────────────────────────────────────────────
+  boardReport: {
+    generate: (tenantId?: string) =>
+      request<BoardReportItem>(`/api/board-report/generate${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    list: (tenantId?: string) =>
+      request<{ reports: BoardReportItem[]; total: number }>(`/api/board-report${qs({ tenant_id: tenantId })}`),
+    get: (reportId: string, tenantId?: string) =>
+      request<BoardReportItem>(`/api/board-report/${reportId}${qs({ tenant_id: tenantId })}`),
   },
 };
 
@@ -2066,4 +2090,50 @@ export interface CatalystIntelligenceOverview {
   patterns: CatalystPatternItem[];
   effectiveness: CatalystEffectivenessItem[];
   dependencies: CatalystDependencyItem[];
+}
+
+export interface CatalystPrescriptionItem {
+  id: string;
+  patternId: string;
+  title: string;
+  description: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  effort: 'low' | 'medium' | 'high';
+  expectedImpact: string;
+  sapTransaction?: string;
+  status: 'proposed' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
+  assignedTo?: string;
+  createdAt: string;
+}
+
+// ── ROI Tracking Types ────────────────────────────────────────────────
+
+export interface ROITrackingItem {
+  id: string;
+  totalDiscrepancyValueIdentified: number;
+  totalDiscrepancyValueRecovered: number;
+  totalPreventedLosses: number;
+  totalPersonHoursSaved: number;
+  roiMultiple: number;
+  platformCost: number;
+  calculatedAt: string;
+}
+
+export interface ROITrackingResponse extends ROITrackingItem {
+  breakdown: {
+    byCluster: Array<{ clusterId: string; clusterName: string; recovered: number; prevented: number; hoursSaved: number }>;
+  };
+}
+
+// ── Board Report Types ────────────────────────────────────────────────
+
+export interface BoardReportItem {
+  id: string;
+  title: string;
+  generatedAt: string;
+  reportMonth: string;
+  status: 'generating' | 'completed' | 'failed';
+  contentMarkdown?: string;
+  pdfUrl?: string;
+  sections: string[];
 }
