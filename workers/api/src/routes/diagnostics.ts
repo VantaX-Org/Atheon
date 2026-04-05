@@ -123,17 +123,41 @@ diagnostics.put('/prescriptions/:id/status', async (c) => {
   return c.json({ success: true });
 });
 
-// GET /api/diagnostics/summary
+// GET /api/diagnostics/summary — Spec §2.2: { totalActive, bySeverity, prescriptionsPending, prescriptionsCompleted, totalImpactValue, undiagnosedMetrics }
 diagnostics.get('/summary', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
-  const active = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'").bind(tenantId).first<{ cnt: number }>();
-  const resolved = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'resolved'").bind(tenantId).first<{ cnt: number }>();
-  const pendingRx = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'").bind(tenantId).first<{ cnt: number }>();
-  const completedRx = await c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'completed'").bind(tenantId).first<{ cnt: number }>();
+
+  const [active, pendingRx, completedRx, impactAgg, bySev, undiagnosed] = await Promise.all([
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'completed'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COALESCE(SUM(impact_value), 0) as total FROM causal_factors WHERE tenant_id = ? AND impact_value IS NOT NULL").bind(tenantId).first<{ total: number }>(),
+    c.env.DB.prepare("SELECT trigger_status, COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active' GROUP BY trigger_status").bind(tenantId).all(),
+    c.env.DB.prepare(`SELECT COUNT(DISTINCT pm.id) as cnt FROM process_metrics pm
+      WHERE pm.tenant_id = ? AND pm.status IN ('red', 'amber')
+      AND NOT EXISTS (SELECT 1 FROM root_cause_analyses rca WHERE rca.tenant_id = pm.tenant_id AND rca.metric_id = pm.id AND rca.status = 'active')`).bind(tenantId).first<{ cnt: number }>(),
+  ]);
+
+  const severity: Record<string, number> = {};
+  for (const row of (bySev?.results || [])) {
+    const r = row as Record<string, unknown>;
+    severity[r.trigger_status as string] = r.cnt as number;
+  }
+
   return c.json({
-    activeRCAs: active?.cnt || 0, resolvedRCAs: resolved?.cnt || 0,
-    pendingPrescriptions: pendingRx?.cnt || 0, completedPrescriptions: completedRx?.cnt || 0,
+    totalActive: active?.cnt || 0,
+    bySeverity: severity,
+    prescriptionsPending: pendingRx?.cnt || 0,
+    prescriptionsCompleted: completedRx?.cnt || 0,
+    totalImpactValue: impactAgg?.total || 0,
+    undiagnosedMetrics: undiagnosed?.cnt || 0,
+    // Legacy aliases for backwards compat with existing frontend types
+    totalAnalyses: (active?.cnt || 0) + (completedRx?.cnt || 0),
+    pendingAnalyses: active?.cnt || 0,
+    completedAnalyses: completedRx?.cnt || 0,
+    criticalFindings: severity['red'] || severity['critical'] || 0,
+    activeFixes: pendingRx?.cnt || 0,
   });
 });
 

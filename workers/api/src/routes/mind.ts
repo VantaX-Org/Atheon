@@ -186,6 +186,52 @@ mind.post('/query', async (c) => {
   const tenantContext = await getTenantContext(c.env.DB, tenantId);
   const systemPrompt = buildSystemPrompt(tenantContext);
 
+  // V2 Spec §2.6: Routing layer — prepend relevant V2 data based on query keywords
+  let v2RoutingContext = '';
+  const qLower = body.query.toLowerCase();
+  try {
+    // "why" + metric name → prepend RCA data
+    if (qLower.includes('why') || qLower.includes('root cause') || qLower.includes('declining') || qLower.includes('dropping')) {
+      const rcas = await c.env.DB.prepare("SELECT metric_name, trigger_status, impact_summary, confidence FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active' ORDER BY generated_at DESC LIMIT 5").bind(tenantId).all();
+      if (rcas.results.length > 0) {
+        v2RoutingContext += '\n[Root Cause Analysis Data]\n';
+        for (const r of rcas.results) {
+          const row = r as Record<string, unknown>;
+          v2RoutingContext += `- ${row.metric_name} (${row.trigger_status}): ${row.impact_summary || 'No impact summary'} (confidence: ${row.confidence}%)\n`;
+        }
+      }
+    }
+    // "competitor" or "market" → prepend Radar context
+    if (qLower.includes('competitor') || qLower.includes('market') || qLower.includes('benchmark')) {
+      const comps = await c.env.DB.prepare('SELECT name, market_share, strengths FROM competitors WHERE tenant_id = ? ORDER BY market_share DESC LIMIT 5').bind(tenantId).all();
+      const benchmarks = await c.env.DB.prepare('SELECT metric_name, benchmark_value, benchmark_unit FROM market_benchmarks WHERE tenant_id = ? LIMIT 10').bind(tenantId).all();
+      if (comps.results.length > 0 || benchmarks.results.length > 0) {
+        v2RoutingContext += '\n[Competitive & Market Intelligence]\n';
+        for (const comp of comps.results) { const c2 = comp as Record<string, unknown>; v2RoutingContext += `- Competitor: ${c2.name} (${c2.market_share}% share)\n`; }
+        for (const b of benchmarks.results) { const b2 = b as Record<string, unknown>; v2RoutingContext += `- Benchmark: ${b2.metric_name} = ${b2.benchmark_value} ${b2.benchmark_unit || ''}\n`; }
+      }
+    }
+    // "fix" or "how to resolve" → prepend active prescriptions
+    if (qLower.includes('fix') || qLower.includes('resolve') || qLower.includes('prescription') || qLower.includes('recommend')) {
+      const rxDiag = await c.env.DB.prepare("SELECT title, priority, effort_level, expected_impact FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending' ORDER BY CASE priority WHEN 'immediate' THEN 1 WHEN 'short-term' THEN 2 ELSE 3 END LIMIT 5").bind(tenantId).all();
+      const rxCat = await c.env.DB.prepare("SELECT title, priority, effort_level, sap_transactions FROM catalyst_prescriptions WHERE tenant_id = ? AND status = 'pending' LIMIT 5").bind(tenantId).all();
+      if (rxDiag.results.length > 0 || rxCat.results.length > 0) {
+        v2RoutingContext += '\n[Active Prescriptions]\n';
+        for (const rx of rxDiag.results) { const r2 = rx as Record<string, unknown>; v2RoutingContext += `- [Diagnostic] ${r2.title} (${r2.priority}, effort: ${r2.effort_level})\n`; }
+        for (const rx of rxCat.results) { const r2 = rx as Record<string, unknown>; v2RoutingContext += `- [Catalyst] ${r2.title} (${r2.priority}, SAP: ${r2.sap_transactions})\n`; }
+      }
+    }
+    // "ROI" or "return" or "saving" → prepend ROI summary
+    if (qLower.includes('roi') || qLower.includes('return') || qLower.includes('saving') || qLower.includes('cost')) {
+      const roi = await c.env.DB.prepare('SELECT * FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first();
+      if (roi) {
+        v2RoutingContext += `\n[ROI Summary]\nROI Multiple: ${roi.roi_multiple}x | Identified: R${(roi.total_discrepancy_value_identified as number || 0).toLocaleString()} | Recovered: R${(roi.total_discrepancy_value_recovered as number || 0).toLocaleString()} | Prevented: R${(roi.total_downstream_losses_prevented as number || 0).toLocaleString()} | Person-hours saved: ${roi.total_person_hours_saved}\n`;
+      }
+    }
+  } catch (routingErr) {
+    console.error('V2 routing context error (non-fatal):', routingErr);
+  }
+
   let response = '';
   let citations: Array<{ documentId: string; documentName: string; documentType: string; relevanceScore: number; snippet: string }> = [];
   let tokensIn = 0;
@@ -210,6 +256,7 @@ mind.post('/query', async (c) => {
     // Step 2: Optimized AI chat (cache + tiered routing + cost tracking)
     const messages = [
       { role: 'system' as const, content: systemPrompt },
+      ...(v2RoutingContext ? [{ role: 'user' as const, content: `Intelligence routing context:\n${v2RoutingContext}` }] : []),
       ...(ragContext ? [{ role: 'user' as const, content: `Retrieved context:\n${ragContext}` }] : []),
       ...(body.context ? [{ role: 'user' as const, content: `Additional context: ${body.context}` }] : []),
       { role: 'user' as const, content: body.query },

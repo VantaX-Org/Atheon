@@ -121,10 +121,21 @@ catalystIntelligence.get('/dependencies', async (c) => {
     'SELECT * FROM catalyst_dependencies WHERE tenant_id = ? ORDER BY strength DESC'
   ).bind(tenantId).all();
   const dependencies = results.results.map((d: Record<string, unknown>) => ({
-    id: d.id, sourceClusterId: d.source_cluster_id, sourceSubCatalyst: d.source_sub_catalyst,
-    targetClusterId: d.target_cluster_id, targetSubCatalyst: d.target_sub_catalyst,
+    id: d.id,
+    upstreamClusterId: d.upstream_cluster_id || d.source_cluster_id,
+    upstreamSubName: d.upstream_sub_name || d.source_sub_catalyst,
+    downstreamClusterId: d.downstream_cluster_id || d.target_cluster_id,
+    downstreamSubName: d.downstream_sub_name || d.target_sub_catalyst,
     dependencyType: d.dependency_type, strength: d.strength,
+    lagHours: d.lag_hours || 0,
+    correlationStrength: d.correlation_strength || d.strength || 0,
+    cascadeRiskScore: d.cascade_risk_score || 0,
+    evidence: JSON.parse(d.evidence as string || '{}'),
+    lastConfirmed: d.last_confirmed || d.discovered_at,
     description: d.description, discoveredAt: d.discovered_at,
+    // Legacy aliases
+    sourceClusterId: d.source_cluster_id, sourceSubCatalyst: d.source_sub_catalyst,
+    targetClusterId: d.target_cluster_id, targetSubCatalyst: d.target_sub_catalyst,
   }));
   return c.json({ dependencies, total: dependencies.length });
 });

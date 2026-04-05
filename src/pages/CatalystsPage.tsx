@@ -424,7 +424,7 @@ export function CatalystsPage() {
      const [overview, roiRes, rxRes] = await Promise.allSettled([
        api.catalystIntelligence.getOverview(),
        api.roi.get(),
-       api.catalystIntelligence.getPrescriptions(),
+       api.catalystIntelligence.getPrescriptions(undefined, undefined),
      ]);
      if (overview.status === 'fulfilled') setIntellOverview(overview.value);
      if (roiRes.status === 'fulfilled') setRoiData(roiRes.value);

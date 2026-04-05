@@ -687,6 +687,36 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // Insights engine: process_metrics domain and category columns
     { table: 'process_metrics', column: 'domain', definition: 'TEXT' },
     { table: 'process_metrics', column: 'category', definition: 'TEXT' },
+    // V2 Spec: catalyst_effectiveness trend arrays
+    { table: 'catalyst_effectiveness', column: 'avg_match_rate_trend', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { table: 'catalyst_effectiveness', column: 'avg_confidence_trend', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { table: 'catalyst_effectiveness', column: 'avg_duration_trend', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { table: 'catalyst_effectiveness', column: 'intervention_impacts', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { table: 'catalyst_effectiveness', column: 'total_discrepancy_value_found', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'total_discrepancy_value_resolved', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'recovery_rate', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'total_items_processed', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'period', definition: "TEXT NOT NULL DEFAULT 'all-time'" },
+    // V2 Spec: catalyst_dependencies upstream/downstream + extra columns
+    { table: 'catalyst_dependencies', column: 'upstream_cluster_id', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'upstream_sub_name', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'downstream_cluster_id', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'downstream_sub_name', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'lag_hours', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_dependencies', column: 'correlation_strength', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_dependencies', column: 'cascade_risk_score', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_dependencies', column: 'evidence', definition: "TEXT NOT NULL DEFAULT '{}'" },
+    { table: 'catalyst_dependencies', column: 'last_confirmed', definition: 'TEXT' },
+    // V2 Spec: catalyst_patterns spec-required columns
+    { table: 'catalyst_patterns', column: 'cluster_id', definition: 'TEXT' },
+    { table: 'catalyst_patterns', column: 'sub_catalyst_name', definition: 'TEXT' },
+    { table: 'catalyst_patterns', column: 'evidence', definition: "TEXT NOT NULL DEFAULT '{}'" },
+    { table: 'catalyst_patterns', column: 'affected_records_pct', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_patterns', column: 'confidence', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_patterns', column: 'first_detected', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    { table: 'catalyst_patterns', column: 'last_confirmed', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    { table: 'catalyst_patterns', column: 'run_count', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { table: 'catalyst_patterns', column: 'prescription_id', definition: 'TEXT' },
   ];
 
   for (const col of selfHealColumns) {

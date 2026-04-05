@@ -626,16 +626,42 @@ export const api = {
       request<{ success: boolean; message: string; provider: string }>('/api/admin/llm-config', { method: 'POST', body: JSON.stringify(data) }),
   },
 
-  // ── Apex Radar ─────────────────────────────────────────────────────
+  // ── Apex Radar (Spec §2.1 — 11 endpoints) ───────────────────────────
   radar: {
+    // Spec §4.5: signals, signalImpact, createSignal, competitors, benchmarks, regulatory, context, scan
+    signals: (category?: string, limit?: number) =>
+      request<{ signals: ExternalSignal[]; total: number }>(`/api/radar/signals${qs({ category, limit: limit?.toString() })}`),
+    signalImpact: (id: string) =>
+      request<{ signal: ExternalSignal; impacts: SignalImpact[] }>(`/api/radar/signals/${id}/impact`),
+    createSignal: (data: Record<string, unknown>) =>
+      request<{ id: string; message: string }>('/api/radar/signals', { method: 'POST', body: JSON.stringify(data) }),
+    competitors: () =>
+      request<{ competitors: Competitor[]; total: number }>('/api/radar/competitors'),
+    createCompetitor: (data: Record<string, unknown>) =>
+      request<{ id: string }>('/api/radar/competitors', { method: 'POST', body: JSON.stringify(data) }),
+    updateCompetitor: (id: string, data: Record<string, unknown>) =>
+      request<{ success: boolean }>(`/api/radar/competitors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteCompetitor: (id: string) =>
+      request<{ success: boolean }>(`/api/radar/competitors/${id}`, { method: 'DELETE' }),
+    benchmarks: () =>
+      request<{ benchmarks: MarketBenchmark[]; total: number }>('/api/radar/benchmarks'),
+    createBenchmark: (data: Record<string, unknown>) =>
+      request<{ id: string }>('/api/radar/benchmarks', { method: 'POST', body: JSON.stringify(data) }),
+    regulatory: (status?: string) =>
+      request<{ events: RegulatoryEvent[]; total: number }>(`/api/radar/regulatory${qs({ status })}`),
+    createRegulatory: (data: Record<string, unknown>) =>
+      request<{ id: string }>('/api/radar/regulatory', { method: 'POST', body: JSON.stringify(data) }),
+    context: (tenantId?: string) =>
+      request<StrategicContext>(`/api/radar/context${qs({ tenant_id: tenantId })}`),
+    scan: () =>
+      request<{ message: string }>('/api/radar/scan', { method: 'POST' }),
+    // Legacy aliases for backwards compat with existing frontend
     getContext: (tenantId?: string) =>
       request<RadarContextResponse>(`/api/radar/context${qs({ tenant_id: tenantId })}`),
     rebuildContext: (tenantId?: string) =>
       request<{ context: RadarStrategicContext }>(`/api/radar/context/rebuild${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
     getSignals: (tenantId?: string, options?: { status?: string; type?: string; limit?: number }) =>
       request<{ signals: RadarSignalItem[]; total: number }>(`/api/radar/signals${qs({ tenant_id: tenantId, status: options?.status, type: options?.type, limit: options?.limit?.toString() })}`),
-    createSignal: (data: RadarSignalCreate, tenantId?: string) =>
-      request<{ id: string; impacts: RadarSignalImpactItem[]; message: string }>(`/api/radar/signals${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify(data) }),
     getSignal: (signalId: string, tenantId?: string) =>
       request<{ signal: RadarSignalItem; impacts: RadarSignalImpactItem[] }>(`/api/radar/signals/${signalId}${qs({ tenant_id: tenantId })}`),
     analyseSignal: (signalId: string, tenantId?: string) =>
@@ -646,12 +672,28 @@ export const api = {
       request<{ impacts: RadarImpactWithSignal[]; total: number }>(`/api/radar/impacts${qs({ tenant_id: tenantId, dimension })}`),
   },
 
-  // ── Pulse Diagnostics ──────────────────────────────────────────────
+  // ── Pulse Diagnostics (Spec §2.2 — 7 endpoints) ───────────────────
   diagnostics: {
+    // Spec §4.5: list, forMetric, analyse, chain, prescriptions, updatePrescription, summary
+    list: (status?: string) =>
+      request<{ analyses: RootCauseAnalysis[]; total: number }>(`/api/diagnostics${qs({ status })}`),
+    forMetric: (metricId: string) =>
+      request<{ analyses: RootCauseAnalysis[]; total: number } | { exists: false; canDiagnose: true }>(`/api/diagnostics/${metricId}`),
+    analyse: (metricId: string) =>
+      request<{ id: string }>(`/api/diagnostics/${metricId}/analyse`, { method: 'POST' }),
+    chain: (rcaId: string) =>
+      request<{ rca: Record<string, unknown>; factors: CausalFactor[] }>(`/api/diagnostics/rca/${rcaId}/chain`),
+    prescriptions: (rcaId: string) =>
+      request<{ prescriptions: DiagnosticPrescription[]; total: number }>(`/api/diagnostics/rca/${rcaId}/prescriptions`),
+    updatePrescription: (id: string, status: string) =>
+      request<{ success: boolean }>(`/api/diagnostics/prescriptions/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    summary: () =>
+      request<DiagnosticsSummary>('/api/diagnostics/summary'),
+    // Legacy aliases for backwards compat with existing frontend
     getSummary: (tenantId?: string) =>
       request<DiagnosticSummaryResponse>(`/api/diagnostics/summary${qs({ tenant_id: tenantId })}`),
     getAnalyses: (tenantId?: string, options?: { status?: string; limit?: number }) =>
-      request<{ analyses: DiagnosticAnalysisItem[]; total: number }>(`/api/diagnostics/analyses${qs({ tenant_id: tenantId, status: options?.status, limit: options?.limit?.toString() })}`),
+      request<{ analyses: DiagnosticAnalysisItem[]; total: number }>(`/api/diagnostics${qs({ tenant_id: tenantId, status: options?.status, limit: options?.limit?.toString() })}`),
     getAnalysis: (analysisId: string, tenantId?: string) =>
       request<DiagnosticAnalysisDetail>(`/api/diagnostics/analyses/${analysisId}${qs({ tenant_id: tenantId })}`),
     analyseMetric: (metricId: string, tenantId?: string) =>
@@ -664,10 +706,24 @@ export const api = {
       request<{ fixes: DiagnosticFixItem[]; total: number }>(`/api/diagnostics/fixes${qs({ tenant_id: tenantId, status })}`),
   },
 
-  // ── Catalyst Intelligence ──────────────────────────────────────────
+  // ── Catalyst Intelligence (Spec §2.3 — 7 endpoints) ────────────────
   catalystIntelligence: {
-    analyse: (tenantId?: string) =>
-      request<{ patterns: CatalystPatternItem[]; discovered: number }>(`/api/catalyst-intelligence/analyse${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    // Spec §4.5: patterns, patternDetail, analyse, effectiveness, dependencies, prescriptions, updatePrescription
+    patterns: (clusterId?: string, type?: string) =>
+      request<{ patterns: CatalystPattern[]; total: number }>(`/api/catalyst-intelligence/patterns${qs({ cluster_id: clusterId, type })}`),
+    patternDetail: (id: string) =>
+      request<{ pattern: CatalystPattern; prescription: CatalystPrescriptionItem | null }>(`/api/catalyst-intelligence/patterns/${id}`),
+    analyse: (clusterId?: string, subName?: string) =>
+      request<{ message: string }>('/api/catalyst-intelligence/analyse', { method: 'POST', body: JSON.stringify({ cluster_id: clusterId, sub_catalyst_name: subName }) }),
+    effectiveness: (clusterId?: string, period?: string) =>
+      request<{ effectiveness: CatalystEffectivenessData[]; total: number }>(`/api/catalyst-intelligence/effectiveness${qs({ cluster_id: clusterId, period })}`),
+    dependencies: () =>
+      request<{ dependencies: CatalystDependency[]; total: number }>('/api/catalyst-intelligence/dependencies'),
+    prescriptions: (status?: string, clusterId?: string) =>
+      request<{ prescriptions: CatalystPrescriptionItem[]; total: number }>(`/api/catalyst-intelligence/prescriptions${qs({ status, cluster_id: clusterId })}`),
+    updatePrescription: (id: string, status: string) =>
+      request<{ success: boolean }>(`/api/catalyst-intelligence/prescriptions/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    // Legacy aliases for backwards compat with existing frontend
     getPatterns: (tenantId?: string, options?: { status?: string; type?: string; limit?: number }) =>
       request<{ patterns: CatalystPatternItem[]; total: number }>(`/api/catalyst-intelligence/patterns${qs({ tenant_id: tenantId, status: options?.status, type: options?.type, limit: options?.limit?.toString() })}`),
     updatePattern: (patternId: string, data: { status?: string; severity?: string }, tenantId?: string) =>
@@ -684,28 +740,43 @@ export const api = {
       request<CatalystIntelligenceOverview>(`/api/catalyst-intelligence/overview${qs({ tenant_id: tenantId })}`),
     getPrescriptions: (tenantId?: string, status?: string) =>
       request<{ prescriptions: CatalystPrescriptionItem[]; total: number }>(`/api/catalyst-intelligence/prescriptions${qs({ tenant_id: tenantId, status })}`),
-    updatePrescription: (prescriptionId: string, data: { status?: string }, tenantId?: string) =>
-      request<{ success: boolean }>(`/api/catalyst-intelligence/prescriptions/${prescriptionId}/status${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
 
-  // ── ROI Tracking ────────────────────────────────────────────────────
+  // ── ROI Tracking (Spec §2.4 — 3 endpoints) ─────────────────────────
   roi: {
+    summary: () =>
+      request<ROISummary>('/api/roi'),
+    history: (limit?: number) =>
+      request<{ history: ROISummary[]; total: number }>(`/api/roi/history${qs({ limit: limit?.toString() })}`),
+    exportPdf: async () => {
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch(`${API_URL}/api/roi/export`, { headers });
+      if (!res.ok) throw new Error('Failed to export ROI PDF');
+      return res.blob();
+    },
+    // Legacy aliases for backwards compat
     get: (tenantId?: string) =>
       request<ROITrackingResponse>(`/api/roi${qs({ tenant_id: tenantId })}`),
-    history: (tenantId?: string, limit?: number) =>
-      request<{ history: ROITrackingItem[]; total: number }>(`/api/roi/history${qs({ tenant_id: tenantId, limit: limit?.toString() })}`),
     exportCsv: (tenantId?: string) =>
-      request<{ csv: string; generatedAt: string }>(`/api/roi/export${qs({ tenant_id: tenantId })}`),
+      request<{ export: Record<string, unknown>[]; total: number; currency: string }>(`/api/roi/export${qs({ tenant_id: tenantId })}`),
   },
 
-  // ── Board Report ───────────────────────────────────────────────────
+  // ── Board Report (Spec §2.5 — 3 endpoints) ─────────────────────────
   boardReport: {
     generate: (tenantId?: string) =>
       request<BoardReportItem>(`/api/board-report/generate${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
     list: (tenantId?: string) =>
       request<{ reports: BoardReportItem[]; total: number }>(`/api/board-report${qs({ tenant_id: tenantId })}`),
-    get: (reportId: string, tenantId?: string) =>
-      request<BoardReportItem>(`/api/board-report/${reportId}${qs({ tenant_id: tenantId })}`),
+    get: (id: string, tenantId?: string) =>
+      request<BoardReportItem>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),
+    /** @deprecated Use generate/list/get instead */
+    generateV2: (tenantId?: string) =>
+      request<BoardReport>(`/api/board-report/generate${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    listV2: (tenantId?: string) =>
+      request<{ reports: BoardReport[]; total: number }>(`/api/board-report${qs({ tenant_id: tenantId })}`),
+    getV2: (id: string, tenantId?: string) =>
+      request<BoardReport>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),  
   },
 };
 
@@ -2136,4 +2207,226 @@ export interface BoardReportItem {
   contentMarkdown?: string;
   pdfUrl?: string;
   sections: string[];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// V2 Spec §4 — Canonical type interfaces matching the Build Spec exactly
+// ══════════════════════════════════════════════════════════════════════════════
+
+// §4.1 Radar Types
+export interface ExternalSignal {
+  id: string;
+  category: string;
+  title: string;
+  summary: string;
+  sourceUrl: string | null;
+  sourceName: string | null;
+  reliabilityScore: number;
+  relevanceScore: number;
+  sentiment: string;
+  rawData: Record<string, unknown>;
+  detectedAt: string;
+  expiresAt: string | null;
+}
+
+export interface SignalImpact {
+  id: string;
+  signalId: string;
+  healthDimension: string;
+  impactMagnitude: number;
+  impactDirection: 'headwind' | 'tailwind';
+  impactTimeline: 'immediate' | 'near-term' | 'strategic';
+  confidence: number;
+  recommendedResponse: string | null;
+  analysis: Record<string, unknown>;
+  computedAt: string;
+}
+
+export interface Competitor {
+  id: string;
+  name: string;
+  industry: string | null;
+  estimatedRevenue: string | null;
+  marketShare: number | null;
+  strengths: string[];
+  weaknesses: string[];
+  lastUpdated: string;
+  signalsCount: number;
+}
+
+export interface MarketBenchmark {
+  id: string;
+  industry: string;
+  metricName: string;
+  benchmarkValue: number;
+  benchmarkUnit: string | null;
+  percentile25: number | null;
+  percentile50: number | null;
+  percentile75: number | null;
+  source: string | null;
+  measuredAt: string;
+}
+
+export interface RegulatoryEvent {
+  id: string;
+  title: string;
+  description: string;
+  jurisdiction: string | null;
+  affectedDimensions: string[];
+  effectiveDate: string | null;
+  complianceDeadline: string | null;
+  readinessScore: number;
+  status: string;
+  sourceUrl: string | null;
+}
+
+export interface StrategicContext {
+  healthScore: number;
+  industryBenchmark: number | null;
+  headwinds: SignalImpact[];
+  tailwinds: SignalImpact[];
+  competitorCount: number;
+  regulatoryDeadlines: number;
+  topSignals: ExternalSignal[];
+  contextNarrative: string;
+}
+
+// §4.2 Diagnostics Types
+export interface RootCauseAnalysis {
+  id: string;
+  metricId: string;
+  metricName: string;
+  triggerStatus: string;
+  causalChain: CausalFactor[];
+  confidence: number;
+  impactSummary: string | null;
+  prescription: Record<string, unknown>;
+  status: string;
+  sourceDataRefs: Record<string, unknown>;
+  generatedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface CausalFactor {
+  id: string;
+  layer: string;
+  factorType: string;
+  title: string;
+  description: string;
+  evidence: Record<string, unknown>;
+  impactValue: number | null;
+  impactUnit: string;
+  confidence: number;
+  sourceRunIds: string[];
+  sourceMetricIds: string[];
+  createdAt: string;
+}
+
+export interface DiagnosticPrescription {
+  id: string;
+  rcaId: string;
+  priority: 'immediate' | 'short-term' | 'strategic';
+  title: string;
+  description: string;
+  expectedImpact: string | null;
+  effortLevel: 'low' | 'medium' | 'high';
+  responsibleDomain: string | null;
+  deadlineSuggested: string | null;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface DiagnosticsSummary {
+  totalActive: number;
+  bySeverity: Record<string, number>;
+  prescriptionsPending: number;
+  prescriptionsCompleted: number;
+  totalImpactValue: number;
+  undiagnosedMetrics: number;
+  // Legacy aliases
+  totalAnalyses?: number;
+  pendingAnalyses?: number;
+  completedAnalyses?: number;
+  criticalFindings?: number;
+  activeFixes?: number;
+}
+
+// §4.3 Catalyst Intelligence Types
+export interface CatalystPattern {
+  id: string;
+  clusterId: string;
+  subCatalystName: string;
+  patternType: 'discrepancy_clustering' | 'exception_recurrence' | 'temporal_pattern' | 'field_hotspot';
+  title: string;
+  description: string;
+  evidence: Record<string, unknown>;
+  affectedRecordsPct: number;
+  confidence: number;
+  firstDetected: string;
+  lastConfirmed: string;
+  runCount: number;
+  severity: string;
+  status: string;
+  prescriptionId: string | null;
+}
+
+export interface CatalystEffectivenessData {
+  id: string;
+  clusterId: string;
+  subCatalystName: string;
+  period: string;
+  runsCount: number;
+  totalItemsProcessed: number;
+  totalDiscrepancyValueFound: number;
+  totalDiscrepancyValueResolved: number;
+  recoveryRate: number;
+  avgMatchRate: number;
+  avgMatchRateTrend: number[];
+  avgConfidenceTrend: number[];
+  avgDurationTrend: number[];
+  interventionImpacts: Array<{ date: string; type: string; effect: number }>;
+}
+
+export interface CatalystDependency {
+  id: string;
+  upstreamClusterId: string;
+  upstreamSubName: string;
+  downstreamClusterId: string;
+  downstreamSubName: string;
+  dependencyType: string;
+  lagHours: number;
+  correlationStrength: number;
+  cascadeRiskScore: number;
+  evidence: Record<string, unknown>;
+  lastConfirmed: string | null;
+}
+
+// §4.4 ROI & Board Report Types
+export interface ROISummary {
+  identified: number;
+  recovered: number;
+  lossesAverted: number;
+  personHoursSaved: number;
+  roiMultiple: number;
+  totalCatalystRuns: number;
+  licenceCostAnnual: number;
+  period: string;
+  calculatedAt: string;
+  // Aliases for compat with existing ROITrackingResponse
+  totalDiscrepancyValueIdentified?: number;
+  totalDiscrepancyValueRecovered?: number;
+  totalPreventedLosses?: number;
+  totalPersonHoursSaved?: number;
+}
+
+export interface BoardReport {
+  id: string;
+  title: string;
+  reportType: string;
+  content: Record<string, unknown> | string;
+  r2Key: string | null;
+  pdfUrl: string | null;
+  generatedBy: string | null;
+  generatedAt: string;
 }
