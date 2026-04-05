@@ -255,11 +255,17 @@ catalystIntelligence.get('/overview', async (c) => {
 
   const patterns = patternsRes.results.map((p: Record<string, unknown>) => ({
     id: p.id, clusterId: p.cluster_id, subCatalystName: p.sub_catalyst_name, patternType: p.pattern_type,
-    title: p.title, description: p.description, confidence: p.confidence, severity: p.severity,
+    title: p.title, description: p.description, confidence: p.confidence, severity: p.severity || 'medium',
     status: p.status, firstDetected: p.first_detected, lastConfirmed: p.last_confirmed,
+    firstSeen: p.first_detected || p.created_at,
+    lastSeen: p.last_confirmed || p.created_at,
+    frequency: p.run_count || 1,
     runCount: p.run_count, affectedRecordsPct: p.affected_records_pct,
     evidence: typeof p.evidence === 'string' ? JSON.parse(p.evidence as string) : (p.evidence || {}),
     prescriptionId: p.prescription_id,
+    affectedClusters: p.affected_clusters ? (typeof p.affected_clusters === 'string' ? JSON.parse(p.affected_clusters as string) : p.affected_clusters) : [],
+    affectedSubCatalysts: p.affected_sub_catalysts ? (typeof p.affected_sub_catalysts === 'string' ? JSON.parse(p.affected_sub_catalysts as string) : p.affected_sub_catalysts) : [],
+    recommendedActions: p.recommended_actions ? (typeof p.recommended_actions === 'string' ? JSON.parse(p.recommended_actions as string) : p.recommended_actions) : [],
   }));
 
   const effectiveness = effectivenessRes.results.map((e: Record<string, unknown>) => ({
@@ -278,8 +284,10 @@ catalystIntelligence.get('/overview', async (c) => {
     id: d.id, upstreamClusterId: d.source_cluster_id, upstreamSubName: d.source_sub_catalyst,
     downstreamClusterId: d.target_cluster_id, downstreamSubName: d.target_sub_catalyst,
     dependencyType: d.dependency_type, strength: d.strength, description: d.description,
-    lagHours: 0, correlationStrength: d.strength, cascadeRiskScore: 0,
-    evidence: {}, lastConfirmed: d.discovered_at,
+    lagHours: d.lag_hours || 0, correlationStrength: d.strength || 0, cascadeRiskScore: d.cascade_risk_score || 0,
+    evidence: {}, lastConfirmed: d.discovered_at, discoveredAt: d.discovered_at,
+    sourceClusterId: d.source_cluster_id, sourceSubCatalyst: d.source_sub_catalyst,
+    targetClusterId: d.target_cluster_id, targetSubCatalyst: d.target_sub_catalyst,
   }));
 
   return c.json({
