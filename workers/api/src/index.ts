@@ -32,6 +32,9 @@ import agentRoutes from './routes/agent-routes';
 import aiCosts from './routes/ai-costs';
 import seedVantaX from './routes/seed-vantax';
 import tenantsAdmin from './routes/tenants-admin';
+import radar from './routes/radar';
+import diagnosticsRoutes from './routes/diagnostics';
+import catalystIntelligence from './routes/catalyst-intelligence';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -195,6 +198,8 @@ app.get('/', (c) => {
       storage: '/api/v1/storage',
       realtime: '/api/v1/realtime',
       assessments: '/api/v1/assessments',
+      diagnostics: '/api/v1/diagnostics',
+      'catalyst-intelligence': '/api/v1/catalyst-intelligence',
     },
     protocols: {
       mcp: '/api/v1/connectivity/mcp',
@@ -272,7 +277,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -303,6 +308,8 @@ const routeModules: [string, typeof auth][] = [
   ['storage', storage], ['realtime', realtime],
   ['deployments', deployments], ['assessments', assessments],
   ['ai-costs', aiCosts],
+  ['radar', radar], ['diagnostics', diagnosticsRoutes],
+  ['catalyst-intelligence', catalystIntelligence],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
