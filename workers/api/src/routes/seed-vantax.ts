@@ -1195,86 +1195,6 @@ seed.post('/seed-vantax', async (c) => {
       4      // active_risk_count
     ).run();
 
-    // ── STEP: Self-heal V2 columns required by seed (in case migration didn't apply them) ──
-    console.log('[VantaX Seeder] Ensuring V2 columns exist...');
-    const v2Columns: Array<{ table: string; column: string; definition: string }> = [
-      { table: 'competitors', column: 'website', definition: 'TEXT' },
-      { table: 'competitors', column: 'threat_level', definition: "TEXT NOT NULL DEFAULT 'medium'" },
-      { table: 'competitors', column: 'notes', definition: "TEXT NOT NULL DEFAULT ''" },
-      { table: 'competitors', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'market_benchmarks', column: 'name', definition: 'TEXT' },
-      { table: 'market_benchmarks', column: 'category', definition: 'TEXT' },
-      { table: 'market_benchmarks', column: 'value', definition: 'REAL' },
-      { table: 'market_benchmarks', column: 'unit', definition: 'TEXT' },
-      { table: 'market_benchmarks', column: 'percentile', definition: 'REAL' },
-      { table: 'market_benchmarks', column: 'trend', definition: "TEXT NOT NULL DEFAULT 'stable'" },
-      { table: 'market_benchmarks', column: 'period', definition: 'TEXT' },
-      { table: 'market_benchmarks', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'regulatory_events', column: 'body', definition: 'TEXT' },
-      { table: 'regulatory_events', column: 'authority', definition: 'TEXT' },
-      { table: 'regulatory_events', column: 'impact', definition: "TEXT NOT NULL DEFAULT 'medium'" },
-      { table: 'regulatory_events', column: 'category', definition: 'TEXT' },
-      { table: 'regulatory_events', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'root_cause_analyses', column: 'metric_value', definition: 'REAL' },
-      { table: 'root_cause_analyses', column: 'metric_status', definition: 'TEXT' },
-      { table: 'root_cause_analyses', column: 'trigger_type', definition: "TEXT NOT NULL DEFAULT 'manual'" },
-      { table: 'root_cause_analyses', column: 'rca_depth', definition: 'INTEGER NOT NULL DEFAULT 3' },
-      { table: 'root_cause_analyses', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'root_cause_analyses', column: 'completed_at', definition: 'TEXT' },
-      { table: 'causal_factors', column: 'level', definition: 'INTEGER NOT NULL DEFAULT 0' },
-      { table: 'causal_factors', column: 'category', definition: 'TEXT' },
-      { table: 'causal_factors', column: 'linked_metrics', definition: "TEXT NOT NULL DEFAULT '[]'" },
-      { table: 'diagnostic_prescriptions', column: 'effort', definition: "TEXT NOT NULL DEFAULT 'medium'" },
-      { table: 'diagnostic_prescriptions', column: 'sap_transaction', definition: 'TEXT' },
-      { table: 'diagnostic_prescriptions', column: 'estimated_impact', definition: 'TEXT' },
-      { table: 'diagnostic_prescriptions', column: 'expected_impact', definition: 'TEXT' },
-      { table: 'catalyst_effectiveness', column: 'sub_catalyst_id', definition: 'TEXT' },
-      { table: 'catalyst_effectiveness', column: 'match_rate', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'catalyst_effectiveness', column: 'exception_rate', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'catalyst_effectiveness', column: 'avg_processing_time', definition: 'INTEGER NOT NULL DEFAULT 0' },
-      { table: 'catalyst_effectiveness', column: 'trend', definition: "TEXT NOT NULL DEFAULT 'stable'" },
-      { table: 'catalyst_effectiveness', column: 'period', definition: 'TEXT' },
-      { table: 'catalyst_effectiveness', column: 'calculated_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'catalyst_effectiveness', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'catalyst_dependencies', column: 'from_catalyst_id', definition: 'TEXT' },
-      { table: 'catalyst_dependencies', column: 'from_catalyst_name', definition: 'TEXT' },
-      { table: 'catalyst_dependencies', column: 'to_catalyst_id', definition: 'TEXT' },
-      { table: 'catalyst_dependencies', column: 'to_catalyst_name', definition: 'TEXT' },
-      { table: 'catalyst_dependencies', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'catalyst_prescriptions', column: 'effort', definition: "TEXT NOT NULL DEFAULT 'medium'" },
-      { table: 'catalyst_prescriptions', column: 'sap_transaction', definition: 'TEXT' },
-      { table: 'catalyst_prescriptions', column: 'estimated_savings', definition: 'TEXT' },
-      { table: 'catalyst_prescriptions', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'roi_tracking', column: 'identified_losses', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'roi_tracking', column: 'recovered_amount', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'roi_tracking', column: 'prevented_losses', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'roi_tracking', column: 'person_hours_saved', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'roi_tracking', column: 'platform_cost', definition: 'REAL NOT NULL DEFAULT 0' },
-      { table: 'roi_tracking', column: 'breakdown', definition: "TEXT NOT NULL DEFAULT '{}'" },
-      { table: 'roi_tracking', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'industry_radar_seeds', column: 'signal_type', definition: 'TEXT' },
-      { table: 'industry_radar_seeds', column: 'description', definition: 'TEXT' },
-      { table: 'industry_radar_seeds', column: 'default_severity', definition: "TEXT NOT NULL DEFAULT 'medium'" },
-      { table: 'industry_radar_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'industry_benchmark_seeds', column: 'name', definition: 'TEXT' },
-      { table: 'industry_benchmark_seeds', column: 'default_value', definition: 'REAL' },
-      { table: 'industry_benchmark_seeds', column: 'unit', definition: 'TEXT' },
-      { table: 'industry_benchmark_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-      { table: 'industry_regulatory_seeds', column: 'default_body', definition: 'TEXT' },
-      { table: 'industry_regulatory_seeds', column: 'authority', definition: 'TEXT' },
-      { table: 'industry_regulatory_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
-    ];
-    let v2ColsHealed = 0;
-    for (const col of v2Columns) {
-      try {
-        await c.env.DB.prepare(`ALTER TABLE ${col.table} ADD COLUMN ${col.column} ${col.definition}`).run();
-        v2ColsHealed++;
-      } catch {
-        // Column already exists — expected
-      }
-    }
-    console.log(`[VantaX Seeder] V2 columns healed: ${v2ColsHealed}/${v2Columns.length}`);
-
     // ── STEP: Seed Apex Radar signals + impacts ──
     console.log('[VantaX Seeder] Seeding Apex Radar signals...');
 
@@ -1422,9 +1342,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const comp of competitors) {
       await c.env.DB.prepare(
-        `INSERT INTO competitors (id, tenant_id, name, industry, website, strengths, weaknesses, market_share, threat_level, notes, last_updated, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, comp.name, comp.industry, comp.website, JSON.stringify(comp.strengths), JSON.stringify(comp.weaknesses), comp.marketShare, comp.threatLevel, now, now).run();
+        `INSERT INTO competitors (id, tenant_id, name, industry, estimated_revenue, market_share, strengths, weaknesses, last_updated, signals_count)
+         VALUES (?, ?, ?, ?, 'undisclosed', ?, ?, ?, ?, 0)`
+      ).bind(crypto.randomUUID(), tenantId, comp.name, comp.industry, comp.marketShare, JSON.stringify(comp.strengths), JSON.stringify(comp.weaknesses), now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${competitors.length} competitors`);
 
@@ -1440,9 +1360,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const bm of benchmarks) {
       await c.env.DB.prepare(
-        `INSERT INTO market_benchmarks (id, tenant_id, metric_name, name, category, value, benchmark_value, unit, benchmark_unit, source, industry, percentile, trend, period, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'general', ?, 'stable', 'Q1 2026', ?)`
-      ).bind(crypto.randomUUID(), tenantId, bm.name, bm.name, bm.category, bm.value, bm.value, bm.unit, bm.unit, bm.source, bm.percentile, now).run();
+        `INSERT INTO market_benchmarks (id, tenant_id, industry, metric_name, benchmark_value, benchmark_unit, source, measured_at)
+         VALUES (?, ?, 'general', ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, bm.name, bm.value, bm.unit, bm.source, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${benchmarks.length} market benchmarks`);
 
@@ -1455,9 +1375,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const re of regEvents) {
       await c.env.DB.prepare(
-        `INSERT INTO regulatory_events (id, tenant_id, title, description, body, authority, effective_date, impact, category, affected_dimensions, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, re.title, re.body, re.body, re.authority, re.effectiveDate, re.impact, re.category, re.status, now).run();
+        `INSERT INTO regulatory_events (id, tenant_id, title, description, effective_date, status)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, re.title, re.body, re.effectiveDate, re.status).run();
     }
     console.log(`[VantaX Seeder] Seeded ${regEvents.length} regulatory events`);
 
@@ -1497,22 +1417,22 @@ seed.post('/seed-vantax', async (c) => {
     for (const rca of rcaData) {
       const rcaId = crypto.randomUUID();
       await c.env.DB.prepare(
-        `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, metric_value, trigger_status, metric_status, trigger_type, rca_depth, status, created_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'auto', ?, 'completed', ?, ?)`
-      ).bind(rcaId, tenantId, crypto.randomUUID(), rca.metricName, rca.metricValue, rca.status, rca.status, rca.factors.length, now, now).run();
+        `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, trigger_status, causal_chain, confidence, impact_summary, status, generated_at)
+         VALUES (?, ?, ?, ?, ?, '[]', 85, ?, 'active', ?)`
+      ).bind(rcaId, tenantId, crypto.randomUUID(), rca.metricName, rca.status, `Metric value: ${rca.metricValue}`, now).run();
 
       for (const f of rca.factors) {
         await c.env.DB.prepare(
-          `INSERT INTO causal_factors (id, tenant_id, rca_id, layer, factor_type, level, category, title, description, confidence, evidence, linked_metrics, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
-        ).bind(crypto.randomUUID(), tenantId, rcaId, `L${f.level}`, f.category, f.level, f.category, f.title, f.description, f.confidence, JSON.stringify(f.linkedMetrics), now).run();
+          `INSERT INTO causal_factors (id, rca_id, tenant_id, layer, factor_type, title, description, confidence, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), rcaId, tenantId, `L${f.level}`, f.category, f.title, f.description, f.confidence, now).run();
       }
 
       for (const p of rca.prescriptions) {
         await c.env.DB.prepare(
-          `INSERT INTO diagnostic_prescriptions (id, tenant_id, rca_id, title, description, priority, effort_level, effort, sap_transaction, estimated_impact, expected_impact, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
-        ).bind(crypto.randomUUID(), tenantId, rcaId, p.title, p.description, p.priority, p.effort, p.effort, p.sapTransaction, p.estimatedImpact, `${p.estimatedImpact}% improvement`, now).run();
+          `INSERT INTO diagnostic_prescriptions (id, rca_id, tenant_id, priority, title, description, expected_impact, effort_level, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+        ).bind(crypto.randomUUID(), rcaId, tenantId, p.priority, p.title, p.description, `${p.estimatedImpact}% improvement`, p.effort, now).run();
       }
     }
     console.log(`[VantaX Seeder] Seeded ${rcaData.length} root cause analyses with factors and prescriptions`);
@@ -1528,9 +1448,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const eff of effectivenessData) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, match_rate, exception_rate, avg_duration_ms, avg_processing_time, trend, period, calculated_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, financeClusterId, crypto.randomUUID(), eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime * 1000, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
+        `INSERT INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, avg_duration_ms, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.avgProcessingTime * 1000, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${effectivenessData.length} catalyst effectiveness records`);
 
@@ -1543,9 +1463,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const dep of deps) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_dependencies (id, tenant_id, source_cluster_id, source_sub_catalyst, target_cluster_id, target_sub_catalyst, from_catalyst_id, from_catalyst_name, to_catalyst_id, to_catalyst_name, dependency_type, strength, description, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, financeClusterId, dep.from, financeClusterId, dep.to, financeClusterId, dep.from, financeClusterId, dep.to, dep.type, dep.strength, dep.desc, now).run();
+        `INSERT INTO catalyst_dependencies (id, tenant_id, source_cluster_id, source_sub_catalyst, target_cluster_id, target_sub_catalyst, dependency_type, strength, description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, dep.from, financeClusterId, dep.to, dep.type, dep.strength, dep.desc).run();
     }
     console.log(`[VantaX Seeder] Seeded ${deps.length} catalyst dependencies`);
 
@@ -1559,34 +1479,18 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const cp of catalystPrescriptions) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_prescriptions (id, tenant_id, cluster_id, sub_catalyst_name, prescription_type, pattern_id, title, description, priority, effort_level, effort, sap_transaction, estimated_savings, status, created_at)
-         VALUES (?, ?, ?, 'General', 'optimization', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, financeClusterId, cp.title, cp.description, cp.priority, cp.effort, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
+        `INSERT INTO catalyst_prescriptions (id, tenant_id, cluster_id, sub_catalyst_name, prescription_type, title, description, sap_transactions, expected_impact, effort_level, priority, status, created_at)
+         VALUES (?, ?, ?, 'General', 'optimization', ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, cp.title, cp.description, JSON.stringify([cp.sapTransaction]), `R ${(cp.estimatedSavings / 1000).toFixed(0)}K savings`, cp.effort, cp.priority, cp.status, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${catalystPrescriptions.length} catalyst prescriptions`);
 
     // ── STEP: Seed V2 ROI Tracking ──
     console.log('[VantaX Seeder] Seeding V2 ROI tracking...');
     await c.env.DB.prepare(
-      `INSERT INTO roi_tracking (id, tenant_id, period, identified_losses, recovered_amount, prevented_losses, person_hours_saved, platform_cost, roi_multiple, breakdown, created_at)
-       VALUES (?, ?, 'Q1 2026', 4850000, 3200000, 1800000, 2400, 580000, 8.3, ?, ?)`
-    ).bind(
-      crypto.randomUUID(), tenantId,
-      JSON.stringify({
-        byCluster: [
-          { cluster: 'Finance', identified: 2800000, recovered: 1900000, prevented: 800000, hoursSaved: 1200 },
-          { cluster: 'Supply Chain', identified: 1200000, recovered: 800000, prevented: 600000, hoursSaved: 720 },
-          { cluster: 'Revenue', identified: 850000, recovered: 500000, prevented: 400000, hoursSaved: 480 },
-        ],
-        byCategory: [
-          { category: 'Invoice Discrepancies', amount: 1500000 },
-          { category: 'Inventory Write-offs', amount: 950000 },
-          { category: 'Payment Duplicates', amount: 420000 },
-          { category: 'Revenue Leakage', amount: 330000 },
-        ],
-      }),
-      now
-    ).run();
+      `INSERT INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, licence_cost_annual, roi_multiple, calculated_at)
+       VALUES (?, ?, 'Q1 2026', 4850000, 3200000, 1800000, 2400, 580000, 8.3, ?)`
+    ).bind(crypto.randomUUID(), tenantId, now).run();
     console.log('[VantaX Seeder] Seeded ROI tracking record');
 
     // ── STEP: Seed Industry Playbook Seeds ──
@@ -1634,19 +1538,19 @@ seed.post('/seed-vantax', async (c) => {
     for (const seed of industrySeeds) {
       if (seed.type === 'signal') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_radar_seeds (id, industry, signal_type, title, summary, description, default_severity, default_magnitude, default_direction, category, created_at)
-           VALUES (?, ?, 'market', ?, ?, ?, ?, 5, 'headwind', ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, seed.title, seed.description || '', seed.description || '', seed.severity || 'medium', seed.category || 'general', now).run();
+          `INSERT INTO industry_radar_seeds (id, industry, category, title, summary, default_magnitude, default_direction, region)
+           VALUES (?, ?, ?, ?, ?, 5, 'headwind', 'ZA')`
+        ).bind(crypto.randomUUID(), seed.industry, seed.category || 'general', seed.title, seed.description || '').run();
       } else if (seed.type === 'benchmark') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_benchmark_seeds (id, industry, metric_name, name, benchmark_value, default_value, benchmark_unit, unit, source, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).name, (seed as any).value, (seed as any).value, (seed as any).unit, (seed as any).unit, (seed as any).source, now).run();
+          `INSERT INTO industry_benchmark_seeds (id, industry, metric_name, benchmark_value, benchmark_unit, source, region)
+           VALUES (?, ?, ?, ?, ?, ?, 'ZA')`
+        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).value, (seed as any).unit, (seed as any).source).run();
       } else if (seed.type === 'regulatory') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_regulatory_seeds (id, industry, title, description, default_body, authority, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '', (seed as any).body || '', (seed as any).authority || '', now).run();
+          `INSERT INTO industry_regulatory_seeds (id, industry, title, description, jurisdiction)
+           VALUES (?, ?, ?, ?, 'ZA')`
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '').run();
       }
     }
     console.log('[VantaX Seeder] Seeded industry playbook seeds');
