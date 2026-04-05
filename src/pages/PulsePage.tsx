@@ -8,7 +8,7 @@ import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
-import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse } from "@/lib/api";
+import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
@@ -16,7 +16,7 @@ import {
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
-  UserCheck, FileWarning, RefreshCw, List
+  UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench
 } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { FlipCard } from "@/components/ui/flip-card";
@@ -273,6 +273,45 @@ export function PulsePage() {
   // AI Insights state
   const [aiInsights, setAiInsights] = useState<PulseInsightsResponse | null>(null);
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+
+  // Diagnostics state
+  const [diagSummary, setDiagSummary] = useState<DiagnosticSummaryResponse | null>(null);
+  const [diagAnalyses, setDiagAnalyses] = useState<DiagnosticAnalysisItem[]>([]);
+  const [diagDetail, setDiagDetail] = useState<DiagnosticAnalysisDetail | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [analysingMetric, setAnalysingMetric] = useState<string | null>(null);
+  const [expandedAnalysis, setExpandedAnalysis] = useState<string | null>(null);
+
+  const loadDiagnostics = async () => {
+    setDiagLoading(true);
+    try {
+      const [s, a] = await Promise.allSettled([
+        api.diagnostics.getSummary(),
+        api.diagnostics.getAnalyses(),
+      ]);
+      if (s.status === 'fulfilled') setDiagSummary(s.value);
+      if (a.status === 'fulfilled') setDiagAnalyses(a.value.analyses);
+    } catch (err) { console.error('Failed to load diagnostics:', err); }
+    setDiagLoading(false);
+  };
+
+  const handleAnalyseMetric = async (metricId: string) => {
+    if (analysingMetric) return;
+    setAnalysingMetric(metricId);
+    try {
+      const result = await api.diagnostics.analyseMetric(metricId);
+      setDiagDetail(result);
+      loadDiagnostics();
+    } catch (err) { console.error('Failed to analyse metric:', err); }
+    setAnalysingMetric(null);
+  };
+
+  const handleViewAnalysis = async (analysisId: string) => {
+    try {
+      const detail = await api.diagnostics.getAnalysis(analysisId);
+      setDiagDetail(detail);
+    } catch (err) { console.error('Failed to load analysis:', err); }
+  };
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [availableDomains, setAvailableDomains] = useState<string[]>([]);
 
@@ -426,10 +465,12 @@ export function PulsePage() {
     sparkline: [val.score - 5, val.score - 3, val.score - 2, val.score - 1, val.score, val.score + 1],
   }));
 
-  // Filtered metrics
+  // Filtered metrics — Dynamic Layout: red domains first, then amber, then green
+  const statusPriority: Record<string, number> = { red: 0, amber: 1, green: 2 };
   const filteredMetrics = metrics
     .filter(m => metricFilter === 'all' || m.status === metricFilter)
-    .filter(m => !metricSearch || m.name.toLowerCase().includes(metricSearch.toLowerCase()));
+    .filter(m => !metricSearch || m.name.toLowerCase().includes(metricSearch.toLowerCase()))
+    .sort((a, b) => (statusPriority[a.status] ?? 3) - (statusPriority[b.status] ?? 3));
 
   // Filtered anomalies
   const filteredAnomalies = anomalies
@@ -478,6 +519,7 @@ export function PulsePage() {
   const tabs = [
     { id: 'dashboard', label: 'Operations Dashboard', icon: <Gauge size={14} /> },
     { id: 'monitoring', label: 'Live Monitoring', icon: <Activity size={14} />, count: metrics.length || undefined },
+    { id: 'diagnostics', label: 'Diagnostics', icon: <Stethoscope size={14} />, count: diagSummary?.criticalFindings || undefined },
     { id: 'anomalies', label: 'Anomaly Detection', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
     { id: 'processes', label: 'Process Mining', icon: <GitBranch size={14} /> },
     { id: 'catalyst-runs', label: 'Catalyst Runs', icon: <Play size={14} />, count: catalystSummary.reduce((s, c) => s + (c.exceptions || 0), 0) || undefined },
@@ -2143,6 +2185,133 @@ export function PulsePage() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </TabPanel>
+      )}
+
+      {/* Diagnostics Tab */}
+      {activeTab === 'diagnostics' && (
+        <TabPanel>
+          {diagLoading && !diagSummary && (
+            <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+          )}
+          {!diagLoading && !diagSummary && (
+            <Card className="text-center py-12">
+              <Stethoscope className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium t-primary">No diagnostics data yet</p>
+              <p className="text-xs t-muted mt-1">Run a diagnostic analysis on any metric to identify root causes.</p>
+              <Button variant="primary" size="sm" className="mt-4" onClick={loadDiagnostics}>Load Diagnostics</Button>
+            </Card>
+          )}
+          {diagSummary && (
+            <div className="space-y-4">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <Card><div className="text-center"><p className="text-2xl font-bold t-primary">{diagSummary.totalAnalyses}</p><p className="text-[10px] t-muted uppercase">Total Analyses</p></div></Card>
+                <Card><div className="text-center"><p className="text-2xl font-bold text-amber-400">{diagSummary.pendingAnalyses}</p><p className="text-[10px] t-muted uppercase">Pending</p></div></Card>
+                <Card><div className="text-center"><p className="text-2xl font-bold text-emerald-400">{diagSummary.completedAnalyses}</p><p className="text-[10px] t-muted uppercase">Completed</p></div></Card>
+                <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{diagSummary.undiagnosedMetrics}</p><p className="text-[10px] t-muted uppercase">Undiagnosed</p></div></Card>
+                <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{diagSummary.criticalFindings}</p><p className="text-[10px] t-muted uppercase">Critical Findings</p></div></Card>
+                <Card><div className="text-center"><p className="text-2xl font-bold text-accent">{diagSummary.activeFixes}</p><p className="text-[10px] t-muted uppercase">Active Fixes</p></div></Card>
+              </div>
+
+              {/* Quick Diagnose: Red/Amber metrics */}
+              {metrics.filter(m => m.status === 'red' || m.status === 'amber').length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold t-primary mb-2">Quick Diagnose — At-Risk Metrics</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {metrics.filter(m => m.status === 'red' || m.status === 'amber').slice(0, 6).map(m => (
+                      <Card key={m.id} className={m.status === 'red' ? 'border-red-500/20' : 'border-amber-500/20'}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${m.status === 'red' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                            <span className="text-xs font-medium t-primary truncate">{m.name}</span>
+                          </div>
+                          <Button variant="secondary" size="sm" onClick={() => handleAnalyseMetric(m.id)} disabled={analysingMetric === m.id}>
+                            {analysingMetric === m.id ? <Loader2 size={10} className="animate-spin" /> : <Stethoscope size={10} />}
+                            <span className="ml-1">Diagnose</span>
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] t-muted">
+                          <span>Value: {typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
+                          <span>· Source: {m.sourceSystem || 'General'}</span>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Analyses List */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold t-primary">Diagnostic Analyses</h3>
+                <Button variant="secondary" size="sm" onClick={loadDiagnostics}><RefreshCw size={12} /> Refresh</Button>
+              </div>
+
+              {diagAnalyses.length === 0 ? (
+                <Card className="text-center py-8">
+                  <p className="text-xs t-muted">No analyses yet. Use "Quick Diagnose" above to analyze at-risk metrics.</p>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {diagAnalyses.map(analysis => (
+                    <Card key={analysis.id} hover onClick={() => { setExpandedAnalysis(expandedAnalysis === analysis.id ? null : analysis.id); if (expandedAnalysis !== analysis.id) handleViewAnalysis(analysis.id); }}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={analysis.status === 'completed' ? 'success' : analysis.status === 'failed' ? 'danger' : 'warning'} size="sm">{analysis.status}</Badge>
+                          <span className="text-sm font-medium t-primary">{analysis.metricName}</span>
+                          <Badge variant={analysis.metricStatus === 'red' ? 'danger' : analysis.metricStatus === 'amber' ? 'warning' : 'success'} size="sm">{analysis.metricStatus}</Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] t-muted">
+                          <span>{new Date(analysis.createdAt).toLocaleDateString()}</span>
+                          <ChevronRight size={12} className={expandedAnalysis === analysis.id ? 'rotate-90 transition-transform' : 'transition-transform'} />
+                        </div>
+                      </div>
+                      {expandedAnalysis === analysis.id && diagDetail && diagDetail.analysis.id === analysis.id && (
+                        <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+                          <p className="text-xs font-medium t-primary mb-2">Causal Chain (L0–L{diagDetail.causalChain.length > 0 ? diagDetail.causalChain[diagDetail.causalChain.length - 1].level : 0})</p>
+                          <div className="space-y-2">
+                            {diagDetail.causalChain.map((link, i) => (
+                              <div key={link.id} className="flex items-start gap-3">
+                                <div className="flex flex-col items-center">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${link.level === 0 ? 'bg-red-500/20 text-red-400' : link.causeType === 'root' ? 'bg-purple-500/20 text-purple-400' : 'bg-[var(--bg-secondary)] t-muted'}`}>L{link.level}</div>
+                                  {i < diagDetail.causalChain.length - 1 && <div className="w-px h-4 bg-[var(--border-card)]" />}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium t-primary">{link.title}</span>
+                                    <Badge variant={link.fixPriority === 'critical' ? 'danger' : link.fixPriority === 'high' ? 'warning' : 'info'} size="sm">{link.fixPriority}</Badge>
+                                    <span className="text-[10px] t-muted">Confidence: {Math.round(link.confidence * 100)}%</span>
+                                  </div>
+                                  <p className="text-[10px] t-secondary mt-0.5">{link.description}</p>
+                                  {link.recommendedFix && (
+                                    <div className="flex items-start gap-1 mt-1 text-[10px] text-emerald-400">
+                                      <Wrench size={10} className="mt-0.5 flex-shrink-0" />
+                                      <span>{link.recommendedFix}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {diagDetail.fixes.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-medium t-primary mb-1">Fix Tracking</p>
+                              {diagDetail.fixes.map(fix => (
+                                <div key={fix.id} className="flex items-center justify-between text-[10px] p-1.5 rounded bg-[var(--bg-secondary)]">
+                                  <span className="t-primary">{fix.chainTitle}</span>
+                                  <Badge variant={fix.status === 'completed' ? 'success' : fix.status === 'in_progress' ? 'info' : 'warning'} size="sm">{fix.status}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </TabPanel>

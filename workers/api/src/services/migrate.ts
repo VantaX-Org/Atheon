@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v35';
+export const MIGRATION_VERSION = 'v36';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -82,6 +82,15 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS sub_catalyst_kpi_values (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, definition_id TEXT NOT NULL REFERENCES sub_catalyst_kpi_definitions(id), run_id TEXT REFERENCES sub_catalyst_runs(id), value REAL NOT NULL, status TEXT NOT NULL DEFAULT 'green', trend TEXT NOT NULL DEFAULT '[]', measured_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS catalyst_insights (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source_type TEXT NOT NULL DEFAULT 'catalyst_run', source_run_id TEXT, cluster_id TEXT, sub_catalyst_name TEXT, domain TEXT, insight_level TEXT NOT NULL DEFAULT 'pulse', category TEXT NOT NULL DEFAULT 'kpi_movement', title TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', data TEXT NOT NULL DEFAULT '{}', traceability TEXT NOT NULL DEFAULT '{}', generated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS tenant_settings (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, key));
+    CREATE TABLE IF NOT EXISTS radar_signals (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source TEXT NOT NULL, signal_type TEXT NOT NULL DEFAULT 'regulatory', title TEXT NOT NULL, description TEXT NOT NULL, url TEXT, raw_data TEXT NOT NULL DEFAULT '{}', severity TEXT NOT NULL DEFAULT 'medium', relevance_score REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'new', detected_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS radar_signal_impacts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), signal_id TEXT NOT NULL REFERENCES radar_signals(id), dimension TEXT NOT NULL, impact_direction TEXT NOT NULL DEFAULT 'negative', impact_magnitude REAL NOT NULL DEFAULT 0, affected_metrics TEXT NOT NULL DEFAULT '[]', recommended_actions TEXT NOT NULL DEFAULT '[]', llm_reasoning TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS radar_strategic_context (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), context_type TEXT NOT NULL DEFAULT 'macro', title TEXT NOT NULL, summary TEXT NOT NULL, factors TEXT NOT NULL DEFAULT '[]', sentiment TEXT NOT NULL DEFAULT 'neutral', confidence REAL NOT NULL DEFAULT 0, source_signal_ids TEXT NOT NULL DEFAULT '[]', valid_from TEXT NOT NULL DEFAULT (datetime('now')), valid_to TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS diagnostic_analyses (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), metric_id TEXT NOT NULL, metric_name TEXT NOT NULL, metric_value REAL NOT NULL, metric_status TEXT NOT NULL, trigger_type TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS diagnostic_causal_chains (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), analysis_id TEXT NOT NULL REFERENCES diagnostic_analyses(id), level INTEGER NOT NULL DEFAULT 0, cause_type TEXT NOT NULL DEFAULT 'direct', title TEXT NOT NULL, description TEXT NOT NULL, confidence REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '[]', related_metrics TEXT NOT NULL DEFAULT '[]', recommended_fix TEXT, fix_priority TEXT NOT NULL DEFAULT 'medium', fix_effort TEXT NOT NULL DEFAULT 'medium', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS diagnostic_fix_tracking (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), chain_id TEXT NOT NULL REFERENCES diagnostic_causal_chains(id), analysis_id TEXT NOT NULL REFERENCES diagnostic_analyses(id), status TEXT NOT NULL DEFAULT 'proposed', assigned_to TEXT, started_at TEXT, completed_at TEXT, outcome TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS catalyst_patterns (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), pattern_type TEXT NOT NULL DEFAULT 'recurring_issue', title TEXT NOT NULL, description TEXT NOT NULL, frequency INTEGER NOT NULL DEFAULT 1, first_seen TEXT NOT NULL DEFAULT (datetime('now')), last_seen TEXT NOT NULL DEFAULT (datetime('now')), affected_clusters TEXT NOT NULL DEFAULT '[]', affected_sub_catalysts TEXT NOT NULL DEFAULT '[]', severity TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL DEFAULT 'active', recommended_actions TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS catalyst_effectiveness (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, runs_count INTEGER NOT NULL DEFAULT 0, success_rate REAL NOT NULL DEFAULT 0, avg_match_rate REAL NOT NULL DEFAULT 0, avg_duration_ms INTEGER NOT NULL DEFAULT 0, total_value_processed REAL NOT NULL DEFAULT 0, total_exceptions INTEGER NOT NULL DEFAULT 0, improvement_trend REAL NOT NULL DEFAULT 0, roi_estimate REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name, period_start));
+    CREATE TABLE IF NOT EXISTS catalyst_dependencies (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), source_cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), source_sub_catalyst TEXT NOT NULL, target_cluster_id TEXT NOT NULL REFERENCES catalyst_clusters(id), target_sub_catalyst TEXT NOT NULL, dependency_type TEXT NOT NULL DEFAULT 'data_flow', strength REAL NOT NULL DEFAULT 0, description TEXT, discovered_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -167,6 +176,32 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_ts_tenant_key ON tenant_settings(tenant_id, key)',
     // Process metrics domain/category indexes
     'CREATE INDEX IF NOT EXISTS idx_pm_domain ON process_metrics(tenant_id, domain)',
+    // Radar engine indexes
+    'CREATE INDEX IF NOT EXISTS idx_radar_signals_tenant ON radar_signals(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_signals_type ON radar_signals(tenant_id, signal_type)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_signals_status ON radar_signals(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_signal_impacts_signal ON radar_signal_impacts(signal_id)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_signal_impacts_tenant ON radar_signal_impacts(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_signal_impacts_dim ON radar_signal_impacts(tenant_id, dimension)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_strategic_ctx_tenant ON radar_strategic_context(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_radar_strategic_ctx_type ON radar_strategic_context(tenant_id, context_type)',
+    // Diagnostics engine indexes
+    'CREATE INDEX IF NOT EXISTS idx_diag_analyses_tenant ON diagnostic_analyses(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_analyses_metric ON diagnostic_analyses(tenant_id, metric_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_analyses_status ON diagnostic_analyses(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_causal_chains_analysis ON diagnostic_causal_chains(analysis_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_causal_chains_tenant ON diagnostic_causal_chains(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_fix_tracking_chain ON diagnostic_fix_tracking(chain_id)',
+    'CREATE INDEX IF NOT EXISTS idx_diag_fix_tracking_tenant ON diagnostic_fix_tracking(tenant_id, status)',
+    // Catalyst intelligence indexes
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_patterns_tenant ON catalyst_patterns(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_patterns_type ON catalyst_patterns(tenant_id, pattern_type)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_patterns_status ON catalyst_patterns(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_effectiveness_tenant ON catalyst_effectiveness(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_effectiveness_cluster ON catalyst_effectiveness(tenant_id, cluster_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_tenant ON catalyst_dependencies(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_source ON catalyst_dependencies(source_cluster_id)',
+    'CREATE INDEX IF NOT EXISTS idx_catalyst_deps_target ON catalyst_dependencies(target_cluster_id)',
   ];
 
   for (const idx of indexes) {

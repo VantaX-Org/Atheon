@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -17,7 +17,7 @@ import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
  Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
- CheckCircle2, XCircle, Gauge
+ CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw
 } from "lucide-react";
 
 
@@ -58,6 +58,44 @@ export function ApexPage() {
  // AI Executive Insights state
  const [execInsights, setExecInsights] = useState<ApexInsightsResponse | null>(null);
  const [execInsightsLoading, setExecInsightsLoading] = useState(false);
+
+ // Radar / Strategic Context state
+ const [radarContext, setRadarContext] = useState<RadarContextResponse | null>(null);
+ const [radarLoading, setRadarLoading] = useState(false);
+ const [radarSignalForm, setRadarSignalForm] = useState({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+ const [creatingSignal, setCreatingSignal] = useState(false);
+ const [showSignalForm, setShowSignalForm] = useState(false);
+ const [expandedSignal, setExpandedSignal] = useState<string | null>(null);
+
+ const loadRadarContext = async () => {
+  setRadarLoading(true);
+  try {
+   const data = await api.radar.getContext();
+   setRadarContext(data);
+  } catch (err) { console.error('Failed to load radar context:', err); }
+  setRadarLoading(false);
+ };
+
+ const handleCreateSignal = async () => {
+  if (creatingSignal || !radarSignalForm.title.trim()) return;
+  setCreatingSignal(true);
+  try {
+   await api.radar.createSignal({
+    source: radarSignalForm.source || 'manual',
+    signal_type: radarSignalForm.signal_type,
+    title: radarSignalForm.title,
+    description: radarSignalForm.description,
+    url: radarSignalForm.url || undefined,
+    severity: radarSignalForm.severity,
+   });
+   setShowSignalForm(false);
+   setRadarSignalForm({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+   loadRadarContext();
+  } catch (err) {
+   setActionError(err instanceof Error ? err.message : 'Failed to create signal');
+  }
+  setCreatingSignal(false);
+ };
 
  const loadExecInsights = async () => {
   setExecInsightsLoading(true);
@@ -174,6 +212,7 @@ export function ApexPage() {
  score: val.score, trend: val.trend as string,
  change: val.delta ?? 0, weight: 0.2,
  sparkline: [val.score - 6, val.score - 4, val.score - 3, val.score - 2, val.score - 1, val.score]}))
+ .sort((a, b) => a.score - b.score) // Dynamic Layout: severity-driven sort (worst first)
  : [];
 
  // Detect if tenant has any real data
@@ -184,6 +223,7 @@ export function ApexPage() {
  { id: 'briefing', label: 'Leadership Summary', icon: <FileText size={14} /> },
  { id: 'risks', label: 'Risk Overview', icon: <AlertTriangle size={14} />, count: risks.length },
  { id: 'scenarios', label: 'What-If Analysis', icon: <BarChart3 size={14} /> },
+ { id: 'strategic-context', label: 'Strategic Context', icon: <Radar size={14} />, count: radarContext?.summary?.activeSignals },
  ];
 
   if (loading) {
@@ -1214,6 +1254,160 @@ export function ApexPage() {
  </div></Portal>
  )}
  
+ {/* Strategic Context Tab */}
+ {activeTab === 'strategic-context' && (
+  <TabPanel>
+   {radarLoading && !radarContext && (
+    <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+   )}
+   {!radarLoading && !radarContext && (
+    <Card className="text-center py-12">
+     <Radar className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+     <p className="text-sm font-medium t-primary">No strategic context yet</p>
+     <p className="text-xs t-muted mt-1">Add external signals to build your strategic radar.</p>
+     <Button variant="primary" size="sm" className="mt-4" onClick={() => { loadRadarContext(); }}>Load Strategic Context</Button>
+    </Card>
+   )}
+   {radarContext && (
+    <div className="space-y-4">
+     {/* Summary Cards */}
+     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <Card><div className="text-center"><p className="text-2xl font-bold t-primary">{radarContext.summary.totalSignals}</p><p className="text-[10px] t-muted uppercase">Total Signals</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-amber-400">{radarContext.summary.activeSignals}</p><p className="text-[10px] t-muted uppercase">Active Signals</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{radarContext.summary.criticalImpacts}</p><p className="text-[10px] t-muted uppercase">Critical Impacts</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400 capitalize">{radarContext.summary.overallSentiment}</p><p className="text-[10px] t-muted uppercase">Sentiment</p></div></Card>
+     </div>
+
+     {/* Strategic Context Card */}
+     {radarContext.context && (
+      <Card className="border-purple-500/20 bg-purple-500/5">
+       <div className="flex items-center gap-2 mb-2">
+        <Globe size={16} className="text-purple-400" />
+        <h3 className="text-sm font-semibold t-primary">{radarContext.context.title}</h3>
+        <Badge variant={radarContext.context.sentiment === 'positive' ? 'success' : radarContext.context.sentiment === 'negative' ? 'danger' : 'info'} size="sm">{radarContext.context.sentiment}</Badge>
+       </div>
+       <p className="text-xs t-secondary mb-3">{radarContext.context.summary}</p>
+       {radarContext.context.factors.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+         {radarContext.context.factors.map((f, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] text-[10px] t-muted border border-[var(--border-card)]">
+           {f.direction === 'positive' ? <TrendingUp size={10} className="text-emerald-400" /> : f.direction === 'negative' ? <TrendingDown size={10} className="text-red-400" /> : <Minus size={10} />}
+           {f.name}
+          </span>
+         ))}
+        </div>
+       )}
+      </Card>
+     )}
+
+     {/* Signals List */}
+     <div className="flex items-center justify-between">
+      <h3 className="text-sm font-semibold t-primary">External Signals</h3>
+      <div className="flex gap-2">
+       <Button variant="secondary" size="sm" onClick={loadRadarContext}><RefreshCw size={12} /> Refresh</Button>
+       <Button variant="primary" size="sm" onClick={() => setShowSignalForm(true)}><Plus size={12} /> Add Signal</Button>
+      </div>
+     </div>
+
+     {showSignalForm && (
+      <Card className="border-accent/20">
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+         <label className="text-[10px] t-muted uppercase block mb-1">Title *</label>
+         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.title} onChange={e => setRadarSignalForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. SARB Rate Hike Expected" />
+        </div>
+        <div>
+         <label className="text-[10px] t-muted uppercase block mb-1">Source</label>
+         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.source} onChange={e => setRadarSignalForm(p => ({ ...p, source: e.target.value }))} placeholder="e.g. Reuters, Bloomberg" />
+        </div>
+        <div className="md:col-span-2">
+         <label className="text-[10px] t-muted uppercase block mb-1">Description</label>
+         <textarea className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" rows={2} value={radarSignalForm.description} onChange={e => setRadarSignalForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the external signal..." />
+        </div>
+        <div>
+         <label className="text-[10px] t-muted uppercase block mb-1">Type</label>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.signal_type} onChange={e => setRadarSignalForm(p => ({ ...p, signal_type: e.target.value }))}>
+          <option value="regulatory">Regulatory</option><option value="market">Market</option><option value="competitor">Competitor</option><option value="economic">Economic</option><option value="technology">Technology</option><option value="geopolitical">Geopolitical</option>
+         </select>
+        </div>
+        <div>
+         <label className="text-[10px] t-muted uppercase block mb-1">Severity</label>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.severity} onChange={e => setRadarSignalForm(p => ({ ...p, severity: e.target.value }))}>
+          <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+         </select>
+        </div>
+       </div>
+       <div className="flex justify-end gap-2 mt-3">
+        <Button variant="secondary" size="sm" onClick={() => setShowSignalForm(false)}>Cancel</Button>
+        <Button variant="primary" size="sm" onClick={handleCreateSignal} disabled={creatingSignal || !radarSignalForm.title.trim()}>
+         {creatingSignal ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />} Create & Analyse
+        </Button>
+       </div>
+      </Card>
+     )}
+
+     {radarContext.signals.length === 0 ? (
+      <Card className="text-center py-8">
+       <p className="text-xs t-muted">No signals detected. Add external signals to build your strategic context.</p>
+      </Card>
+     ) : (
+      <div className="space-y-2">
+       {radarContext.signals.map(signal => (
+        <Card key={signal.id} hover onClick={() => setExpandedSignal(expandedSignal === signal.id ? null : signal.id)}>
+         <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+           <Badge variant={severityColor(signal.severity)} size="sm">{signal.severity}</Badge>
+           <span className="text-sm font-medium t-primary">{signal.title}</span>
+           <Badge variant="info" size="sm">{signal.signalType}</Badge>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] t-muted">
+           <span>{signal.source}</span>
+           <Badge variant={signal.status === 'analysed' ? 'success' : signal.status === 'dismissed' ? 'default' : 'warning'} size="sm">{signal.status}</Badge>
+          </div>
+         </div>
+         {expandedSignal === signal.id && (
+          <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+           <p className="text-xs t-secondary mb-2">{signal.description}</p>
+           {signal.url && <a href={signal.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline flex items-center gap-1"><Link2 size={10} />{signal.url}</a>}
+           <p className="text-[10px] t-muted mt-2">Detected: {new Date(signal.detectedAt).toLocaleDateString()} · Relevance: {Math.round(signal.relevanceScore)}%</p>
+          </div>
+         )}
+        </Card>
+       ))}
+      </div>
+     )}
+
+     {/* Impacts Summary */}
+     {radarContext.impacts.length > 0 && (
+      <div>
+       <h3 className="text-sm font-semibold t-primary mb-2">Impact Analysis</h3>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {radarContext.impacts.map((impact, i) => (
+         <Card key={i}>
+          <div className="flex items-center justify-between mb-1">
+           <Badge variant="info" size="sm">{impact.dimension}</Badge>
+           <div className="flex items-center gap-1">
+            {impact.impactDirection === 'positive' ? <TrendingUp size={12} className="text-emerald-400" /> : impact.impactDirection === 'negative' ? <TrendingDown size={12} className="text-red-400" /> : <Minus size={12} />}
+            <span className="text-xs t-primary">{Math.round(impact.impactMagnitude)}%</span>
+           </div>
+          </div>
+          {impact.recommendedActions.length > 0 && (
+           <ul className="mt-1 space-y-0.5">
+            {impact.recommendedActions.slice(0, 2).map((action, j) => (
+             <li key={j} className="text-[10px] t-muted flex items-start gap-1"><ArrowRight size={8} className="mt-0.5 flex-shrink-0" />{action}</li>
+            ))}
+           </ul>
+          )}
+         </Card>
+        ))}
+       </div>
+      </div>
+     )}
+    </div>
+   )}
+  </TabPanel>
+ )}
+
  {/* Traceability Modal */}
  {showTraceabilityModal && traceabilityData && (
   <TraceabilityModal

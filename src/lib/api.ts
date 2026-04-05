@@ -625,6 +625,64 @@ export const api = {
     saveLlmConfig: (data: { provider: string; model?: string; apiKey?: string; baseUrl?: string; temperature?: number; maxTokens?: number }) =>
       request<{ success: boolean; message: string; provider: string }>('/api/admin/llm-config', { method: 'POST', body: JSON.stringify(data) }),
   },
+
+  // ── Apex Radar ─────────────────────────────────────────────────────
+  radar: {
+    getContext: (tenantId?: string) =>
+      request<RadarContextResponse>(`/api/radar/context${qs({ tenant_id: tenantId })}`),
+    rebuildContext: (tenantId?: string) =>
+      request<{ context: RadarStrategicContext }>(`/api/radar/context/rebuild${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    getSignals: (tenantId?: string, options?: { status?: string; type?: string; limit?: number }) =>
+      request<{ signals: RadarSignalItem[]; total: number }>(`/api/radar/signals${qs({ tenant_id: tenantId, status: options?.status, type: options?.type, limit: options?.limit?.toString() })}`),
+    createSignal: (data: RadarSignalCreate, tenantId?: string) =>
+      request<{ id: string; impacts: RadarSignalImpactItem[]; message: string }>(`/api/radar/signals${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify(data) }),
+    getSignal: (signalId: string, tenantId?: string) =>
+      request<{ signal: RadarSignalItem; impacts: RadarSignalImpactItem[] }>(`/api/radar/signals/${signalId}${qs({ tenant_id: tenantId })}`),
+    analyseSignal: (signalId: string, tenantId?: string) =>
+      request<{ impacts: RadarSignalImpactItem[] }>(`/api/radar/signals/${signalId}/analyse${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    updateSignal: (signalId: string, data: { status?: string; severity?: string }, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/radar/signals/${signalId}${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getImpacts: (tenantId?: string, dimension?: string) =>
+      request<{ impacts: RadarImpactWithSignal[]; total: number }>(`/api/radar/impacts${qs({ tenant_id: tenantId, dimension })}`),
+  },
+
+  // ── Pulse Diagnostics ──────────────────────────────────────────────
+  diagnostics: {
+    getSummary: (tenantId?: string) =>
+      request<DiagnosticSummaryResponse>(`/api/diagnostics/summary${qs({ tenant_id: tenantId })}`),
+    getAnalyses: (tenantId?: string, options?: { status?: string; limit?: number }) =>
+      request<{ analyses: DiagnosticAnalysisItem[]; total: number }>(`/api/diagnostics/analyses${qs({ tenant_id: tenantId, status: options?.status, limit: options?.limit?.toString() })}`),
+    getAnalysis: (analysisId: string, tenantId?: string) =>
+      request<DiagnosticAnalysisDetail>(`/api/diagnostics/analyses/${analysisId}${qs({ tenant_id: tenantId })}`),
+    analyseMetric: (metricId: string, tenantId?: string) =>
+      request<DiagnosticAnalysisDetail>(`/api/diagnostics/${metricId}/analyse${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    createFix: (data: { chain_id: string; analysis_id: string; assigned_to?: string; notes?: string }, tenantId?: string) =>
+      request<{ id: string; status: string }>(`/api/diagnostics/fixes${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify(data) }),
+    updateFix: (fixId: string, data: { status?: string; assigned_to?: string; outcome?: string; notes?: string }, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/diagnostics/fixes/${fixId}${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getFixes: (tenantId?: string, status?: string) =>
+      request<{ fixes: DiagnosticFixItem[]; total: number }>(`/api/diagnostics/fixes${qs({ tenant_id: tenantId, status })}`),
+  },
+
+  // ── Catalyst Intelligence ──────────────────────────────────────────
+  catalystIntelligence: {
+    analyse: (tenantId?: string) =>
+      request<{ patterns: CatalystPatternItem[]; discovered: number }>(`/api/catalyst-intelligence/analyse${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    getPatterns: (tenantId?: string, options?: { status?: string; type?: string; limit?: number }) =>
+      request<{ patterns: CatalystPatternItem[]; total: number }>(`/api/catalyst-intelligence/patterns${qs({ tenant_id: tenantId, status: options?.status, type: options?.type, limit: options?.limit?.toString() })}`),
+    updatePattern: (patternId: string, data: { status?: string; severity?: string }, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/catalyst-intelligence/patterns/${patternId}${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getEffectiveness: (tenantId?: string, clusterId?: string) =>
+      request<{ effectiveness: CatalystEffectivenessItem[]; total: number }>(`/api/catalyst-intelligence/effectiveness${qs({ tenant_id: tenantId, cluster_id: clusterId })}`),
+    calculateEffectiveness: (tenantId?: string, periodDays?: number) =>
+      request<{ effectiveness: CatalystEffectivenessItem[]; total: number; periodDays: number }>(`/api/catalyst-intelligence/effectiveness/calculate${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify({ period_days: periodDays || 30 }) }),
+    getDependencies: (tenantId?: string, clusterId?: string) =>
+      request<{ dependencies: CatalystDependencyItem[]; total: number }>(`/api/catalyst-intelligence/dependencies${qs({ tenant_id: tenantId, cluster_id: clusterId })}`),
+    discoverDependencies: (tenantId?: string) =>
+      request<{ dependencies: CatalystDependencyItem[]; discovered: number }>(`/api/catalyst-intelligence/dependencies/discover${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    getOverview: (tenantId?: string) =>
+      request<CatalystIntelligenceOverview>(`/api/catalyst-intelligence/overview${qs({ tenant_id: tenantId })}`),
+  },
 };
 
 // Types for API responses
@@ -1814,4 +1872,198 @@ export interface TechnicalSizing {
     }>;
     total_cost_pm_zar: number;
   }>;
+}
+
+// ── Apex Radar Types ──────────────────────────────────────────────────
+
+export interface RadarSignalItem {
+  id: string;
+  source: string;
+  signalType: 'regulatory' | 'market' | 'competitor' | 'economic' | 'technology' | 'geopolitical';
+  title: string;
+  description: string;
+  url?: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  relevanceScore: number;
+  status: 'new' | 'analysed' | 'dismissed' | 'expired';
+  detectedAt: string;
+  expiresAt?: string;
+  createdAt: string;
+}
+
+export interface RadarSignalCreate {
+  source: string;
+  signal_type: string;
+  title: string;
+  description: string;
+  url?: string;
+  severity?: string;
+  raw_data?: Record<string, unknown>;
+}
+
+export interface RadarSignalImpactItem {
+  id: string;
+  dimension: string;
+  impactDirection: 'positive' | 'negative' | 'neutral';
+  impactMagnitude: number;
+  affectedMetrics: string[];
+  recommendedActions: string[];
+  llmReasoning?: string;
+  createdAt: string;
+}
+
+export interface RadarImpactWithSignal extends RadarSignalImpactItem {
+  signalId: string;
+  signalTitle: string;
+  signalType: string;
+  signalSeverity: string;
+}
+
+export interface RadarStrategicContext {
+  id: string;
+  contextType: 'macro' | 'industry' | 'competitive' | 'regulatory';
+  title: string;
+  summary: string;
+  factors: Array<{ name: string; direction: string; magnitude: number }>;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  confidence: number;
+  sourceSignalIds: string[];
+  validFrom: string;
+  validTo?: string;
+  createdAt: string;
+}
+
+export interface RadarContextResponse {
+  context: RadarStrategicContext | null;
+  signals: RadarSignalItem[];
+  impacts: RadarSignalImpactItem[];
+  summary: {
+    totalSignals: number;
+    activeSignals: number;
+    criticalImpacts: number;
+    overallSentiment: string;
+  };
+}
+
+// ── Pulse Diagnostics Types ───────────────────────────────────────────
+
+export interface DiagnosticAnalysisItem {
+  id: string;
+  metricId: string;
+  metricName: string;
+  metricValue: number;
+  metricStatus: string;
+  triggerType: 'manual' | 'auto' | 'scheduled';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface DiagnosticCausalChainLink {
+  id: string;
+  level: number;
+  causeType: 'direct' | 'contributing' | 'systemic' | 'environmental' | 'root';
+  title: string;
+  description: string;
+  confidence: number;
+  evidence: string[];
+  relatedMetrics: string[];
+  recommendedFix?: string;
+  fixPriority: 'critical' | 'high' | 'medium' | 'low';
+  fixEffort: 'low' | 'medium' | 'high';
+  createdAt: string;
+}
+
+export interface DiagnosticFixItem {
+  id: string;
+  chainId: string;
+  analysisId: string;
+  chainTitle: string;
+  fixPriority: string;
+  fixEffort: string;
+  metricName: string;
+  status: 'proposed' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
+  assignedTo?: string;
+  startedAt?: string;
+  completedAt?: string;
+  outcome?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface DiagnosticSummaryResponse {
+  totalAnalyses: number;
+  pendingAnalyses: number;
+  completedAnalyses: number;
+  undiagnosedMetrics: number;
+  criticalFindings: number;
+  activeFixes: number;
+}
+
+export interface DiagnosticAnalysisDetail {
+  analysis: DiagnosticAnalysisItem;
+  causalChain: DiagnosticCausalChainLink[];
+  fixes: DiagnosticFixItem[];
+}
+
+// ── Catalyst Intelligence Types ───────────────────────────────────────
+
+export interface CatalystPatternItem {
+  id: string;
+  patternType: 'recurring_issue' | 'seasonal_trend' | 'cascade_failure' | 'improvement_opportunity' | 'anomaly';
+  title: string;
+  description: string;
+  frequency: number;
+  firstSeen: string;
+  lastSeen: string;
+  affectedClusters: string[];
+  affectedSubCatalysts: string[];
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  status: 'active' | 'resolved' | 'monitoring';
+  recommendedActions: string[];
+  createdAt: string;
+}
+
+export interface CatalystEffectivenessItem {
+  id: string;
+  clusterId: string;
+  subCatalystName: string;
+  periodStart: string;
+  periodEnd: string;
+  runsCount: number;
+  successRate: number;
+  avgMatchRate: number;
+  avgDurationMs: number;
+  totalValueProcessed: number;
+  totalExceptions: number;
+  improvementTrend: number;
+  roiEstimate: number;
+  createdAt: string;
+}
+
+export interface CatalystDependencyItem {
+  id: string;
+  sourceClusterId: string;
+  sourceSubCatalyst: string;
+  targetClusterId: string;
+  targetSubCatalyst: string;
+  dependencyType: 'data_flow' | 'temporal' | 'causal' | 'resource';
+  strength: number;
+  description?: string;
+  discoveredAt: string;
+}
+
+export interface CatalystIntelligenceOverview {
+  summary: {
+    activePatterns: number;
+    criticalPatterns: number;
+    totalSubCatalysts: number;
+    avgSuccessRate: number;
+    totalValueProcessed: number;
+    avgRoi: number;
+    totalDependencies: number;
+  };
+  patterns: CatalystPatternItem[];
+  effectiveness: CatalystEffectivenessItem[];
+  dependencies: CatalystDependencyItem[];
 }

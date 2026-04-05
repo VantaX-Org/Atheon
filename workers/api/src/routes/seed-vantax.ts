@@ -128,6 +128,10 @@ const ALLOWED_TABLES = new Set([
   'erp_products', 'erp_bank_transactions', 'erp_journal_entries',
   'erp_gl_accounts', 'erp_employees', 'erp_tax_entries',
   'erp_connections',
+  // New engine tables
+  'radar_signals', 'radar_signal_impacts', 'radar_strategic_context',
+  'diagnostic_analyses', 'diagnostic_causal_chains', 'diagnostic_fix_tracking',
+  'catalyst_patterns', 'catalyst_effectiveness', 'catalyst_dependencies',
   // SAP native tables
   'sap_bkpf', 'sap_bseg', 'sap_bsid', 'sap_bsik', 'sap_febep',
   'sap_ekko', 'sap_ekpo', 'sap_ekbe', 'sap_mard', 'sap_iseg',
@@ -1186,6 +1190,125 @@ seed.post('/seed-vantax', async (c) => {
       4      // active_risk_count
     ).run();
 
+    // ── STEP: Seed Apex Radar signals + impacts ──
+    console.log('[VantaX Seeder] Seeding Apex Radar signals...');
+
+    const radarSignals = [
+      { source: 'SARB', type: 'regulatory', title: 'SARB Interest Rate Hike – 50bps', description: 'The South African Reserve Bank raised the repo rate by 50 basis points to combat inflation. This will increase borrowing costs across all credit facilities and may impact capital expenditure plans.', severity: 'high', relevance: 85 },
+      { source: 'Reuters', type: 'market', title: 'Rand Weakens Past R19/USD', description: 'The South African Rand breached the R19/USD mark amid global risk-off sentiment and load-shedding concerns. Import costs for raw materials will increase significantly.', severity: 'critical', relevance: 92 },
+      { source: 'BusinessDay', type: 'competitor', title: 'Competitor Acquires Local Distributor', description: 'Major competitor has acquired a key logistics partner in the Gauteng region, potentially disrupting our supply chain relationships and distribution network.', severity: 'medium', relevance: 70 },
+      { source: 'DTIC', type: 'regulatory', title: 'New BBBEE Scorecard Requirements', description: 'Department of Trade, Industry and Competition published updated BBBEE scorecard requirements effective Q2 2026. Procurement scoring thresholds have been raised.', severity: 'high', relevance: 78 },
+      { source: 'Eskom', type: 'economic', title: 'Stage 4 Load Shedding Extended', description: 'Eskom announced extended Stage 4 load shedding for the next 3 weeks due to unplanned breakdowns. Production capacity will be impacted by 15-20%.', severity: 'critical', relevance: 95 },
+      { source: 'TechCrunch', type: 'technology', title: 'SAP S/4HANA Cloud Migration Wave', description: 'SAP announced accelerated migration timeline for S/4HANA Cloud. Current on-premise licences will require transition planning within 18 months.', severity: 'medium', relevance: 65 },
+    ];
+
+    const signalIds: string[] = [];
+    for (const sig of radarSignals) {
+      const sigId = crypto.randomUUID();
+      signalIds.push(sigId);
+      await c.env.DB.prepare(
+        `INSERT INTO radar_signals (id, tenant_id, source, signal_type, title, description, url, raw_data, severity, relevance_score, status, detected_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, '{}', ?, ?, 'analysed', ?, ?)`
+      ).bind(sigId, tenantId, sig.source, sig.type, sig.title, sig.description, sig.severity, sig.relevance, now, now).run();
+    }
+
+    // Seed signal impacts
+    const impactData = [
+      { sigIdx: 0, dimension: 'financial', direction: 'negative', magnitude: 72, metrics: ['Interest Coverage Ratio', 'Debt Service Cost'], actions: ['Review variable-rate facilities', 'Accelerate fixed-rate hedging'] },
+      { sigIdx: 0, dimension: 'operational', direction: 'negative', magnitude: 45, metrics: ['CapEx Budget Utilisation'], actions: ['Defer non-critical capital projects'] },
+      { sigIdx: 1, dimension: 'financial', direction: 'negative', magnitude: 88, metrics: ['Import Cost Index', 'Gross Margin'], actions: ['Activate FX hedging program', 'Renegotiate supplier contracts with ZAR escalation clauses'] },
+      { sigIdx: 1, dimension: 'risk', direction: 'negative', magnitude: 75, metrics: ['Currency Risk Exposure'], actions: ['Increase ZAR cash reserves'] },
+      { sigIdx: 2, dimension: 'strategic', direction: 'negative', magnitude: 55, metrics: ['Market Share', 'Distribution Coverage'], actions: ['Strengthen existing distributor relationships', 'Explore alternative logistics partners'] },
+      { sigIdx: 3, dimension: 'compliance', direction: 'negative', magnitude: 60, metrics: ['BBBEE Score', 'Procurement Spend Compliance'], actions: ['Audit current BBBEE procurement spend', 'Identify additional qualifying suppliers'] },
+      { sigIdx: 4, dimension: 'operational', direction: 'negative', magnitude: 90, metrics: ['Production Output', 'OEE', 'Energy Cost per Unit'], actions: ['Activate backup generator capacity', 'Shift production to off-peak hours', 'Review diesel fuel reserves'] },
+      { sigIdx: 4, dimension: 'financial', direction: 'negative', magnitude: 68, metrics: ['Energy Cost Ratio', 'Unit Production Cost'], actions: ['Accelerate solar installation project'] },
+      { sigIdx: 5, dimension: 'technology', direction: 'neutral', magnitude: 40, metrics: ['System Migration Readiness'], actions: ['Begin S/4HANA Cloud readiness assessment', 'Budget for migration project'] },
+    ];
+
+    for (const imp of impactData) {
+      const impId = crypto.randomUUID();
+      await c.env.DB.prepare(
+        `INSERT INTO radar_signal_impacts (id, tenant_id, signal_id, dimension, impact_direction, impact_magnitude, affected_metrics, recommended_actions, llm_reasoning, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Analysis generated by Atheon Intelligence based on signal context and current health dimensions.', ?)`
+      ).bind(impId, tenantId, signalIds[imp.sigIdx], imp.dimension, imp.direction, imp.magnitude, JSON.stringify(imp.metrics), JSON.stringify(imp.actions), now).run();
+    }
+
+    // Seed strategic context
+    const ctxId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      `INSERT INTO radar_strategic_context (id, tenant_id, context_type, title, summary, factors, sentiment, confidence, source_signal_ids, valid_from, created_at)
+       VALUES (?, ?, 'macro', 'Q2 2026 Strategic Context: Headwinds Intensifying', ?, ?, 'negative', 72, ?, ?, ?)`
+    ).bind(
+      ctxId, tenantId,
+      'The South African operating environment faces significant headwinds in Q2 2026. A combination of monetary tightening (50bps repo rate increase), rand depreciation past R19/USD, and extended Stage 4 load shedding creates a challenging landscape for industrial operations. Import-dependent supply chains face margin compression, while energy-intensive production lines will see reduced output capacity. New BBBEE scorecard requirements add compliance complexity. On the positive side, the SAP S/4HANA Cloud transition, while requiring investment, presents an opportunity to modernise operations. Strategic focus should prioritise cost containment, FX risk management, and energy resilience.',
+      JSON.stringify([
+        { name: 'Interest Rate Environment', direction: 'negative', magnitude: 72 },
+        { name: 'Currency Depreciation', direction: 'negative', magnitude: 88 },
+        { name: 'Energy Supply (Load Shedding)', direction: 'negative', magnitude: 90 },
+        { name: 'Regulatory Compliance (BBBEE)', direction: 'negative', magnitude: 60 },
+        { name: 'Technology Modernisation', direction: 'positive', magnitude: 40 },
+      ]),
+      JSON.stringify(signalIds),
+      now, now,
+    ).run();
+
+    console.log(`[VantaX Seeder] Seeded ${radarSignals.length} radar signals, ${impactData.length} impacts, 1 strategic context`);
+
+    // ── STEP: Seed Pulse Diagnostics ──
+    console.log('[VantaX Seeder] Seeding Pulse Diagnostics...');
+
+    const diagMetrics = [
+      { name: 'GR/IR Match Rate', value: 81.25, status: 'amber', category: 'reconciliation' },
+      { name: 'Bank Reconciliation Rate', value: 68.75, status: 'red', category: 'reconciliation' },
+      { name: 'Inventory Accuracy', value: 55.6, status: 'red', category: 'inventory' },
+    ];
+
+    for (const dm of diagMetrics) {
+      const analysisId = crypto.randomUUID();
+      await c.env.DB.prepare(
+        `INSERT INTO diagnostic_analyses (id, tenant_id, metric_id, metric_name, metric_value, metric_status, trigger_type, status, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'auto', 'completed', ?, ?)`
+      ).bind(analysisId, tenantId, crypto.randomUUID(), dm.name, dm.value, dm.status, now, now).run();
+
+      // L0-L3 causal chain for each
+      const chains = [
+        { level: 0, type: 'direct', title: `${dm.name} at ${dm.value}%`, desc: `Metric ${dm.name} is in ${dm.status} status at ${dm.value}%, below target thresholds.`, confidence: 95, priority: dm.status === 'red' ? 'critical' : 'high', effort: 'low' },
+        { level: 1, type: 'direct', title: `Data quality issues in source systems`, desc: `Inconsistent data entry and delayed postings in SAP S/4HANA are causing reconciliation mismatches. Manual data entry errors account for approximately 15% of discrepancies.`, confidence: 80, priority: 'high', effort: 'medium' },
+        { level: 2, type: 'contributing', title: `Process timing gaps between systems`, desc: `Cut-off timing differences between sub-systems create temporary reconciliation breaks. Month-end close procedures do not adequately address inter-system timing gaps.`, confidence: 70, priority: 'medium', effort: 'medium' },
+        { level: 3, type: 'systemic', title: `Lack of real-time integration layer`, desc: `Batch processing architecture means reconciliation data is always stale by 4-8 hours. A real-time event-driven integration would eliminate most timing-related discrepancies.`, confidence: 60, priority: 'medium', effort: 'high' },
+      ];
+
+      for (const ch of chains) {
+        const chainId = crypto.randomUUID();
+        await c.env.DB.prepare(
+          `INSERT INTO diagnostic_causal_chains (id, tenant_id, analysis_id, level, cause_type, title, description, confidence, evidence, related_metrics, recommended_fix, fix_priority, fix_effort, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?)`
+        ).bind(chainId, tenantId, analysisId, ch.level, ch.type, ch.title, ch.desc, ch.confidence, `Review and address: ${ch.title}`, ch.priority, ch.effort, now).run();
+      }
+    }
+
+    console.log(`[VantaX Seeder] Seeded ${diagMetrics.length} diagnostic analyses with causal chains`);
+
+    // ── STEP: Seed Catalyst Intelligence patterns ──
+    console.log('[VantaX Seeder] Seeding Catalyst Intelligence patterns...');
+
+    const patterns = [
+      { type: 'recurring_failure', title: 'Recurring GR/IR Mismatch on Chemicals Suppliers', desc: 'Pattern detected: 4 out of 5 recent GR/IR reconciliation runs show mismatches exceeding 5% for chemical raw material suppliers (Sasol, Omnia, AECI). Root cause appears to be inconsistent unit-of-measure conversion between PO and goods receipt.', freq: 4, severity: 'high', clusters: ['Finance'], subs: ['GR/IR Reconciliation'] },
+      { type: 'degradation_trend', title: 'Declining Bank Reconciliation Accuracy', desc: 'Bank reconciliation accuracy has declined from 85% to 69% over the last 6 runs. Unmatched EFT transactions are increasing, particularly for smaller supplier payments under R10,000. This correlates with the recent switch to batch payment processing.', freq: 6, severity: 'critical', clusters: ['Finance'], subs: ['Bank Reconciliation'] },
+      { type: 'cross_catalyst_correlation', title: 'Inventory Discrepancy Correlates with PO Timing', desc: 'Inventory count variances are 3x higher for items with purchase orders processed in the last 48 hours. The goods receipt timing gap between warehouse scanning and SAP posting is creating a systematic bias in physical count reconciliation.', freq: 3, severity: 'medium', clusters: ['Supply Chain', 'Finance'], subs: ['Inventory Reconciliation', 'GR/IR Reconciliation'] },
+    ];
+
+    for (const pat of patterns) {
+      const patId = crypto.randomUUID();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_patterns (id, tenant_id, pattern_type, title, description, frequency, first_seen, last_seen, affected_clusters, affected_sub_catalysts, severity, status, recommended_actions, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', '[]', ?)`
+      ).bind(patId, tenantId, pat.type, pat.title, pat.desc, pat.freq, thirtyDaysAgo, now, JSON.stringify(pat.clusters), JSON.stringify(pat.subs), pat.severity, now).run();
+    }
+
+    console.log(`[VantaX Seeder] Seeded ${patterns.length} catalyst patterns`);
+
     // Summary
     // Products: SAP (18) + PHYSICAL_COUNT (18) = 36; Invoices: SAP (80) + SAP-AR (72) = 152
     const totalErpRecords = SA_SUPPLIERS.length + SA_CUSTOMERS.length + (SA_PRODUCTS.length * 2) + 80 + 72 + 80 + 80 + GL_ACCOUNTS.length + 40;
@@ -1224,6 +1347,13 @@ seed.post('/seed-vantax', async (c) => {
           reconciliationReady: allSubCatalysts.filter(s => s.data_sources && s.data_sources.length >= 2).length,
         },
         healthScore: { overall: 0, note: 'Baseline - will be calculated on first catalyst run' },
+        newEngines: {
+          radarSignals: radarSignals.length,
+          radarImpacts: impactData.length,
+          strategicContexts: 1,
+          diagnosticAnalyses: diagMetrics.length,
+          catalystPatterns: patterns.length,
+        },
       },
       nextSteps: [
         'Go to Catalysts page and execute any sub-catalyst',
@@ -1233,6 +1363,9 @@ seed.post('/seed-vantax', async (c) => {
         'Sales Order Matching: ~69% SD-to-AR match, 10 amount variances, 8 unmatched',
         'AP Invoice Validation: validates 80 invoices for field completeness',
         'All modes (reconciliation, validation, comparison, extraction) do real field-level work',
+        'Visit Apex → Strategic Context to see radar signals and impact analysis',
+        'Visit Pulse → Diagnostics to see root-cause analyses for degraded metrics',
+        'Visit Catalysts → Intelligence to see discovered patterns and trends',
       ],
     });
   } catch (err) {
@@ -1268,6 +1401,16 @@ seed.get('/vantax-status', async (c) => {
       ['connections', 'erp_connections'],
       ['glAccounts', 'erp_gl_accounts'],
       ['journalEntries', 'erp_journal_entries'],
+      // New engine tables
+      ['radarSignals', 'radar_signals'],
+      ['radarImpacts', 'radar_signal_impacts'],
+      ['radarContext', 'radar_strategic_context'],
+      ['diagnosticAnalyses', 'diagnostic_analyses'],
+      ['diagnosticChains', 'diagnostic_causal_chains'],
+      ['diagnosticFixes', 'diagnostic_fix_tracking'],
+      ['catalystPatterns', 'catalyst_patterns'],
+      ['catalystEffectiveness', 'catalyst_effectiveness'],
+      ['catalystDependencies', 'catalyst_dependencies'],
       // SAP native tables
       ['sap_bkpf', 'sap_bkpf'],
       ['sap_bseg', 'sap_bseg'],
