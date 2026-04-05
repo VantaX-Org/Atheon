@@ -2877,8 +2877,8 @@ export function CatalystsPage() {
           </div>
           <div className="flex items-center gap-2 mt-1">
            <Badge variant="info" size="sm">{dep.dependencyType.replace('_', ' ')}</Badge>
-           <Progress value={dep.strength * 100} color={dep.strength >= 0.7 ? 'emerald' : dep.strength >= 0.4 ? 'amber' : 'red'} className="flex-1 h-1.5" />
-           <span className="text-[10px] t-muted">{Math.round(dep.strength * 100)}%</span>
+           <Progress value={dep.strength} color={dep.strength >= 70 ? 'emerald' : dep.strength >= 40 ? 'amber' : 'red'} className="flex-1 h-1.5" />
+           <span className="text-[10px] t-muted">{Math.round(dep.strength)}%</span>
           </div>
           {dep.description && <p className="text-[10px] t-muted mt-1">{dep.description}</p>}
          </Card>

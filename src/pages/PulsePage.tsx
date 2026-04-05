@@ -2282,7 +2282,7 @@ export function PulsePage() {
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-medium t-primary">{link.title}</span>
                                     <Badge variant={link.fixPriority === 'critical' ? 'danger' : link.fixPriority === 'high' ? 'warning' : 'info'} size="sm">{link.fixPriority}</Badge>
-                                    <span className="text-[10px] t-muted">Confidence: {Math.round(link.confidence * 100)}%</span>
+                                    <span className="text-[10px] t-muted">Confidence: {Math.round(link.confidence)}%</span>
                                   </div>
                                   <p className="text-[10px] t-secondary mt-0.5">{link.description}</p>
                                   {link.recommendedFix && (

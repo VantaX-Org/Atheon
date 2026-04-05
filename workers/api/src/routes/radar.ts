@@ -85,7 +85,20 @@ radar.post('/context/rebuild', async (c) => {
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
 
   try {
-    const context = await buildStrategicContext(c.env.DB, c.env.AI, tenantId);
+    const raw = await buildStrategicContext(c.env.DB, c.env.AI, tenantId);
+    const context = raw ? {
+      id: raw.id,
+      contextType: raw.context_type,
+      title: raw.title,
+      summary: raw.summary,
+      factors: raw.factors,
+      sentiment: raw.sentiment,
+      confidence: raw.confidence,
+      sourceSignalIds: raw.source_signal_ids,
+      validFrom: raw.valid_from,
+      validTo: raw.valid_to,
+      createdAt: raw.created_at,
+    } : null;
     return c.json({ context }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to rebuild strategic context', detail: (err as Error).message }, 500);
