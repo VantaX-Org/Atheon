@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate } from "@/lib/api";
+import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview } from "@/lib/api";
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
  Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle,
- ScrollText, ArrowUpRight, MessageSquare, Cog, Link2, Sparkles, BarChart3, Activity, Users
+ ScrollText, ArrowUpRight, MessageSquare, Cog, Link2, Sparkles, BarChart3, Activity, Users,
+ Brain, TrendingUp, TrendingDown, GitBranch, RefreshCw, Target
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -410,8 +411,36 @@ export function CatalystsPage() {
  };
 
 
+ // Catalyst Intelligence state
+ const [intellOverview, setIntellOverview] = useState<CatalystIntelligenceOverview | null>(null);
+ const [intellLoading, setIntellLoading] = useState(false);
+ const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
+
+ const loadIntelligence = async () => {
+   setIntellLoading(true);
+   try {
+     const data = await api.catalystIntelligence.getOverview();
+     setIntellOverview(data);
+   } catch (err) { console.error('Failed to load intelligence:', err); }
+   setIntellLoading(false);
+ };
+
+ const handleDiscoverPatterns = async () => {
+   try {
+     await api.catalystIntelligence.analyse();
+     loadIntelligence();
+   } catch (err) { console.error('Failed to discover patterns:', err); }
+ };
+
+ const handleDiscoverDependencies = async () => {
+   try {
+     await api.catalystIntelligence.discoverDependencies();
+     loadIntelligence();
+   } catch (err) { console.error('Failed to discover dependencies:', err); }
+ };
+
  // HITL Permissions state
- const [hitlConfigs, setHitlConfigs] = useState<HitlConfigListItem[]>([]);
+ const [hitlConfigs, setHitlConfigs] = useState<HitlConfigListItem[]>([]); 
  const [hitlUsers, setHitlUsers] = useState<IAMUser[]>([]);
  const [hitlUsersMap, setHitlUsersMap] = useState<Record<string, { email: string; name: string }>>({});
  const [hitlLoading, setHitlLoading] = useState(false);
@@ -758,6 +787,7 @@ export function CatalystsPage() {
 
  const tabs = [
  { id: 'clusters', label: 'Catalyst Clusters', icon: <Bot size={14} /> },
+ { id: 'intelligence', label: 'Intelligence', icon: <Brain size={14} />, count: intellOverview?.summary?.criticalPatterns || undefined },
  { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
  { id: 'execution-logs', label: 'Execution Logs', icon: <ScrollText size={14} /> },
  { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
@@ -2714,6 +2744,151 @@ export function CatalystsPage() {
  </div>
  </div>
  </div></Portal>
+ )}
+
+ {/* Intelligence Tab */}
+ {activeTab === 'intelligence' && (
+  <TabPanel>
+   {intellLoading && !intellOverview && (
+    <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+   )}
+   {!intellLoading && !intellOverview && (
+    <Card className="text-center py-12">
+     <Brain className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+     <p className="text-sm font-medium t-primary">No intelligence data yet</p>
+     <p className="text-xs t-muted mt-1">Analyse catalyst runs to discover patterns, effectiveness, and dependencies.</p>
+     <Button variant="primary" size="sm" className="mt-4" onClick={loadIntelligence}>Load Intelligence</Button>
+    </Card>
+   )}
+   {intellOverview && (
+    <div className="space-y-4">
+     {/* Summary Cards */}
+     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <Card><div className="text-center"><p className="text-2xl font-bold text-amber-400">{intellOverview.summary.activePatterns}</p><p className="text-[10px] t-muted uppercase">Active Patterns</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{intellOverview.summary.criticalPatterns}</p><p className="text-[10px] t-muted uppercase">Critical</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold t-primary">{intellOverview.summary.totalSubCatalysts}</p><p className="text-[10px] t-muted uppercase">Sub-Catalysts</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-emerald-400">{Math.round(intellOverview.summary.avgSuccessRate * 100)}%</p><p className="text-[10px] t-muted uppercase">Avg Success</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold t-primary">R{(intellOverview.summary.totalValueProcessed / 1000).toFixed(0)}k</p><p className="text-[10px] t-muted uppercase">Value Processed</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400">{intellOverview.summary.avgRoi > 0 ? '+' : ''}{Math.round(intellOverview.summary.avgRoi * 100)}%</p><p className="text-[10px] t-muted uppercase">Avg ROI</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-accent">{intellOverview.summary.totalDependencies}</p><p className="text-[10px] t-muted uppercase">Dependencies</p></div></Card>
+     </div>
+
+     {/* Actions Row */}
+     <div className="flex items-center gap-2">
+      <Button variant="secondary" size="sm" onClick={loadIntelligence}><RefreshCw size={12} /> Refresh</Button>
+      <Button variant="primary" size="sm" onClick={handleDiscoverPatterns}><Brain size={12} /> Discover Patterns</Button>
+      <Button variant="secondary" size="sm" onClick={handleDiscoverDependencies}><GitBranch size={12} /> Map Dependencies</Button>
+     </div>
+
+     {/* Patterns Section */}
+     {intellOverview.patterns.length > 0 && (
+      <div>
+       <h3 className="text-sm font-semibold t-primary mb-2">Discovered Patterns</h3>
+       <div className="space-y-2">
+        {intellOverview.patterns.map(pattern => (
+         <Card key={pattern.id} hover onClick={() => setExpandedPattern(expandedPattern === pattern.id ? null : pattern.id)}>
+          <div className="flex items-center justify-between">
+           <div className="flex items-center gap-2">
+            <Badge variant={pattern.severity === 'critical' ? 'danger' : pattern.severity === 'high' ? 'warning' : 'info'} size="sm">{pattern.severity}</Badge>
+            <span className="text-sm font-medium t-primary">{pattern.title}</span>
+            <Badge variant="default" size="sm">{pattern.patternType.replace('_', ' ')}</Badge>
+           </div>
+           <div className="flex items-center gap-2 text-[10px] t-muted">
+            <span>Freq: {pattern.frequency}x</span>
+            <Badge variant={pattern.status === 'active' ? 'warning' : pattern.status === 'resolved' ? 'success' : 'info'} size="sm">{pattern.status}</Badge>
+           </div>
+          </div>
+          {expandedPattern === pattern.id && (
+           <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
+            <p className="text-xs t-secondary mb-2">{pattern.description}</p>
+            <div className="flex flex-wrap gap-2 text-[10px] t-muted mb-2">
+             <span>First seen: {new Date(pattern.firstSeen).toLocaleDateString()}</span>
+             <span>Last seen: {new Date(pattern.lastSeen).toLocaleDateString()}</span>
+            </div>
+            {pattern.affectedClusters.length > 0 && (
+             <div className="flex flex-wrap gap-1 mb-2">
+              {pattern.affectedClusters.map((c, i) => <Badge key={i} variant="info" size="sm">{c}</Badge>)}
+             </div>
+            )}
+            {pattern.recommendedActions.length > 0 && (
+             <div>
+              <p className="text-[10px] font-medium t-primary mb-1">Recommended Actions</p>
+              <ul className="space-y-0.5">
+               {pattern.recommendedActions.map((a, i) => (
+                <li key={i} className="text-[10px] t-muted flex items-start gap-1"><Target size={8} className="mt-0.5 text-accent flex-shrink-0" />{a}</li>
+               ))}
+              </ul>
+             </div>
+            )}
+           </div>
+          )}
+         </Card>
+        ))}
+       </div>
+      </div>
+     )}
+
+     {/* Effectiveness Section */}
+     {intellOverview.effectiveness.length > 0 && (
+      <div>
+       <h3 className="text-sm font-semibold t-primary mb-2">Sub-Catalyst Effectiveness</h3>
+       <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+         <thead>
+          <tr className="border-b border-[var(--border-card)]">
+           <th className="text-left py-2 px-2 t-muted font-medium">Sub-Catalyst</th>
+           <th className="text-right py-2 px-2 t-muted font-medium">Runs</th>
+           <th className="text-right py-2 px-2 t-muted font-medium">Success Rate</th>
+           <th className="text-right py-2 px-2 t-muted font-medium">Match Rate</th>
+           <th className="text-right py-2 px-2 t-muted font-medium">Trend</th>
+           <th className="text-right py-2 px-2 t-muted font-medium">ROI</th>
+          </tr>
+         </thead>
+         <tbody>
+          {intellOverview.effectiveness.map(eff => (
+           <tr key={eff.id} className="border-b border-[var(--border-card)] hover:bg-[var(--bg-secondary)]">
+            <td className="py-2 px-2 t-primary font-medium">{eff.subCatalystName}</td>
+            <td className="text-right py-2 px-2 t-secondary">{eff.runsCount}</td>
+            <td className="text-right py-2 px-2"><span className={eff.successRate >= 0.8 ? 'text-emerald-400' : eff.successRate >= 0.6 ? 'text-amber-400' : 'text-red-400'}>{Math.round(eff.successRate * 100)}%</span></td>
+            <td className="text-right py-2 px-2 t-secondary">{Math.round(eff.avgMatchRate * 100)}%</td>
+            <td className="text-right py-2 px-2">
+             {eff.improvementTrend > 0 ? <TrendingUp size={12} className="text-emerald-400 inline" /> : eff.improvementTrend < 0 ? <TrendingDown size={12} className="text-red-400 inline" /> : <span className="text-gray-400">—</span>}
+            </td>
+            <td className="text-right py-2 px-2"><span className={eff.roiEstimate > 0 ? 'text-emerald-400' : 'text-red-400'}>{eff.roiEstimate > 0 ? '+' : ''}{Math.round(eff.roiEstimate * 100)}%</span></td>
+           </tr>
+          ))}
+         </tbody>
+        </table>
+       </div>
+      </div>
+     )}
+
+     {/* Dependencies Section */}
+     {intellOverview.dependencies.length > 0 && (
+      <div>
+       <h3 className="text-sm font-semibold t-primary mb-2">Dependency Map</h3>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {intellOverview.dependencies.map(dep => (
+         <Card key={dep.id}>
+          <div className="flex items-center gap-2 text-xs">
+           <span className="t-primary font-medium">{dep.sourceSubCatalyst}</span>
+           <span className="text-accent">→</span>
+           <span className="t-primary font-medium">{dep.targetSubCatalyst}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+           <Badge variant="info" size="sm">{dep.dependencyType.replace('_', ' ')}</Badge>
+           <Progress value={dep.strength * 100} color={dep.strength >= 0.7 ? 'emerald' : dep.strength >= 0.4 ? 'amber' : 'red'} className="flex-1 h-1.5" />
+           <span className="text-[10px] t-muted">{Math.round(dep.strength * 100)}%</span>
+          </div>
+          {dep.description && <p className="text-[10px] t-muted mt-1">{dep.description}</p>}
+         </Card>
+        ))}
+       </div>
+      </div>
+     )}
+    </div>
+   )}
+  </TabPanel>
  )}
 
  {/* Sub-Catalyst Ops Panel */}

@@ -8,12 +8,12 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
-import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse } from "@/lib/api";
+import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse } from "@/lib/api";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight,
-  CheckCircle2, XCircle, Gauge, Shield,
+  CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -85,6 +85,10 @@ export function Dashboard() {
   const [dashIntel, setDashIntel] = useState<DashboardIntelligenceResponse | null>(null);
   const [dashIntelLoading, setDashIntelLoading] = useState(false);
 
+  // New engine summary state
+  const [radarCtx, setRadarCtx] = useState<RadarContextResponse | null>(null);
+  const [diagSummary, setDiagSummary] = useState<DiagnosticSummaryResponse | null>(null);
+
   // Flip card state for dashboard cards
   const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
   const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
@@ -149,6 +153,17 @@ export function Dashboard() {
   }, [industry]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Load new engine summaries
+  useEffect(() => {
+    Promise.allSettled([
+      api.radar.getContext(),
+      api.diagnostics.getSummary(),
+    ]).then(([rc, ds]) => {
+      if (rc.status === 'fulfilled') setRadarCtx(rc.value);
+      if (ds.status === 'fulfilled') setDiagSummary(ds.value);
+    });
+  }, []);
 
   // UX-05: Silent auto-refresh every 60s
   useEffect(() => {
@@ -558,6 +573,71 @@ export function Dashboard() {
             </DashCard>
           }
         />
+      </div>
+
+      {/* New Engine Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Strategic Context (Apex Radar) */}
+        <Link to="/apex" className="block">
+          <DashCard className="hover:border-accent/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Radar size={16} className="text-accent" />
+                <h4 className="text-sm font-semibold t-primary">Strategic Context</h4>
+              </div>
+              <ChevronRight size={14} className="t-muted" />
+            </div>
+            {radarCtx ? (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xl font-bold t-primary">{radarCtx.summary.totalSignals}</p>
+                  <p className="text-[10px] t-muted">Signals</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-red-400">{radarCtx.summary.criticalImpacts}</p>
+                  <p className="text-[10px] t-muted">Critical Impacts</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{radarCtx.summary.overallSentiment === 'positive' ? '🟢' : radarCtx.summary.overallSentiment === 'negative' ? '🔴' : '🟡'}</p>
+                  <p className="text-[10px] t-muted capitalize">{radarCtx.summary.overallSentiment}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs t-muted">No external signals tracked yet. Visit Apex → Strategic Context.</p>
+            )}
+          </DashCard>
+        </Link>
+
+        {/* Active Diagnostics (Pulse Diagnostics) */}
+        <Link to="/pulse" className="block">
+          <DashCard className="hover:border-accent/30 transition-all cursor-pointer">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Stethoscope size={16} className="text-purple-400" />
+                <h4 className="text-sm font-semibold t-primary">Active Diagnostics</h4>
+              </div>
+              <ChevronRight size={14} className="t-muted" />
+            </div>
+            {diagSummary ? (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xl font-bold t-primary">{diagSummary.totalAnalyses}</p>
+                  <p className="text-[10px] t-muted">Analyses</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-red-400">{diagSummary.criticalFindings}</p>
+                  <p className="text-[10px] t-muted">Critical Findings</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-amber-400">{diagSummary.undiagnosedMetrics}</p>
+                  <p className="text-[10px] t-muted">Undiagnosed</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs t-muted">No diagnostics run yet. Visit Pulse → Diagnostics.</p>
+            )}
+          </DashCard>
+        </Link>
       </div>
 
       {/* Charts Row */}
