@@ -717,6 +717,80 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'catalyst_patterns', column: 'last_confirmed', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
     { table: 'catalyst_patterns', column: 'run_count', definition: 'INTEGER NOT NULL DEFAULT 1' },
     { table: 'catalyst_patterns', column: 'prescription_id', definition: 'TEXT' },
+    // V2 Spec: competitors extra columns (seed uses website, threat_level, notes, created_at)
+    { table: 'competitors', column: 'website', definition: 'TEXT' },
+    { table: 'competitors', column: 'threat_level', definition: "TEXT NOT NULL DEFAULT 'medium'" },
+    { table: 'competitors', column: 'notes', definition: "TEXT NOT NULL DEFAULT ''" },
+    { table: 'competitors', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: market_benchmarks seed-compatible columns
+    { table: 'market_benchmarks', column: 'name', definition: 'TEXT' },
+    { table: 'market_benchmarks', column: 'category', definition: 'TEXT' },
+    { table: 'market_benchmarks', column: 'value', definition: 'REAL' },
+    { table: 'market_benchmarks', column: 'unit', definition: 'TEXT' },
+    { table: 'market_benchmarks', column: 'percentile', definition: 'REAL' },
+    { table: 'market_benchmarks', column: 'trend', definition: "TEXT NOT NULL DEFAULT 'stable'" },
+    { table: 'market_benchmarks', column: 'period', definition: 'TEXT' },
+    { table: 'market_benchmarks', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: regulatory_events seed-compatible columns
+    { table: 'regulatory_events', column: 'body', definition: 'TEXT' },
+    { table: 'regulatory_events', column: 'authority', definition: 'TEXT' },
+    { table: 'regulatory_events', column: 'impact', definition: "TEXT NOT NULL DEFAULT 'medium'" },
+    { table: 'regulatory_events', column: 'category', definition: 'TEXT' },
+    { table: 'regulatory_events', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: root_cause_analyses seed-compatible columns
+    { table: 'root_cause_analyses', column: 'metric_value', definition: 'REAL' },
+    { table: 'root_cause_analyses', column: 'metric_status', definition: 'TEXT' },
+    { table: 'root_cause_analyses', column: 'trigger_type', definition: "TEXT NOT NULL DEFAULT 'manual'" },
+    { table: 'root_cause_analyses', column: 'rca_depth', definition: 'INTEGER NOT NULL DEFAULT 3' },
+    { table: 'root_cause_analyses', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    { table: 'root_cause_analyses', column: 'completed_at', definition: 'TEXT' },
+    // V2 Spec: causal_factors seed-compatible columns
+    { table: 'causal_factors', column: 'level', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { table: 'causal_factors', column: 'category', definition: 'TEXT' },
+    { table: 'causal_factors', column: 'linked_metrics', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    // V2 Spec: diagnostic_prescriptions seed-compatible columns
+    { table: 'diagnostic_prescriptions', column: 'effort', definition: "TEXT NOT NULL DEFAULT 'medium'" },
+    { table: 'diagnostic_prescriptions', column: 'sap_transaction', definition: 'TEXT' },
+    { table: 'diagnostic_prescriptions', column: 'estimated_impact', definition: 'TEXT' },
+    // V2 Spec: catalyst_effectiveness seed-compatible columns
+    { table: 'catalyst_effectiveness', column: 'sub_catalyst_id', definition: 'TEXT' },
+    { table: 'catalyst_effectiveness', column: 'match_rate', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'exception_rate', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'avg_processing_time', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { table: 'catalyst_effectiveness', column: 'trend', definition: "TEXT NOT NULL DEFAULT 'stable'" },
+    { table: 'catalyst_effectiveness', column: 'calculated_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: catalyst_dependencies seed-compatible columns
+    { table: 'catalyst_dependencies', column: 'from_catalyst_id', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'from_catalyst_name', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'to_catalyst_id', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'to_catalyst_name', definition: 'TEXT' },
+    { table: 'catalyst_dependencies', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: catalyst_prescriptions seed-compatible columns
+    { table: 'catalyst_prescriptions', column: 'effort', definition: "TEXT NOT NULL DEFAULT 'medium'" },
+    { table: 'catalyst_prescriptions', column: 'sap_transaction', definition: 'TEXT' },
+    { table: 'catalyst_prescriptions', column: 'estimated_savings', definition: 'TEXT' },
+    // V2 Spec: roi_tracking seed-compatible columns
+    { table: 'roi_tracking', column: 'identified_losses', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'roi_tracking', column: 'recovered_amount', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'roi_tracking', column: 'prevented_losses', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'roi_tracking', column: 'person_hours_saved', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'roi_tracking', column: 'platform_cost', definition: 'REAL NOT NULL DEFAULT 0' },
+    { table: 'roi_tracking', column: 'breakdown', definition: "TEXT NOT NULL DEFAULT '{}'" },
+    { table: 'roi_tracking', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: industry_radar_seeds seed-compatible columns
+    { table: 'industry_radar_seeds', column: 'signal_type', definition: 'TEXT' },
+    { table: 'industry_radar_seeds', column: 'description', definition: 'TEXT' },
+    { table: 'industry_radar_seeds', column: 'default_severity', definition: "TEXT NOT NULL DEFAULT 'medium'" },
+    { table: 'industry_radar_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: industry_benchmark_seeds seed-compatible columns
+    { table: 'industry_benchmark_seeds', column: 'name', definition: 'TEXT' },
+    { table: 'industry_benchmark_seeds', column: 'default_value', definition: 'REAL' },
+    { table: 'industry_benchmark_seeds', column: 'unit', definition: 'TEXT' },
+    { table: 'industry_benchmark_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+    // V2 Spec: industry_regulatory_seeds seed-compatible columns
+    { table: 'industry_regulatory_seeds', column: 'default_body', definition: 'TEXT' },
+    { table: 'industry_regulatory_seeds', column: 'authority', definition: 'TEXT' },
+    { table: 'industry_regulatory_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
   ];
 
   for (const col of selfHealColumns) {
