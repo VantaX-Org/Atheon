@@ -2767,9 +2767,9 @@ export function CatalystsPage() {
       <Card><div className="text-center"><p className="text-2xl font-bold text-amber-400">{intellOverview.summary.activePatterns}</p><p className="text-[10px] t-muted uppercase">Active Patterns</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{intellOverview.summary.criticalPatterns}</p><p className="text-[10px] t-muted uppercase">Critical</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold t-primary">{intellOverview.summary.totalSubCatalysts}</p><p className="text-[10px] t-muted uppercase">Sub-Catalysts</p></div></Card>
-      <Card><div className="text-center"><p className="text-2xl font-bold text-emerald-400">{Math.round(intellOverview.summary.avgSuccessRate * 100)}%</p><p className="text-[10px] t-muted uppercase">Avg Success</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-emerald-400">{Math.round(intellOverview.summary.avgSuccessRate)}%</p><p className="text-[10px] t-muted uppercase">Avg Success</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold t-primary">R{(intellOverview.summary.totalValueProcessed / 1000).toFixed(0)}k</p><p className="text-[10px] t-muted uppercase">Value Processed</p></div></Card>
-      <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400">{intellOverview.summary.avgRoi > 0 ? '+' : ''}{Math.round(intellOverview.summary.avgRoi * 100)}%</p><p className="text-[10px] t-muted uppercase">Avg ROI</p></div></Card>
+      <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400">{intellOverview.summary.avgRoi > 0 ? '+' : ''}{Math.round(intellOverview.summary.avgRoi)}%</p><p className="text-[10px] t-muted uppercase">Avg ROI</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold text-accent">{intellOverview.summary.totalDependencies}</p><p className="text-[10px] t-muted uppercase">Dependencies</p></div></Card>
      </div>
 
@@ -2849,12 +2849,12 @@ export function CatalystsPage() {
            <tr key={eff.id} className="border-b border-[var(--border-card)] hover:bg-[var(--bg-secondary)]">
             <td className="py-2 px-2 t-primary font-medium">{eff.subCatalystName}</td>
             <td className="text-right py-2 px-2 t-secondary">{eff.runsCount}</td>
-            <td className="text-right py-2 px-2"><span className={eff.successRate >= 0.8 ? 'text-emerald-400' : eff.successRate >= 0.6 ? 'text-amber-400' : 'text-red-400'}>{Math.round(eff.successRate * 100)}%</span></td>
-            <td className="text-right py-2 px-2 t-secondary">{Math.round(eff.avgMatchRate * 100)}%</td>
+            <td className="text-right py-2 px-2"><span className={eff.successRate >= 80 ? 'text-emerald-400' : eff.successRate >= 60 ? 'text-amber-400' : 'text-red-400'}>{Math.round(eff.successRate)}%</span></td>
+            <td className="text-right py-2 px-2 t-secondary">{Math.round(eff.avgMatchRate)}%</td>
             <td className="text-right py-2 px-2">
              {eff.improvementTrend > 0 ? <TrendingUp size={12} className="text-emerald-400 inline" /> : eff.improvementTrend < 0 ? <TrendingDown size={12} className="text-red-400 inline" /> : <span className="text-gray-400">—</span>}
             </td>
-            <td className="text-right py-2 px-2"><span className={eff.roiEstimate > 0 ? 'text-emerald-400' : 'text-red-400'}>{eff.roiEstimate > 0 ? '+' : ''}{Math.round(eff.roiEstimate * 100)}%</span></td>
+            <td className="text-right py-2 px-2"><span className={eff.roiEstimate > 0 ? 'text-emerald-400' : 'text-red-400'}>{eff.roiEstimate > 0 ? '+' : ''}{Math.round(eff.roiEstimate)}%</span></td>
            </tr>
           ))}
          </tbody>

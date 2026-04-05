@@ -1369,7 +1369,7 @@ export function ApexPage() {
           <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
            <p className="text-xs t-secondary mb-2">{signal.description}</p>
            {signal.url && <a href={signal.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline flex items-center gap-1"><Link2 size={10} />{signal.url}</a>}
-           <p className="text-[10px] t-muted mt-2">Detected: {new Date(signal.detectedAt).toLocaleDateString()} · Relevance: {Math.round(signal.relevanceScore * 100)}%</p>
+           <p className="text-[10px] t-muted mt-2">Detected: {new Date(signal.detectedAt).toLocaleDateString()} · Relevance: {Math.round(signal.relevanceScore)}%</p>
           </div>
          )}
         </Card>
@@ -1388,7 +1388,7 @@ export function ApexPage() {
            <Badge variant="info" size="sm">{impact.dimension}</Badge>
            <div className="flex items-center gap-1">
             {impact.impactDirection === 'positive' ? <TrendingUp size={12} className="text-emerald-400" /> : impact.impactDirection === 'negative' ? <TrendingDown size={12} className="text-red-400" /> : <Minus size={12} />}
-            <span className="text-xs t-primary">{Math.round(impact.impactMagnitude * 100)}%</span>
+            <span className="text-xs t-primary">{Math.round(impact.impactMagnitude)}%</span>
            </div>
           </div>
           {impact.recommendedActions.length > 0 && (
