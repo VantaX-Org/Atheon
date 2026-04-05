@@ -14,7 +14,7 @@ export async function generateBoardReport(
   tenantId: string,
   env: { AI: Ai; STORAGE?: R2Bucket },
   generatedBy?: string,
-): Promise<{ id: string; content: Record<string, unknown>; pdfUrl?: string }> {
+): Promise<{ id: string; title: string; generatedAt: string; reportMonth: string; status: 'completed' | 'failed'; contentMarkdown: string; pdfUrl?: string; sections: string[] }> {
   // 1) Fetch health score + dimensions
   const health = await db.prepare(
     'SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
@@ -123,5 +123,17 @@ Write in professional third-person tone. Format with markdown headers. Use ZAR f
      VALUES (?, ?, ?, 'monthly', ?, ?, ?, ?)`
   ).bind(reportId, tenantId, title, JSON.stringify(contentJson), r2Key, generatedBy || null, now).run();
 
-  return { id: reportId, content: contentJson, pdfUrl: r2Key ? `/api/board-report/${reportId}` : undefined };
+  // Extract section headers from markdown for sections array
+  const sectionHeaders = reportMarkdown.match(/^#{1,2}\s+.+$/gm)?.map(h => h.replace(/^#+\s+/, '')) || [];
+
+  return {
+    id: reportId,
+    title,
+    generatedAt: now,
+    reportMonth: now.substring(0, 7),
+    status: 'completed' as const,
+    contentMarkdown: reportMarkdown,
+    pdfUrl: r2Key ? `/api/board-report/${reportId}` : undefined,
+    sections: sectionHeaders,
+  };
 }

@@ -74,14 +74,24 @@ catalystIntelligence.get('/patterns/:id', async (c) => {
   });
 });
 
-// POST /api/catalyst-intelligence/analyse
+// POST /api/catalyst-intelligence/analyse — cluster_id & sub_catalyst_name are optional (full scan if omitted)
 catalystIntelligence.post('/analyse', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
-  const body = await c.req.json<{ cluster_id: string; sub_catalyst_name: string }>().catch(() => null);
-  if (!body?.cluster_id || !body?.sub_catalyst_name) return c.json({ error: 'cluster_id and sub_catalyst_name required' }, 400);
+  const body = await c.req.json<{ cluster_id?: string; sub_catalyst_name?: string }>().catch(() => ({} as { cluster_id?: string; sub_catalyst_name?: string }));
   try {
-    await analysePatterns(c.env.DB, tenantId, body.cluster_id, body.sub_catalyst_name, c.env);
+    if (body.cluster_id && body.sub_catalyst_name) {
+      await analysePatterns(c.env.DB, tenantId, body.cluster_id, body.sub_catalyst_name, c.env);
+    } else {
+      // Full scan: get all distinct cluster/sub-catalyst combos and analyse each
+      const combos = await c.env.DB.prepare(
+        'SELECT DISTINCT cluster_id, sub_catalyst_name FROM catalyst_patterns WHERE tenant_id = ?'
+      ).bind(tenantId).all();
+      for (const combo of combos.results) {
+        const r = combo as Record<string, unknown>;
+        await analysePatterns(c.env.DB, tenantId, r.cluster_id as string, r.sub_catalyst_name as string, c.env);
+      }
+    }
     return c.json({ message: 'Pattern analysis complete' }, 201);
   } catch (err) {
     return c.json({ error: 'Pattern analysis failed', detail: (err as Error).message }, 500);
@@ -177,6 +187,78 @@ catalystIntelligence.put('/prescriptions/:id/status', async (c) => {
     `UPDATE catalyst_prescriptions SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`
   ).bind(...binds, prescriptionId, tenantId).run();
   return c.json({ success: true });
+});
+
+// POST /api/catalyst-intelligence/dependencies/discover — Trigger dependency discovery
+catalystIntelligence.post('/dependencies/discover', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  try {
+    // Get all distinct cluster pairs and discover dependencies between them
+    const clusters = await c.env.DB.prepare(
+      'SELECT DISTINCT cluster_id, sub_catalyst_name FROM catalyst_patterns WHERE tenant_id = ?'
+    ).bind(tenantId).all();
+    const clusterList = clusters.results.map((r: Record<string, unknown>) => ({
+      clusterId: r.cluster_id as string, subName: r.sub_catalyst_name as string,
+    }));
+    let discovered = 0;
+    for (let i = 0; i < clusterList.length; i++) {
+      for (let j = i + 1; j < clusterList.length; j++) {
+        const a = clusterList[i], b = clusterList[j];
+        const existing = await c.env.DB.prepare(
+          'SELECT id FROM catalyst_dependencies WHERE tenant_id = ? AND upstream_cluster_id = ? AND downstream_cluster_id = ?'
+        ).bind(tenantId, a.clusterId, b.clusterId).first();
+        if (!existing) {
+          const depId = crypto.randomUUID();
+          await c.env.DB.prepare(
+            `INSERT INTO catalyst_dependencies (id, tenant_id, upstream_cluster_id, upstream_sub_name, downstream_cluster_id, downstream_sub_name, dependency_type, strength, lag_hours, evidence, discovered_at, source_cluster_id, source_sub_catalyst, target_cluster_id, target_sub_catalyst, correlation_strength, cascade_risk_score, description)
+             VALUES (?, ?, ?, ?, ?, ?, 'data_flow', 50, 0, '{}', datetime('now'), ?, ?, ?, ?, 50, 0, 'Auto-discovered dependency')`
+          ).bind(depId, tenantId, a.clusterId, a.subName, b.clusterId, b.subName, a.clusterId, a.subName, b.clusterId, b.subName).run();
+          discovered++;
+        }
+      }
+    }
+    return c.json({ message: `Dependency discovery complete. ${discovered} new dependencies found.`, discovered }, 201);
+  } catch (err) {
+    return c.json({ error: 'Dependency discovery failed', detail: (err as Error).message }, 500);
+  }
+});
+
+// GET /api/catalyst-intelligence/overview — Aggregated overview
+catalystIntelligence.get('/overview', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  const [patternStats, effectivenessStats, depStats, prescriptionStats] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+       SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved FROM catalyst_patterns WHERE tenant_id = ?`
+    ).bind(tenantId).first<{ total: number; active: number; resolved: number }>(),
+    c.env.DB.prepare(
+      'SELECT COUNT(*) as total, AVG(recovery_rate) as avgRecoveryRate, SUM(total_discrepancy_value_found) as totalValueFound FROM catalyst_effectiveness WHERE tenant_id = ?'
+    ).bind(tenantId).first<{ total: number; avgRecoveryRate: number; totalValueFound: number }>(),
+    c.env.DB.prepare(
+      'SELECT COUNT(*) as total, AVG(strength) as avgStrength FROM catalyst_dependencies WHERE tenant_id = ?'
+    ).bind(tenantId).first<{ total: number; avgStrength: number }>(),
+    c.env.DB.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed FROM catalyst_prescriptions WHERE tenant_id = ?`
+    ).bind(tenantId).first<{ total: number; pending: number; completed: number }>(),
+  ]);
+
+  // Top patterns
+  const topPatterns = await c.env.DB.prepare(
+    'SELECT id, title, pattern_type, confidence, status FROM catalyst_patterns WHERE tenant_id = ? ORDER BY confidence DESC LIMIT 5'
+  ).bind(tenantId).all();
+
+  return c.json({
+    patterns: { total: patternStats?.total || 0, active: patternStats?.active || 0, resolved: patternStats?.resolved || 0 },
+    effectiveness: { total: effectivenessStats?.total || 0, avgRecoveryRate: effectivenessStats?.avgRecoveryRate || 0, totalValueFound: effectivenessStats?.totalValueFound || 0 },
+    dependencies: { total: depStats?.total || 0, avgStrength: depStats?.avgStrength || 0 },
+    prescriptions: { total: prescriptionStats?.total || 0, pending: prescriptionStats?.pending || 0, completed: prescriptionStats?.completed || 0 },
+    topPatterns: topPatterns.results.map((p: Record<string, unknown>) => ({
+      id: p.id, title: p.title, patternType: p.pattern_type, confidence: p.confidence, status: p.status,
+    })),
+  });
 });
 
 export default catalystIntelligence;

@@ -193,13 +193,66 @@ radar.post('/regulatory', async (c) => {
   return c.json({ id }, 201);
 });
 
-// GET /api/radar/context
+// GET /api/radar/context — V1-compatible response wrapper around V2 engine
 radar.get('/context', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
   try {
-    const context = await computeStrategicContext(c.env.DB, tenantId, c.env);
-    return c.json(context);
+    const v2 = await computeStrategicContext(c.env.DB, tenantId, c.env) as Record<string, unknown>;
+    const headwinds = (v2.headwinds as Array<Record<string, unknown>>) || [];
+    const tailwinds = (v2.tailwinds as Array<Record<string, unknown>>) || [];
+    const topSignals = (v2.topSignals as Array<Record<string, unknown>>) || [];
+    const allImpacts = [...headwinds, ...tailwinds];
+    const criticalImpacts = allImpacts.filter(i => (i.impactMagnitude as number) >= 8).length;
+    const overallSentiment = tailwinds.length > headwinds.length ? 'positive' : headwinds.length > tailwinds.length ? 'negative' : 'neutral';
+
+    // Build V1-compatible signals array from topSignals
+    const signals = topSignals.map(s => ({
+      id: s.id, category: s.category, title: s.title, summary: s.summary,
+      sourceUrl: null, sourceName: null, reliabilityScore: null,
+      relevanceScore: s.relevanceScore, sentiment: null,
+      detectedAt: null, expiresAt: null,
+    }));
+
+    // Build V1-compatible impacts array
+    const impacts = allImpacts.map(i => ({
+      id: i.id, signalId: i.signalId, signalTitle: i.signalTitle,
+      dimension: i.healthDimension, impactDirection: i.impactDirection,
+      impactMagnitude: i.impactMagnitude,
+      affectedMetrics: [], recommendedActions: [],
+      llmReasoning: i.recommendedResponse, createdAt: i.computedAt,
+    }));
+
+    return c.json({
+      context: v2.contextNarrative ? {
+        id: 'ctx-' + tenantId,
+        contextType: 'strategic',
+        title: 'Strategic Context',
+        summary: v2.contextNarrative as string,
+        factors: [],
+        sentiment: overallSentiment,
+        confidence: Math.min(100, (topSignals.length + allImpacts.length) * 10),
+        sourceSignalIds: topSignals.map(s => s.id),
+        validFrom: new Date().toISOString(),
+        validTo: null,
+        createdAt: new Date().toISOString(),
+      } : null,
+      signals,
+      impacts,
+      summary: {
+        totalSignals: topSignals.length,
+        activeSignals: topSignals.length,
+        criticalImpacts,
+        overallSentiment,
+      },
+      // V2 fields pass-through
+      healthScore: v2.healthScore,
+      industryBenchmark: v2.industryBenchmark,
+      headwinds,
+      tailwinds,
+      competitorCount: v2.competitorCount,
+      regulatoryDeadlines: v2.regulatoryDeadlines,
+    });
   } catch (err) {
     return c.json({ error: 'Failed to compute strategic context', detail: (err as Error).message }, 500);
   }

@@ -40,38 +40,44 @@ diagnostics.get('/', async (c) => {
   return c.json({ analyses, total: analyses.length });
 });
 
-// GET /api/diagnostics/:metricId — RCAs for a specific metric
-diagnostics.get('/:metricId', async (c) => {
-  const tenantId = getTenantId(c);
-  const metricId = c.req.param('metricId');
-  // Avoid matching special paths
-  if (metricId === 'summary' || metricId === 'prescriptions') return c.notFound();
-  const results = await c.env.DB.prepare(
-    'SELECT * FROM root_cause_analyses WHERE tenant_id = ? AND metric_id = ? ORDER BY generated_at DESC'
-  ).bind(tenantId, metricId).all();
-  const analyses = results.results.map((a: Record<string, unknown>) => ({
-    id: a.id, metricId: a.metric_id, metricName: a.metric_name,
-    triggerStatus: a.trigger_status, causalChain: JSON.parse(a.causal_chain as string || '[]'),
-    confidence: a.confidence, impactSummary: a.impact_summary,
-    status: a.status, generatedAt: a.generated_at,
-  }));
-  return c.json({ analyses, total: analyses.length });
-});
-
-// POST /api/diagnostics/:metricId/analyse — Run RCA on metric
-diagnostics.post('/:metricId/analyse', async (c) => {
+// GET /api/diagnostics/summary — Spec §2.2 (registered before /:metricId to avoid catch-all)
+diagnostics.get('/summary', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
-  const metricId = c.req.param('metricId');
-  try {
-    const result = await runRootCauseAnalysis(c.env.DB, tenantId, metricId, c.env);
-    return c.json(result, 201);
-  } catch (err) {
-    return c.json({ error: 'Diagnostic analysis failed', detail: (err as Error).message }, 500);
+
+  const [active, pendingRx, completedRx, impactAgg, bySev, undiagnosed] = await Promise.all([
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'completed'").bind(tenantId).first<{ cnt: number }>(),
+    c.env.DB.prepare("SELECT COALESCE(SUM(impact_value), 0) as total FROM causal_factors WHERE tenant_id = ? AND impact_value IS NOT NULL").bind(tenantId).first<{ total: number }>(),
+    c.env.DB.prepare("SELECT trigger_status, COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active' GROUP BY trigger_status").bind(tenantId).all(),
+    c.env.DB.prepare(`SELECT COUNT(DISTINCT pm.id) as cnt FROM process_metrics pm
+      WHERE pm.tenant_id = ? AND pm.status IN ('red', 'amber')
+      AND NOT EXISTS (SELECT 1 FROM root_cause_analyses rca WHERE rca.tenant_id = pm.tenant_id AND rca.metric_id = pm.id AND rca.status = 'active')`).bind(tenantId).first<{ cnt: number }>(),
+  ]);
+
+  const severity: Record<string, number> = {};
+  for (const row of (bySev?.results || [])) {
+    const r = row as Record<string, unknown>;
+    severity[r.trigger_status as string] = r.cnt as number;
   }
+
+  return c.json({
+    totalActive: active?.cnt || 0,
+    bySeverity: severity,
+    prescriptionsPending: pendingRx?.cnt || 0,
+    prescriptionsCompleted: completedRx?.cnt || 0,
+    totalImpactValue: impactAgg?.total || 0,
+    undiagnosedMetrics: undiagnosed?.cnt || 0,
+    totalAnalyses: (active?.cnt || 0) + (completedRx?.cnt || 0),
+    pendingAnalyses: active?.cnt || 0,
+    completedAnalyses: completedRx?.cnt || 0,
+    criticalFindings: severity['red'] || severity['critical'] || 0,
+    activeFixes: pendingRx?.cnt || 0,
+  });
 });
 
-// GET /api/diagnostics/rca/:rcaId/chain — Full causal chain
+// GET /api/diagnostics/rca/:rcaId/chain — Full causal chain (registered before /:metricId)
 diagnostics.get('/rca/:rcaId/chain', async (c) => {
   const tenantId = getTenantId(c);
   const rcaId = c.req.param('rcaId');
@@ -123,42 +129,33 @@ diagnostics.put('/prescriptions/:id/status', async (c) => {
   return c.json({ success: true });
 });
 
-// GET /api/diagnostics/summary — Spec §2.2: { totalActive, bySeverity, prescriptionsPending, prescriptionsCompleted, totalImpactValue, undiagnosedMetrics }
-diagnostics.get('/summary', async (c) => {
+// POST /api/diagnostics/:metricId/analyse — Run RCA on metric
+diagnostics.post('/:metricId/analyse', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
-
-  const [active, pendingRx, completedRx, impactAgg, bySev, undiagnosed] = await Promise.all([
-    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'").bind(tenantId).first<{ cnt: number }>(),
-    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'").bind(tenantId).first<{ cnt: number }>(),
-    c.env.DB.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'completed'").bind(tenantId).first<{ cnt: number }>(),
-    c.env.DB.prepare("SELECT COALESCE(SUM(impact_value), 0) as total FROM causal_factors WHERE tenant_id = ? AND impact_value IS NOT NULL").bind(tenantId).first<{ total: number }>(),
-    c.env.DB.prepare("SELECT trigger_status, COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active' GROUP BY trigger_status").bind(tenantId).all(),
-    c.env.DB.prepare(`SELECT COUNT(DISTINCT pm.id) as cnt FROM process_metrics pm
-      WHERE pm.tenant_id = ? AND pm.status IN ('red', 'amber')
-      AND NOT EXISTS (SELECT 1 FROM root_cause_analyses rca WHERE rca.tenant_id = pm.tenant_id AND rca.metric_id = pm.id AND rca.status = 'active')`).bind(tenantId).first<{ cnt: number }>(),
-  ]);
-
-  const severity: Record<string, number> = {};
-  for (const row of (bySev?.results || [])) {
-    const r = row as Record<string, unknown>;
-    severity[r.trigger_status as string] = r.cnt as number;
+  const metricId = c.req.param('metricId');
+  try {
+    const result = await runRootCauseAnalysis(c.env.DB, tenantId, metricId, c.env);
+    return c.json(result, 201);
+  } catch (err) {
+    return c.json({ error: 'Diagnostic analysis failed', detail: (err as Error).message }, 500);
   }
+});
 
-  return c.json({
-    totalActive: active?.cnt || 0,
-    bySeverity: severity,
-    prescriptionsPending: pendingRx?.cnt || 0,
-    prescriptionsCompleted: completedRx?.cnt || 0,
-    totalImpactValue: impactAgg?.total || 0,
-    undiagnosedMetrics: undiagnosed?.cnt || 0,
-    // Legacy aliases for backwards compat with existing frontend types
-    totalAnalyses: (active?.cnt || 0) + (completedRx?.cnt || 0),
-    pendingAnalyses: active?.cnt || 0,
-    completedAnalyses: completedRx?.cnt || 0,
-    criticalFindings: severity['red'] || severity['critical'] || 0,
-    activeFixes: pendingRx?.cnt || 0,
-  });
+// GET /api/diagnostics/:metricId — RCAs for a specific metric (MUST be LAST among GET routes)
+diagnostics.get('/:metricId', async (c) => {
+  const tenantId = getTenantId(c);
+  const metricId = c.req.param('metricId');
+  const results = await c.env.DB.prepare(
+    'SELECT * FROM root_cause_analyses WHERE tenant_id = ? AND metric_id = ? ORDER BY generated_at DESC'
+  ).bind(tenantId, metricId).all();
+  const analyses = results.results.map((a: Record<string, unknown>) => ({
+    id: a.id, metricId: a.metric_id, metricName: a.metric_name,
+    triggerStatus: a.trigger_status, causalChain: JSON.parse(a.causal_chain as string || '[]'),
+    confidence: a.confidence, impactSummary: a.impact_summary,
+    status: a.status, generatedAt: a.generated_at,
+  }));
+  return c.json({ analyses, total: analyses.length });
 });
 
 export default diagnostics;

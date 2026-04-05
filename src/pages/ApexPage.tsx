@@ -62,7 +62,7 @@ export function ApexPage() {
  // Radar / Strategic Context state
  const [radarContext, setRadarContext] = useState<RadarContextResponse | null>(null);
  const [radarLoading, setRadarLoading] = useState(false);
- const [radarSignalForm, setRadarSignalForm] = useState({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+ const [radarSignalForm, setRadarSignalForm] = useState({ source_name: '', category: 'regulatory', title: '', summary: '', source_url: '', sentiment: 'neutral' });
  const [creatingSignal, setCreatingSignal] = useState(false);
  const [showSignalForm, setShowSignalForm] = useState(false);
  const [expandedSignal, setExpandedSignal] = useState<string | null>(null);
@@ -94,15 +94,15 @@ export function ApexPage() {
   setCreatingSignal(true);
   try {
    await api.radar.createSignal({
-    source: radarSignalForm.source || 'manual',
-    signal_type: radarSignalForm.signal_type,
+    category: radarSignalForm.category,
     title: radarSignalForm.title,
-    description: radarSignalForm.description,
-    url: radarSignalForm.url || undefined,
-    severity: radarSignalForm.severity,
+    summary: radarSignalForm.summary,
+    source_url: radarSignalForm.source_url || undefined,
+    source_name: radarSignalForm.source_name || 'manual',
+    sentiment: radarSignalForm.sentiment,
    });
    setShowSignalForm(false);
-   setRadarSignalForm({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+   setRadarSignalForm({ source_name: '', category: 'regulatory', title: '', summary: '', source_url: '', sentiment: 'neutral' });
    loadRadarContext();
   } catch (err) {
    setActionError(err instanceof Error ? err.message : 'Failed to create signal');
@@ -1370,22 +1370,22 @@ export function ApexPage() {
         </div>
         <div>
          <label className="text-[10px] t-muted uppercase block mb-1">Source</label>
-         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.source} onChange={e => setRadarSignalForm(p => ({ ...p, source: e.target.value }))} placeholder="e.g. Reuters, Bloomberg" />
+         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.source_name} onChange={e => setRadarSignalForm(p => ({ ...p, source_name: e.target.value }))} placeholder="e.g. Reuters, Bloomberg" />
         </div>
         <div className="md:col-span-2">
          <label className="text-[10px] t-muted uppercase block mb-1">Description</label>
-         <textarea className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" rows={2} value={radarSignalForm.description} onChange={e => setRadarSignalForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the external signal..." />
+         <textarea className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" rows={2} value={radarSignalForm.summary} onChange={e => setRadarSignalForm(p => ({ ...p, summary: e.target.value }))} placeholder="Describe the external signal..." />
         </div>
         <div>
          <label className="text-[10px] t-muted uppercase block mb-1">Type</label>
-         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.signal_type} onChange={e => setRadarSignalForm(p => ({ ...p, signal_type: e.target.value }))}>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.category} onChange={e => setRadarSignalForm(p => ({ ...p, category: e.target.value }))}>
           <option value="regulatory">Regulatory</option><option value="market">Market</option><option value="competitor">Competitor</option><option value="economic">Economic</option><option value="technology">Technology</option><option value="geopolitical">Geopolitical</option>
          </select>
         </div>
         <div>
-         <label className="text-[10px] t-muted uppercase block mb-1">Severity</label>
-         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.severity} onChange={e => setRadarSignalForm(p => ({ ...p, severity: e.target.value }))}>
-          <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+         <label className="text-[10px] t-muted uppercase block mb-1">Sentiment</label>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.sentiment} onChange={e => setRadarSignalForm(p => ({ ...p, sentiment: e.target.value }))}>
+          <option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option><option value="mixed">Mixed</option>
          </select>
         </div>
        </div>
