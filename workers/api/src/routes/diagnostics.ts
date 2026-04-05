@@ -114,11 +114,12 @@ diagnostics.get('/analyses/:analysisId', async (c) => {
     const result = await getAnalysisWithChain(c.env.DB, tenantId, analysisId);
     if (!result.analysis) return c.json({ error: 'Analysis not found' }, 404);
 
+    const analysis = result.analysis;
     // Build a lookup from chain_id → chain link so fixes can include joined fields
     const chainMap = new Map(result.causalChain.map(c => [c.id, c]));
 
     return c.json({
-      analysis: mapAnalysis(result.analysis),
+      analysis: mapAnalysis(analysis),
       causalChain: result.causalChain.map(mapChainLink),
       fixes: result.fixes.map(f => {
         const chain = chainMap.get(f.chain_id);
@@ -127,7 +128,7 @@ diagnostics.get('/analyses/:analysisId', async (c) => {
           chainTitle: chain?.title ?? '',
           fixPriority: chain?.fix_priority ?? 'medium',
           fixEffort: chain?.fix_effort ?? 'medium',
-          metricName: result.analysis.metric_name,
+          metricName: analysis.metric_name,
         };
       }),
     });
