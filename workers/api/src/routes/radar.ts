@@ -29,7 +29,51 @@ radar.get('/context', async (c) => {
 
   try {
     const result = await getStrategicContext(c.env.DB, tenantId);
-    return c.json(result);
+
+    // Transform snake_case → camelCase for frontend consumption
+    const context = result.context ? {
+      id: result.context.id,
+      contextType: result.context.context_type,
+      title: result.context.title,
+      summary: result.context.summary,
+      factors: result.context.factors,
+      sentiment: result.context.sentiment,
+      confidence: result.context.confidence,
+      sourceSignalIds: result.context.source_signal_ids,
+      validFrom: result.context.valid_from,
+      validTo: result.context.valid_to,
+      createdAt: result.context.created_at,
+    } : null;
+
+    const signals = result.signals.map(s => ({
+      id: s.id,
+      source: s.source,
+      signalType: s.signal_type,
+      title: s.title,
+      description: s.description,
+      url: s.url,
+      rawData: s.raw_data,
+      severity: s.severity,
+      relevanceScore: s.relevance_score,
+      status: s.status,
+      detectedAt: s.detected_at,
+      expiresAt: s.expires_at,
+      createdAt: s.created_at,
+    }));
+
+    const impacts = result.impacts.map(i => ({
+      id: i.id,
+      signalId: i.signal_id,
+      dimension: i.dimension,
+      impactDirection: i.impact_direction,
+      impactMagnitude: i.impact_magnitude,
+      affectedMetrics: i.affected_metrics,
+      recommendedActions: i.recommended_actions,
+      llmReasoning: i.llm_reasoning,
+      createdAt: i.created_at,
+    }));
+
+    return c.json({ context, signals, impacts, summary: result.summary });
   } catch (err) {
     return c.json({ error: 'Failed to fetch strategic context', detail: (err as Error).message }, 500);
   }

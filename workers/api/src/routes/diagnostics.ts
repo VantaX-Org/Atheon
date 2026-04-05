@@ -16,6 +16,55 @@ import {
 
 const diagnostics = new Hono<AppBindings>();
 
+// ── snake_case → camelCase mappers ──
+
+function mapAnalysis(a: { id: string; tenant_id: string; metric_id: string; metric_name: string; metric_value: number; metric_status: string; trigger_type: string; status: string; created_at: string; completed_at?: string }) {
+  return {
+    id: a.id,
+    metricId: a.metric_id,
+    metricName: a.metric_name,
+    metricValue: a.metric_value,
+    metricStatus: a.metric_status,
+    triggerType: a.trigger_type,
+    status: a.status,
+    createdAt: a.created_at,
+    completedAt: a.completed_at,
+  };
+}
+
+function mapChainLink(c: { id: string; tenant_id: string; analysis_id: string; level: number; cause_type: string; title: string; description: string; confidence: number; evidence: string[]; related_metrics: string[]; recommended_fix?: string; fix_priority: string; fix_effort: string; created_at: string }) {
+  return {
+    id: c.id,
+    analysisId: c.analysis_id,
+    level: c.level,
+    causeType: c.cause_type,
+    title: c.title,
+    description: c.description,
+    confidence: c.confidence,
+    evidence: c.evidence,
+    relatedMetrics: c.related_metrics,
+    recommendedFix: c.recommended_fix,
+    fixPriority: c.fix_priority,
+    fixEffort: c.fix_effort,
+    createdAt: c.created_at,
+  };
+}
+
+function mapFix(f: { id: string; tenant_id: string; chain_id: string; analysis_id: string; status: string; assigned_to?: string; started_at?: string; completed_at?: string; outcome?: string; notes?: string; created_at: string }) {
+  return {
+    id: f.id,
+    chainId: f.chain_id,
+    analysisId: f.analysis_id,
+    status: f.status,
+    assignedTo: f.assigned_to,
+    startedAt: f.started_at,
+    completedAt: f.completed_at,
+    outcome: f.outcome,
+    notes: f.notes,
+    createdAt: f.created_at,
+  };
+}
+
 const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
 function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
   const auth = c.get('auth') as AuthContext | undefined;
@@ -48,7 +97,8 @@ diagnostics.get('/analyses', async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 100);
 
   try {
-    const analyses = await listAnalyses(c.env.DB, tenantId, { status: status || undefined, limit });
+    const raw = await listAnalyses(c.env.DB, tenantId, { status: status || undefined, limit });
+    const analyses = raw.map(mapAnalysis);
     return c.json({ analyses, total: analyses.length });
   } catch (err) {
     return c.json({ error: 'Failed to list analyses', detail: (err as Error).message }, 500);
@@ -63,7 +113,11 @@ diagnostics.get('/analyses/:analysisId', async (c) => {
   try {
     const result = await getAnalysisWithChain(c.env.DB, tenantId, analysisId);
     if (!result.analysis) return c.json({ error: 'Analysis not found' }, 404);
-    return c.json(result);
+    return c.json({
+      analysis: mapAnalysis(result.analysis),
+      causalChain: result.causalChain.map(mapChainLink),
+      fixes: result.fixes.map(mapFix),
+    });
   } catch (err) {
     return c.json({ error: 'Failed to fetch analysis', detail: (err as Error).message }, 500);
   }
@@ -78,7 +132,10 @@ diagnostics.post('/:metricId/analyse', async (c) => {
 
   try {
     const result = await runDiagnosticAnalysis(c.env.DB, c.env.AI, tenantId, metricId, 'manual');
-    return c.json(result, 201);
+    return c.json({
+      analysis: mapAnalysis(result.analysis),
+      causalChain: result.causalChain.map(mapChainLink),
+    }, 201);
   } catch (err) {
     return c.json({ error: 'Diagnostic analysis failed', detail: (err as Error).message }, 500);
   }
