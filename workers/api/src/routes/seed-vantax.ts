@@ -1360,9 +1360,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const bm of benchmarks) {
       await c.env.DB.prepare(
-        `INSERT INTO market_benchmarks (id, tenant_id, name, category, value, unit, source, industry, percentile, trend, period, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'general', ?, 'stable', 'Q1 2026', ?)`
-      ).bind(crypto.randomUUID(), tenantId, bm.name, bm.category, bm.value, bm.unit, bm.source, bm.percentile, now).run();
+        `INSERT INTO market_benchmarks (id, tenant_id, metric_name, name, category, value, benchmark_value, unit, benchmark_unit, source, industry, percentile, trend, period, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'general', ?, 'stable', 'Q1 2026', ?)`
+      ).bind(crypto.randomUUID(), tenantId, bm.name, bm.name, bm.category, bm.value, bm.value, bm.unit, bm.unit, bm.source, bm.percentile, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${benchmarks.length} market benchmarks`);
 
@@ -1375,9 +1375,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const re of regEvents) {
       await c.env.DB.prepare(
-        `INSERT INTO regulatory_events (id, tenant_id, title, body, authority, effective_date, impact, category, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, re.title, re.body, re.authority, re.effectiveDate, re.impact, re.category, re.status, now).run();
+        `INSERT INTO regulatory_events (id, tenant_id, title, description, body, authority, effective_date, impact, category, affected_dimensions, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, re.title, re.body, re.body, re.authority, re.effectiveDate, re.impact, re.category, re.status, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${regEvents.length} regulatory events`);
 
@@ -1417,22 +1417,22 @@ seed.post('/seed-vantax', async (c) => {
     for (const rca of rcaData) {
       const rcaId = crypto.randomUUID();
       await c.env.DB.prepare(
-        `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, metric_value, metric_status, trigger_type, rca_depth, status, created_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'auto', ?, 'completed', ?, ?)`
-      ).bind(rcaId, tenantId, crypto.randomUUID(), rca.metricName, rca.metricValue, rca.status, rca.factors.length, now, now).run();
+        `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, metric_value, trigger_status, metric_status, trigger_type, rca_depth, status, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'auto', ?, 'completed', ?, ?)`
+      ).bind(rcaId, tenantId, crypto.randomUUID(), rca.metricName, rca.metricValue, rca.status, rca.status, rca.factors.length, now, now).run();
 
       for (const f of rca.factors) {
         await c.env.DB.prepare(
-          `INSERT INTO causal_factors (id, tenant_id, rca_id, level, category, title, description, confidence, evidence, linked_metrics, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
-        ).bind(crypto.randomUUID(), tenantId, rcaId, f.level, f.category, f.title, f.description, f.confidence, JSON.stringify(f.linkedMetrics), now).run();
+          `INSERT INTO causal_factors (id, tenant_id, rca_id, layer, factor_type, level, category, title, description, confidence, evidence, linked_metrics, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
+        ).bind(crypto.randomUUID(), tenantId, rcaId, `L${f.level}`, f.category, f.level, f.category, f.title, f.description, f.confidence, JSON.stringify(f.linkedMetrics), now).run();
       }
 
       for (const p of rca.prescriptions) {
         await c.env.DB.prepare(
-          `INSERT INTO diagnostic_prescriptions (id, tenant_id, rca_id, title, description, priority, effort, sap_transaction, estimated_impact, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
-        ).bind(crypto.randomUUID(), tenantId, rcaId, p.title, p.description, p.priority, p.effort, p.sapTransaction, p.estimatedImpact, now).run();
+          `INSERT INTO diagnostic_prescriptions (id, tenant_id, rca_id, title, description, priority, effort_level, effort, sap_transaction, estimated_impact, expected_impact, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+        ).bind(crypto.randomUUID(), tenantId, rcaId, p.title, p.description, p.priority, p.effort, p.effort, p.sapTransaction, p.estimatedImpact, `${p.estimatedImpact}% improvement`, now).run();
       }
     }
     console.log(`[VantaX Seeder] Seeded ${rcaData.length} root cause analyses with factors and prescriptions`);
@@ -1448,9 +1448,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const eff of effectivenessData) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_effectiveness (id, tenant_id, sub_catalyst_id, sub_catalyst_name, match_rate, exception_rate, avg_processing_time, trend, period, calculated_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), eff.subCatalystName, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
+        `INSERT INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, match_rate, exception_rate, avg_duration_ms, avg_processing_time, trend, period, calculated_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), crypto.randomUUID(), eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime * 1000, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${effectivenessData.length} catalyst effectiveness records`);
 
@@ -1463,9 +1463,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const dep of deps) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_dependencies (id, tenant_id, from_catalyst_id, from_catalyst_name, to_catalyst_id, to_catalyst_name, dependency_type, strength, description, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, dep.type, dep.strength, dep.desc, now).run();
+        `INSERT INTO catalyst_dependencies (id, tenant_id, source_cluster_id, source_sub_catalyst, target_cluster_id, target_sub_catalyst, from_catalyst_id, from_catalyst_name, to_catalyst_id, to_catalyst_name, dependency_type, strength, description, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, dep.type, dep.strength, dep.desc, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${deps.length} catalyst dependencies`);
 
@@ -1479,9 +1479,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const cp of catalystPrescriptions) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_prescriptions (id, tenant_id, pattern_id, title, description, priority, effort, sap_transaction, estimated_savings, status, created_at)
-         VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, cp.title, cp.description, cp.priority, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
+        `INSERT INTO catalyst_prescriptions (id, tenant_id, cluster_id, sub_catalyst_name, prescription_type, pattern_id, title, description, priority, effort_level, effort, sap_transaction, estimated_savings, status, created_at)
+         VALUES (?, ?, ?, 'General', 'optimization', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), cp.title, cp.description, cp.priority, cp.effort, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${catalystPrescriptions.length} catalyst prescriptions`);
 
@@ -1554,19 +1554,19 @@ seed.post('/seed-vantax', async (c) => {
     for (const seed of industrySeeds) {
       if (seed.type === 'signal') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_radar_seeds (id, industry, signal_type, title, description, default_severity, category, created_at)
-           VALUES (?, ?, 'market', ?, ?, ?, ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, seed.title, seed.description || '', seed.severity || 'medium', seed.category || 'general', now).run();
+          `INSERT INTO industry_radar_seeds (id, industry, signal_type, title, summary, description, default_severity, default_magnitude, default_direction, category, created_at)
+           VALUES (?, ?, 'market', ?, ?, ?, ?, 5, 'headwind', ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, seed.description || '', seed.description || '', seed.severity || 'medium', seed.category || 'general', now).run();
       } else if (seed.type === 'benchmark') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_benchmark_seeds (id, industry, name, default_value, unit, source, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).value, (seed as any).unit, (seed as any).source, now).run();
+          `INSERT INTO industry_benchmark_seeds (id, industry, metric_name, name, benchmark_value, default_value, benchmark_unit, unit, source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).name, (seed as any).value, (seed as any).value, (seed as any).unit, (seed as any).unit, (seed as any).source, now).run();
       } else if (seed.type === 'regulatory') {
         await c.env.DB.prepare(
-          `INSERT INTO industry_regulatory_seeds (id, industry, title, default_body, authority, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '', (seed as any).authority || '', now).run();
+          `INSERT INTO industry_regulatory_seeds (id, industry, title, description, default_body, authority, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '', (seed as any).body || '', (seed as any).authority || '', now).run();
       }
     }
     console.log('[VantaX Seeder] Seeded industry playbook seeds');
