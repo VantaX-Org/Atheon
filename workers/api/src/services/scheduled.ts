@@ -6,6 +6,8 @@
 import type { Env } from '../types';
 import { optimizedChat } from './ai-cost-optimizer';
 import { recalculateHealthScoreFromKpis } from './insights-engine';
+import { runScheduledRadarScan } from './radar-engine-v2';
+import { calculateEffectiveness, calculateROI } from './pattern-engine-v2';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -53,6 +55,25 @@ export async function handleScheduled(
 
       // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts
       await executeScheduledSubCatalysts(db, tenantId);
+
+      // V2: Radar scan — analyse unprocessed signals
+      try { await runScheduledRadarScan(db, tenantId, env); } catch (e) { console.error(`Radar scan failed for ${tenantId}:`, e); }
+
+      // V2: Effectiveness + ROI recalculation
+      try {
+        const clusters = await db.prepare('SELECT id, name FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).all();
+        for (const cl of clusters.results) {
+          const clRow = cl as Record<string, unknown>;
+          const subs = await db.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ?').bind(clRow.id).first();
+          if (subs?.sub_catalysts) {
+            const subList = JSON.parse(subs.sub_catalysts as string || '[]') as Array<{ name: string }>;
+            for (const sub of subList) {
+              await calculateEffectiveness(db, tenantId, clRow.id as string, sub.name).catch(() => {});
+            }
+          }
+        }
+        await calculateROI(db, tenantId);
+      } catch (e) { console.error(`Effectiveness/ROI calc failed for ${tenantId}:`, e); }
     } catch (err) {
       console.error(`Scheduled tasks failed for tenant ${tenantId}:`, err);
     }

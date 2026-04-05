@@ -35,6 +35,8 @@ import tenantsAdmin from './routes/tenants-admin';
 import radar from './routes/radar';
 import diagnosticsRoutes from './routes/diagnostics';
 import catalystIntelligence from './routes/catalyst-intelligence';
+import roi from './routes/roi';
+import boardReport from './routes/board-report';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -200,6 +202,9 @@ app.get('/', (c) => {
       assessments: '/api/v1/assessments',
       diagnostics: '/api/v1/diagnostics',
       'catalyst-intelligence': '/api/v1/catalyst-intelligence',
+      radar: '/api/v1/radar',
+      roi: '/api/v1/roi',
+      'board-report': '/api/v1/board-report',
     },
     protocols: {
       mcp: '/api/v1/connectivity/mcp',
@@ -277,7 +282,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -310,6 +315,7 @@ const routeModules: [string, typeof auth][] = [
   ['ai-costs', aiCosts],
   ['radar', radar], ['diagnostics', diagnosticsRoutes],
   ['catalyst-intelligence', catalystIntelligence],
+  ['roi', roi], ['board-report', boardReport],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);

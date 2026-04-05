@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview } from "@/lib/api";
+import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem } from "@/lib/api";
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
@@ -415,12 +415,20 @@ export function CatalystsPage() {
  const [intellOverview, setIntellOverview] = useState<CatalystIntelligenceOverview | null>(null);
  const [intellLoading, setIntellLoading] = useState(false);
  const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
+ const [roiData, setRoiData] = useState<ROITrackingResponse | null>(null);
+ const [prescriptions, setPrescriptions] = useState<CatalystPrescriptionItem[]>([]);
 
  const loadIntelligence = async () => {
    setIntellLoading(true);
    try {
-     const data = await api.catalystIntelligence.getOverview();
-     setIntellOverview(data);
+     const [overview, roiRes, rxRes] = await Promise.allSettled([
+       api.catalystIntelligence.getOverview(),
+       api.roi.get(),
+       api.catalystIntelligence.getPrescriptions(undefined, undefined),
+     ]);
+     if (overview.status === 'fulfilled') setIntellOverview(overview.value);
+     if (roiRes.status === 'fulfilled') setRoiData(roiRes.value);
+     if (rxRes.status === 'fulfilled') setPrescriptions(rxRes.value.prescriptions ?? []);
    } catch (err) { console.error('Failed to load intelligence:', err); }
    setIntellLoading(false);
  };
@@ -2772,6 +2780,61 @@ export function CatalystsPage() {
       <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400">{intellOverview.summary.avgRoi > 0 ? '+' : ''}{Math.round(intellOverview.summary.avgRoi)}%</p><p className="text-[10px] t-muted uppercase">Avg ROI</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold text-accent">{intellOverview.summary.totalDependencies}</p><p className="text-[10px] t-muted uppercase">Dependencies</p></div></Card>
      </div>
+
+     {/* ROI Card */}
+     {roiData && (
+      <Card className="border-emerald-500/20 bg-emerald-500/5">
+       <div className="flex items-center gap-2 mb-3">
+        <TrendingUp size={16} className="text-emerald-400" />
+        <h3 className="text-sm font-semibold t-primary">ROI Summary</h3>
+        <Badge variant="success" size="sm">{roiData.roiMultiple}x return</Badge>
+       </div>
+       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="text-center p-2 rounded-lg bg-[var(--bg-secondary)]">
+         <p className="text-lg font-bold text-emerald-400">R{(roiData.totalDiscrepancyValueRecovered / 1000).toFixed(0)}k</p>
+         <p className="text-[10px] t-muted">Recovered</p>
+        </div>
+        <div className="text-center p-2 rounded-lg bg-[var(--bg-secondary)]">
+         <p className="text-lg font-bold text-blue-400">R{(roiData.totalPreventedLosses / 1000).toFixed(0)}k</p>
+         <p className="text-[10px] t-muted">Prevented</p>
+        </div>
+        <div className="text-center p-2 rounded-lg bg-[var(--bg-secondary)]">
+         <p className="text-lg font-bold text-purple-400">{roiData.totalPersonHoursSaved}h</p>
+         <p className="text-[10px] t-muted">Hours Saved</p>
+        </div>
+        <div className="text-center p-2 rounded-lg bg-[var(--bg-secondary)]">
+         <p className="text-lg font-bold t-primary">R{(roiData.platformCost / 1000).toFixed(0)}k</p>
+         <p className="text-[10px] t-muted">Platform Cost</p>
+        </div>
+       </div>
+      </Card>
+     )}
+
+     {/* Prescription Queue */}
+     {prescriptions.length > 0 && (
+      <div>
+       <h3 className="text-sm font-semibold t-primary mb-2">Prescription Queue</h3>
+       <div className="space-y-2">
+        {prescriptions.map(rx => (
+         <Card key={rx.id} className={rx.priority === 'critical' ? 'border-red-500/20' : rx.priority === 'high' ? 'border-amber-500/20' : ''}>
+          <div className="flex items-center justify-between">
+           <div className="flex items-center gap-2">
+            <Badge variant={rx.priority === 'critical' ? 'danger' : rx.priority === 'high' ? 'warning' : 'info'} size="sm">{rx.priority}</Badge>
+            <span className="text-xs font-medium t-primary">{rx.title}</span>
+            {rx.sapTransaction && <Badge variant="default" size="sm">SAP: {rx.sapTransaction}</Badge>}
+           </div>
+           <div className="flex items-center gap-2">
+            <Badge variant={rx.status === 'completed' ? 'success' : rx.status === 'in_progress' ? 'info' : rx.status === 'rejected' ? 'danger' : 'warning'} size="sm">{rx.status}</Badge>
+            <span className="text-[10px] t-muted">{rx.effort} effort</span>
+           </div>
+          </div>
+          <p className="text-[10px] t-secondary mt-1">{rx.description}</p>
+          {rx.expectedImpact && <p className="text-[10px] text-emerald-400 mt-1">Expected: {rx.expectedImpact}</p>}
+         </Card>
+        ))}
+       </div>
+      </div>
+     )}
 
      {/* Actions Row */}
      <div className="flex items-center gap-2">

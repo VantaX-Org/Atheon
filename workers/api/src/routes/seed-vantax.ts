@@ -132,6 +132,11 @@ const ALLOWED_TABLES = new Set([
   'radar_signals', 'radar_signal_impacts', 'radar_strategic_context',
   'diagnostic_analyses', 'diagnostic_causal_chains', 'diagnostic_fix_tracking',
   'catalyst_patterns', 'catalyst_effectiveness', 'catalyst_dependencies',
+  'external_signals', 'signal_impacts', 'competitors', 'market_benchmarks', 'regulatory_events',
+  'root_cause_analyses', 'causal_factors', 'diagnostic_prescriptions',
+  'catalyst_effectiveness', 'catalyst_prescriptions',
+  'roi_tracking', 'board_reports',
+  'industry_radar_seeds', 'industry_benchmark_seeds', 'industry_regulatory_seeds',
   // SAP native tables
   'sap_bkpf', 'sap_bseg', 'sap_bsid', 'sap_bsik', 'sap_febep',
   'sap_ekko', 'sap_ekpo', 'sap_ekbe', 'sap_mard', 'sap_iseg',
@@ -1200,6 +1205,10 @@ seed.post('/seed-vantax', async (c) => {
       { source: 'DTIC', type: 'regulatory', title: 'New BBBEE Scorecard Requirements', description: 'Department of Trade, Industry and Competition published updated BBBEE scorecard requirements effective Q2 2026. Procurement scoring thresholds have been raised.', severity: 'high', relevance: 78 },
       { source: 'Eskom', type: 'economic', title: 'Stage 4 Load Shedding Extended', description: 'Eskom announced extended Stage 4 load shedding for the next 3 weeks due to unplanned breakdowns. Production capacity will be impacted by 15-20%.', severity: 'critical', relevance: 95 },
       { source: 'TechCrunch', type: 'technology', title: 'SAP S/4HANA Cloud Migration Wave', description: 'SAP announced accelerated migration timeline for S/4HANA Cloud. Current on-premise licences will require transition planning within 18 months.', severity: 'medium', relevance: 65 },
+      { source: 'StatsSA', type: 'economic', title: 'Q1 GDP Contraction – 1.2%', description: 'Statistics South Africa reported a 1.2% GDP contraction in Q1 2026, driven by mining and manufacturing declines. Consumer spending is expected to slow.', severity: 'high', relevance: 80 },
+      { source: 'SARS', type: 'regulatory', title: 'VAT Increase to 16%', description: 'South African Revenue Service confirmed the VAT increase from 15% to 16% effective July 2026. All pricing, invoicing and ERP tax configurations must be updated.', severity: 'critical', relevance: 90 },
+      { source: 'Bloomberg', type: 'market', title: 'Iron Ore Price Surge +18%', description: 'Iron ore prices surged 18% on Chinese stimulus measures. Mining-adjacent supply chains will see cost pressure on steel and metal inputs.', severity: 'high', relevance: 75 },
+      { source: 'CyberSec SA', type: 'technology', title: 'Ransomware Advisory – Manufacturing Sector', description: 'CSIRT-SA issued advisory on ransomware targeting South African manufacturing firms using unpatched SAP systems. Immediate patching recommended.', severity: 'critical', relevance: 88 },
     ];
 
     const signalIds: string[] = [];
@@ -1223,6 +1232,18 @@ seed.post('/seed-vantax', async (c) => {
       { sigIdx: 4, dimension: 'operational', direction: 'negative', magnitude: 90, metrics: ['Production Output', 'OEE', 'Energy Cost per Unit'], actions: ['Activate backup generator capacity', 'Shift production to off-peak hours', 'Review diesel fuel reserves'] },
       { sigIdx: 4, dimension: 'financial', direction: 'negative', magnitude: 68, metrics: ['Energy Cost Ratio', 'Unit Production Cost'], actions: ['Accelerate solar installation project'] },
       { sigIdx: 5, dimension: 'technology', direction: 'neutral', magnitude: 40, metrics: ['System Migration Readiness'], actions: ['Begin S/4HANA Cloud readiness assessment', 'Budget for migration project'] },
+      // New signals (idx 6-9) impacts
+      { sigIdx: 6, dimension: 'financial', direction: 'negative', magnitude: 65, metrics: ['Revenue Forecast', 'Consumer Demand Index'], actions: ['Revise Q2 revenue projections downward by 5-8%', 'Accelerate cost reduction initiatives'] },
+      { sigIdx: 6, dimension: 'operational', direction: 'negative', magnitude: 50, metrics: ['Production Volume', 'Workforce Planning'], actions: ['Review hiring plans', 'Defer non-critical operational investments'] },
+      { sigIdx: 7, dimension: 'financial', direction: 'negative', magnitude: 82, metrics: ['VAT Configuration', 'Pricing Accuracy', 'Invoice Compliance'], actions: ['Update all SAP tax codes by July 1', 'Retrain finance team on new VAT rules', 'Audit all pricing masters'] },
+      { sigIdx: 7, dimension: 'compliance', direction: 'negative', magnitude: 78, metrics: ['Tax Compliance Rate', 'Invoice Accuracy'], actions: ['Schedule SAP tax configuration review', 'Test invoice output formats'] },
+      { sigIdx: 7, dimension: 'operational', direction: 'negative', magnitude: 55, metrics: ['Order Processing Time', 'Customer Billing Cycle'], actions: ['Plan system downtime for VAT cutover', 'Prepare customer communication'] },
+      { sigIdx: 8, dimension: 'financial', direction: 'negative', magnitude: 70, metrics: ['Raw Material Cost Index', 'Procurement Budget Variance'], actions: ['Lock in forward contracts for steel/iron inputs', 'Explore alternative suppliers'] },
+      { sigIdx: 8, dimension: 'risk', direction: 'negative', magnitude: 58, metrics: ['Commodity Price Exposure', 'Supply Chain Cost Risk'], actions: ['Activate commodity hedging strategy', 'Review inventory buffer levels'] },
+      { sigIdx: 9, dimension: 'technology', direction: 'negative', magnitude: 92, metrics: ['System Security Score', 'Patch Compliance Rate'], actions: ['Initiate emergency SAP security patching', 'Enable MFA on all SAP accounts'] },
+      { sigIdx: 9, dimension: 'operational', direction: 'negative', magnitude: 85, metrics: ['Business Continuity Readiness', 'Backup Recovery Time'], actions: ['Test disaster recovery procedures', 'Verify offline backup integrity', 'Review cyber insurance coverage'] },
+      { sigIdx: 9, dimension: 'financial', direction: 'negative', magnitude: 60, metrics: ['Cyber Insurance Premium', 'IT Security Budget'], actions: ['Budget for security infrastructure upgrade'] },
+      { sigIdx: 0, dimension: 'strategic', direction: 'negative', magnitude: 38, metrics: ['Capital Allocation Efficiency'], actions: ['Reprioritize capital projects based on new interest rate environment'] },
     ];
 
     for (const imp of impactData) {
@@ -1296,6 +1317,8 @@ seed.post('/seed-vantax', async (c) => {
       { type: 'recurring_failure', title: 'Recurring GR/IR Mismatch on Chemicals Suppliers', desc: 'Pattern detected: 4 out of 5 recent GR/IR reconciliation runs show mismatches exceeding 5% for chemical raw material suppliers (Sasol, Omnia, AECI). Root cause appears to be inconsistent unit-of-measure conversion between PO and goods receipt.', freq: 4, severity: 'high', clusters: ['Finance'], subs: ['GR/IR Reconciliation'] },
       { type: 'degradation_trend', title: 'Declining Bank Reconciliation Accuracy', desc: 'Bank reconciliation accuracy has declined from 85% to 69% over the last 6 runs. Unmatched EFT transactions are increasing, particularly for smaller supplier payments under R10,000. This correlates with the recent switch to batch payment processing.', freq: 6, severity: 'critical', clusters: ['Finance'], subs: ['Bank Reconciliation'] },
       { type: 'cross_catalyst_correlation', title: 'Inventory Discrepancy Correlates with PO Timing', desc: 'Inventory count variances are 3x higher for items with purchase orders processed in the last 48 hours. The goods receipt timing gap between warehouse scanning and SAP posting is creating a systematic bias in physical count reconciliation.', freq: 3, severity: 'medium', clusters: ['Supply Chain', 'Finance'], subs: ['Inventory Reconciliation', 'GR/IR Reconciliation'] },
+      { type: 'temporal_pattern', title: 'Month-End Payment Spike Causes Reconciliation Backlog', desc: 'Payment processing volume increases 4x in the last 3 business days of each month, creating a reconciliation backlog that persists 5-7 days into the next month. Automated matching rules degrade from 85% to 62% during peak periods due to batch processing delays.', freq: 12, severity: 'high', clusters: ['Finance'], subs: ['Bank Reconciliation', 'AP Invoice Validation'] },
+      { type: 'field_hotspot', title: 'Supplier VAT Number Mismatch Hotspot', desc: 'VAT number discrepancies concentrated in 3 supplier groups (chemicals, logistics, engineering) account for 67% of all invoice matching failures. Root cause traced to legacy vendor master data migration from SAP ECC to S/4HANA with incomplete field mapping.', freq: 8, severity: 'high', clusters: ['Finance', 'Supply Chain'], subs: ['AP Invoice Validation', 'GR/IR Reconciliation'] },
     ];
 
     for (const pat of patterns) {
@@ -1308,6 +1331,245 @@ seed.post('/seed-vantax', async (c) => {
     }
 
     console.log(`[VantaX Seeder] Seeded ${patterns.length} catalyst patterns`);
+
+    // ── STEP: Seed V2 Competitors ──
+    console.log('[VantaX Seeder] Seeding V2 competitors...');
+    const competitors = [
+      { name: 'NexaCorp SA', industry: 'industrial', website: 'https://nexacorp.co.za', strengths: ['Digital transformation', 'AI-driven analytics'], weaknesses: ['Limited SA footprint', 'High pricing'], marketShare: 15, threatLevel: 'high' },
+      { name: 'Pinnacle Systems', industry: 'technology', website: 'https://pinnaclesys.co.za', strengths: ['SAP partnership', 'Strong consulting team'], weaknesses: ['Slow innovation', 'Legacy codebase'], marketShare: 12, threatLevel: 'medium' },
+      { name: 'Meridian Group', industry: 'financial_services', website: 'https://meridiangrp.co.za', strengths: ['Deep finance expertise', 'BBBEE Level 1'], weaknesses: ['No tech platform', 'Manual processes'], marketShare: 8, threatLevel: 'low' },
+      { name: 'Atlas Industrial', industry: 'manufacturing', website: 'https://atlasindustrial.co.za', strengths: ['Manufacturing domain', 'IoT integration'], weaknesses: ['No reconciliation capability', 'Small team'], marketShare: 5, threatLevel: 'medium' },
+    ];
+    for (const comp of competitors) {
+      await c.env.DB.prepare(
+        `INSERT INTO competitors (id, tenant_id, name, industry, website, strengths, weaknesses, market_share, threat_level, notes, last_updated, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, comp.name, comp.industry, comp.website, JSON.stringify(comp.strengths), JSON.stringify(comp.weaknesses), comp.marketShare, comp.threatLevel, now, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${competitors.length} competitors`);
+
+    // ── STEP: Seed V2 Market Benchmarks ──
+    console.log('[VantaX Seeder] Seeding V2 market benchmarks...');
+    const benchmarks = [
+      { name: 'Revenue Growth', category: 'financial', value: 8.5, unit: '%', source: 'PwC SA Industry Report 2026', percentile: 65 },
+      { name: 'Operating Margin', category: 'financial', value: 14.2, unit: '%', source: 'Deloitte SA Benchmarks', percentile: 58 },
+      { name: 'Inventory Turnover', category: 'operational', value: 6.8, unit: 'turns', source: 'SAPICS SA Survey', percentile: 45 },
+      { name: 'Cash Conversion Cycle', category: 'financial', value: 42, unit: 'days', source: 'SAICA Industry Metrics', percentile: 52 },
+      { name: 'Employee Productivity', category: 'operational', value: 285000, unit: 'ZAR/employee', source: 'Stats SA Labour Report', percentile: 70 },
+      { name: 'Digital Maturity Index', category: 'technology', value: 3.2, unit: '/5', source: 'McKinsey Digital SA', percentile: 40 },
+    ];
+    for (const bm of benchmarks) {
+      await c.env.DB.prepare(
+        `INSERT INTO market_benchmarks (id, tenant_id, name, category, value, unit, source, industry, percentile, trend, period, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'general', ?, 'stable', 'Q1 2026', ?)`
+      ).bind(crypto.randomUUID(), tenantId, bm.name, bm.category, bm.value, bm.unit, bm.source, bm.percentile, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${benchmarks.length} market benchmarks`);
+
+    // ── STEP: Seed V2 Regulatory Events ──
+    console.log('[VantaX Seeder] Seeding V2 regulatory events...');
+    const regEvents = [
+      { title: 'POPIA Compliance Audit', body: 'Information Regulator scheduled compliance audit for data processing activities. All personal information processing must be documented and consent records available.', authority: 'Information Regulator SA', effectiveDate: '2026-06-01', impact: 'high', category: 'data_privacy', status: 'upcoming' },
+      { title: 'BBBEE Scorecard Renewal', body: 'Annual BBBEE verification due. New codes require minimum 40% procurement from qualifying enterprises. Current spend at 35% needs acceleration.', authority: 'DTIC', effectiveDate: '2026-09-30', impact: 'medium', category: 'compliance', status: 'upcoming' },
+      { title: 'Carbon Tax Phase 2', body: 'National Treasury carbon tax Phase 2 implementation increases levy from R159 to R190 per tonne CO2e. Manufacturing facilities must update emission reporting.', authority: 'National Treasury', effectiveDate: '2026-01-01', impact: 'medium', category: 'environmental', status: 'active' },
+    ];
+    for (const re of regEvents) {
+      await c.env.DB.prepare(
+        `INSERT INTO regulatory_events (id, tenant_id, title, body, authority, effective_date, impact, category, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, re.title, re.body, re.authority, re.effectiveDate, re.impact, re.category, re.status, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${regEvents.length} regulatory events`);
+
+    // ── STEP: Seed V2 Root Cause Analyses with causal factors + prescriptions ──
+    console.log('[VantaX Seeder] Seeding V2 root cause analyses...');
+    const rcaData = [
+      { metricName: 'AP Invoice Match Rate', metricValue: 81.25, status: 'amber', factors: [
+        { level: 0, category: 'process', title: 'Invoice matching rate below target', description: 'AP match rate at 81.25% vs 95% target. 18.75% of invoices require manual intervention.', confidence: 95, linkedMetrics: ['AP Match Rate', 'Processing Time'] },
+        { level: 1, category: 'data', title: 'PO price variance on raw materials', description: 'Fluctuating ZAR exchange rates cause PO prices to differ from invoice amounts by 2-5% for imported materials.', confidence: 82, linkedMetrics: ['FX Rate', 'PO Accuracy'] },
+        { level: 2, category: 'system', title: 'Delayed GR posting in SAP', description: 'Goods receipt posting delayed by average 2.3 days due to warehouse staff not scanning on receipt.', confidence: 75, linkedMetrics: ['GR Posting Time', 'Warehouse Efficiency'] },
+      ], prescriptions: [
+        { title: 'Implement mobile GR scanning', description: 'Deploy SAP Fiori mobile app for warehouse goods receipt to eliminate posting delays.', priority: 'high', effort: 'medium', sapTransaction: 'MIGO', estimatedImpact: 12 },
+        { title: 'Configure automatic FX tolerance', description: 'Set up automatic tolerance groups in SAP for FX-related price variances under 3%.', priority: 'medium', effort: 'low', sapTransaction: 'OBA3', estimatedImpact: 8 },
+      ]},
+      { metricName: 'Production OEE', metricValue: 72.5, status: 'red', factors: [
+        { level: 0, category: 'operational', title: 'OEE below industry benchmark', description: 'Overall Equipment Effectiveness at 72.5% vs 85% industry standard. Availability is the primary drag factor.', confidence: 92, linkedMetrics: ['OEE', 'Availability', 'Performance'] },
+        { level: 1, category: 'infrastructure', title: 'Load shedding impact on production', description: 'Stage 4 load shedding causing 4-6 hour daily production stoppages. Generator switchover takes 15 minutes per event.', confidence: 88, linkedMetrics: ['Downtime Hours', 'Energy Cost'] },
+        { level: 2, category: 'process', title: 'Unplanned maintenance frequency', description: 'Reactive maintenance accounts for 35% of all maintenance activities vs 15% best practice target.', confidence: 70, linkedMetrics: ['MTBF', 'Maintenance Cost'] },
+      ], prescriptions: [
+        { title: 'Install automatic transfer switches', description: 'Replace manual generator switchover with automatic transfer switches to reduce switchover time to <30 seconds.', priority: 'critical', effort: 'high', sapTransaction: 'PM01', estimatedImpact: 18 },
+        { title: 'Implement predictive maintenance', description: 'Deploy IoT sensors on critical equipment and configure SAP PM predictive maintenance workflows.', priority: 'high', effort: 'high', sapTransaction: 'IP10', estimatedImpact: 15 },
+      ]},
+      { metricName: 'Inventory Accuracy', metricValue: 55.6, status: 'red', factors: [
+        { level: 0, category: 'data', title: 'Inventory count accuracy critically low', description: 'Physical count accuracy at 55.6% indicates systemic inventory management issues across multiple storage locations.', confidence: 95, linkedMetrics: ['Count Accuracy', 'Write-offs'] },
+        { level: 1, category: 'process', title: 'Cycle count frequency insufficient', description: 'ABC cycle counting not implemented. Full physical counts done quarterly are insufficient for high-value items.', confidence: 78, linkedMetrics: ['Cycle Count Coverage', 'Adjustment Frequency'] },
+      ], prescriptions: [
+        { title: 'Implement ABC cycle counting', description: 'Configure SAP cycle counting with A-items counted weekly, B-items monthly, C-items quarterly.', priority: 'high', effort: 'medium', sapTransaction: 'MI21', estimatedImpact: 25 },
+      ]},
+      { metricName: 'Order Fulfillment Rate', metricValue: 89.3, status: 'amber', factors: [
+        { level: 0, category: 'operational', title: 'Order fulfillment below target', description: 'OTIF rate at 89.3% vs 95% target. Late deliveries and partial shipments are primary contributors.', confidence: 90, linkedMetrics: ['OTIF', 'Lead Time'] },
+        { level: 1, category: 'supply_chain', title: 'Supplier lead time variability', description: 'Key supplier lead times have increased 20% due to port congestion at Durban and global shipping delays.', confidence: 72, linkedMetrics: ['Supplier Lead Time', 'Stock-out Rate'] },
+      ], prescriptions: [
+        { title: 'Configure safety stock optimization', description: 'Use SAP MRP to set dynamic safety stock levels based on demand variability and lead time uncertainty.', priority: 'medium', effort: 'medium', sapTransaction: 'MD02', estimatedImpact: 10 },
+      ]},
+    ];
+
+    for (const rca of rcaData) {
+      const rcaId = crypto.randomUUID();
+      await c.env.DB.prepare(
+        `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, metric_value, metric_status, trigger_type, rca_depth, status, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'auto', ?, 'completed', ?, ?)`
+      ).bind(rcaId, tenantId, crypto.randomUUID(), rca.metricName, rca.metricValue, rca.status, rca.factors.length, now, now).run();
+
+      for (const f of rca.factors) {
+        await c.env.DB.prepare(
+          `INSERT INTO causal_factors (id, tenant_id, rca_id, level, category, title, description, confidence, evidence, linked_metrics, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`
+        ).bind(crypto.randomUUID(), tenantId, rcaId, f.level, f.category, f.title, f.description, f.confidence, JSON.stringify(f.linkedMetrics), now).run();
+      }
+
+      for (const p of rca.prescriptions) {
+        await c.env.DB.prepare(
+          `INSERT INTO diagnostic_prescriptions (id, tenant_id, rca_id, title, description, priority, effort, sap_transaction, estimated_impact, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+        ).bind(crypto.randomUUID(), tenantId, rcaId, p.title, p.description, p.priority, p.effort, p.sapTransaction, p.estimatedImpact, now).run();
+      }
+    }
+    console.log(`[VantaX Seeder] Seeded ${rcaData.length} root cause analyses with factors and prescriptions`);
+
+    // ── STEP: Seed V2 Catalyst Effectiveness ──
+    console.log('[VantaX Seeder] Seeding V2 catalyst effectiveness...');
+    const effectivenessData = [
+      { subCatalystName: 'GR/IR Reconciliation', matchRate: 81.25, exceptionRate: 18.75, avgProcessingTime: 45, trend: [78.5, 79.2, 80.1, 80.8, 81.25], period: 'monthly' },
+      { subCatalystName: 'Bank Reconciliation', matchRate: 68.75, exceptionRate: 31.25, avgProcessingTime: 62, trend: [75.0, 73.2, 71.5, 70.1, 68.75], period: 'monthly' },
+      { subCatalystName: 'Inventory Reconciliation', matchRate: 55.6, exceptionRate: 44.4, avgProcessingTime: 38, trend: [60.0, 58.5, 57.2, 56.4, 55.6], period: 'monthly' },
+      { subCatalystName: 'Sales Order Matching', matchRate: 68.75, exceptionRate: 31.25, avgProcessingTime: 52, trend: [65.0, 66.5, 67.8, 68.2, 68.75], period: 'monthly' },
+      { subCatalystName: 'AP Invoice Validation', matchRate: 85.0, exceptionRate: 15.0, avgProcessingTime: 28, trend: [82.0, 83.1, 83.8, 84.5, 85.0], period: 'monthly' },
+    ];
+    for (const eff of effectivenessData) {
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_effectiveness (id, tenant_id, sub_catalyst_id, sub_catalyst_name, match_rate, exception_rate, avg_processing_time, trend, period, calculated_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), eff.subCatalystName, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${effectivenessData.length} catalyst effectiveness records`);
+
+    // ── STEP: Seed V2 Catalyst Dependencies ──
+    console.log('[VantaX Seeder] Seeding V2 catalyst dependencies...');
+    const deps = [
+      { from: 'GR/IR Reconciliation', to: 'Inventory Reconciliation', type: 'data_flow', strength: 85, desc: 'GR/IR results feed into inventory valuation accuracy' },
+      { from: 'Bank Reconciliation', to: 'AP Invoice Validation', type: 'sequential', strength: 70, desc: 'Bank clearing confirms AP payment completion' },
+      { from: 'Sales Order Matching', to: 'Bank Reconciliation', type: 'data_flow', strength: 60, desc: 'SD billing documents create expected bank receipt entries' },
+    ];
+    for (const dep of deps) {
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_dependencies (id, tenant_id, from_catalyst_id, from_catalyst_name, to_catalyst_id, to_catalyst_name, dependency_type, strength, description, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, dep.type, dep.strength, dep.desc, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${deps.length} catalyst dependencies`);
+
+    // ── STEP: Seed V2 Catalyst Prescriptions ──
+    console.log('[VantaX Seeder] Seeding V2 catalyst prescriptions...');
+    const catalystPrescriptions = [
+      { title: 'Automate GR scanning workflow', description: 'Implement barcode/RFID scanning at goods receipt to auto-post MIGO transactions, reducing manual entry errors by 80%.', priority: 'high', effort: 'medium', sapTransaction: 'MIGO', estimatedSavings: 850000, status: 'pending' },
+      { title: 'Configure EFT auto-matching rules', description: 'Set up automatic bank statement matching rules in SAP for recurring EFT payments to reduce manual reconciliation by 60%.', priority: 'high', effort: 'low', sapTransaction: 'FF67', estimatedSavings: 420000, status: 'in_progress' },
+      { title: 'Deploy cycle count program', description: 'Implement ABC-stratified cycle counting program using SAP MI21/MI04 transactions for continuous inventory accuracy improvement.', priority: 'critical', effort: 'high', sapTransaction: 'MI21', estimatedSavings: 1200000, status: 'pending' },
+      { title: 'Implement tolerance groups for FX', description: 'Configure automatic posting of FX-related price differences below 3% threshold to reduce AP exception queue by 40%.', priority: 'medium', effort: 'low', sapTransaction: 'OBA3', estimatedSavings: 280000, status: 'approved' },
+    ];
+    for (const cp of catalystPrescriptions) {
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_prescriptions (id, tenant_id, pattern_id, title, description, priority, effort, sap_transaction, estimated_savings, status, created_at)
+         VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, cp.title, cp.description, cp.priority, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${catalystPrescriptions.length} catalyst prescriptions`);
+
+    // ── STEP: Seed V2 ROI Tracking ──
+    console.log('[VantaX Seeder] Seeding V2 ROI tracking...');
+    await c.env.DB.prepare(
+      `INSERT INTO roi_tracking (id, tenant_id, period, identified_losses, recovered_amount, prevented_losses, person_hours_saved, platform_cost, roi_multiple, breakdown, created_at)
+       VALUES (?, ?, 'Q1 2026', 4850000, 3200000, 1800000, 2400, 580000, 8.3, ?, ?)`
+    ).bind(
+      crypto.randomUUID(), tenantId,
+      JSON.stringify({
+        byCluster: [
+          { cluster: 'Finance', identified: 2800000, recovered: 1900000, prevented: 800000, hoursSaved: 1200 },
+          { cluster: 'Supply Chain', identified: 1200000, recovered: 800000, prevented: 600000, hoursSaved: 720 },
+          { cluster: 'Revenue', identified: 850000, recovered: 500000, prevented: 400000, hoursSaved: 480 },
+        ],
+        byCategory: [
+          { category: 'Invoice Discrepancies', amount: 1500000 },
+          { category: 'Inventory Write-offs', amount: 950000 },
+          { category: 'Payment Duplicates', amount: 420000 },
+          { category: 'Revenue Leakage', amount: 330000 },
+        ],
+      }),
+      now
+    ).run();
+    console.log('[VantaX Seeder] Seeded ROI tracking record');
+
+    // ── STEP: Seed Industry Playbook Seeds ──
+    console.log('[VantaX Seeder] Seeding industry playbook seeds...');
+    const industrySeeds = [
+      // General
+      { industry: 'general', type: 'signal', title: 'Interest Rate Change', description: 'Central bank rate adjustment impacting borrowing costs', severity: 'high', category: 'financial' },
+      { industry: 'general', type: 'signal', title: 'Currency Fluctuation', description: 'Significant exchange rate movement affecting import/export costs', severity: 'high', category: 'financial' },
+      { industry: 'general', type: 'signal', title: 'Regulatory Change', description: 'New regulation or policy change affecting business operations', severity: 'medium', category: 'compliance' },
+      { industry: 'general', type: 'signal', title: 'Technology Disruption', description: 'Emerging technology that may impact current business model', severity: 'medium', category: 'technology' },
+      // FMCG
+      { industry: 'fmcg', type: 'signal', title: 'Consumer Sentiment Shift', description: 'Change in consumer spending patterns or preferences', severity: 'high', category: 'market' },
+      { industry: 'fmcg', type: 'signal', title: 'Commodity Price Spike', description: 'Raw material cost increase affecting product margins', severity: 'critical', category: 'financial' },
+      { industry: 'fmcg', type: 'signal', title: 'Retail Channel Disruption', description: 'Major retailer policy change or new channel emergence', severity: 'medium', category: 'market' },
+      { industry: 'fmcg', type: 'signal', title: 'Food Safety Regulation', description: 'New food safety or labelling requirement', severity: 'high', category: 'compliance' },
+      { industry: 'fmcg', type: 'benchmark', name: 'Shelf Availability Rate', value: 96.5, unit: '%', source: 'Nielsen SA Retail' },
+      { industry: 'fmcg', type: 'benchmark', name: 'Distribution Coverage', value: 85.0, unit: '%', source: 'CGCSA Industry Report' },
+      { industry: 'fmcg', type: 'benchmark', name: 'Demand Forecast Accuracy', value: 78.0, unit: '%', source: 'FMI SA Benchmarks' },
+      { industry: 'fmcg', type: 'regulatory', title: 'Sugar Tax Adjustment', body: 'Health Promotion Levy rate adjustment for sugar-sweetened beverages', authority: 'SARS' },
+      // Mining
+      { industry: 'mining', type: 'signal', title: 'Commodity Price Movement', description: 'Significant change in key mineral commodity prices', severity: 'critical', category: 'financial' },
+      { industry: 'mining', type: 'signal', title: 'Safety Incident Alert', description: 'Industry safety incident requiring operational review', severity: 'critical', category: 'operational' },
+      { industry: 'mining', type: 'signal', title: 'Mining Charter Update', description: 'Amendment to Mining Charter or MPRDA regulations', severity: 'high', category: 'compliance' },
+      { industry: 'mining', type: 'signal', title: 'Water Restriction Notice', description: 'Water use licence or restriction affecting mining operations', severity: 'high', category: 'environmental' },
+      { industry: 'mining', type: 'benchmark', name: 'Lost Time Injury Rate', value: 0.5, unit: 'per Mhrs', source: 'Minerals Council SA' },
+      { industry: 'mining', type: 'benchmark', name: 'Recovery Rate', value: 92.0, unit: '%', source: 'Chamber of Mines' },
+      { industry: 'mining', type: 'regulatory', title: 'DMR Compliance Audit', body: 'Department of Mineral Resources scheduled compliance audit', authority: 'DMR' },
+      { industry: 'mining', type: 'regulatory', title: 'Environmental Impact Assessment', body: 'EIA review for mining license renewal', authority: 'DFFE' },
+      // Healthcare
+      { industry: 'healthcare', type: 'signal', title: 'NHI Implementation Phase', description: 'National Health Insurance implementation milestone', severity: 'critical', category: 'regulatory' },
+      { industry: 'healthcare', type: 'signal', title: 'Medical Aid Contribution Increase', description: 'Annual medical aid contribution rate adjustment', severity: 'medium', category: 'financial' },
+      { industry: 'healthcare', type: 'benchmark', name: 'Bed Occupancy Rate', value: 75.0, unit: '%', source: 'CMS Annual Report' },
+      { industry: 'healthcare', type: 'benchmark', name: 'Average Length of Stay', value: 3.2, unit: 'days', source: 'HASA Benchmarks' },
+      { industry: 'healthcare', type: 'regulatory', title: 'SAHPRA Registration', body: 'Medical device or pharmaceutical registration requirement', authority: 'SAHPRA' },
+      { industry: 'healthcare', type: 'regulatory', title: 'CMS PMB Update', body: 'Prescribed Minimum Benefits list update by Council for Medical Schemes', authority: 'CMS' },
+      // Manufacturing
+      { industry: 'manufacturing', type: 'signal', title: 'Load Shedding Stage Change', description: 'Eskom load shedding schedule change affecting production', severity: 'critical', category: 'operational' },
+      { industry: 'manufacturing', type: 'signal', title: 'Steel/Material Price Change', description: 'Significant input material price movement', severity: 'high', category: 'financial' },
+      { industry: 'manufacturing', type: 'benchmark', name: 'Overall Equipment Effectiveness', value: 85.0, unit: '%', source: 'SEIFSA Industry Report' },
+      { industry: 'manufacturing', type: 'benchmark', name: 'Scrap Rate', value: 2.5, unit: '%', source: 'Manufacturing Circle SA' },
+      { industry: 'manufacturing', type: 'regulatory', title: 'NRCS Product Compliance', body: 'National Regulator for Compulsory Specifications product compliance requirement', authority: 'NRCS' },
+      { industry: 'manufacturing', type: 'regulatory', title: 'OHS Act Audit', body: 'Occupational Health and Safety compliance audit', authority: 'DoEL' },
+    ];
+
+    for (const seed of industrySeeds) {
+      if (seed.type === 'signal') {
+        await c.env.DB.prepare(
+          `INSERT INTO industry_radar_seeds (id, industry, signal_type, title, description, default_severity, category, created_at)
+           VALUES (?, ?, 'market', ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, seed.description || '', seed.severity || 'medium', seed.category || 'general', now).run();
+      } else if (seed.type === 'benchmark') {
+        await c.env.DB.prepare(
+          `INSERT INTO industry_benchmark_seeds (id, industry, name, default_value, unit, source, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).value, (seed as any).unit, (seed as any).source, now).run();
+      } else if (seed.type === 'regulatory') {
+        await c.env.DB.prepare(
+          `INSERT INTO industry_regulatory_seeds (id, industry, title, default_body, authority, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '', (seed as any).authority || '', now).run();
+      }
+    }
+    console.log('[VantaX Seeder] Seeded industry playbook seeds');
 
     // Summary
     // Products: SAP (18) + PHYSICAL_COUNT (18) = 36; Invoices: SAP (80) + SAP-AR (72) = 152
@@ -1353,6 +1615,15 @@ seed.post('/seed-vantax', async (c) => {
           strategicContexts: 1,
           diagnosticAnalyses: diagMetrics.length,
           catalystPatterns: patterns.length,
+          competitors: competitors.length,
+          marketBenchmarks: benchmarks.length,
+          regulatoryEvents: regEvents.length,
+          rootCauseAnalyses: rcaData.length,
+          catalystEffectiveness: effectivenessData.length,
+          catalystDependencies: deps.length,
+          catalystPrescriptions: catalystPrescriptions.length,
+          roiTracking: 1,
+          industrySeeds: industrySeeds.length,
         },
       },
       nextSteps: [
@@ -1411,6 +1682,18 @@ seed.get('/vantax-status', async (c) => {
       ['catalystPatterns', 'catalyst_patterns'],
       ['catalystEffectiveness', 'catalyst_effectiveness'],
       ['catalystDependencies', 'catalyst_dependencies'],
+      // V2 engine tables
+      ['externalSignals', 'external_signals'],
+      ['signalImpacts', 'signal_impacts'],
+      ['competitors', 'competitors'],
+      ['marketBenchmarks', 'market_benchmarks'],
+      ['regulatoryEvents', 'regulatory_events'],
+      ['rootCauseAnalyses', 'root_cause_analyses'],
+      ['causalFactors', 'causal_factors'],
+      ['diagnosticPrescriptions', 'diagnostic_prescriptions'],
+      ['catalystPrescriptions', 'catalyst_prescriptions'],
+      ['roiTracking', 'roi_tracking'],
+      ['boardReports', 'board_reports'],
       // SAP native tables
       ['sap_bkpf', 'sap_bkpf'],
       ['sap_bseg', 'sap_bseg'],

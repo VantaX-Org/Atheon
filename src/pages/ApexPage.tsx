@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -62,10 +62,23 @@ export function ApexPage() {
  // Radar / Strategic Context state
  const [radarContext, setRadarContext] = useState<RadarContextResponse | null>(null);
  const [radarLoading, setRadarLoading] = useState(false);
- const [radarSignalForm, setRadarSignalForm] = useState({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+ const [radarSignalForm, setRadarSignalForm] = useState({ source_name: '', category: 'regulatory', title: '', summary: '', source_url: '', sentiment: 'neutral' });
  const [creatingSignal, setCreatingSignal] = useState(false);
  const [showSignalForm, setShowSignalForm] = useState(false);
  const [expandedSignal, setExpandedSignal] = useState<string | null>(null);
+ const [boardReports, setBoardReports] = useState<BoardReportItem[]>([]);
+ const [generatingReport, setGeneratingReport] = useState(false);
+ const [showBoardReport, setShowBoardReport] = useState<string | null>(null);
+
+ const handleGenerateBoardReport = async () => {
+  setGeneratingReport(true);
+  try {
+   const report = await api.boardReport.generate();
+   setBoardReports(prev => [report, ...prev]);
+   setShowBoardReport(report.id);
+  } catch (err) { console.error('Failed to generate board report:', err); }
+  setGeneratingReport(false);
+ };
 
  const loadRadarContext = async () => {
   setRadarLoading(true);
@@ -81,15 +94,15 @@ export function ApexPage() {
   setCreatingSignal(true);
   try {
    await api.radar.createSignal({
-    source: radarSignalForm.source || 'manual',
-    signal_type: radarSignalForm.signal_type,
+    category: radarSignalForm.category,
     title: radarSignalForm.title,
-    description: radarSignalForm.description,
-    url: radarSignalForm.url || undefined,
-    severity: radarSignalForm.severity,
+    summary: radarSignalForm.summary,
+    source_url: radarSignalForm.source_url || undefined,
+    source_name: radarSignalForm.source_name || 'manual',
+    sentiment: radarSignalForm.sentiment,
    });
    setShowSignalForm(false);
-   setRadarSignalForm({ source: '', signal_type: 'regulatory', title: '', description: '', url: '', severity: 'medium' });
+   setRadarSignalForm({ source_name: '', category: 'regulatory', title: '', summary: '', source_url: '', sentiment: 'neutral' });
    loadRadarContext();
   } catch (err) {
    setActionError(err instanceof Error ? err.message : 'Failed to create signal');
@@ -192,14 +205,15 @@ export function ApexPage() {
  useEffect(() => {
  async function load() {
  setLoading(true);
- const [h, b, r, s, hh] = await Promise.allSettled([
- api.apex.health(), api.apex.briefing(), api.apex.risks(), api.apex.scenarios(), api.apex.healthHistory(),
+ const [h, b, r, s, hh, br] = await Promise.allSettled([
+ api.apex.health(), api.apex.briefing(), api.apex.risks(), api.apex.scenarios(), api.apex.healthHistory(), api.boardReport.list(),
  ]);
  if (h.status === 'fulfilled') setHealth(h.value);
  if (b.status === 'fulfilled') setBriefing(b.value);
  if (r.status === 'fulfilled') setRisks(r.value.risks);
  if (s.status === 'fulfilled') setScenarios(s.value.scenarios);
  if (hh.status === 'fulfilled') setHealthHistory(hh.value);
+ if (br.status === 'fulfilled') setBoardReports(br.value.reports);
  setLoading(false);
  }
  load();
@@ -1300,6 +1314,44 @@ export function ApexPage() {
       </Card>
      )}
 
+     {/* Board Report */}
+     <Card className="border-accent/20 bg-accent/5">
+      <div className="flex items-center justify-between">
+       <div className="flex items-center gap-2">
+        <FileText size={16} className="text-accent" />
+        <div>
+         <h3 className="text-sm font-semibold t-primary">Board Report Generator</h3>
+         <p className="text-[10px] t-muted">Generate a comprehensive executive board report with all V2 intelligence data.</p>
+        </div>
+       </div>
+       <Button variant="primary" size="sm" onClick={handleGenerateBoardReport} disabled={generatingReport}>
+        {generatingReport ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />} Generate Report
+       </Button>
+      </div>
+      {boardReports.length > 0 && (
+       <div className="mt-3 pt-3 border-t border-[var(--border-card)] space-y-1">
+        {boardReports.slice(0, 3).map(report => (
+         <div key={report.id} className="flex items-center justify-between p-2 rounded-lg bg-[var(--bg-secondary)]">
+          <div className="flex items-center gap-2">
+           <Badge variant={report.status === 'completed' ? 'success' : report.status === 'generating' ? 'warning' : 'danger'} size="sm">{report.status}</Badge>
+           <span className="text-xs t-primary">{report.title || report.reportMonth}</span>
+          </div>
+          <div className="flex items-center gap-2">
+           <span className="text-[10px] t-muted">{new Date(report.generatedAt).toLocaleDateString()}</span>
+           {report.pdfUrl && <a href={report.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline">PDF</a>}
+           {report.contentMarkdown && <button onClick={() => setShowBoardReport(showBoardReport === report.id ? null : report.id)} className="text-[10px] text-accent hover:underline">View</button>}
+          </div>
+         </div>
+        ))}
+        {showBoardReport && boardReports.find(r => r.id === showBoardReport)?.contentMarkdown && (
+         <div className="mt-2 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] max-h-64 overflow-y-auto">
+          <pre className="text-xs t-secondary whitespace-pre-wrap">{boardReports.find(r => r.id === showBoardReport)?.contentMarkdown}</pre>
+         </div>
+        )}
+       </div>
+      )}
+     </Card>
+
      {/* Signals List */}
      <div className="flex items-center justify-between">
       <h3 className="text-sm font-semibold t-primary">External Signals</h3>
@@ -1318,22 +1370,22 @@ export function ApexPage() {
         </div>
         <div>
          <label className="text-[10px] t-muted uppercase block mb-1">Source</label>
-         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.source} onChange={e => setRadarSignalForm(p => ({ ...p, source: e.target.value }))} placeholder="e.g. Reuters, Bloomberg" />
+         <input className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.source_name} onChange={e => setRadarSignalForm(p => ({ ...p, source_name: e.target.value }))} placeholder="e.g. Reuters, Bloomberg" />
         </div>
         <div className="md:col-span-2">
          <label className="text-[10px] t-muted uppercase block mb-1">Description</label>
-         <textarea className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" rows={2} value={radarSignalForm.description} onChange={e => setRadarSignalForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the external signal..." />
+         <textarea className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" rows={2} value={radarSignalForm.summary} onChange={e => setRadarSignalForm(p => ({ ...p, summary: e.target.value }))} placeholder="Describe the external signal..." />
         </div>
         <div>
          <label className="text-[10px] t-muted uppercase block mb-1">Type</label>
-         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.signal_type} onChange={e => setRadarSignalForm(p => ({ ...p, signal_type: e.target.value }))}>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.category} onChange={e => setRadarSignalForm(p => ({ ...p, category: e.target.value }))}>
           <option value="regulatory">Regulatory</option><option value="market">Market</option><option value="competitor">Competitor</option><option value="economic">Economic</option><option value="technology">Technology</option><option value="geopolitical">Geopolitical</option>
          </select>
         </div>
         <div>
-         <label className="text-[10px] t-muted uppercase block mb-1">Severity</label>
-         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.severity} onChange={e => setRadarSignalForm(p => ({ ...p, severity: e.target.value }))}>
-          <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+         <label className="text-[10px] t-muted uppercase block mb-1">Sentiment</label>
+         <select className="w-full px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary" value={radarSignalForm.sentiment} onChange={e => setRadarSignalForm(p => ({ ...p, sentiment: e.target.value }))}>
+          <option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option><option value="mixed">Mixed</option>
          </select>
         </div>
        </div>

@@ -19,6 +19,7 @@
 
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
+// V2 engines are invoked via scheduled.ts cron jobs (they need env.AI binding not available in collectRunInsights)
 
 // ── Types ──
 
@@ -178,6 +179,14 @@ export async function collectRunInsights(
 
   // 6. Record health score history with run attribution (GAP 5)
   await recordHealthScoreHistory(db, context, now);
+
+  // V2: Auto-trigger pattern analysis after each catalyst run (skipped here — no env binding available; runs via cron in scheduled.ts)
+
+  // V2: Auto-trigger RCA on red metrics (skipped here — no env binding available; runs via cron in scheduled.ts)
+  const redKpis = (context.kpiValues || []).filter(k => k.status === 'red');
+  if (redKpis.length > 0) {
+    console.log(`[insights-engine] ${redKpis.length} red KPIs detected for ${context.subCatalystName}, RCA will run via scheduled job`);
+  }
 
   return insights;
 }
