@@ -1450,7 +1450,7 @@ seed.post('/seed-vantax', async (c) => {
       await c.env.DB.prepare(
         `INSERT INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, match_rate, exception_rate, avg_duration_ms, avg_processing_time, trend, period, calculated_at, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), crypto.randomUUID(), eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime * 1000, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, crypto.randomUUID(), eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.matchRate, eff.exceptionRate, eff.avgProcessingTime * 1000, eff.avgProcessingTime, JSON.stringify(eff.trend), eff.period, now, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${effectivenessData.length} catalyst effectiveness records`);
 
@@ -1465,7 +1465,7 @@ seed.post('/seed-vantax', async (c) => {
       await c.env.DB.prepare(
         `INSERT INTO catalyst_dependencies (id, tenant_id, source_cluster_id, source_sub_catalyst, target_cluster_id, target_sub_catalyst, from_catalyst_id, from_catalyst_name, to_catalyst_id, to_catalyst_name, dependency_type, strength, description, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, crypto.randomUUID(), dep.from, crypto.randomUUID(), dep.to, dep.type, dep.strength, dep.desc, now).run();
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, dep.from, financeClusterId, dep.to, financeClusterId, dep.from, financeClusterId, dep.to, dep.type, dep.strength, dep.desc, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${deps.length} catalyst dependencies`);
 
@@ -1481,7 +1481,7 @@ seed.post('/seed-vantax', async (c) => {
       await c.env.DB.prepare(
         `INSERT INTO catalyst_prescriptions (id, tenant_id, cluster_id, sub_catalyst_name, prescription_type, pattern_id, title, description, priority, effort_level, effort, sap_transaction, estimated_savings, status, created_at)
          VALUES (?, ?, ?, 'General', 'optimization', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), tenantId, crypto.randomUUID(), cp.title, cp.description, cp.priority, cp.effort, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
+      ).bind(crypto.randomUUID(), tenantId, financeClusterId, cp.title, cp.description, cp.priority, cp.effort, cp.effort, cp.sapTransaction, cp.estimatedSavings, cp.status, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${catalystPrescriptions.length} catalyst prescriptions`);
 
