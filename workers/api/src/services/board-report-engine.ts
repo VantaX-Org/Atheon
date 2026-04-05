@@ -46,7 +46,7 @@ export async function generateBoardReport(
 
   // 6) Fetch catalyst effectiveness top-line
   const effectiveness = await db.prepare(
-    'SELECT cluster_id, sub_catalyst_name, total_runs, recovery_rate, total_discrepancy_value_found FROM catalyst_effectiveness WHERE tenant_id = ? ORDER BY total_discrepancy_value_found DESC LIMIT 5'
+    'SELECT cluster_id, sub_catalyst_name, runs_count, success_rate, total_value_processed FROM catalyst_effectiveness WHERE tenant_id = ? ORDER BY total_value_processed DESC LIMIT 5'
   ).bind(tenantId).all();
 
   // 7) Build LLM prompt
@@ -62,7 +62,7 @@ export async function generateBoardReport(
     risks: risks.results.map((r: Record<string, unknown>) => ({ title: r.title, severity: r.severity, category: r.category })),
     diagnostics: { activeRCAs: diagActive?.cnt || 0, pendingPrescriptions: diagPrescriptions?.cnt || 0 },
     roi: roi ? { identified: roi.total_discrepancy_value_identified, recovered: roi.total_discrepancy_value_recovered, roiMultiple: roi.roi_multiple, personHours: roi.total_person_hours_saved } : null,
-    effectiveness: effectiveness.results.map((e: Record<string, unknown>) => ({ subCatalyst: e.sub_catalyst_name, runs: e.total_runs, recoveryRate: e.recovery_rate, valueFound: e.total_discrepancy_value_found })),
+    effectiveness: effectiveness.results.map((e: Record<string, unknown>) => ({ subCatalyst: e.sub_catalyst_name, runs: e.runs_count, recoveryRate: e.success_rate, valueFound: e.total_value_processed })),
   };
 
   const messages: LlmMessage[] = [

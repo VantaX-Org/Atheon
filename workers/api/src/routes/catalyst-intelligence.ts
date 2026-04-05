@@ -225,6 +225,7 @@ catalystIntelligence.post('/dependencies/discover', async (c) => {
 });
 
 // GET /api/catalyst-intelligence/overview — Aggregated overview
+// Returns shape matching CatalystIntelligenceOverview: { summary, patterns, effectiveness, dependencies }
 catalystIntelligence.get('/overview', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
@@ -234,8 +235,8 @@ catalystIntelligence.get('/overview', async (c) => {
        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved FROM catalyst_patterns WHERE tenant_id = ?`
     ).bind(tenantId).first<{ total: number; active: number; resolved: number }>(),
     c.env.DB.prepare(
-      'SELECT COUNT(*) as total, AVG(recovery_rate) as avgRecoveryRate, SUM(total_discrepancy_value_found) as totalValueFound FROM catalyst_effectiveness WHERE tenant_id = ?'
-    ).bind(tenantId).first<{ total: number; avgRecoveryRate: number; totalValueFound: number }>(),
+      'SELECT COUNT(*) as total, AVG(success_rate) as avgSuccessRate, SUM(total_value_processed) as totalValueProcessed, AVG(roi_estimate) as avgRoi FROM catalyst_effectiveness WHERE tenant_id = ?'
+    ).bind(tenantId).first<{ total: number; avgSuccessRate: number; totalValueProcessed: number; avgRoi: number }>(),
     c.env.DB.prepare(
       'SELECT COUNT(*) as total, AVG(strength) as avgStrength FROM catalyst_dependencies WHERE tenant_id = ?'
     ).bind(tenantId).first<{ total: number; avgStrength: number }>(),
@@ -245,19 +246,63 @@ catalystIntelligence.get('/overview', async (c) => {
     ).bind(tenantId).first<{ total: number; pending: number; completed: number }>(),
   ]);
 
-  // Top patterns
-  const topPatterns = await c.env.DB.prepare(
-    'SELECT id, title, pattern_type, confidence, status FROM catalyst_patterns WHERE tenant_id = ? ORDER BY confidence DESC LIMIT 5'
-  ).bind(tenantId).all();
+  // Fetch full lists for frontend
+  const [patternsRes, effectivenessRes, dependenciesRes] = await Promise.all([
+    c.env.DB.prepare('SELECT * FROM catalyst_patterns WHERE tenant_id = ? ORDER BY confidence DESC LIMIT 20').bind(tenantId).all(),
+    c.env.DB.prepare('SELECT * FROM catalyst_effectiveness WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 20').bind(tenantId).all(),
+    c.env.DB.prepare('SELECT * FROM catalyst_dependencies WHERE tenant_id = ? ORDER BY strength DESC LIMIT 20').bind(tenantId).all(),
+  ]);
+
+  const patterns = patternsRes.results.map((p: Record<string, unknown>) => ({
+    id: p.id, clusterId: p.cluster_id, subCatalystName: p.sub_catalyst_name, patternType: p.pattern_type,
+    title: p.title, description: p.description, confidence: p.confidence, severity: p.severity || 'medium',
+    status: p.status, firstDetected: p.first_detected, lastConfirmed: p.last_confirmed,
+    firstSeen: p.first_detected || p.created_at,
+    lastSeen: p.last_confirmed || p.created_at,
+    frequency: p.run_count || 1,
+    runCount: p.run_count, affectedRecordsPct: p.affected_records_pct,
+    evidence: typeof p.evidence === 'string' ? JSON.parse(p.evidence as string) : (p.evidence || {}),
+    prescriptionId: p.prescription_id,
+    affectedClusters: p.affected_clusters ? (typeof p.affected_clusters === 'string' ? JSON.parse(p.affected_clusters as string) : p.affected_clusters) : [],
+    affectedSubCatalysts: p.affected_sub_catalysts ? (typeof p.affected_sub_catalysts === 'string' ? JSON.parse(p.affected_sub_catalysts as string) : p.affected_sub_catalysts) : [],
+    recommendedActions: p.recommended_actions ? (typeof p.recommended_actions === 'string' ? JSON.parse(p.recommended_actions as string) : p.recommended_actions) : [],
+  }));
+
+  const effectiveness = effectivenessRes.results.map((e: Record<string, unknown>) => ({
+    id: e.id, clusterId: e.cluster_id, subCatalystName: e.sub_catalyst_name,
+    period: `${e.period_start} - ${e.period_end}`, runsCount: e.runs_count,
+    successRate: e.success_rate, avgMatchRate: e.avg_match_rate, avgDurationMs: e.avg_duration_ms,
+    totalValueProcessed: e.total_value_processed, totalExceptions: e.total_exceptions,
+    improvementTrend: e.improvement_trend, roiEstimate: e.roi_estimate,
+    totalItemsProcessed: e.runs_count, totalDiscrepancyValueFound: e.total_value_processed,
+    totalDiscrepancyValueResolved: (e.total_value_processed as number || 0) * (e.success_rate as number || 0) / 100,
+    recoveryRate: e.success_rate, avgMatchRateTrend: [], avgConfidenceTrend: [], avgDurationTrend: [],
+    interventionImpacts: [],
+  }));
+
+  const dependencies = dependenciesRes.results.map((d: Record<string, unknown>) => ({
+    id: d.id, upstreamClusterId: d.source_cluster_id, upstreamSubName: d.source_sub_catalyst,
+    downstreamClusterId: d.target_cluster_id, downstreamSubName: d.target_sub_catalyst,
+    dependencyType: d.dependency_type, strength: d.strength, description: d.description,
+    lagHours: d.lag_hours || 0, correlationStrength: d.strength || 0, cascadeRiskScore: d.cascade_risk_score || 0,
+    evidence: {}, lastConfirmed: d.discovered_at, discoveredAt: d.discovered_at,
+    sourceClusterId: d.source_cluster_id, sourceSubCatalyst: d.source_sub_catalyst,
+    targetClusterId: d.target_cluster_id, targetSubCatalyst: d.target_sub_catalyst,
+  }));
 
   return c.json({
-    patterns: { total: patternStats?.total || 0, active: patternStats?.active || 0, resolved: patternStats?.resolved || 0 },
-    effectiveness: { total: effectivenessStats?.total || 0, avgRecoveryRate: effectivenessStats?.avgRecoveryRate || 0, totalValueFound: effectivenessStats?.totalValueFound || 0 },
-    dependencies: { total: depStats?.total || 0, avgStrength: depStats?.avgStrength || 0 },
-    prescriptions: { total: prescriptionStats?.total || 0, pending: prescriptionStats?.pending || 0, completed: prescriptionStats?.completed || 0 },
-    topPatterns: topPatterns.results.map((p: Record<string, unknown>) => ({
-      id: p.id, title: p.title, patternType: p.pattern_type, confidence: p.confidence, status: p.status,
-    })),
+    summary: {
+      activePatterns: patternStats?.active || 0,
+      criticalPatterns: 0,
+      totalSubCatalysts: effectivenessStats?.total || 0,
+      avgSuccessRate: effectivenessStats?.avgSuccessRate || 0,
+      totalValueProcessed: effectivenessStats?.totalValueProcessed || 0,
+      avgRoi: effectivenessStats?.avgRoi || 0,
+      totalDependencies: depStats?.total || 0,
+    },
+    patterns,
+    effectiveness,
+    dependencies,
   });
 });
 
