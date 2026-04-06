@@ -37,6 +37,8 @@ import diagnosticsRoutes from './routes/diagnostics';
 import catalystIntelligence from './routes/catalyst-intelligence';
 import roi from './routes/roi';
 import boardReport from './routes/board-report';
+import onboarding from './routes/onboarding';
+import freshness from './routes/freshness';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -282,7 +284,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -304,6 +306,14 @@ for (const prefix of platformAdminRoutePrefixes) {
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
 }
 
+// §9.6 Permission model for V3 routes
+// board-report: admin+ (executive content)
+for (const p of ['/api/board-report/*', '/api/v1/board-report/*']) {
+  app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
+}
+// radar, diagnostics, catalyst-intelligence, roi: all authenticated users (read via tenantIsolation)
+// onboarding, freshness: all authenticated users (self-service)
+
 // Mount route modules (both /api/ and /api/v1/ for backward compatibility)
 const routeModules: [string, typeof auth][] = [
   ['auth', auth], ['tenants', tenants], ['iam', iam], ['apex', apex],
@@ -316,6 +326,7 @@ const routeModules: [string, typeof auth][] = [
   ['radar', radar], ['diagnostics', diagnosticsRoutes],
   ['catalyst-intelligence', catalystIntelligence],
   ['roi', roi], ['board-report', boardReport],
+  ['onboarding', onboarding], ['freshness', freshness],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Portal } from "@/components/ui/portal";
-import { HelpCircle, X, Book, Zap, Shield, Database, Brain, BarChart3, MessageCircle } from "lucide-react";
+import { HelpCircle, X, Book, Zap, Shield, Database, Brain, BarChart3, MessageCircle, Activity, Download, Rocket, Smartphone } from "lucide-react";
 
 const helpTopics = [
   {
@@ -37,6 +37,26 @@ const helpTopics = [
     icon: Book,
     title: "Getting Started",
     content: "1. Set up your ERP connections\n2. Deploy your first catalyst\n3. Review AI-generated actions\n4. Configure IAM policies\n5. Monitor via Dashboard",
+  },
+  {
+    icon: Activity,
+    title: "Pulse Diagnostics & RCA",
+    content: "Root-cause analysis engine identifies why metrics drift. View causal chains (L0\u2013L5), track fixes, and receive AI-generated prescriptions with SAP transaction codes. Use the Diagnostics tab on the Pulse page.",
+  },
+  {
+    icon: Download,
+    title: "CSV Export",
+    content: "Export data from any table using the download button in the top-right of each section. Exports include radar signals, diagnostics, catalyst patterns, ROI tracking, and board reports.",
+  },
+  {
+    icon: Rocket,
+    title: "Onboarding Checklist",
+    content: "New users see a guided checklist on the Dashboard. Complete each step to unlock Atheon\u2019s full potential: connect ERP, deploy catalysts, run analyses, generate reports, and invite your team.",
+  },
+  {
+    icon: Smartphone,
+    title: "Mobile & Accessibility",
+    content: "Atheon is responsive across desktop, tablet, and mobile. The sidebar collapses automatically on small screens. All interactive elements support keyboard navigation and screen readers.",
   },
 ];
 

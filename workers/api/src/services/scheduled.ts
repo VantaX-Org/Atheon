@@ -8,6 +8,9 @@ import { optimizedChat } from './ai-cost-optimizer';
 import { recalculateHealthScoreFromKpis } from './insights-engine';
 import { runScheduledRadarScan } from './radar-engine-v2';
 import { calculateEffectiveness, calculateROI } from './pattern-engine-v2';
+import { checkOverduePrescriptions } from './diagnostics-engine-v2';
+import { queueEmail } from './email';
+import { getWeeklyDigestEmailTemplate } from './email';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -58,6 +61,12 @@ export async function handleScheduled(
 
       // V2: Radar scan — analyse unprocessed signals
       try { await runScheduledRadarScan(db, tenantId, env); } catch (e) { console.error(`Radar scan failed for ${tenantId}:`, e); }
+
+      // §9.1 — Overdue prescription checks
+      try { await checkOverduePrescriptions(db, tenantId); } catch (e) { console.error(`Overdue checks failed for ${tenantId}:`, e); }
+
+      // §9.1 — Weekly digest email (Monday mornings)
+      try { await generateWeeklyDigest(db, tenantId); } catch (e) { console.error(`Weekly digest failed for ${tenantId}:`, e); }
 
       // V2: Effectiveness + ROI recalculation
       try {
@@ -843,6 +852,65 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string): P
 /**
  * 5.1: Queue Consumer — processes catalyst execution messages from Cloudflare Queue
  */
+// §9.1 — Weekly digest email (runs Monday mornings via cron)
+async function generateWeeklyDigest(db: D1Database, tenantId: string): Promise<void> {
+  // Only generate on Mondays
+  const dayOfWeek = new Date().getUTCDay();
+  if (dayOfWeek !== 1) return;
+
+  // Check if already sent this week
+  const existing = await db.prepare(
+    "SELECT id FROM email_queue WHERE tenant_id = ? AND subject LIKE '%Weekly Digest%' AND created_at >= datetime('now', '-6 days')"
+  ).bind(tenantId).first();
+  if (existing) return;
+
+  // Gather digest data
+  const health = await db.prepare(
+    'SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+  ).bind(tenantId).first<{ overall_score: number; dimensions: string }>();
+
+  const newSignals = await db.prepare(
+    "SELECT COUNT(*) as count FROM external_signals WHERE tenant_id = ? AND detected_at >= datetime('now', '-7 days')"
+  ).bind(tenantId).first<{ count: number }>();
+
+  const newRcas = await db.prepare(
+    "SELECT COUNT(*) as count FROM root_cause_analyses WHERE tenant_id = ? AND generated_at >= datetime('now', '-7 days')"
+  ).bind(tenantId).first<{ count: number }>();
+
+  const overduePrescriptions = await db.prepare(
+    "SELECT COUNT(*) as count FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending' AND deadline_suggested IS NOT NULL AND deadline_suggested < datetime('now')"
+  ).bind(tenantId).first<{ count: number }>();
+
+  const roiData = await db.prepare(
+    'SELECT total_discrepancy_value_recovered, roi_multiple FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+  ).bind(tenantId).first<{ total_discrepancy_value_recovered: number; roi_multiple: number }>();
+
+  // Get admin users for this tenant
+  const admins = await db.prepare(
+    "SELECT email, name FROM users WHERE tenant_id = ? AND role IN ('superadmin', 'admin', 'executive') AND status = 'active'"
+  ).bind(tenantId).all();
+
+  if (admins.results.length === 0) return;
+
+  const recipients = admins.results.map((a: Record<string, unknown>) => a.email as string);
+  const template = getWeeklyDigestEmailTemplate({
+    healthScore: health?.overall_score ?? 0,
+    newSignals: newSignals?.count ?? 0,
+    newRcas: newRcas?.count ?? 0,
+    overduePrescriptions: overduePrescriptions?.count ?? 0,
+    recoveredValue: roiData?.total_discrepancy_value_recovered ?? 0,
+    roiMultiple: roiData?.roi_multiple ?? 0,
+  });
+
+  await queueEmail(db, {
+    tenantId,
+    to: recipients,
+    subject: `Atheon Weekly Digest — ${new Date().toISOString().split('T')[0]}`,
+    htmlBody: template.html,
+    textBody: template.text,
+  });
+}
+
 export async function handleQueueMessage(
   batch: MessageBatch<unknown>,
   env: ScheduledEnv,

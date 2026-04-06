@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { analysePatterns, calculateEffectiveness, calculateROI } from '../services/pattern-engine-v2';
+import { toCSV, csvResponse } from '../services/csv-export';
 
 const catalystIntelligence = new Hono<AppBindings>();
 
@@ -40,6 +41,13 @@ catalystIntelligence.get('/patterns', async (c) => {
     firstDetected: p.first_detected, lastConfirmed: p.last_confirmed,
     runCount: p.run_count, status: p.status, prescriptionId: p.prescription_id,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(patterns, [
+      { key: 'id', label: 'ID' }, { key: 'patternType', label: 'Type' }, { key: 'title', label: 'Title' },
+      { key: 'confidence', label: 'Confidence' }, { key: 'status', label: 'Status' },
+      { key: 'firstDetected', label: 'First Detected' }, { key: 'lastConfirmed', label: 'Last Confirmed' },
+    ]), 'catalyst-patterns.csv');
+  }
   return c.json({ patterns, total: patterns.length });
 });
 
@@ -120,6 +128,13 @@ catalystIntelligence.get('/effectiveness', async (c) => {
     interventionImpacts: JSON.parse(e.intervention_impacts as string || '[]'),
     calculatedAt: e.calculated_at,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(effectiveness, [
+      { key: 'id', label: 'ID' }, { key: 'clusterId', label: 'Cluster' }, { key: 'subCatalystName', label: 'Sub-Catalyst' },
+      { key: 'period', label: 'Period' }, { key: 'totalRuns', label: 'Total Runs' },
+      { key: 'totalDiscrepancyValueFound', label: 'Value Found' }, { key: 'recoveryRate', label: 'Recovery Rate' },
+    ]), 'catalyst-effectiveness.csv');
+  }
   return c.json({ effectiveness, total: effectiveness.length });
 });
 
@@ -147,6 +162,13 @@ catalystIntelligence.get('/dependencies', async (c) => {
     sourceClusterId: d.source_cluster_id, sourceSubCatalyst: d.source_sub_catalyst,
     targetClusterId: d.target_cluster_id, targetSubCatalyst: d.target_sub_catalyst,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(dependencies, [
+      { key: 'id', label: 'ID' }, { key: 'upstreamClusterId', label: 'Upstream Cluster' },
+      { key: 'downstreamClusterId', label: 'Downstream Cluster' },
+      { key: 'dependencyType', label: 'Type' }, { key: 'strength', label: 'Strength' },
+    ]), 'catalyst-dependencies.csv');
+  }
   return c.json({ dependencies, total: dependencies.length });
 });
 
@@ -170,6 +192,13 @@ catalystIntelligence.get('/prescriptions', async (c) => {
     priority: p.priority, status: p.status,
     createdAt: p.created_at, completedAt: p.completed_at,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(prescriptions, [
+      { key: 'id', label: 'ID' }, { key: 'title', label: 'Title' }, { key: 'prescriptionType', label: 'Type' },
+      { key: 'priority', label: 'Priority' }, { key: 'effortLevel', label: 'Effort' },
+      { key: 'status', label: 'Status' }, { key: 'createdAt', label: 'Created At' },
+    ]), 'catalyst-prescriptions.csv');
+  }
   return c.json({ prescriptions, total: prescriptions.length });
 });
 
@@ -186,6 +215,15 @@ catalystIntelligence.put('/prescriptions/:id/status', async (c) => {
   await c.env.DB.prepare(
     `UPDATE catalyst_prescriptions SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`
   ).bind(...binds, prescriptionId, tenantId).run();
+
+  // §9.5 Audit trail
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(crypto.randomUUID(), tenantId, 'catalyst_prescription.status_updated', 'catalyst-intelligence', prescriptionId,
+      JSON.stringify({ prescriptionId, newStatus: body.status }), 'success').run();
+  } catch { /* non-fatal */ }
+
   return c.json({ success: true });
 });
 
@@ -218,6 +256,14 @@ catalystIntelligence.post('/dependencies/discover', async (c) => {
         }
       }
     }
+    // §9.5 Audit trail
+    try {
+      await c.env.DB.prepare(
+        "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).bind(crypto.randomUUID(), tenantId, 'dependency.discovery_run', 'catalyst-intelligence', 'dependencies',
+        JSON.stringify({ discovered }), 'success').run();
+    } catch { /* non-fatal */ }
+
     return c.json({ message: `Dependency discovery complete. ${discovered} new dependencies found.`, discovered }, 201);
   } catch (err) {
     return c.json({ error: 'Dependency discovery failed', detail: (err as Error).message }, 500);

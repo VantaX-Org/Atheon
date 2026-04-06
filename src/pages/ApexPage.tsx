@@ -19,6 +19,8 @@ import {
  Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
  CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw
 } from "lucide-react";
+import { CSVExportButton } from "@/components/common/CSVExportButton";
+import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 
 
 const trendIcon = (trend: string, size = 14) => {
@@ -337,6 +339,10 @@ export function ApexPage() {
  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
  <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
  </div>
+ </div>
+ <div className="flex items-center gap-2 flex-shrink-0">
+ <CSVExportButton endpoint="/api/radar" filename="apex-radar-signals.csv" label="Export Signals" />
+ <CSVExportButton endpoint="/api/board-report" filename="board-reports.csv" label="Export Reports" />
  </div>
  </div>
 

@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { calculateROI } from '../services/pattern-engine-v2';
+import { toCSV, csvResponse } from '../services/csv-export';
 
 const roi = new Hono<AppBindings>();
 
@@ -24,6 +25,23 @@ roi.get('/', async (c) => {
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
   const row = await c.env.DB.prepare('SELECT * FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first();
   if (!row) return c.json({ id: '', totalDiscrepancyValueIdentified: 0, totalDiscrepancyValueRecovered: 0, totalPreventedLosses: 0, totalPersonHoursSaved: 0, roiMultiple: 0, platformCost: 0, calculatedAt: '', breakdown: { byCluster: [] } });
+
+  // §9.4 CSV export
+  if (c.req.query('format') === 'csv') {
+    const csvRow = [{
+      period: row.period, identified: row.total_discrepancy_value_identified,
+      recovered: row.total_discrepancy_value_recovered, prevented: row.total_downstream_losses_prevented,
+      hoursSaved: row.total_person_hours_saved, runs: row.total_catalyst_runs,
+      cost: row.licence_cost_annual, roiMultiple: row.roi_multiple, calculatedAt: row.calculated_at,
+    }];
+    return csvResponse(toCSV(csvRow, [
+      { key: 'period', label: 'Period' }, { key: 'identified', label: 'Value Identified (ZAR)' },
+      { key: 'recovered', label: 'Value Recovered (ZAR)' }, { key: 'prevented', label: 'Prevented Losses (ZAR)' },
+      { key: 'hoursSaved', label: 'Person Hours Saved' }, { key: 'runs', label: 'Catalyst Runs' },
+      { key: 'cost', label: 'Platform Cost (ZAR)' }, { key: 'roiMultiple', label: 'ROI Multiple' },
+    ]), 'roi-tracking.csv');
+  }
+
   return c.json({
     id: row.id, period: row.period,
     totalDiscrepancyValueIdentified: row.total_discrepancy_value_identified,

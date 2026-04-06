@@ -18,6 +18,8 @@ import {
   BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
   UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench
 } from "lucide-react";
+import { CSVExportButton } from "@/components/common/CSVExportButton";
+import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { FlipCard } from "@/components/ui/flip-card";
 
@@ -569,10 +571,14 @@ export function PulsePage() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
           <Badge variant="info">Process Intelligence</Badge>
+          <SectionFreshness section="Diagnostics" />
         </div>
-        <p className="text-base t-muted max-w-3xl">
-          <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-base t-muted max-w-3xl">
+            <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
+          </p>
+          <CSVExportButton endpoint="/api/diagnostics?format=csv" filename="pulse-diagnostics.csv" label="Export Diagnostics" />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
             <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>

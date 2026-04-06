@@ -15,6 +15,8 @@ import {
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight,
   CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
+import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
+import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { Link } from "react-router-dom";
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
@@ -247,11 +249,15 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      {/* §9.2 Onboarding Checklist */}
+      <OnboardingChecklist />
+
       {/* HEADER — matches Apex/Pulse layout */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Dashboard</h1>
+            <SectionFreshness section="Health" />
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-[10px] t-muted transition-colors duration-500 ${refreshFlash ? 'text-emerald-500' : ''}`}>

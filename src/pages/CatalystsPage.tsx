@@ -17,6 +17,8 @@ import {
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
 import { SubCatalystOpsPanel } from "@/components/SubCatalystOpsPanel";
+import { CSVExportButton } from "@/components/common/CSVExportButton";
+import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 
 const tierConfig: Record<AutonomyTier, { label: string; icon: typeof Eye; color: string }> = {
  'read-only': { label: 'Read-Only', icon: Eye, color: 'text-accent' },
@@ -915,10 +917,17 @@ export function CatalystsPage() {
  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Catalysts</h1>
  <Badge variant="info">Autonomous Execution</Badge>
+ <SectionFreshness section="Catalyst Runs" />
  </div>
+ <div className="flex items-center justify-between">
  <p className="text-base t-muted max-w-3xl">
  <strong>Execution layer for Teams & Workers.</strong> Catalysts are autonomous AI workers that execute business processes — from invoice processing to compliance checks — with full audit trails and human oversight.
  </p>
+ <div className="flex items-center gap-2 flex-shrink-0">
+ <CSVExportButton endpoint="/api/catalyst-intelligence" filename="catalyst-patterns.csv" label="Export Patterns" />
+ <CSVExportButton endpoint="/api/roi" filename="roi-tracking.csv" label="Export ROI" />
+ </div>
+ </div>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>

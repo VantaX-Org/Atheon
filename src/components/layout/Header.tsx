@@ -5,6 +5,7 @@ import { api, setToken, setTenantOverride } from "@/lib/api";
 import type { NotificationItem, Tenant } from "@/lib/api";
 import type { IndustryVertical } from "@/types";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { FreshnessDot } from "@/components/common/FreshnessIndicator";
 
 const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
@@ -277,6 +278,9 @@ export function Header() {
             <span className="text-[11px] font-medium t-secondary">{displayIndustry.label}</span>
           </div>
         ) : null}
+
+        {/* §9.3 Global freshness indicator */}
+        <FreshnessDot />
 
         <button
           onClick={() => navigate('/chat')}

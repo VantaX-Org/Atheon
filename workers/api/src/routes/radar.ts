@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { analyseSignalImpact, computeStrategicContext, runScheduledRadarScan } from '../services/radar-engine-v2';
+import { toCSV, csvResponse } from '../services/csv-export';
 
 const radar = new Hono<AppBindings>();
 
@@ -39,6 +40,14 @@ radar.get('/signals', async (c) => {
     reliabilityScore: s.reliability_score, relevanceScore: s.relevance_score,
     sentiment: s.sentiment, detectedAt: s.detected_at, expiresAt: s.expires_at,
   }));
+  // §9.4 CSV export
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(signals, [
+      { key: 'id', label: 'ID' }, { key: 'category', label: 'Category' }, { key: 'title', label: 'Title' },
+      { key: 'summary', label: 'Summary' }, { key: 'relevanceScore', label: 'Relevance Score' },
+      { key: 'sentiment', label: 'Sentiment' }, { key: 'detectedAt', label: 'Detected At' },
+    ]), 'radar-signals.csv');
+  }
   return c.json({ signals, total: signals.length });
 });
 
@@ -63,6 +72,15 @@ radar.post('/signals', async (c) => {
   ).bind(id, tenantId, body.category, body.title, body.summary,
     body.source_url || null, body.source_name || null, body.sentiment || 'neutral', now).run();
   try { await analyseSignalImpact(c.env.DB, tenantId, id, c.env); } catch (err) { console.error('Signal impact analysis failed:', err); }
+
+  // §9.5 Audit trail
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(crypto.randomUUID(), tenantId, 'signal.created', 'radar', id,
+      JSON.stringify({ signalId: id, category: body.category, title: body.title }), 'success').run();
+  } catch { /* non-fatal */ }
+
   return c.json({ id, message: 'Signal created and impact analysis triggered' }, 201);
 });
 
@@ -93,6 +111,12 @@ radar.get('/competitors', async (c) => {
     marketShare: r.market_share, strengths: JSON.parse(r.strengths as string || '[]'),
     weaknesses: JSON.parse(r.weaknesses as string || '[]'), lastUpdated: r.last_updated, signalsCount: r.signals_count,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(competitors, [
+      { key: 'id', label: 'ID' }, { key: 'name', label: 'Name' }, { key: 'industry', label: 'Industry' },
+      { key: 'estimatedRevenue', label: 'Est. Revenue' }, { key: 'marketShare', label: 'Market Share %' },
+    ]), 'radar-competitors.csv');
+  }
   return c.json({ competitors, total: competitors.length });
 });
 
@@ -145,6 +169,13 @@ radar.get('/benchmarks', async (c) => {
     benchmarkUnit: b.benchmark_unit, percentile25: b.percentile_25, percentile50: b.percentile_50,
     percentile75: b.percentile_75, source: b.source, measuredAt: b.measured_at,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(benchmarks, [
+      { key: 'id', label: 'ID' }, { key: 'industry', label: 'Industry' }, { key: 'metricName', label: 'Metric' },
+      { key: 'benchmarkValue', label: 'Value' }, { key: 'benchmarkUnit', label: 'Unit' },
+      { key: 'percentile50', label: 'P50' }, { key: 'source', label: 'Source' },
+    ]), 'radar-benchmarks.csv');
+  }
   return c.json({ benchmarks, total: benchmarks.length });
 });
 
@@ -177,6 +208,13 @@ radar.get('/regulatory', async (c) => {
     effectiveDate: e.effective_date, complianceDeadline: e.compliance_deadline,
     readinessScore: e.readiness_score, status: e.status, sourceUrl: e.source_url,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(events, [
+      { key: 'id', label: 'ID' }, { key: 'title', label: 'Title' }, { key: 'jurisdiction', label: 'Jurisdiction' },
+      { key: 'status', label: 'Status' }, { key: 'complianceDeadline', label: 'Deadline' },
+      { key: 'readinessScore', label: 'Readiness %' },
+    ]), 'radar-regulatory.csv');
+  }
   return c.json({ events, total: events.length });
 });
 
