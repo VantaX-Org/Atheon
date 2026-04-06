@@ -334,8 +334,8 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     const baseScore = latestRunTotal > 0
       ? Math.round((latestRunConfidence > 0 ? (successRate * 0.7 + latestRunConfidence * 0.3) : successRate) * 100)
       : 0;
-    // Clamp between 40 and 100
-    const score = Math.max(40, Math.min(100, baseScore));
+    // Clamp between 0 and 100
+    const score = Math.max(0, Math.min(100, baseScore));
     const prevScore = existingDimensions[dim]?.score ?? score;
     const delta = Math.round((score - prevScore) * 10) / 10;
     const trend = delta > 0.5 ? 'improving' : delta < -0.5 ? 'declining' : 'stable';
