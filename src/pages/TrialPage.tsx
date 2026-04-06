@@ -64,7 +64,7 @@ export function TrialPage() {
       await new Promise((r) => setTimeout(r, 2000));
       try {
         const status = await api.trial.status(id);
-        if (status.status === 'completed') {
+        if (status.status === 'complete') {
           const res = await api.trial.results(id);
           setResults(res);
           setStep('results');

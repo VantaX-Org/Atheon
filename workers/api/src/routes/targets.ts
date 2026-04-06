@@ -88,24 +88,29 @@ app.post('/', async (c) => {
   const auth = c.get('auth');
   const db = c.env.DB;
 
-  let body: { targetType: string; targetName: string; targetValue: number; targetDeadline?: string };
+  let body: Record<string, unknown>;
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  if (!body.targetType || !body.targetName || body.targetValue === undefined) {
-    return c.json({ error: 'targetType, targetName, and targetValue are required' }, 400);
+  const targetType = (body.target_type || body.targetType) as string | undefined;
+  const targetName = (body.target_name || body.targetName) as string | undefined;
+  const targetValue = (body.target_value ?? body.targetValue) as number | undefined;
+  const targetDeadline = (body.target_deadline || body.targetDeadline) as string | undefined;
+
+  if (!targetType || !targetName || targetValue === undefined) {
+    return c.json({ error: 'target_type, target_name, and target_value are required' }, 400);
   }
 
   const id = crypto.randomUUID();
   await db.prepare(
     `INSERT INTO health_targets (id, tenant_id, target_type, target_name, target_value, target_deadline, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, auth.tenantId, body.targetType, body.targetName, body.targetValue, body.targetDeadline || null, auth.userId).run();
+  ).bind(id, auth.tenantId, targetType, targetName, targetValue, targetDeadline || null, auth.userId).run();
 
-  return c.json({ id, targetType: body.targetType, targetName: body.targetName, targetValue: body.targetValue });
+  return c.json({ id, targetType, targetName, targetValue });
 });
 
 // PUT /:id — Update target

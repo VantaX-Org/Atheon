@@ -121,7 +121,7 @@ app.get('/comparison', async (c) => {
   ).bind(auth.tenantId).first();
 
   if (!dayZero) {
-    return c.json({ hasBaseline: false, message: 'No day zero snapshot captured yet' });
+    return c.json({ dayZero: null, current: null, improvement: null, narrative: 'No day zero snapshot captured yet' });
   }
 
   // Get current values
@@ -140,40 +140,52 @@ app.get('/comparison', async (c) => {
   const currentHealth = (health?.overall_score as number) || 0;
   const baselineHealth = (dayZero.health_score as number) || 0;
 
-  const baseline = {
+  const dayZeroSnapshot = {
+    id: dayZero.id as string,
+    snapshotType: dayZero.snapshot_type as string,
     healthScore: baselineHealth,
     dimensions: JSON.parse((dayZero.dimensions as string) || '{}'),
     metricCountGreen: dayZero.metric_count_green as number,
+    metricCountAmber: dayZero.metric_count_amber as number,
     metricCountRed: dayZero.metric_count_red as number,
     totalDiscrepancyValue: dayZero.total_discrepancy_value as number,
     totalProcessConformance: dayZero.total_process_conformance as number,
+    avgCatalystSuccessRate: dayZero.avg_catalyst_success_rate as number,
     roiAtSnapshot: dayZero.roi_at_snapshot as number,
-    capturedAt: dayZero.captured_at,
+    capturedAt: dayZero.captured_at as string,
   };
 
-  const current = {
+  const currentSnapshot = {
+    id: 'current',
+    snapshotType: 'current',
     healthScore: currentHealth,
     dimensions: JSON.parse((health?.dimensions as string) || '{}'),
     metricCountGreen: greens?.c || 0,
+    metricCountAmber: 0,
     metricCountRed: reds?.c || 0,
-    totalDiscrepancyValue: 0, // Would need current sum
+    totalDiscrepancyValue: 0,
     totalProcessConformance: conformance?.avg || 0,
-    roiMultiple: (roi?.roi_multiple as number) || 0,
-    recovered: (roi?.total_discrepancy_value_recovered as number) || 0,
+    avgCatalystSuccessRate: 0,
+    roiAtSnapshot: (roi?.total_discrepancy_value_recovered as number) || 0,
+    capturedAt: new Date().toISOString(),
   };
 
-  const deltas = {
+  const improvement = {
     healthScore: currentHealth - baselineHealth,
-    redMetrics: (reds?.c || 0) - (dayZero.metric_count_red as number),
-    conformance: (conformance?.avg || 0) - (dayZero.total_process_conformance as number),
-    roiMultiple: (roi?.roi_multiple as number) || 0,
+    metricCountGreen: (greens?.c || 0) - (dayZero.metric_count_green as number),
+    discrepancyValue: 0 - (dayZero.total_discrepancy_value as number),
+    processConformance: (conformance?.avg || 0) - (dayZero.total_process_conformance as number),
+    catalystSuccessRate: 0,
+    roi: (roi?.roi_multiple as number) || 0,
   };
 
   // Generate narrative
-  const direction = deltas.healthScore >= 0 ? 'improved' : 'declined';
-  const narrative = `Since deploying Atheon on ${(dayZero.captured_at as string).split('T')[0]}, your health score has ${direction} from ${baselineHealth} to ${currentHealth} (${deltas.healthScore >= 0 ? '+' : ''}${deltas.healthScore} points). ${deltas.redMetrics < 0 ? `${Math.abs(deltas.redMetrics)} fewer red metrics.` : ''} ${current.recovered > 0 ? `R${current.recovered.toLocaleString()} recovered through catalyst operations.` : ''}`;
+  const direction = improvement.healthScore >= 0 ? 'improved' : 'declined';
+  const recovered = (roi?.total_discrepancy_value_recovered as number) || 0;
+  const redDelta = (reds?.c || 0) - (dayZero.metric_count_red as number);
+  const narrative = `Since deploying Atheon on ${(dayZero.captured_at as string).split('T')[0]}, your health score has ${direction} from ${baselineHealth} to ${currentHealth} (${improvement.healthScore >= 0 ? '+' : ''}${improvement.healthScore} points). ${redDelta < 0 ? `${Math.abs(redDelta)} fewer red metrics.` : ''} ${recovered > 0 ? `R${recovered.toLocaleString()} recovered through catalyst operations.` : ''}`;
 
-  return c.json({ hasBaseline: true, baseline, current, deltas, narrative });
+  return c.json({ dayZero: dayZeroSnapshot, current: currentSnapshot, improvement, narrative });
 });
 
 export { captureSnapshot };

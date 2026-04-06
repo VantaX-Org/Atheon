@@ -51,19 +51,19 @@ app.get('/', async (c) => {
 
   // Calculate composite
   const components = [
-    { name: 'Health Score', value: healthScore, weight: 0.30, weighted: Math.round(healthScore * 0.30) },
-    { name: 'ROI Multiple', value: Math.round(roiScore), weight: 0.20, weighted: Math.round(roiScore * 0.20) },
-    { name: 'Diagnostic Resolution', value: diagScore, weight: 0.20, weighted: Math.round(diagScore * 0.20) },
-    { name: 'Strategic Awareness', value: awarenessScore, weight: 0.15, weighted: Math.round(awarenessScore * 0.15) },
-    { name: 'Catalyst Effectiveness', value: Math.min(effectivenessScore, 100), weight: 0.15, weighted: Math.round(Math.min(effectivenessScore, 100) * 0.15) },
+    { name: 'Health Score', score: healthScore, weight: 0.30, weighted: Math.round(healthScore * 0.30) },
+    { name: 'ROI Multiple', score: Math.round(roiScore), weight: 0.20, weighted: Math.round(roiScore * 0.20) },
+    { name: 'Diagnostic Resolution', score: diagScore, weight: 0.20, weighted: Math.round(diagScore * 0.20) },
+    { name: 'Strategic Awareness', score: awarenessScore, weight: 0.15, weighted: Math.round(awarenessScore * 0.15) },
+    { name: 'Catalyst Effectiveness', score: Math.min(effectivenessScore, 100), weight: 0.15, weighted: Math.round(Math.min(effectivenessScore, 100) * 0.15) },
   ];
   const score = Math.round(components.reduce((sum, c) => sum + c.weighted, 0));
 
   // Get trend (last 12 history records)
   const history = await db.prepare(
-    'SELECT score FROM atheon_score_history WHERE tenant_id = ? ORDER BY recorded_at DESC LIMIT 12'
+    'SELECT score, recorded_at FROM atheon_score_history WHERE tenant_id = ? ORDER BY recorded_at DESC LIMIT 12'
   ).bind(tenantId).all();
-  const trend = (history.results || []).map((r: Record<string, unknown>) => r.score as number).reverse();
+  const trend = (history.results || []).map((r: Record<string, unknown>) => ({ score: r.score as number, date: r.recorded_at as string })).reverse();
 
   // Get industry average (from anonymised benchmarks if available)
   const tenant = await db.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
