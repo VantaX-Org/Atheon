@@ -281,7 +281,11 @@ export function TrialPage() {
                     {results.topRisks.map((risk, i) => (
                       <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
                         <span className="text-red-400 mt-0.5">•</span>
-                        {risk}
+                        <div>
+                          <span className="font-medium text-gray-200">{risk.title}</span>
+                          <span className="text-gray-400"> — {risk.description}</span>
+                          {risk.impact > 0 && <span className="text-red-400 ml-1">(R{risk.impact.toLocaleString()})</span>}
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -296,7 +300,11 @@ export function TrialPage() {
                     {results.topOpportunities.map((opp, i) => (
                       <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
                         <span className="text-emerald-400 mt-0.5">•</span>
-                        {opp}
+                        <div>
+                          <span className="font-medium text-gray-200">{opp.title}</span>
+                          <span className="text-gray-400"> — {opp.description}</span>
+                          {opp.value > 0 && <span className="text-emerald-400 ml-1">(R{opp.value.toLocaleString()})</span>}
+                        </div>
                       </li>
                     ))}
                   </ul>

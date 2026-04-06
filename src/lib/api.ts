@@ -2579,8 +2579,8 @@ export interface TrialResultsResponse {
   healthScore: number | null;
   issuesFound: number | null;
   estimatedExposure: number | null;
-  topRisks: string[];
-  topOpportunities: string[];
+  topRisks: { title: string; description: string; impact: number }[];
+  topOpportunities: { title: string; description: string; value: number }[];
   projectedRoi: number | null;
   completedAt: string | null;
 }
@@ -2590,8 +2590,8 @@ export interface TrialReportResponse {
   healthScore: number | null;
   issuesFound: number | null;
   estimatedExposure: number | null;
-  topRisks: string[];
-  topOpportunities: string[];
+  topRisks: { title: string; description: string; impact: number }[];
+  topOpportunities: { title: string; description: string; value: number }[];
   projectedRoi: number | null;
   generatedAt: string;
 }
