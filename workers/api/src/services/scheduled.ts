@@ -68,6 +68,9 @@ export async function handleScheduled(
       // §9.1 — Weekly digest email (Monday mornings)
       try { await generateWeeklyDigest(db, tenantId); } catch (e) { console.error(`Weekly digest failed for ${tenantId}:`, e); }
 
+      // §11.3 — Goal achievement checks
+      try { await checkGoalAchievements(db, tenantId); } catch (e) { console.error(`Goal achievement check failed for ${tenantId}:`, e); }
+
       // V2: Effectiveness + ROI recalculation
       try {
         const clusters = await db.prepare('SELECT id, name FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).all();
@@ -87,6 +90,15 @@ export async function handleScheduled(
       console.error(`Scheduled tasks failed for tenant ${tenantId}:`, err);
     }
   }
+
+  // §11.4 — Peer benchmarks (daily, global across all tenants)
+  try { await calculatePeerBenchmarks(db); } catch (e) { console.error('Peer benchmarks calculation failed:', e); }
+
+  // §11.6 — Resolution patterns (monthly aggregation)
+  try { await calculateResolutionPatterns(db); } catch (e) { console.error('Resolution patterns calculation failed:', e); }
+
+  // §11.1 — Trial cleanup (remove expired trials)
+  try { await cleanupExpiredTrials(db); } catch (e) { console.error('Trial cleanup failed:', e); }
 
   // Phase 6.4: Email delivery with retry + fallback
   await processEmailQueue(db, env);
@@ -909,6 +921,197 @@ async function generateWeeklyDigest(db: D1Database, tenantId: string): Promise<v
     htmlBody: template.html,
     textBody: template.text,
   });
+}
+
+// §11.3 — Goal achievement checks (runs every 15 min via cron)
+async function checkGoalAchievements(db: D1Database, tenantId: string): Promise<void> {
+  const targets = await db.prepare(
+    "SELECT id, target_type, target_name, target_value, current_value FROM health_targets WHERE tenant_id = ? AND status = 'active'"
+  ).bind(tenantId).all();
+
+  for (const t of targets.results) {
+    const row = t as Record<string, unknown>;
+    let currentValue = (row.current_value as number) || 0;
+
+    // Refresh current value
+    if (row.target_type === 'overall') {
+      const health = await db.prepare(
+        'SELECT overall_score FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+      ).bind(tenantId).first();
+      currentValue = (health?.overall_score as number) || 0;
+    } else if (row.target_type === 'dimension') {
+      const health = await db.prepare(
+        'SELECT dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+      ).bind(tenantId).first();
+      if (health?.dimensions) {
+        const dims = JSON.parse(health.dimensions as string);
+        const dimData = dims[row.target_name as string];
+        if (dimData) currentValue = dimData.score || 0;
+      }
+    }
+
+    // Update current value
+    await db.prepare('UPDATE health_targets SET current_value = ? WHERE id = ?').bind(currentValue, row.id).run();
+
+    // Check if achieved
+    if (currentValue >= (row.target_value as number)) {
+      await db.prepare(
+        "UPDATE health_targets SET status = 'achieved', achieved_at = datetime('now') WHERE id = ?"
+      ).bind(row.id).run();
+
+      // Create notification
+      try {
+        await db.prepare(
+          "INSERT INTO notifications (id, tenant_id, type, title, message, priority, created_at) VALUES (?, ?, 'achievement', ?, ?, 'high', datetime('now'))"
+        ).bind(
+          crypto.randomUUID(), tenantId,
+          `Target Achieved: ${row.target_name}`,
+          `Your ${row.target_type} target "${row.target_name}" has reached ${currentValue} (target: ${row.target_value}). Congratulations!`
+        ).run();
+      } catch { /* non-fatal */ }
+    }
+  }
+}
+
+// §11.4 — Peer benchmarks calculation (runs daily via cron — computes anonymised industry benchmarks)
+async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
+  // Get all industries with active tenants
+  const industries = await db.prepare(
+    "SELECT DISTINCT industry FROM tenants WHERE status = 'active' AND industry IS NOT NULL"
+  ).all();
+
+  const period = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const dimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology', 'risk', 'catalyst', 'process', 'overall'];
+
+  for (const indRow of industries.results) {
+    const industry = (indRow as Record<string, unknown>).industry as string;
+
+    // Get all active tenants in this industry
+    const tenants = await db.prepare(
+      "SELECT id FROM tenants WHERE industry = ? AND status = 'active'"
+    ).bind(industry).all();
+
+    const tenantCount = tenants.results.length;
+    if (tenantCount < 3) continue; // Anonymity threshold
+
+    for (const dim of dimensions) {
+      const scores: number[] = [];
+
+      for (const tenant of tenants.results) {
+        const tId = (tenant as Record<string, unknown>).id as string;
+
+        if (dim === 'overall') {
+          const health = await db.prepare(
+            'SELECT overall_score FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+          ).bind(tId).first();
+          if (health?.overall_score) scores.push(health.overall_score as number);
+        } else {
+          const health = await db.prepare(
+            'SELECT dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+          ).bind(tId).first();
+          if (health?.dimensions) {
+            const dims = JSON.parse(health.dimensions as string);
+            if (dims[dim]?.score) scores.push(dims[dim].score);
+          }
+        }
+      }
+
+      if (scores.length < 3) continue;
+
+      scores.sort((a, b) => a - b);
+      const avg = Math.round(scores.reduce((s, v) => s + v, 0) / scores.length);
+      const p25 = scores[Math.floor(scores.length * 0.25)] || 0;
+      const p50 = scores[Math.floor(scores.length * 0.5)] || 0;
+      const p75 = scores[Math.floor(scores.length * 0.75)] || 0;
+
+      const id = crypto.randomUUID();
+      try {
+        await db.prepare(
+          `INSERT OR REPLACE INTO anonymised_benchmarks (id, industry, dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score, calculated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+        ).bind(id, industry, dim, period, scores.length, avg, p25, p50, p75, scores[0], scores[scores.length - 1]).run();
+      } catch { /* UNIQUE constraint — already exists for this period */ }
+    }
+  }
+}
+
+// §11.6 — Success stories / resolution patterns aggregation (monthly)
+async function calculateResolutionPatterns(db: D1Database): Promise<void> {
+  // Get all resolved RCAs grouped by industry
+  const resolved = await db.prepare(
+    `SELECT rca.metric_name, t.industry, rca.resolved_at, rca.generated_at,
+            GROUP_CONCAT(dp.title, '|') as fix_titles
+     FROM root_cause_analyses rca
+     JOIN tenants t ON rca.tenant_id = t.id
+     LEFT JOIN diagnostic_prescriptions dp ON dp.rca_id = rca.id AND dp.status = 'completed'
+     WHERE rca.status = 'resolved' AND t.industry IS NOT NULL
+     GROUP BY rca.id`
+  ).all();
+
+  // Group by pattern signature + industry
+  const patterns: Record<string, { industry: string; count: number; totalDays: number; totalValue: number; fixTypes: Set<string> }> = {};
+
+  for (const row of resolved.results) {
+    const r = row as Record<string, unknown>;
+    const metricName = (r.metric_name as string) || 'unknown';
+    const industry = (r.industry as string) || 'general';
+    // Pattern signature = normalized metric name (remove specific identifiers)
+    const signature = metricName.replace(/[-_]\d+/g, '').replace(/\s+/g, '_').toLowerCase();
+    const key = `${signature}::${industry}`;
+
+    if (!patterns[key]) {
+      patterns[key] = { industry, count: 0, totalDays: 0, totalValue: 0, fixTypes: new Set() };
+    }
+
+    patterns[key].count++;
+
+    // Calculate resolution days
+    if (r.resolved_at && r.generated_at) {
+      const days = Math.max(1, Math.round((new Date(r.resolved_at as string).getTime() - new Date(r.generated_at as string).getTime()) / (24 * 60 * 60 * 1000)));
+      patterns[key].totalDays += days;
+    }
+
+    // Parse fix types
+    if (r.fix_titles) {
+      for (const title of (r.fix_titles as string).split('|')) {
+        if (title.trim()) patterns[key].fixTypes.add(title.trim());
+      }
+    }
+  }
+
+  // Upsert resolution patterns
+  for (const [key, data] of Object.entries(patterns)) {
+    if (data.count < 3) continue; // Anonymity threshold
+    const [signature, industry] = key.split('::');
+    const avgDays = Math.round(data.totalDays / data.count);
+    const fixTypesArr = Array.from(data.fixTypes).slice(0, 5);
+
+    try {
+      await db.prepare(
+        `INSERT OR REPLACE INTO resolution_patterns (id, pattern_signature, industry, resolution_count, avg_resolution_days, avg_value_recovered, common_fix_types, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(crypto.randomUUID(), signature, industry, data.count, avgDays, data.totalValue / data.count, JSON.stringify(fixTypesArr)).run();
+    } catch { /* non-fatal */ }
+  }
+}
+
+// §11.1 — Trial assessment cleanup (remove expired trials after 7 days)
+async function cleanupExpiredTrials(db: D1Database): Promise<void> {
+  const expired = await db.prepare(
+    "SELECT id, tenant_id FROM trial_assessments WHERE expires_at < datetime('now') AND status != 'cleaned'"
+  ).all();
+
+  for (const row of expired.results) {
+    const r = row as Record<string, unknown>;
+    const tenantId = r.tenant_id as string;
+
+    // Clean up trial data
+    try {
+      await db.prepare("DELETE FROM users WHERE tenant_id = ?").bind(tenantId).run();
+      await db.prepare("DELETE FROM tenants WHERE id = ? AND plan = 'trial'").bind(tenantId).run();
+      await db.prepare("UPDATE trial_assessments SET status = 'cleaned' WHERE id = ?").bind(r.id).run();
+    } catch { /* non-fatal */ }
+  }
 }
 
 export async function handleQueueMessage(

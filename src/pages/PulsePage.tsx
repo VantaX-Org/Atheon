@@ -8,7 +8,8 @@ import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
-import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail } from "@/lib/api";
+import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
+import { CostOfInactionTicker } from "@/components/ui/cost-of-inaction-ticker";
 import { useAppStore } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
@@ -281,6 +282,10 @@ export function PulsePage() {
   const [diagAnalyses, setDiagAnalyses] = useState<DiagnosticAnalysisItem[]>([]);
   const [diagDetail, setDiagDetail] = useState<DiagnosticAnalysisDetail | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
+
+  // §11.5 Cost of Inaction state
+  const [costOfInaction, setCostOfInaction] = useState<CostOfInactionResponse | null>(null);
+  const [coiLoading, setCoiLoading] = useState(false);
   const [analysingMetric, setAnalysingMetric] = useState<string | null>(null);
   const [expandedAnalysis, setExpandedAnalysis] = useState<string | null>(null);
 
@@ -522,6 +527,7 @@ export function PulsePage() {
     { id: 'dashboard', label: 'Operations Dashboard', icon: <Gauge size={14} /> },
     { id: 'monitoring', label: 'Live Monitoring', icon: <Activity size={14} />, count: metrics.length || undefined },
     { id: 'diagnostics', label: 'Diagnostics', icon: <Stethoscope size={14} />, count: diagSummary?.criticalFindings || undefined },
+    { id: 'cost-of-inaction', label: 'Cost of Inaction', icon: <AlertCircle size={14} />, count: costOfInaction?.activeRcaCount || undefined },
     { id: 'anomalies', label: 'Anomaly Detection', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
     { id: 'processes', label: 'Process Mining', icon: <GitBranch size={14} /> },
     { id: 'catalyst-runs', label: 'Catalyst Runs', icon: <Play size={14} />, count: catalystSummary.reduce((s, c) => s + (c.exceptions || 0), 0) || undefined },
@@ -2318,6 +2324,35 @@ export function PulsePage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+        </TabPanel>
+      )}
+
+      {/* §11.5 Cost of Inaction Tab */}
+      {activeTab === 'cost-of-inaction' && (
+        <TabPanel>
+          {!costOfInaction && !coiLoading && (
+            <Card className="text-center py-12">
+              <AlertCircle className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium t-primary">Cost of Inaction</p>
+              <p className="text-xs t-muted mt-1">See the real-time financial cost of unresolved issues and pending prescriptions.</p>
+              <Button variant="primary" size="sm" className="mt-4" onClick={() => {
+                setCoiLoading(true);
+                api.costOfInaction.get().then(setCostOfInaction).catch(() => {}).finally(() => setCoiLoading(false));
+              }}>Calculate Cost</Button>
+            </Card>
+          )}
+          {coiLoading && (
+            <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+          )}
+          {costOfInaction && (
+            <div className="space-y-4">
+              <CostOfInactionTicker data={costOfInaction} />
+              <Button variant="secondary" size="sm" onClick={() => {
+                setCoiLoading(true);
+                api.costOfInaction.get().then(setCostOfInaction).catch(() => {}).finally(() => setCoiLoading(false));
+              }}><RefreshCw size={12} /> Recalculate</Button>
             </div>
           )}
         </TabPanel>

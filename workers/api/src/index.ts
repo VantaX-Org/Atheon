@@ -39,6 +39,11 @@ import roi from './routes/roi';
 import boardReport from './routes/board-report';
 import onboarding from './routes/onboarding';
 import freshness from './routes/freshness';
+import atheonScore from './routes/atheon-score';
+import trialAssessment from './routes/trial-assessment';
+import baselineRoutes from './routes/baseline';
+import targetRoutes from './routes/targets';
+import executiveSummary from './routes/executive-summary';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -207,6 +212,11 @@ app.get('/', (c) => {
       radar: '/api/v1/radar',
       roi: '/api/v1/roi',
       'board-report': '/api/v1/board-report',
+      'atheon-score': '/api/v1/atheon-score',
+      trial: '/api/v1/trial',
+      baseline: '/api/v1/baseline',
+      targets: '/api/v1/targets',
+      'executive-summary': '/api/v1/executive-summary',
     },
     protocols: {
       mcp: '/api/v1/connectivity/mcp',
@@ -284,7 +294,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -327,11 +337,17 @@ const routeModules: [string, typeof auth][] = [
   ['catalyst-intelligence', catalystIntelligence],
   ['roi', roi], ['board-report', boardReport],
   ['onboarding', onboarding], ['freshness', freshness],
+  ['atheon-score', atheonScore], ['baseline', baselineRoutes],
+  ['targets', targetRoutes], ['executive-summary', executiveSummary],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
   app.route(`/api/v1/${name}`, handler);
 }
+
+// §11.1 Trial Assessment — PUBLIC routes (no auth required)
+app.route('/api/trial', trialAssessment);
+app.route('/api/v1/trial', trialAssessment);
 
 // VantaX demo seeder - restricted to VantaX tenant only (needs tenantIsolation for auth context)
 app.use('/api/v1/seed-vantax/*', tenantIsolation());

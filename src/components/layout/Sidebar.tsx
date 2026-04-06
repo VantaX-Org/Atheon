@@ -58,6 +58,7 @@ const navItems: NavItem[] = [
   { path: '/deployments', label: 'Deployments', icon: IconNetwork, section: 'platform-ops', sublabel: 'Hybrid & On-Premise', roles: SUPERADMIN_ROLES },
   { path: '/assessments', label: 'Assessments', icon: IconBarChart, section: 'platform-ops', sublabel: 'Pre-Sale Analysis', roles: SUPERADMIN_ROLES },
   { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'MCP + A2A', roles: SUPERADMIN_ROLES },
+  { path: '/executive', label: 'Executive', icon: IconBarChart, section: 'intelligence', sublabel: 'Mobile Summary', roles: EXECUTIVE_ROLES },
 ];
 
 /** Atheon logo mark — geometric triangle with sage/sky/bronze palette */

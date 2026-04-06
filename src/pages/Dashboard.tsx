@@ -8,7 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
-import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse } from "@/lib/api";
+import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse, BaselineComparisonResponse } from "@/lib/api";
+import { AtheonScoreRing } from "@/components/ui/atheon-score-ring";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
@@ -92,6 +93,9 @@ export function Dashboard() {
   const [diagSummary, setDiagSummary] = useState<DiagnosticSummaryResponse | null>(null);
   const [roiData, setRoiData] = useState<ROITrackingResponse | null>(null);
 
+  // §11.2 Baseline journey state
+  const [baselineComparison, setBaselineComparison] = useState<BaselineComparisonResponse | null>(null);
+
   // Flip card state for dashboard cards
   const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
   const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
@@ -157,16 +161,18 @@ export function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Load new engine summaries
+  // Load new engine summaries + baseline comparison
   useEffect(() => {
     Promise.allSettled([
       api.radar.getContext(),
       api.diagnostics.getSummary(),
       api.roi.get(),
-    ]).then(([rc, ds, roi]) => {
+      api.baseline.comparison(),
+    ]).then(([rc, ds, roi, bc]) => {
       if (rc.status === 'fulfilled') setRadarCtx(rc.value);
       if (ds.status === 'fulfilled') setDiagSummary(ds.value);
       if (roi.status === 'fulfilled') setRoiData(roi.value);
+      if (bc.status === 'fulfilled') setBaselineComparison(bc.value);
     });
   }, []);
 
@@ -341,9 +347,51 @@ export function Dashboard() {
         </DashCard>
       )}
 
-      {/* MAIN GRID */}
+      {/* §11.7 Atheon Score + §11.2 Journey Card */}
       {activeTab === 'overview' && (
       <>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <DashCard className="lg:col-span-1">
+          <h3 className="text-sm font-semibold t-primary mb-3 flex items-center gap-1.5">
+            <Gauge size={14} className="text-accent" /> Atheon Score
+          </h3>
+          <AtheonScoreRing />
+        </DashCard>
+        <DashCard className="lg:col-span-2">
+          <h3 className="text-sm font-semibold t-primary mb-3 flex items-center gap-1.5">
+            <TrendingUp size={14} className="text-accent" /> Your Atheon Journey
+          </h3>
+          {baselineComparison?.dayZero && baselineComparison?.improvement ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg bg-[var(--bg-secondary)]">
+                  <p className="text-[10px] t-muted uppercase">Baseline Health</p>
+                  <p className="text-lg font-bold t-primary">{baselineComparison.dayZero.healthScore}</p>
+                  <p className="text-[9px] t-muted">{new Date(baselineComparison.dayZero.capturedAt).toLocaleDateString()}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-[var(--bg-secondary)]">
+                  <p className="text-[10px] t-muted uppercase">Current Health</p>
+                  <p className="text-lg font-bold t-primary">{baselineComparison.current?.healthScore ?? '--'}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-[var(--bg-secondary)]">
+                  <p className="text-[10px] t-muted uppercase">Improvement</p>
+                  <p className={`text-lg font-bold ${baselineComparison.improvement.healthScore >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {baselineComparison.improvement.healthScore >= 0 ? '+' : ''}{baselineComparison.improvement.healthScore}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs t-secondary">{baselineComparison.narrative}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <TrendingUp className="w-8 h-8 t-muted mb-2 opacity-30" />
+              <p className="text-xs t-muted">No baseline captured yet.</p>
+              <p className="text-[10px] t-muted">Run your first catalyst to capture a day-zero snapshot.</p>
+            </div>
+          )}
+        </DashCard>
+      </div>
+
       {/* Hero: Health Score as central KPI */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <FlipCard

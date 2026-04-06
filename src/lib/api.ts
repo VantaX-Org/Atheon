@@ -805,6 +805,74 @@ export const api = {
     get: () =>
       request<FreshnessResponse>('/api/freshness'),
   },
+
+  // ── §11.7 Atheon Score ─────────────────────────────────────
+  atheonScore: {
+    get: () =>
+      request<AtheonScoreResponse>('/api/atheon-score'),
+  },
+
+  // ── §11.1 Trial Assessment (public — no auth) ─────────────
+  trial: {
+    start: (data: { company_name: string; industry: string; contact_name: string; contact_email: string }) =>
+      request<{ id: string; tenantId: string; status: string }>('/api/trial/start', { method: 'POST', body: JSON.stringify(data) }),
+    upload: (id: string, data: { filename: string; row_count: number; columns: string[] }) =>
+      request<{ received: boolean }>(`/api/trial/${id}/upload`, { method: 'POST', body: JSON.stringify(data) }),
+    run: (id: string) =>
+      request<{ status: string }>(`/api/trial/${id}/run`, { method: 'POST' }),
+    status: (id: string) =>
+      request<{ id: string; status: string; progress: number; currentStep: string | null }>(`/api/trial/${id}/status`),
+    results: (id: string) =>
+      request<TrialResultsResponse>(`/api/trial/${id}/results`),
+    report: (id: string) =>
+      request<TrialReportResponse>(`/api/trial/${id}/report`),
+  },
+
+  // ── §11.2 Baseline Snapshots ──────────────────────────────
+  baseline: {
+    capture: (snapshotType?: string) =>
+      request<{ id: string; snapshotType: string; healthScore: number }>('/api/baseline/capture', { method: 'POST', body: JSON.stringify({ snapshot_type: snapshotType || 'manual' }) }),
+    list: () =>
+      request<{ snapshots: BaselineSnapshot[]; total: number }>('/api/baseline'),
+    comparison: () =>
+      request<BaselineComparisonResponse>('/api/baseline/comparison'),
+  },
+
+  // ── §11.3 Goal Setting & Target Tracking ──────────────────
+  targets: {
+    list: () =>
+      request<{ targets: HealthTarget[]; total: number }>('/api/targets'),
+    create: (data: { target_type: string; target_name: string; target_value: number; target_deadline?: string }) =>
+      request<{ id: string }>('/api/targets', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Record<string, unknown>) =>
+      request<{ success: boolean }>(`/api/targets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/api/targets/${id}`, { method: 'DELETE' }),
+  },
+
+  // ── §11.4 Peer Benchmarks ─────────────────────────────────
+  peerBenchmarks: {
+    get: () =>
+      request<PeerBenchmarksResponse>('/api/radar/peer-benchmarks'),
+  },
+
+  // ── §11.5 Cost of Inaction ────────────────────────────────
+  costOfInaction: {
+    get: () =>
+      request<CostOfInactionResponse>('/api/diagnostics/cost-of-inaction'),
+  },
+
+  // ── §11.6 Success Stories ─────────────────────────────────
+  successStories: {
+    get: () =>
+      request<SuccessStoriesResponse>('/api/radar/success-stories'),
+  },
+
+  // ── §11.8 Executive Summary ───────────────────────────────
+  executiveSummary: {
+    get: () =>
+      request<ExecutiveSummaryResponse>('/api/executive-summary'),
+  },
 };
 
 // Types for API responses
@@ -2486,4 +2554,156 @@ export interface FreshnessResponse {
   oldestAgeMinutes: number | null;
   sections: FreshnessSection[];
   checkedAt: string;
+}
+
+// §11.7 Atheon Score
+export interface AtheonScoreComponent {
+  name: string;
+  weight: number;
+  score: number;
+  weighted: number;
+}
+export interface AtheonScoreResponse {
+  score: number;
+  components: AtheonScoreComponent[];
+  trend: { score: number; date: string }[];
+  industryAvg: number | null;
+}
+
+// §11.1 Trial Assessment
+export interface TrialResultsResponse {
+  id: string;
+  companyName: string;
+  industry: string;
+  status: string;
+  healthScore: number | null;
+  issuesFound: number | null;
+  estimatedExposure: number | null;
+  topRisks: string[];
+  topOpportunities: string[];
+  projectedRoi: number | null;
+  completedAt: string | null;
+}
+export interface TrialReportResponse {
+  companyName: string;
+  industry: string;
+  healthScore: number | null;
+  issuesFound: number | null;
+  estimatedExposure: number | null;
+  topRisks: string[];
+  topOpportunities: string[];
+  projectedRoi: number | null;
+  generatedAt: string;
+}
+
+// §11.2 Baseline Snapshots
+export interface BaselineSnapshot {
+  id: string;
+  snapshotType: string;
+  healthScore: number;
+  dimensions: Record<string, unknown>;
+  metricCountGreen: number;
+  metricCountAmber: number;
+  metricCountRed: number;
+  totalDiscrepancyValue: number;
+  totalProcessConformance: number;
+  avgCatalystSuccessRate: number;
+  roiAtSnapshot: number;
+  capturedAt: string;
+}
+export interface BaselineComparisonResponse {
+  dayZero: BaselineSnapshot | null;
+  current: BaselineSnapshot | null;
+  improvement: {
+    healthScore: number;
+    metricCountGreen: number;
+    discrepancyValue: number;
+    processConformance: number;
+    catalystSuccessRate: number;
+    roi: number;
+  } | null;
+  narrative: string;
+}
+
+// §11.3 Goal Setting
+export interface HealthTarget {
+  id: string;
+  targetType: string;
+  targetName: string;
+  targetValue: number;
+  targetDeadline: string | null;
+  currentValue: number;
+  status: string;
+  gap: number;
+  projectedAchieveDate: string | null;
+  createdAt: string;
+  achievedAt: string | null;
+}
+
+// §11.4 Peer Benchmarks
+export interface PeerBenchmarkItem {
+  dimension: string;
+  period: string;
+  tenantCount: number;
+  avgScore: number;
+  p25Score: number;
+  p50Score: number;
+  p75Score: number;
+  minScore: number;
+  maxScore: number;
+  ownScore: number | null;
+  percentileRank: string | null;
+  calculatedAt: string;
+}
+export interface PeerBenchmarksResponse {
+  industry: string;
+  benchmarks: PeerBenchmarkItem[];
+  total: number;
+}
+
+// §11.5 Cost of Inaction
+export interface CostOfInactionRca {
+  rcaId: string;
+  metricName: string;
+  severity: string;
+  daysOpen: number;
+  pendingPrescriptions: number;
+}
+export interface CostOfInactionResponse {
+  totalExposure: number;
+  dailyCost: number;
+  accruedCost: number;
+  projectedMonthlyCost: number;
+  activeRcaCount: number;
+  avgDaysOpen: number;
+  rcaBreakdown: CostOfInactionRca[];
+}
+
+// §11.6 Success Stories
+export interface SuccessStory {
+  patternSignature: string;
+  resolutionCount: number;
+  avgResolutionDays: number;
+  avgValueRecovered: number;
+  commonFixTypes: string[];
+  lastUpdated: string;
+}
+export interface SuccessStoriesResponse {
+  industry: string;
+  stories: SuccessStory[];
+  total: number;
+}
+
+// §11.8 Executive Summary
+export interface ExecutiveSummaryResponse {
+  atheonScore: number;
+  healthScore: number;
+  dimensions: Record<string, { score: number; trend?: string }>;
+  roi: { recovered: number; multiple: number; cost: number };
+  diagnostics: { activeRcas: number; pendingPrescriptions: number };
+  signals: { newThisWeek: number };
+  topRisks: { title: string; severity: string; impactValue: number }[];
+  targets: { targetType: string; targetName: string; targetValue: number; currentValue: number; status: string }[];
+  trend: { score: number; date: string }[];
+  journey: { baselineHealthScore: number | null; baselineDate: string | null; improvement: number | null };
 }

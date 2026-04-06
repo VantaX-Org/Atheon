@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem } from "@/lib/api";
+import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem, SuccessStoriesResponse } from "@/lib/api";
+import { SuccessStoryCard } from "@/components/ui/success-story-card";
 import {
  Zap, Bot, Shield, CheckCircle, Clock, XCircle, Eye, Wrench, Send,
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
@@ -417,6 +418,10 @@ export function CatalystsPage() {
  const [intellOverview, setIntellOverview] = useState<CatalystIntelligenceOverview | null>(null);
  const [intellLoading, setIntellLoading] = useState(false);
  const [expandedPattern, setExpandedPattern] = useState<string | null>(null);
+
+ // §11.6 Success Stories state
+ const [successStories, setSuccessStories] = useState<SuccessStoriesResponse | null>(null);
+ const [storiesLoading, setStoriesLoading] = useState(false);
  const [roiData, setRoiData] = useState<ROITrackingResponse | null>(null);
  const [prescriptions, setPrescriptions] = useState<CatalystPrescriptionItem[]>([]);
 
@@ -798,6 +803,7 @@ export function CatalystsPage() {
  const tabs = [
  { id: 'clusters', label: 'Catalyst Clusters', icon: <Bot size={14} /> },
  { id: 'intelligence', label: 'Intelligence', icon: <Brain size={14} />, count: intellOverview?.summary?.criticalPatterns || undefined },
+ { id: 'success-stories', label: 'Peer Insights', icon: <Sparkles size={14} />, count: successStories?.stories?.length || undefined },
  { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
  { id: 'execution-logs', label: 'Execution Logs', icon: <ScrollText size={14} /> },
  { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
@@ -2956,6 +2962,51 @@ export function CatalystsPage() {
          </Card>
         ))}
        </div>
+      </div>
+     )}
+    </div>
+   )}
+  </TabPanel>
+ )}
+
+ {/* §11.6 Success Stories / Peer Insights Tab */}
+ {activeTab === 'success-stories' && (
+  <TabPanel>
+   {!successStories && !storiesLoading && (
+    <Card className="text-center py-12">
+     <Sparkles className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+     <p className="text-sm font-medium t-primary">Peer Insights</p>
+     <p className="text-xs t-muted mt-1">See anonymised resolution patterns from peers in your industry.</p>
+     <Button variant="primary" size="sm" className="mt-4" onClick={() => {
+      setStoriesLoading(true);
+      api.successStories.get().then(setSuccessStories).catch(() => {}).finally(() => setStoriesLoading(false));
+     }}>Load Insights</Button>
+    </Card>
+   )}
+   {storiesLoading && (
+    <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+   )}
+   {successStories && (
+    <div className="space-y-4">
+     <div className="flex items-center justify-between">
+      <div>
+       <h3 className="text-sm font-semibold t-primary">Industry: {successStories.industry}</h3>
+       <p className="text-[10px] t-muted">{successStories.total} resolution pattern{successStories.total !== 1 ? 's' : ''} from peers</p>
+      </div>
+      <Button variant="secondary" size="sm" onClick={() => {
+       setStoriesLoading(true);
+       api.successStories.get().then(setSuccessStories).catch(() => {}).finally(() => setStoriesLoading(false));
+      }}><RefreshCw size={12} /> Refresh</Button>
+     </div>
+     {successStories.stories.length === 0 ? (
+      <Card className="text-center py-8">
+       <p className="text-xs t-muted">Not enough peer data yet (minimum 3 resolutions for anonymity).</p>
+      </Card>
+     ) : (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+       {successStories.stories.map((story, i) => (
+        <SuccessStoryCard key={i} story={story} />
+       ))}
       </div>
      )}
     </div>

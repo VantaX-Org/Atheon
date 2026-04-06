@@ -296,6 +296,78 @@ radar.get('/context', async (c) => {
   }
 });
 
+// §11.4 GET /api/radar/peer-benchmarks — Anonymised industry peer benchmarks
+radar.get('/peer-benchmarks', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+
+  // Get tenant's industry
+  const tenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
+  const industry = (tenant?.industry as string) || 'general';
+
+  // Get anonymised benchmarks for this industry (only if >= 3 tenants contribute)
+  const benchmarks = await c.env.DB.prepare(
+    'SELECT dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score, calculated_at FROM anonymised_benchmarks WHERE industry = ? AND tenant_count >= 3 ORDER BY dimension ASC'
+  ).bind(industry).all();
+
+  // Get tenant's own scores for comparison
+  const health = await c.env.DB.prepare(
+    'SELECT dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+  ).bind(tenantId).first();
+  const dims = health?.dimensions ? JSON.parse(health.dimensions as string) : {};
+
+  const peerData = benchmarks.results.map((b: Record<string, unknown>) => {
+    const dimension = b.dimension as string;
+    const ownScore = dims[dimension]?.score || null;
+    return {
+      dimension,
+      period: b.period,
+      tenantCount: b.tenant_count,
+      avgScore: b.avg_score,
+      p25Score: b.p25_score,
+      p50Score: b.p50_score,
+      p75Score: b.p75_score,
+      minScore: b.min_score,
+      maxScore: b.max_score,
+      ownScore,
+      percentileRank: ownScore !== null && (b.tenant_count as number) > 0
+        ? ownScore >= (b.p75_score as number) ? 'top_25'
+          : ownScore >= (b.p50_score as number) ? 'above_median'
+          : ownScore >= (b.p25_score as number) ? 'below_median'
+          : 'bottom_25'
+        : null,
+      calculatedAt: b.calculated_at,
+    };
+  });
+
+  return c.json({ industry, benchmarks: peerData, total: peerData.length });
+});
+
+// §11.6 GET /api/radar/success-stories — Anonymised peer insights from resolved RCAs
+radar.get('/success-stories', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+
+  const tenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
+  const industry = (tenant?.industry as string) || 'general';
+
+  // Only show resolution patterns with >= 3 resolutions (anonymity threshold)
+  const patterns = await c.env.DB.prepare(
+    'SELECT pattern_signature, resolution_count, avg_resolution_days, avg_value_recovered, common_fix_types, last_updated FROM resolution_patterns WHERE industry = ? AND resolution_count >= 3 ORDER BY resolution_count DESC LIMIT 20'
+  ).bind(industry).all();
+
+  const stories = patterns.results.map((p: Record<string, unknown>) => ({
+    patternSignature: p.pattern_signature,
+    resolutionCount: p.resolution_count,
+    avgResolutionDays: p.avg_resolution_days,
+    avgValueRecovered: p.avg_value_recovered,
+    commonFixTypes: JSON.parse((p.common_fix_types as string) || '[]'),
+    lastUpdated: p.last_updated,
+  }));
+
+  return c.json({ industry, stories, total: stories.length });
+});
+
 // POST /api/radar/scan
 radar.post('/scan', async (c) => {
   const tenantId = getTenantId(c);

@@ -167,6 +167,70 @@ diagnostics.post('/:metricId/analyse', async (c) => {
   }
 });
 
+// §11.5 GET /api/diagnostics/cost-of-inaction — Real-time cost calculation
+diagnostics.get('/cost-of-inaction', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+
+  // Get all active RCAs with their causal factors (financial impact)
+  const activeRcas = await c.env.DB.prepare(
+    "SELECT id, metric_name, trigger_status, generated_at FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'"
+  ).bind(tenantId).all();
+
+  // Get pending prescriptions with expected impact
+  const pendingRx = await c.env.DB.prepare(
+    "SELECT rca_id, expected_impact, deadline_suggested FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'"
+  ).bind(tenantId).all();
+
+  // Get total impact values from causal factors
+  const totalImpact = await c.env.DB.prepare(
+    "SELECT COALESCE(SUM(cf.impact_value), 0) as total FROM causal_factors cf JOIN root_cause_analyses rca ON cf.rca_id = rca.id WHERE rca.tenant_id = ? AND rca.status = 'active'"
+  ).bind(tenantId).first<{ total: number }>();
+
+  const totalExposure = totalImpact?.total || 0;
+  const daysActive: Record<string, number> = {};
+  const now = Date.now();
+
+  for (const rca of activeRcas.results) {
+    const r = rca as Record<string, unknown>;
+    const generatedAt = new Date(r.generated_at as string).getTime();
+    daysActive[r.id as string] = Math.max(1, Math.round((now - generatedAt) / (24 * 60 * 60 * 1000)));
+  }
+
+  // Calculate daily cost = total exposure / 365 * active RCA count factor
+  const dailyCost = activeRcas.results.length > 0 ? Math.round(totalExposure / 365) : 0;
+  const avgDaysOpen = activeRcas.results.length > 0
+    ? Math.round(Object.values(daysActive).reduce((a, b) => a + b, 0) / activeRcas.results.length)
+    : 0;
+  const accruedCost = dailyCost * avgDaysOpen;
+
+  // Project 30-day cost if nothing changes
+  const projectedMonthlyCost = dailyCost * 30;
+
+  // Per-RCA breakdown
+  const rcaBreakdown = activeRcas.results.map((rca: Record<string, unknown>) => {
+    const days = daysActive[rca.id as string] || 1;
+    const rxForRca = pendingRx.results.filter((rx: Record<string, unknown>) => rx.rca_id === rca.id);
+    return {
+      rcaId: rca.id,
+      metricName: rca.metric_name,
+      severity: rca.trigger_status,
+      daysOpen: days,
+      pendingPrescriptions: rxForRca.length,
+    };
+  });
+
+  return c.json({
+    totalExposure,
+    dailyCost,
+    accruedCost,
+    projectedMonthlyCost,
+    activeRcaCount: activeRcas.results.length,
+    avgDaysOpen,
+    rcaBreakdown,
+  });
+});
+
 // GET /api/diagnostics/:metricId — RCAs for a specific metric (MUST be LAST among GET routes)
 diagnostics.get('/:metricId', async (c) => {
   const tenantId = getTenantId(c);
