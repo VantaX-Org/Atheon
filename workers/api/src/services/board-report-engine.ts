@@ -199,15 +199,14 @@ async function generateBoardReportPDF(
     for (let ri = 0; ri < Math.min(data.risks.length, 8); ri++) {
       const risk = data.risks[ri];
       if (y > pageH - 25) { doc.addPage(); pageHeader('Executive Dashboard — continued'); pageFooter(); y = 28; }
-      const rowBg = ri % 2 === 0 ? chalk : white;
-      doc.setFillColor(...rowBg);
+      if (ri % 2 === 0) { doc.setFillColor(chalk[0], chalk[1], chalk[2]); } else { doc.setFillColor(white[0], white[1], white[2]); }
       doc.rect(14, y, pageW - 28, 7, 'F');
       doc.setTextColor(30, 41, 59);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.text((risk.title || '').substring(0, 60), 16, y + 5);
-      const sevColor = risk.severity === 'critical' ? red : risk.severity === 'high' ? amber : green;
-      doc.setTextColor(...sevColor);
+      const sevColor: [number, number, number] = risk.severity === 'critical' ? [red[0], red[1], red[2]] : risk.severity === 'high' ? [amber[0], amber[1], amber[2]] : [green[0], green[1], green[2]];
+      doc.setTextColor(sevColor[0], sevColor[1], sevColor[2]);
       doc.setFont('helvetica', 'bold');
       doc.text((risk.severity || '').toUpperCase(), pageW - 65, y + 5);
       doc.setTextColor(30, 41, 59);
@@ -258,7 +257,7 @@ async function generateBoardReportPDF(
     for (let ei = 0; ei < data.effectiveness.length; ei++) {
       const eff = data.effectiveness[ei];
       if (y > pageH - 25) { doc.addPage(); pageHeader('Operational Performance — continued'); pageFooter(); y = 28; }
-      doc.setFillColor(...(ei % 2 === 0 ? chalk : white));
+      if (ei % 2 === 0) { doc.setFillColor(chalk[0], chalk[1], chalk[2]); } else { doc.setFillColor(white[0], white[1], white[2]); }
       doc.rect(14, y, pageW - 28, 7, 'F');
       doc.setTextColor(30, 41, 59);
       doc.setFontSize(8);
