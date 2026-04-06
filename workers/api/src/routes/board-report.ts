@@ -42,7 +42,9 @@ boardReport.get('/', async (c) => {
   ).bind(tenantId, limit).all();
   const reports = results.results.map((r: Record<string, unknown>) => ({
     id: r.id, title: r.title, reportType: r.report_type,
-    r2Key: r.r2_key, generatedBy: r.generated_by, generatedAt: r.generated_at,
+    r2Key: r.r2_key, pdfUrl: r.r2_key ? `/api/board-report/${r.id}/pdf` : null,
+    generatedBy: r.generated_by, generatedAt: r.generated_at,
+    status: 'completed' as const,
   }));
 
   // §9.4 CSV export
@@ -55,6 +57,30 @@ boardReport.get('/', async (c) => {
   }
 
   return c.json({ reports, total: reports.length });
+});
+
+// GET /api/board-report/:id/pdf — Download PDF
+boardReport.get('/:id/pdf', async (c) => {
+  const tenantId = getTenantId(c);
+  const reportId = c.req.param('id');
+  const report = await c.env.DB.prepare(
+    'SELECT r2_key, title FROM board_reports WHERE id = ? AND tenant_id = ?'
+  ).bind(reportId, tenantId).first<{ r2_key: string | null; title: string }>();
+  if (!report || !report.r2_key) return c.json({ error: 'PDF not available' }, 404);
+
+  if (!c.env.STORAGE) return c.json({ error: 'Storage not configured' }, 500);
+
+  const obj = await c.env.STORAGE.get(report.r2_key);
+  if (!obj) return c.json({ error: 'PDF file not found in storage' }, 404);
+
+  const safeName = (report.title || 'board-report').replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${safeName}.pdf"`,
+      'Cache-Control': 'private, max-age=3600',
+    },
+  });
 });
 
 // GET /api/board-report/:id — Get specific report

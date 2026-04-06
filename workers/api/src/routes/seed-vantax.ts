@@ -1485,6 +1485,59 @@ seed.post('/seed-vantax', async (c) => {
     }
     console.log(`[VantaX Seeder] Seeded ${catalystPrescriptions.length} catalyst prescriptions`);
 
+    // ── STEP: Seed Run Analytics ──
+    console.log('[VantaX Seeder] Seeding catalyst run analytics...');
+    const runAnalyticsData = [
+      {
+        clusterId: financeClusterId, subCatalystName: 'GR/IR Reconciliation',
+        totalItems: 55, completed: 45, exceptions: 7, escalated: 2, pending: 1, autoApproved: 38,
+        avgConf: 0.872, minConf: 0.34, maxConf: 0.99, durationMs: 45200,
+        insights: ['High overall confidence — most items processed automatically.', '87% auto-approved — high automation rate.', '2 item(s) escalated for human review.'],
+      },
+      {
+        clusterId: financeClusterId, subCatalystName: 'AP Invoice Validation',
+        totalItems: 40, completed: 34, exceptions: 4, escalated: 1, pending: 1, autoApproved: 30,
+        avgConf: 0.91, minConf: 0.42, maxConf: 0.98, durationMs: 28400,
+        insights: ['High overall confidence — most items processed automatically.', '88% auto-approved — high automation rate.', 'Wide confidence spread — some items may need manual review while others auto-process.'],
+      },
+      {
+        clusterId: financeClusterId, subCatalystName: 'Bank Reconciliation',
+        totalItems: 80, completed: 55, exceptions: 18, escalated: 4, pending: 3, autoApproved: 42,
+        avgConf: 0.685, minConf: 0.18, maxConf: 0.97, durationMs: 62100,
+        insights: ['Exception rate is high (23%). Review exception patterns for automation opportunities.', '4 item(s) escalated for human review.', 'Wide confidence spread — some items may need manual review while others auto-process.'],
+      },
+      {
+        clusterId: supplyChainClusterId, subCatalystName: 'Inventory Reconciliation',
+        totalItems: 45, completed: 25, exceptions: 15, escalated: 3, pending: 2, autoApproved: 18,
+        avgConf: 0.556, minConf: 0.12, maxConf: 0.95, durationMs: 38700,
+        insights: ['Exception rate is high (33%). Review exception patterns for automation opportunities.', 'Low overall confidence — consider reviewing data quality or mappings.', '3 item(s) escalated for human review.'],
+      },
+      {
+        clusterId: revenueClusterId, subCatalystName: 'Sales Order Matching',
+        totalItems: 32, completed: 22, exceptions: 7, escalated: 2, pending: 1, autoApproved: 17,
+        avgConf: 0.745, minConf: 0.28, maxConf: 0.96, durationMs: 52300,
+        insights: ['Exception rate is high (22%). Review exception patterns for automation opportunities.', '2 item(s) escalated for human review.'],
+      },
+    ];
+    for (const ra of runAnalyticsData) {
+      const runId = crypto.randomUUID();
+      const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
+      // Simulate confidence distribution from avgConf
+      const total = ra.totalItems;
+      if (ra.avgConf > 0.8) { dist['80-100'] = Math.round(total * 0.6); dist['60-80'] = Math.round(total * 0.25); dist['40-60'] = Math.round(total * 0.1); dist['20-40'] = Math.round(total * 0.03); dist['0-20'] = Math.round(total * 0.02); }
+      else if (ra.avgConf > 0.6) { dist['80-100'] = Math.round(total * 0.3); dist['60-80'] = Math.round(total * 0.35); dist['40-60'] = Math.round(total * 0.2); dist['20-40'] = Math.round(total * 0.1); dist['0-20'] = Math.round(total * 0.05); }
+      else { dist['80-100'] = Math.round(total * 0.15); dist['60-80'] = Math.round(total * 0.2); dist['40-60'] = Math.round(total * 0.3); dist['20-40'] = Math.round(total * 0.2); dist['0-20'] = Math.round(total * 0.15); }
+
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, ra.clusterId, ra.subCatalystName, runId,
+        ra.durationMs, ra.totalItems, ra.completed, ra.exceptions, ra.escalated, ra.pending, ra.autoApproved,
+        ra.avgConf, ra.minConf, ra.maxConf, JSON.stringify(dist), JSON.stringify(ra.insights),
+      ).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${runAnalyticsData.length} run analytics records`);
+
     // ── STEP: Seed V2 ROI Tracking ──
     console.log('[VantaX Seeder] Seeding V2 ROI tracking...');
     await c.env.DB.prepare(

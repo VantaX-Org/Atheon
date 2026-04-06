@@ -1345,7 +1345,7 @@ export function ApexPage() {
           </div>
           <div className="flex items-center gap-2">
            <span className="text-[10px] t-muted">{new Date(report.generatedAt).toLocaleDateString()}</span>
-           {report.pdfUrl && <a href={report.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline">PDF</a>}
+           {report.pdfUrl && <button onClick={() => api.boardReport.downloadPdf(report.id, report.title)} className="text-[10px] text-accent hover:underline flex items-center gap-0.5"><FileText size={10} />PDF</button>}
            {report.contentMarkdown && <button onClick={() => setShowBoardReport(showBoardReport === report.id ? null : report.id)} className="text-[10px] text-accent hover:underline">View</button>}
           </div>
          </div>
