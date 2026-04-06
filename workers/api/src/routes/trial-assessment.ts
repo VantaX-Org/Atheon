@@ -195,7 +195,7 @@ app.get('/:id/report', async (c) => {
     estimatedExposure: assessment.estimated_exposure,
     topRisks: JSON.parse((assessment.top_risks as string) || '[]'),
     topOpportunities: JSON.parse((assessment.top_opportunities as string) || '[]'),
-    projectedROI: assessment.projected_roi,
+    projectedRoi: assessment.projected_roi,
     assessmentDate: assessment.completed_at,
     reportTitle: `Atheon Intelligence Assessment — ${assessment.company_name}`,
   });
