@@ -42,7 +42,7 @@ freshness.get('/', async (c) => {
     safeQuery('SELECT generated_at as ts FROM root_cause_analyses WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 1', tenantId),
     safeQuery('SELECT last_confirmed as ts FROM catalyst_patterns WHERE tenant_id = ? ORDER BY last_confirmed DESC LIMIT 1', tenantId),
     safeQuery('SELECT calculated_at as ts FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1', tenantId),
-    safeQuery('SELECT created_at as ts FROM executive_briefings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1', tenantId),
+    safeQuery('SELECT generated_at as ts FROM executive_briefings WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 1', tenantId),
     safeQuery("SELECT MAX(started_at) as ts FROM sub_catalyst_runs WHERE tenant_id = ?", tenantId),
   ]);
 
