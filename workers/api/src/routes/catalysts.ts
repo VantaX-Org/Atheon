@@ -1618,22 +1618,29 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
 
   // ── Auto-populate catalyst_run_analytics from the execution result ──
   try {
-    const summary = result.summary;
-    const totalItems = summary.matched + summary.unmatched_source + summary.unmatched_target + summary.discrepancies;
-    const completedItems = summary.matched;
+    const summary = result.summary || {} as Record<string, number>;
+    const matched = typeof summary.matched === 'number' ? summary.matched : 0;
+    const unmatchedSource = typeof summary.unmatched_source === 'number' ? summary.unmatched_source : 0;
+    const unmatchedTarget = typeof summary.unmatched_target === 'number' ? summary.unmatched_target : 0;
+    const discrepancyCount = typeof summary.discrepancies === 'number' ? summary.discrepancies : 0;
+    const totalRecSource = typeof summary.total_records_source === 'number' ? summary.total_records_source : 0;
+    const totalRecTarget = typeof summary.total_records_target === 'number' ? summary.total_records_target : 0;
+    const totalItems = matched + unmatchedSource + unmatchedTarget + discrepancyCount || Math.max(totalRecSource, totalRecTarget, 1);
+    const completedItems = matched;
     const exceptionItems = (result as Record<string, unknown>).exceptions_raised as number || 0;
     const escalatedItems = 0;
     const pendingItems = 0;
-    const autoApprovedItems = summary.matched;
-    const matchRate = totalItems > 0 ? summary.matched / totalItems : 0;
+    const autoApprovedItems = matched;
+    const matchRate = totalItems > 0 ? matched / totalItems : 0;
     const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
     if (matchRate > 0) dist['80-100'] = completedItems;
     if (exceptionItems > 0) dist['0-20'] = exceptionItems;
     const insights: string[] = [];
     if (matchRate >= 0.9) insights.push(`High match rate (${(matchRate * 100).toFixed(0)}%) — most items processed automatically.`);
     if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
-    if (summary.discrepancies > 0) insights.push(`${summary.discrepancies} discrepancy(ies) detected — review and resolve.`);
-    if (summary.unmatched_source > 0) insights.push(`${summary.unmatched_source} unmatched source record(s) need attention.`);
+    if (discrepancyCount > 0) insights.push(`${discrepancyCount} discrepancy(ies) detected — review and resolve.`);
+    if (unmatchedSource > 0) insights.push(`${unmatchedSource} unmatched source record(s) need attention.`);
+    if (totalItems === 0) insights.push('No items were processed — check data source configuration.');
     // Append LLM-generated reasoning and recommendations to analytics insights
     if (result.llm_analysis) {
       if (result.llm_analysis.reasoning) insights.push(`AI Analysis: ${result.llm_analysis.reasoning}`);
@@ -1642,6 +1649,7 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
       if (result.llm_analysis.industry_context) insights.push(`Industry Context: ${result.llm_analysis.industry_context}`);
     }
     const analyticsId = crypto.randomUUID();
+    console.log(`[run-analytics] Inserting analytics for ${subName} run=${runId || result.id}, totalItems=${totalItems}, matched=${matched}, status=${result.status}`);
     await c.env.DB.prepare(
       `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
@@ -1650,8 +1658,9 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
       Math.round(matchRate * 1000) / 1000, 0, matchRate > 0 ? 1 : 0,
       JSON.stringify(dist), result.status, JSON.stringify(insights),
     ).run();
+    console.log(`[run-analytics] Successfully inserted analytics ${analyticsId}`);
   } catch (err) {
-    console.error('auto run-analytics insert failed:', err);
+    console.error('auto run-analytics insert failed:', err, JSON.stringify({ clusterId, subName, runId, resultKeys: Object.keys(result), summaryKeys: result.summary ? Object.keys(result.summary) : 'no summary' }));
   }
 
   // ── Generate Apex/Pulse/Dashboard insights from this catalyst run ──

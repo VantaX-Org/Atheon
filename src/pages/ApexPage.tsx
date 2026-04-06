@@ -6,7 +6,7 @@ import { ScoreRing } from "@/components/ui/score-ring";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem } from "@/lib/api";
 import { Portal } from "@/components/ui/portal";
@@ -1345,7 +1345,7 @@ export function ApexPage() {
           </div>
           <div className="flex items-center gap-2">
            <span className="text-[10px] t-muted">{new Date(report.generatedAt).toLocaleDateString()}</span>
-           {report.pdfUrl && <a href={report.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline">PDF</a>}
+           {report.pdfUrl && <a href={`${API_URL}${report.pdfUrl}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline flex items-center gap-0.5"><FileText size={10} />PDF</a>}
            {report.contentMarkdown && <button onClick={() => setShowBoardReport(showBoardReport === report.id ? null : report.id)} className="text-[10px] text-accent hover:underline">View</button>}
           </div>
          </div>
