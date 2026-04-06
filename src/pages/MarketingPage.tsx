@@ -53,7 +53,7 @@ const marketingCSS = `
 
 /* NAV */
 .mk5-nav {
-  position: fixed; top: 0; width: 100%; z-index: 100;
+  position: fixed; top: 0; width: 100%; z-index: 300;
   display: flex; justify-content: space-between; align-items: center;
   padding: 2rem 3.5rem; mix-blend-mode: difference;
 }
