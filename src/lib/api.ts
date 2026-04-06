@@ -778,6 +778,22 @@ export const api = {
     getV2: (id: string, tenantId?: string) =>
       request<BoardReport>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),  
   },
+
+  // ── Onboarding (Spec §9.2) ─────────────────────────────────
+  onboarding: {
+    progress: () =>
+      request<OnboardingProgressResponse>('/api/onboarding/progress'),
+    completeStep: (stepId: string) =>
+      request<{ success: boolean; stepId: string }>(`/api/onboarding/complete/${stepId}`, { method: 'PUT' }),
+    dismiss: () =>
+      request<{ success: boolean; message: string }>('/api/onboarding/dismiss', { method: 'PUT' }),
+  },
+
+  // ── Freshness (Spec §9.3) ──────────────────────────────────
+  freshness: {
+    get: () =>
+      request<FreshnessResponse>('/api/freshness'),
+  },
 };
 
 // Types for API responses
@@ -2429,4 +2445,34 @@ export interface BoardReport {
   pdfUrl: string | null;
   generatedBy: string | null;
   generatedAt: string;
+}
+
+// §9.2 Onboarding
+export interface OnboardingStep {
+  id: string;
+  label: string;
+  description: string;
+  completed: boolean;
+  completedAt: string | null;
+}
+export interface OnboardingProgressResponse {
+  steps: OnboardingStep[];
+  completedCount: number;
+  totalSteps: number;
+  progressPct: number;
+  allComplete: boolean;
+}
+
+// §9.3 Freshness
+export interface FreshnessSection {
+  section: string;
+  lastUpdated: string | null;
+  ageMinutes: number | null;
+  status: 'fresh' | 'stale' | 'unknown';
+}
+export interface FreshnessResponse {
+  globalStatus: 'fresh' | 'stale' | 'unknown';
+  oldestAgeMinutes: number | null;
+  sections: FreshnessSection[];
+  checkedAt: string;
 }

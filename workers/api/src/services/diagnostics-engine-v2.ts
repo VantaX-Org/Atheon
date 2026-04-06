@@ -7,6 +7,7 @@
 
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
+import { createNotification } from './notifications';
 
 // ── runRootCauseAnalysis ──
 
@@ -184,5 +185,48 @@ Perform full L1-L5 root cause analysis.`,
     `UPDATE root_cause_analyses SET causal_chain = ?, confidence = ?, impact_summary = ? WHERE id = ?`
   ).bind(JSON.stringify(causalChainJson), avgConfidence, totalImpact || null, rcaId).run();
 
+  // §9.1.1 — Auto-triggered notification: RCA completion
+  const prescriptionCount = (parsed.prescriptions || []).length;
+  const l2Factor = (parsed.layers || []).find(l => l.layer === 'L2');
+  try {
+    await createNotification(db, {
+      tenantId,
+      type: 'alert',
+      title: `Root Cause Analysis Complete: ${metricName}`,
+      message: `Atheon diagnosed why ${metricName} is ${triggerStatus}. Root cause: ${l2Factor?.title || 'Under investigation'}. ${prescriptionCount} prescriptions generated.`,
+      severity: triggerStatus === 'red' ? 'critical' : 'high',
+      actionUrl: `/pulse?tab=diagnostics&rca=${rcaId}`,
+      metadata: { rcaId, metricId, metricName },
+    });
+  } catch (notifErr) { console.error('RCA notification failed:', notifErr); }
+
   return { id: rcaId };
+}
+
+// §9.1.1 — Overdue prescription check (called by cron handler)
+export async function checkOverduePrescriptions(
+  db: D1Database,
+  tenantId: string,
+): Promise<number> {
+  const overdue = await db.prepare(
+    "SELECT dp.id, dp.title, dp.rca_id, rca.metric_name FROM diagnostic_prescriptions dp JOIN root_cause_analyses rca ON dp.rca_id = rca.id WHERE dp.tenant_id = ? AND dp.status = 'pending' AND dp.deadline_suggested IS NOT NULL AND dp.deadline_suggested < datetime('now')"
+  ).bind(tenantId).all();
+
+  let count = 0;
+  for (const row of overdue.results) {
+    const r = row as Record<string, unknown>;
+    try {
+      await createNotification(db, {
+        tenantId,
+        type: 'escalation',
+        title: `Overdue Prescription: ${r.title}`,
+        message: `The prescription "${r.title}" for ${r.metric_name} is past its suggested deadline. Please review and action immediately.`,
+        severity: 'high',
+        actionUrl: `/pulse?tab=diagnostics&rca=${r.rca_id}`,
+        metadata: { prescriptionId: r.id, rcaId: r.rca_id },
+      });
+      count++;
+    } catch { /* non-fatal */ }
+  }
+  return count;
 }

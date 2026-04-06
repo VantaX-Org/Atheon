@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { runRootCauseAnalysis } from '../services/diagnostics-engine-v2';
+import { toCSV, csvResponse } from '../services/csv-export';
 
 const diagnostics = new Hono<AppBindings>();
 
@@ -37,6 +38,12 @@ diagnostics.get('/', async (c) => {
     confidence: a.confidence, impactSummary: a.impact_summary,
     status: a.status, generatedAt: a.generated_at, resolvedAt: a.resolved_at,
   }));
+  if (c.req.query('format') === 'csv') {
+    return csvResponse(toCSV(analyses.map(a => ({ ...a, causalChain: JSON.stringify(a.causalChain) })), [
+      { key: 'id', label: 'ID' }, { key: 'metricName', label: 'Metric' }, { key: 'triggerStatus', label: 'Severity' },
+      { key: 'confidence', label: 'Confidence' }, { key: 'status', label: 'Status' }, { key: 'generatedAt', label: 'Generated At' },
+    ]), 'diagnostics-analyses.csv');
+  }
   return c.json({ analyses, total: analyses.length });
 });
 
@@ -126,6 +133,15 @@ diagnostics.put('/prescriptions/:id/status', async (c) => {
   await c.env.DB.prepare(
     `UPDATE diagnostic_prescriptions SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`
   ).bind(...binds, prescriptionId, tenantId).run();
+
+  // §9.5 Audit trail
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(crypto.randomUUID(), tenantId, 'prescription.status_updated', 'diagnostics', prescriptionId,
+      JSON.stringify({ prescriptionId, newStatus: body.status }), 'success').run();
+  } catch { /* non-fatal */ }
+
   return c.json({ success: true });
 });
 
@@ -136,6 +152,15 @@ diagnostics.post('/:metricId/analyse', async (c) => {
   const metricId = c.req.param('metricId');
   try {
     const result = await runRootCauseAnalysis(c.env.DB, tenantId, metricId, c.env);
+
+    // §9.5 Audit trail
+    try {
+      await c.env.DB.prepare(
+        "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).bind(crypto.randomUUID(), tenantId, 'rca.generated', 'diagnostics', metricId,
+        JSON.stringify({ metricId }), 'success').run();
+    } catch { /* non-fatal */ }
+
     return c.json(result, 201);
   } catch (err) {
     return c.json({ error: 'Diagnostic analysis failed', detail: (err as Error).message }, 500);

@@ -8,6 +8,7 @@
 
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
+import { createNotification } from './notifications';
 
 // ── analysePatterns ──
 
@@ -229,4 +230,28 @@ export async function calculateROI(
     identified, recovered, personHours,
     valueResult?.total_runs || 0, licenceCost, roiMultiple, now,
   ).run();
+
+  // §9.1.1 — ROI milestone notifications (R500K, R1M, R5M, R10M)
+  const milestones = [500000, 1000000, 5000000, 10000000];
+  const milestoneLabels: Record<number, string> = { 500000: 'R500,000', 1000000: 'R1,000,000', 5000000: 'R5,000,000', 10000000: 'R10,000,000' };
+  for (const milestone of milestones) {
+    if (recovered >= milestone) {
+      const existing = await db.prepare(
+        "SELECT id FROM notifications WHERE tenant_id = ? AND metadata LIKE ? LIMIT 1"
+      ).bind(tenantId, `%"milestone":${milestone}%`).first();
+      if (!existing) {
+        try {
+          await createNotification(db, {
+            tenantId,
+            type: 'system',
+            title: `ROI Milestone Reached: ${milestoneLabels[milestone]}`,
+            message: `Atheon has now recovered over ${milestoneLabels[milestone]} in identified discrepancies for your organisation.`,
+            severity: 'info',
+            actionUrl: '/catalysts?tab=intelligence',
+            metadata: { milestone, recovered },
+          });
+        } catch { /* non-fatal */ }
+      }
+    }
+  }
 }

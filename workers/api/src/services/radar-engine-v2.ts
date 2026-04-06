@@ -8,6 +8,7 @@
 
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
+import { createNotification } from './notifications';
 
 // ── analyseSignalImpact ──
 
@@ -74,6 +75,21 @@ export async function analyseSignalImpact(
   await db.prepare(
     'UPDATE external_signals SET relevance_score = ? WHERE id = ? AND tenant_id = ?'
   ).bind(maxMag / 10, signalId, tenantId).run();
+
+  // §9.1.1 — Auto-triggered notification: critical signal (magnitude >= 8)
+  if (maxMag >= 8) {
+    try {
+      await createNotification(db, {
+        tenantId,
+        type: 'alert',
+        title: `Critical External Signal: ${signal.title}`,
+        message: `High-impact ${signal.category} signal detected (magnitude ${maxMag}/10). Affects: ${impacts.map(i => i.dimension).join(', ')}.`,
+        severity: 'critical',
+        actionUrl: '/apex?tab=context',
+        metadata: { signalId, category: signal.category as string },
+      });
+    } catch { /* non-fatal */ }
+  }
 }
 
 // ── computeStrategicContext ──

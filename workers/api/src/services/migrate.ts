@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v37';
+export const MIGRATION_VERSION = 'v38';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -105,6 +105,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS industry_radar_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL, source_name TEXT, default_dimensions TEXT NOT NULL DEFAULT '[]', default_magnitude INTEGER NOT NULL DEFAULT 5, default_direction TEXT NOT NULL DEFAULT 'headwind', region TEXT NOT NULL DEFAULT 'ZA');
     CREATE TABLE IF NOT EXISTS industry_benchmark_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, metric_name TEXT NOT NULL, benchmark_value REAL NOT NULL, benchmark_unit TEXT, percentile_25 REAL, percentile_50 REAL, percentile_75 REAL, source TEXT, region TEXT NOT NULL DEFAULT 'ZA');
     CREATE TABLE IF NOT EXISTS industry_regulatory_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, jurisdiction TEXT NOT NULL DEFAULT 'South Africa', affected_dimensions TEXT NOT NULL DEFAULT '[]', recurring INTEGER NOT NULL DEFAULT 0, typical_deadline_month INTEGER);
+    CREATE TABLE IF NOT EXISTS onboarding_progress (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL, step_id TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, user_id, step_id));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);

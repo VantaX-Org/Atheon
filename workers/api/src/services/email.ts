@@ -261,6 +261,41 @@ export function getRunResultsEmailTemplate(
   return { html, text };
 }
 
+// ── Weekly Digest Email Template (§9.1) ──
+
+export function getWeeklyDigestEmailTemplate(data: {
+  healthScore: number;
+  newSignals: number;
+  newRcas: number;
+  overduePrescriptions: number;
+  recoveredValue: number;
+  roiMultiple: number;
+}): { html: string; text: string } {
+  const healthColor = data.healthScore >= 70 ? BRAND.green : data.healthScore >= 40 ? BRAND.amber : BRAND.red;
+
+  const card = `
+    ${badge('Weekly Digest', BRAND.accent, '#16161e')}
+    <h2 style="color:${BRAND.text};font-size:20px;margin:16px 0 12px;font-weight:600">Your Week in Review</h2>
+    <p style="color:${BRAND.muted};font-size:13px;margin:0 0 20px">Here's what Atheon Intelligence observed this week.</p>
+    <div style="display:flex;gap:12px;margin:16px 0">
+      ${statBox('Health Score', `${Math.round(data.healthScore)}/100`, healthColor)}
+      ${statBox('New Signals', data.newSignals)}
+      ${statBox('New RCAs', data.newRcas)}
+    </div>
+    <div style="display:flex;gap:12px;margin:16px 0">
+      ${statBox('Overdue Rx', data.overduePrescriptions, data.overduePrescriptions > 0 ? BRAND.red : BRAND.green)}
+      ${statBox('Recovered', `R${(data.recoveredValue / 1000).toFixed(0)}k`, BRAND.green)}
+      ${statBox('ROI', `${data.roiMultiple.toFixed(1)}x`)}
+    </div>
+    ${data.overduePrescriptions > 0 ? `<p style="color:${BRAND.amber};font-size:13px;margin:16px 0 0">⚠ ${data.overduePrescriptions} prescription(s) are overdue. Please review and action immediately.</p>` : ''}
+    <div style="text-align:center;margin-top:20px">${ctaButton('https://atheon.vantax.co.za', 'Open Dashboard')}</div>`;
+
+  const html = wrapEmail(card, BRAND.accent);
+  const text = `Atheon Weekly Digest\n\nHealth: ${Math.round(data.healthScore)}/100\nNew Signals: ${data.newSignals}\nNew RCAs: ${data.newRcas}\nOverdue Prescriptions: ${data.overduePrescriptions}\nRecovered: R${(data.recoveredValue / 1000).toFixed(0)}k\nROI: ${data.roiMultiple.toFixed(1)}x\n\nOpen Dashboard: https://atheon.vantax.co.za\n\n-- Atheon Enterprise Intelligence Platform`;
+
+  return { html, text };
+}
+
 // ── Email Sending Infrastructure ──
 
 async function getMsGraphToken(env: Env): Promise<string> {
