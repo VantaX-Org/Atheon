@@ -1640,7 +1640,7 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
     if (discrepancyCount > 0) insights.push(`${discrepancyCount} discrepancy(ies) detected — review and resolve.`);
     if (unmatchedSource > 0) insights.push(`${unmatchedSource} unmatched source record(s) need attention.`);
-    if (totalItems === 0) insights.push('No items were processed — check data source configuration.');
+    if (totalRecSource === 0 && totalRecTarget === 0 && matched === 0) insights.push('No items were processed — check data source configuration.');
     // Append LLM-generated reasoning and recommendations to analytics insights
     if (result.llm_analysis) {
       if (result.llm_analysis.reasoning) insights.push(`AI Analysis: ${result.llm_analysis.reasoning}`);

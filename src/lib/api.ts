@@ -776,7 +776,18 @@ export const api = {
     listV2: (tenantId?: string) =>
       request<{ reports: BoardReport[]; total: number }>(`/api/board-report${qs({ tenant_id: tenantId })}`),
     getV2: (id: string, tenantId?: string) =>
-      request<BoardReport>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),  
+      request<BoardReport>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),
+    downloadPdf: async (id: string, title?: string) => {
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch(`${API_URL}/api/board-report/${id}/pdf`, { headers });
+      if (!res.ok) throw new Error('Failed to download board report PDF');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const safeName = (title || 'board-report').replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);
+      const a = document.createElement('a'); a.href = url; a.download = `${safeName}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    },
   },
 
   // ── Onboarding (Spec §9.2) ─────────────────────────────────
