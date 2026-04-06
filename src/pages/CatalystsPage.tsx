@@ -924,7 +924,7 @@ export function CatalystsPage() {
  <strong>Execution layer for Teams & Workers.</strong> Catalysts are autonomous AI workers that execute business processes — from invoice processing to compliance checks — with full audit trails and human oversight.
  </p>
  <div className="flex items-center gap-2 flex-shrink-0">
- <CSVExportButton endpoint="/api/catalyst-intelligence" filename="catalyst-patterns.csv" label="Export Patterns" />
+ <CSVExportButton endpoint="/api/catalyst-intelligence/patterns" filename="catalyst-patterns.csv" label="Export Patterns" />
  <CSVExportButton endpoint="/api/roi" filename="roi-tracking.csv" label="Export ROI" />
  </div>
  </div>

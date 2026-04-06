@@ -342,7 +342,7 @@ export function ApexPage() {
  </div>
  </div>
  <div className="flex items-center gap-2 flex-shrink-0">
- <CSVExportButton endpoint="/api/radar" filename="apex-radar-signals.csv" label="Export Signals" />
+ <CSVExportButton endpoint="/api/radar/signals" filename="apex-radar-signals.csv" label="Export Signals" />
  <CSVExportButton endpoint="/api/board-report" filename="board-reports.csv" label="Export Reports" />
  </div>
  </div>
