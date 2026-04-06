@@ -32,15 +32,18 @@ freshness.get('/', async (c) => {
 
   const now = Date.now();
 
-  // Query latest timestamps from each data source
+  // Query latest timestamps from each data source (each wrapped to tolerate missing tables)
+  const safeQuery = async (sql: string, bind: string): Promise<{ ts: string } | null> => {
+    try { return await c.env.DB.prepare(sql).bind(bind).first<{ ts: string }>(); } catch { return null; }
+  };
   const [health, signals, rcas, patterns, roi, briefing, catalystRuns] = await Promise.all([
-    c.env.DB.prepare('SELECT calculated_at as ts FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare('SELECT detected_at as ts FROM external_signals WHERE tenant_id = ? ORDER BY detected_at DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare('SELECT generated_at as ts FROM root_cause_analyses WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare('SELECT last_confirmed as ts FROM catalyst_patterns WHERE tenant_id = ? ORDER BY last_confirmed DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare('SELECT calculated_at as ts FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare('SELECT created_at as ts FROM briefings WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1').bind(tenantId).first<{ ts: string }>(),
-    c.env.DB.prepare("SELECT MAX(started_at) as ts FROM catalyst_runs WHERE tenant_id = ?").bind(tenantId).first<{ ts: string }>(),
+    safeQuery('SELECT calculated_at as ts FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1', tenantId),
+    safeQuery('SELECT detected_at as ts FROM external_signals WHERE tenant_id = ? ORDER BY detected_at DESC LIMIT 1', tenantId),
+    safeQuery('SELECT generated_at as ts FROM root_cause_analyses WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 1', tenantId),
+    safeQuery('SELECT last_confirmed as ts FROM catalyst_patterns WHERE tenant_id = ? ORDER BY last_confirmed DESC LIMIT 1', tenantId),
+    safeQuery('SELECT calculated_at as ts FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1', tenantId),
+    safeQuery('SELECT generated_at as ts FROM executive_briefings WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 1', tenantId),
+    safeQuery("SELECT MAX(started_at) as ts FROM sub_catalyst_runs WHERE tenant_id = ?", tenantId),
   ]);
 
   function buildSection(section: string, row: { ts: string } | null): FreshnessSection {
