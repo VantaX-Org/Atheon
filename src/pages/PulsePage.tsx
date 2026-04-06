@@ -577,7 +577,7 @@ export function PulsePage() {
           <p className="text-base t-muted max-w-3xl">
             <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
           </p>
-          <CSVExportButton endpoint="/api/diagnostics?format=csv" filename="pulse-diagnostics.csv" label="Export Diagnostics" />
+          <CSVExportButton endpoint="/api/diagnostics" filename="pulse-diagnostics.csv" label="Export Diagnostics" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">

@@ -322,6 +322,7 @@ export function ApexPage() {
  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
  <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Apex</h1>
  <Badge variant="info">Executive Intelligence</Badge>
+ <SectionFreshness section="Health" />
  </div>
  <p className="text-base t-muted max-w-3xl">
  <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
