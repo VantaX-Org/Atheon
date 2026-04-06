@@ -202,32 +202,14 @@ export function Dashboard() {
   const activeCatalysts = clusters.filter((c) => c.status === "active").length;
   const totalTasks = clusters.reduce((sum, c) => sum + (c.tasksInProgress || 0), 0);
 
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const now = new Date();
-  const hasMetrics = metrics.length > 0;
-  const hasHealth = !!health?.overall;
-  const hasData = hasMetrics || hasHealth || dimensions.length > 0;
   // Derive the primary and secondary metric from actual catalyst-generated data
   const primaryMetric = metrics.length > 0 ? metrics[0] : null;
   const secondaryMetric = metrics.length > 1 ? metrics[1] : null;
   const primaryMetricLabel = primaryMetric ? primaryMetric.name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Health Score';
   const secondaryMetricLabel = secondaryMetric ? secondaryMetric.name.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null;
 
-  // Build metrics over time from real data — use linear interpolation from 85% to 100% of current value
-  const metricsOverTime = hasData ? Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
-    const baseValue = primaryMetric ? primaryMetric.value : (health?.overall ?? 0);
-    const progress = 0.85 + (i / 11) * 0.15;
-    const entry: Record<string, string | number> = {
-      month: monthNames[d.getMonth()],
-      value: +(baseValue * progress).toFixed(1),
-    };
-    if (secondaryMetric) {
-      const secProgress = 0.82 + (i / 11) * 0.18;
-      entry.secondary = +(secondaryMetric.value * secProgress).toFixed(1);
-    }
-    return entry;
-  }) : [];
+  // Metrics over time — no synthesized data; left empty until real time-series data is available
+  const metricsOverTime: Record<string, string | number>[] = [];
 
   const piePalette = [ACCENT, ACCENT_B, SKY, BRONZE, CHART_LIGHT];
   const pieData = dimensions.slice(0, 5).map((dim, i) => ({
@@ -236,11 +218,8 @@ export function Dashboard() {
     fill: piePalette[i % piePalette.length],
   }));
 
-  // Month-over-month change data — use steady progression based on avgDelta
-  const momData = hasData ? monthNames.map((m, i) => ({
-    month: m,
-    change: +(avgDelta * (0.3 + (i / 11) * 0.7)).toFixed(1),
-  })) : [];
+  // Month-over-month change data — no synthesized data; left empty until real time-series data is available
+  const momData: { month: string; change: number }[] = [];
 
   // U12: Progressive skeleton loading instead of spinner
   if (loading && !health) {
@@ -363,17 +342,7 @@ export function Dashboard() {
       )}
 
       {/* MAIN GRID */}
-      {activeTab === 'overview' && !hasData && (
-        <DashCard>
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <TrendingUp className="w-12 h-12 t-muted mb-4 opacity-30" />
-            <p className="text-sm font-medium t-primary">No data yet</p>
-            <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to generate dashboard insights,</p>
-            <p className="text-xs t-muted">or use the Company Reset button to start fresh.</p>
-          </div>
-        </DashCard>
-      )}
-      {activeTab === 'overview' && hasData && (
+      {activeTab === 'overview' && (
       <>
       {/* Hero: Health Score as central KPI */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

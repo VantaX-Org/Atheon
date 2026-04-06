@@ -329,11 +329,11 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
   } catch { /* table may not exist yet */ }
 
   for (const dim of affectedDimensions) {
-    // Base score from success rate (matched/total), then avg_confidence as tiebreaker; fallback to 75 if no runs yet
+    // Base score from success rate (matched/total), then avg_confidence as tiebreaker; 0 if no runs yet
     const successRate = latestRunTotal > 0 ? latestRunSuccess / latestRunTotal : 0;
     const baseScore = latestRunTotal > 0
       ? Math.round((latestRunConfidence > 0 ? (successRate * 0.7 + latestRunConfidence * 0.3) : successRate) * 100)
-      : 75;
+      : 0;
     // Clamp between 40 and 100
     const score = Math.max(40, Math.min(100, baseScore));
     const prevScore = existingDimensions[dim]?.score ?? score;
@@ -3015,7 +3015,7 @@ async function fetchDataForSource(
       return rows.results as Record<string, unknown>[];
     }
 
-    // For email, cloud_storage, upload: return process_metrics as placeholder data
+    // For email, cloud_storage, upload: return process_metrics as available data
     const rows = await db.prepare(
       'SELECT metric_name as reference, metric_value as amount, status, updated_at as date FROM process_metrics WHERE tenant_id = ? LIMIT 200'
     ).bind(tenantId).all();

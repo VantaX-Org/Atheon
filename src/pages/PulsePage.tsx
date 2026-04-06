@@ -464,7 +464,7 @@ export function PulsePage() {
     key, name: key,
     score: val.score, trend: val.trend,
     change: val.delta,
-    sparkline: [val.score - 5, val.score - 3, val.score - 2, val.score - 1, val.score, val.score + 1],
+    sparkline: [],
   }));
 
   // Filtered metrics — Dynamic Layout: red domains first, then amber, then green

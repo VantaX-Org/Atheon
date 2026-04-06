@@ -227,14 +227,11 @@ export function ApexPage() {
  key, name: key.charAt(0).toUpperCase() + key.slice(1),
  score: val.score, trend: val.trend as string,
  change: val.delta ?? 0, weight: 0.2,
- sparkline: [val.score - 6, val.score - 4, val.score - 3, val.score - 2, val.score - 1, val.score]}))
+ sparkline: []}))
  .sort((a, b) => a.score - b.score) // Dynamic Layout: severity-driven sort (worst first)
  : [];
 
- // Detect if tenant has any real data
- const hasData = !!(health?.calculatedAt) || risks.length > 0 || !!briefing || scenarios.length > 0;
-
- const tabs = [
+  const tabs = [
  { id: 'health', label: 'Business Health', icon: <Crown size={14} /> },
  { id: 'briefing', label: 'Leadership Summary', icon: <FileText size={14} /> },
  { id: 'risks', label: 'Risk Overview', icon: <AlertTriangle size={14} />, count: risks.length },
@@ -278,45 +275,7 @@ export function ApexPage() {
   );
   }
 
- if (!hasData) {
- return (
- <div className="space-y-6 animate-fadeIn">
- <div className="space-y-4">
- <div className="flex flex-col sm:flex-row sm:items-center gap-3">
- <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Apex</h1>
- <Badge variant="info">Executive Intelligence</Badge>
- </div>
- <p className="text-base t-muted max-w-3xl">
- <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
- </p>
- <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
- <p className="text-sm t-primary font-medium">Executive / Board</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
- <p className="text-sm t-primary font-medium">Business Health & Risk</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
- <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
- </div>
- </div>
- </div>
- <Card>
- <div className="flex flex-col items-center justify-center py-16 text-center">
- <Crown className="w-12 h-12 t-muted mb-4 opacity-30" />
- <p className="text-sm font-medium t-primary">No data yet</p>
- <p className="text-xs t-muted mt-1">Connect an ERP system and run a sync to populate executive intelligence,</p>
- <p className="text-xs t-muted">or use the Catalysts page to generate insights.</p>
- </div>
- </Card>
- </div>
- );
- }
-
- return (
+  return (
  <div className="space-y-6 animate-fadeIn">
  <div className="space-y-4">
  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
