@@ -8,7 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse } from "@/lib/api";
+import { PeerComparisonBar } from "@/components/ui/peer-comparison-bar";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import { SkeletonCard } from "@/components/ui/skeleton";
@@ -71,6 +72,10 @@ export function ApexPage() {
  const [boardReports, setBoardReports] = useState<BoardReportItem[]>([]);
  const [generatingReport, setGeneratingReport] = useState(false);
  const [showBoardReport, setShowBoardReport] = useState<string | null>(null);
+
+ // §11.4 Peer Benchmarks state
+ const [peerBenchmarks, setPeerBenchmarks] = useState<PeerBenchmarksResponse | null>(null);
+ const [peerLoading, setPeerLoading] = useState(false);
 
  const handleGenerateBoardReport = async () => {
   setGeneratingReport(true);
@@ -237,6 +242,7 @@ export function ApexPage() {
  { id: 'risks', label: 'Risk Overview', icon: <AlertTriangle size={14} />, count: risks.length },
  { id: 'scenarios', label: 'What-If Analysis', icon: <BarChart3 size={14} /> },
  { id: 'strategic-context', label: 'Strategic Context', icon: <Radar size={14} />, count: radarContext?.summary?.activeSignals },
+ { id: 'peer-benchmarks', label: 'Peer Benchmarks', icon: <Globe size={14} />, count: peerBenchmarks?.benchmarks?.length || undefined },
  ];
 
   if (loading) {
@@ -1419,6 +1425,51 @@ export function ApexPage() {
          </Card>
         ))}
        </div>
+      </div>
+     )}
+    </div>
+   )}
+  </TabPanel>
+ )}
+
+ {/* §11.4 Peer Benchmarks Tab */}
+ {activeTab === 'peer-benchmarks' && (
+  <TabPanel>
+   {!peerBenchmarks && !peerLoading && (
+    <Card className="text-center py-12">
+     <Globe className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
+     <p className="text-sm font-medium t-primary">Peer Benchmarks</p>
+     <p className="text-xs t-muted mt-1">Compare your performance against anonymised industry peers.</p>
+     <Button variant="primary" size="sm" className="mt-4" onClick={() => {
+      setPeerLoading(true);
+      api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => {}).finally(() => setPeerLoading(false));
+     }}>Load Benchmarks</Button>
+    </Card>
+   )}
+   {peerLoading && (
+    <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
+   )}
+   {peerBenchmarks && (
+    <div className="space-y-4">
+     <div className="flex items-center justify-between">
+      <div>
+       <h3 className="text-sm font-semibold t-primary">Industry: {peerBenchmarks.industry}</h3>
+       <p className="text-[10px] t-muted">{peerBenchmarks.total} dimension{peerBenchmarks.total !== 1 ? 's' : ''} benchmarked</p>
+      </div>
+      <Button variant="secondary" size="sm" onClick={() => {
+       setPeerLoading(true);
+       api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => {}).finally(() => setPeerLoading(false));
+      }}><RefreshCw size={12} /> Refresh</Button>
+     </div>
+     {peerBenchmarks.benchmarks.length === 0 ? (
+      <Card className="text-center py-8">
+       <p className="text-xs t-muted">Not enough peers in your industry yet (minimum 3 tenants required for anonymity).</p>
+      </Card>
+     ) : (
+      <div className="space-y-3">
+       {peerBenchmarks.benchmarks.map((b, i) => (
+        <PeerComparisonBar key={i} benchmark={b} />
+       ))}
       </div>
      )}
     </div>

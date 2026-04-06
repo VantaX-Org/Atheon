@@ -137,6 +137,9 @@ const ALLOWED_TABLES = new Set([
   'catalyst_effectiveness', 'catalyst_prescriptions',
   'roi_tracking', 'board_reports',
   'industry_radar_seeds', 'industry_benchmark_seeds', 'industry_regulatory_seeds',
+  // §11 tables
+  'atheon_score_history', 'baseline_snapshots', 'health_targets',
+  'anonymised_benchmarks', 'resolution_patterns', 'trial_assessments',
   // SAP native tables
   'sap_bkpf', 'sap_bseg', 'sap_bsid', 'sap_bsik', 'sap_febep',
   'sap_ekko', 'sap_ekpo', 'sap_ekbe', 'sap_mard', 'sap_iseg',
@@ -1537,6 +1540,96 @@ seed.post('/seed-vantax', async (c) => {
       ).run();
     }
     console.log(`[VantaX Seeder] Seeded ${runAnalyticsData.length} run analytics records`);
+
+    // ── STEP: Seed §11.7 Atheon Score History ──
+    console.log('[VantaX Seeder] Seeding §11 Atheon Score history...');
+    const scoreMonths = [
+      { offset: -5, score: 52 }, { offset: -4, score: 56 }, { offset: -3, score: 61 },
+      { offset: -2, score: 65 }, { offset: -1, score: 69 }, { offset: 0, score: 73 },
+    ];
+    for (const sm of scoreMonths) {
+      const d = new Date(); d.setMonth(d.getMonth() + sm.offset);
+      await c.env.DB.prepare(
+        `INSERT INTO atheon_score_history (id, tenant_id, score, components, calculated_at) VALUES (?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, sm.score,
+        JSON.stringify([
+          { name: 'Health', weight: 30, score: sm.score + 5 },
+          { name: 'ROI', weight: 20, score: sm.score - 3 },
+          { name: 'Diagnostic Resolution', weight: 20, score: sm.score + 2 },
+          { name: 'Strategic Awareness', weight: 15, score: sm.score - 1 },
+          { name: 'Catalyst Effectiveness', weight: 15, score: sm.score + 1 },
+        ]),
+        d.toISOString()
+      ).run();
+    }
+    console.log('[VantaX Seeder] Seeded 6 Atheon Score history records');
+
+    // ── STEP: Seed §11.2 Baseline Snapshots ──
+    console.log('[VantaX Seeder] Seeding §11 baseline snapshots...');
+    const baselineDate = new Date(); baselineDate.setMonth(baselineDate.getMonth() - 5);
+    await c.env.DB.prepare(
+      `INSERT INTO baseline_snapshots (id, tenant_id, snapshot_type, health_score, dimensions, metric_count_green, metric_count_amber, metric_count_red, total_discrepancy_value, total_process_conformance, avg_catalyst_success_rate, roi_at_snapshot, captured_at) VALUES (?, ?, 'day_zero', 48, ?, 3, 5, 4, 2450000, 62.5, 45.0, 0, ?)`
+    ).bind(crypto.randomUUID(), tenantId,
+      JSON.stringify({ finance: 45, operations: 52, compliance: 38, revenue: 55, supply_chain: 50 }),
+      baselineDate.toISOString()
+    ).run();
+    await c.env.DB.prepare(
+      `INSERT INTO baseline_snapshots (id, tenant_id, snapshot_type, health_score, dimensions, metric_count_green, metric_count_amber, metric_count_red, total_discrepancy_value, total_process_conformance, avg_catalyst_success_rate, roi_at_snapshot, captured_at) VALUES (?, ?, 'manual', 73, ?, 7, 3, 2, 850000, 81.3, 72.0, 4850000, ?)`
+    ).bind(crypto.randomUUID(), tenantId,
+      JSON.stringify({ finance: 75, operations: 71, compliance: 68, revenue: 78, supply_chain: 73 }),
+      now
+    ).run();
+    console.log('[VantaX Seeder] Seeded 2 baseline snapshots (day_zero + current)');
+
+    // ── STEP: Seed §11.3 Health Targets ──
+    console.log('[VantaX Seeder] Seeding §11 health targets...');
+    const targetData = [
+      { type: 'health_score', name: 'Overall Health to 85', value: 85, deadline: '+3m' },
+      { type: 'metric_green_count', name: '10 Green Metrics', value: 10, deadline: '+2m' },
+      { type: 'discrepancy_reduction', name: 'Discrepancy < R500k', value: 500000, deadline: '+4m' },
+      { type: 'roi_multiple', name: 'ROI > 10x', value: 10, deadline: '+6m' },
+    ];
+    for (const t of targetData) {
+      const dl = new Date(); dl.setMonth(dl.getMonth() + parseInt(t.deadline));
+      await c.env.DB.prepare(
+        `INSERT INTO health_targets (id, tenant_id, target_type, target_name, target_value, target_deadline, status) VALUES (?, ?, ?, ?, ?, ?, 'active')`
+      ).bind(crypto.randomUUID(), tenantId, t.type, t.name, t.value, dl.toISOString().split('T')[0]).run();
+    }
+    console.log('[VantaX Seeder] Seeded 4 health targets');
+
+    // ── STEP: Seed §11.4 Anonymised Benchmarks ──
+    console.log('[VantaX Seeder] Seeding §11 anonymised benchmarks...');
+    const benchDimensions = ['finance', 'operations', 'compliance', 'revenue', 'supply_chain'];
+    for (const dim of benchDimensions) {
+      await c.env.DB.prepare(
+        `INSERT INTO anonymised_benchmarks (id, industry, dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score) VALUES (?, 'manufacturing', ?, '2026-Q1', 8, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), dim,
+        55 + Math.round(Math.random() * 15),
+        40 + Math.round(Math.random() * 10),
+        52 + Math.round(Math.random() * 10),
+        65 + Math.round(Math.random() * 10),
+        25 + Math.round(Math.random() * 10),
+        80 + Math.round(Math.random() * 15),
+      ).run();
+    }
+    console.log('[VantaX Seeder] Seeded 5 anonymised benchmarks');
+
+    // ── STEP: Seed §11.6 Resolution Patterns ──
+    console.log('[VantaX Seeder] Seeding §11 resolution patterns...');
+    const resPatterns = [
+      { sig: 'invoice_mismatch_vendor_master', count: 12, days: 4.2, value: 185000, fixes: ['vendor_master_update', 'automated_matching_rule', 'tolerance_adjustment'] },
+      { sig: 'bank_fee_unallocated', count: 8, days: 2.1, value: 45000, fixes: ['fee_category_mapping', 'auto_allocation_rule'] },
+      { sig: 'inventory_shrinkage_warehouse', count: 6, days: 7.5, value: 320000, fixes: ['cycle_count_increase', 'access_control_review', 'cctv_monitoring'] },
+      { sig: 'po_price_variance_commodity', count: 15, days: 3.8, value: 420000, fixes: ['contract_price_lock', 'hedging_strategy', 'supplier_negotiation'] },
+      { sig: 'sales_order_credit_block', count: 9, days: 1.5, value: 95000, fixes: ['credit_limit_review', 'payment_terms_update'] },
+    ];
+    for (const rp of resPatterns) {
+      await c.env.DB.prepare(
+        `INSERT INTO resolution_patterns (id, industry, pattern_signature, resolution_count, avg_resolution_days, avg_value_recovered, common_fix_types, last_updated) VALUES (?, 'manufacturing', ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), rp.sig, rp.count, rp.days, rp.value, JSON.stringify(rp.fixes), now).run();
+    }
+    console.log('[VantaX Seeder] Seeded 5 resolution patterns');
 
     // ── STEP: Seed V2 ROI Tracking ──
     console.log('[VantaX Seeder] Seeding V2 ROI tracking...');

@@ -106,6 +106,12 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS industry_benchmark_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, metric_name TEXT NOT NULL, benchmark_value REAL NOT NULL, benchmark_unit TEXT, percentile_25 REAL, percentile_50 REAL, percentile_75 REAL, source TEXT, region TEXT NOT NULL DEFAULT 'ZA');
     CREATE TABLE IF NOT EXISTS industry_regulatory_seeds (id TEXT PRIMARY KEY, industry TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, jurisdiction TEXT NOT NULL DEFAULT 'South Africa', affected_dimensions TEXT NOT NULL DEFAULT '[]', recurring INTEGER NOT NULL DEFAULT 0, typical_deadline_month INTEGER);
     CREATE TABLE IF NOT EXISTS onboarding_progress (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL, step_id TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, user_id, step_id));
+    CREATE TABLE IF NOT EXISTS baseline_snapshots (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), snapshot_type TEXT NOT NULL DEFAULT 'day_zero', health_score REAL NOT NULL DEFAULT 0, dimensions TEXT NOT NULL DEFAULT '{}', metric_count_green INTEGER NOT NULL DEFAULT 0, metric_count_amber INTEGER NOT NULL DEFAULT 0, metric_count_red INTEGER NOT NULL DEFAULT 0, total_discrepancy_value REAL NOT NULL DEFAULT 0, total_process_conformance REAL NOT NULL DEFAULT 0, avg_catalyst_success_rate REAL NOT NULL DEFAULT 0, roi_at_snapshot REAL NOT NULL DEFAULT 0, raw_data TEXT NOT NULL DEFAULT '{}', captured_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS health_targets (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), target_type TEXT NOT NULL, target_name TEXT NOT NULL, target_value REAL NOT NULL, target_deadline TEXT, current_value REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active', created_by TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), achieved_at TEXT, UNIQUE(tenant_id, target_type, target_name));
+    CREATE TABLE IF NOT EXISTS anonymised_benchmarks (id TEXT PRIMARY KEY, industry TEXT NOT NULL, dimension TEXT NOT NULL, period TEXT NOT NULL, tenant_count INTEGER NOT NULL DEFAULT 0, avg_score REAL NOT NULL DEFAULT 0, p25_score REAL NOT NULL DEFAULT 0, p50_score REAL NOT NULL DEFAULT 0, p75_score REAL NOT NULL DEFAULT 0, min_score REAL NOT NULL DEFAULT 0, max_score REAL NOT NULL DEFAULT 0, calculated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(industry, dimension, period));
+    CREATE TABLE IF NOT EXISTS resolution_patterns (id TEXT PRIMARY KEY, pattern_signature TEXT NOT NULL, industry TEXT NOT NULL, resolution_count INTEGER NOT NULL DEFAULT 0, avg_resolution_days REAL NOT NULL DEFAULT 0, avg_value_recovered REAL NOT NULL DEFAULT 0, common_fix_types TEXT NOT NULL DEFAULT '[]', last_updated TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(pattern_signature, industry));
+    CREATE TABLE IF NOT EXISTS atheon_score_history (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), score INTEGER NOT NULL, components TEXT NOT NULL DEFAULT '{}', recorded_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS trial_assessments (id TEXT PRIMARY KEY, tenant_id TEXT, company_name TEXT NOT NULL, industry TEXT NOT NULL, contact_name TEXT NOT NULL, contact_email TEXT NOT NULL, data_source TEXT NOT NULL DEFAULT 'csv_upload', status TEXT NOT NULL DEFAULT 'pending', progress INTEGER NOT NULL DEFAULT 0, current_step TEXT, health_score REAL, issues_found INTEGER, estimated_exposure REAL, top_risks TEXT NOT NULL DEFAULT '[]', top_opportunities TEXT NOT NULL DEFAULT '[]', projected_roi REAL, report_r2_key TEXT, ip_address TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, expires_at TEXT);
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -243,6 +249,14 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_industry_radar_seeds ON industry_radar_seeds(industry)',
     'CREATE INDEX IF NOT EXISTS idx_industry_benchmark_seeds ON industry_benchmark_seeds(industry)',
     'CREATE INDEX IF NOT EXISTS idx_industry_regulatory_seeds ON industry_regulatory_seeds(industry)',
+    // §11: Section 11 indexes
+    'CREATE INDEX IF NOT EXISTS idx_baseline_tenant ON baseline_snapshots(tenant_id, snapshot_type)',
+    'CREATE INDEX IF NOT EXISTS idx_health_targets_tenant ON health_targets(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_atheon_score_tenant ON atheon_score_history(tenant_id, recorded_at)',
+    'CREATE INDEX IF NOT EXISTS idx_trial_assessments_email ON trial_assessments(contact_email)',
+    'CREATE INDEX IF NOT EXISTS idx_trial_assessments_ip ON trial_assessments(ip_address)',
+    'CREATE INDEX IF NOT EXISTS idx_resolution_patterns_sig ON resolution_patterns(pattern_signature, industry)',
+    'CREATE INDEX IF NOT EXISTS idx_anonymised_benchmarks_ind ON anonymised_benchmarks(industry, dimension)',
   ];
 
   for (const idx of indexes) {

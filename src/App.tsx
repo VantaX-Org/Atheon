@@ -21,6 +21,8 @@ import { AssessmentsPage } from "@/pages/AssessmentsPage";
 import { CatalystRunDetailPage } from "@/pages/CatalystRunDetailPage";
 import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { TenantManagementPage } from "@/pages/TenantManagementPage";
+import { TrialPage } from "@/pages/TrialPage";
+import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -60,6 +62,7 @@ export default function App() {
         <Route path="/" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
+        <Route path="/trial" element={<TrialPage />} />
         <Route path="/erp/oauth/callback" element={<ERPOAuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -82,6 +85,7 @@ export default function App() {
           <Route path="/erp-adapters" element={<Navigate to="/integrations" replace />} />
           <Route path="/deployments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><DeploymentsPage /></ProtectedRoute>} />
           <Route path="/assessments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><AssessmentsPage /></ProtectedRoute>} />
+          <Route path="/executive" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveMobilePage /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
