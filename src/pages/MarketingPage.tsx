@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* ============================================================
    ATHEON MARKETING PAGE - Exact match to reference design
@@ -82,6 +82,35 @@ const marketingCSS = `
 .mk5-nav-cta:hover { color: var(--void) !important; }
 .mk5-nav-cta:hover::before { transform: translateY(0); }
 .mk5-nav-cta span { position: relative; z-index: 1; }
+
+/* MOBILE HAMBURGER */
+.mk5-hamburger {
+  display: none; background: none; border: none; cursor: pointer; padding: .5rem;
+  flex-direction: column; gap: 5px; z-index: 201;
+}
+.mk5-hamburger span {
+  display: block; width: 24px; height: 2px; background: var(--cream);
+  transition: all .3s cubic-bezier(.16,1,.3,1);
+}
+.mk5-hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+.mk5-hamburger.open span:nth-child(2) { opacity: 0; }
+.mk5-hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+/* MOBILE MENU OVERLAY */
+.mk5-mobile-menu {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: var(--void); flex-direction: column; align-items: center;
+  justify-content: center; gap: 2rem;
+}
+.mk5-mobile-menu.open { display: flex; }
+.mk5-mobile-menu a {
+  font-size: 1rem; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--chalk); opacity: .8; transition: opacity .3s; text-decoration: none;
+}
+.mk5-mobile-menu a:hover { opacity: 1; }
+.mk5-mobile-menu .mk5-nav-cta {
+  font-size: .8rem !important; padding: 1rem 2.5rem;
+}
 
 /* HERO */
 .mk5-hero {
@@ -629,6 +658,7 @@ const marketingCSS = `
 @media(max-width: 768px) {
   .mk5-nav { padding: 1.5rem 2rem; }
   .mk5-nav-links { display: none; }
+  .mk5-hamburger { display: flex; }
   .mk5-hero { padding: 0 2rem 4rem; }
   .mk5-manifesto { padding: 8rem 2rem; }
   .mk5-layers, .mk5-comp, .mk5-int, .mk5-ind, .mk5-feat, .mk5-ethos { padding-left: 2rem; padding-right: 2rem; }
@@ -885,6 +915,7 @@ function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
 
 export function MarketingPage() {
   const mainRef = useRef<HTMLDivElement>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useReveal(mainRef);
 
   useEffect(() => {
@@ -952,7 +983,25 @@ export function MarketingPage() {
             <span>Early Access</span>
           </a>
         </div>
+        <button className={`mk5-hamburger ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Menu">
+          <span /><span /><span />
+        </button>
       </nav>
+
+      {/* MOBILE MENU */}
+      <div className={`mk5-mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
+        <a href="#layers" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
+        <a href="#industries" onClick={() => setMobileMenuOpen(false)}>Industries</a>
+        <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+        <a href="#compare" onClick={() => setMobileMenuOpen(false)}>Compare</a>
+        <a href="#ethos" onClick={() => setMobileMenuOpen(false)}>Ethos</a>
+        <a href="/login" className="mk5-nav-cta" onClick={() => setMobileMenuOpen(false)}>
+          <span>Login</span>
+        </a>
+        <a href="#cta-s" className="mk5-nav-cta" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
+          <span>Early Access</span>
+        </a>
+      </div>
 
       {/* HERO */}
       <section className="mk5-hero">
