@@ -59,6 +59,8 @@ agentRoutes.post('/heartbeat', async (c) => {
 // Creates a managed_deployments record so the agent can heartbeat locally.
 // Only works when ENVIRONMENT !== 'production' (i.e., on-premise/dev mode).
 agentRoutes.post('/provision', async (c) => {
+  // c.env.ENVIRONMENT comes from wrangler.toml [vars] in cloud, or --var override in Docker.
+  // Dockerfile passes --var ENVIRONMENT:${ENVIRONMENT:-on-premise} to override the wrangler.toml default.
   const env = (c as unknown as { env: { ENVIRONMENT?: string } }).env;
   if (env?.ENVIRONMENT === 'production') {
     return c.json({ error: 'Provisioning disabled in production' }, 403);

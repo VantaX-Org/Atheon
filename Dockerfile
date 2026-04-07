@@ -54,4 +54,6 @@ USER atheon
 EXPOSE 3000
 
 # Start the API server via wrangler dev (local mode)
-CMD ["npx", "wrangler", "dev", "--local", "--port", "3000", "--ip", "0.0.0.0", "--persist-to", "/data"]
+# Pass ENVIRONMENT from Docker env to Miniflare Worker bindings via --var
+# This overrides the wrangler.toml [vars] ENVIRONMENT="production" default
+CMD ["sh", "-c", "npx wrangler dev --local --port 3000 --ip 0.0.0.0 --persist-to /data --var ENVIRONMENT:${ENVIRONMENT:-on-premise}"]

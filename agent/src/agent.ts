@@ -107,7 +107,7 @@ async function reportError(message: string, code?: string, severity?: string): P
 }
 
 // ── Auto-Provision (on-premise only) ────────────────────────────────────
-async function autoProvision(): Promise<void> {
+async function autoProvision(): Promise<boolean> {
   try {
     const res = await fetch(`${CONTROL_PLANE_URL}/api/agent/provision`, {
       method: 'POST',
@@ -123,12 +123,15 @@ async function autoProvision(): Promise<void> {
     });
     if (res.ok) {
       console.log('[AGENT] Auto-provisioned local deployment record');
+      return true;
     } else {
       const text = await res.text();
       console.error(`[AGENT] Auto-provision failed (${res.status}): ${text}`);
+      return false;
     }
   } catch (err) {
     console.error('[AGENT] Auto-provision request failed:', err);
+    return false;
   }
 }
 
@@ -165,8 +168,8 @@ async function sendHeartbeat(): Promise<void> {
         if (IS_LOCAL && !provisionAttempted) {
           // On-premise: no deployment record exists yet — auto-provision
           console.log('[AGENT] Local deployment not found. Auto-provisioning...');
-          provisionAttempted = true;
-          await autoProvision();
+          const success = await autoProvision();
+          if (success) provisionAttempted = true;
           return;
         }
         if (!IS_LOCAL) {
