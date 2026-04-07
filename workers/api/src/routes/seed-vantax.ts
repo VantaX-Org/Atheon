@@ -1578,7 +1578,7 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const eff of effectivenessData) {
       await c.env.DB.prepare(
-        `INSERT INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, avg_duration_ms, created_at)
+        `INSERT OR REPLACE INTO catalyst_effectiveness (id, tenant_id, cluster_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, avg_duration_ms, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 10, ?, ?, ?, ?)`
       ).bind(crypto.randomUUID(), tenantId, financeClusterId, eff.subCatalystName, new Date(Date.now() - 30*86400000).toISOString(), now, eff.matchRate, eff.matchRate, eff.avgProcessingTime * 1000, now).run();
     }
@@ -1719,7 +1719,7 @@ seed.post('/seed-vantax', async (c) => {
     for (const t of targetData) {
       const dl = new Date(); dl.setMonth(dl.getMonth() + parseInt(t.deadline));
       await c.env.DB.prepare(
-        `INSERT INTO health_targets (id, tenant_id, target_type, target_name, target_value, target_deadline, status) VALUES (?, ?, ?, ?, ?, ?, 'active')`
+        `INSERT OR REPLACE INTO health_targets (id, tenant_id, target_type, target_name, target_value, target_deadline, status) VALUES (?, ?, ?, ?, ?, ?, 'active')`
       ).bind(crypto.randomUUID(), tenantId, t.type, t.name, t.value, dl.toISOString().split('T')[0]).run();
     }
     console.log('[VantaX Seeder] Seeded 4 health targets');
@@ -1753,7 +1753,7 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const rp of resPatterns) {
       await c.env.DB.prepare(
-        `INSERT INTO resolution_patterns (id, industry, pattern_signature, resolution_count, avg_resolution_days, avg_value_recovered, common_fix_types, last_updated) VALUES (?, 'manufacturing', ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO resolution_patterns (id, industry, pattern_signature, resolution_count, avg_resolution_days, avg_value_recovered, common_fix_types, last_updated) VALUES (?, 'manufacturing', ?, ?, ?, ?, ?, ?)`
       ).bind(crypto.randomUUID(), rp.sig, rp.count, rp.days, rp.value, JSON.stringify(rp.fixes), now).run();
     }
     console.log('[VantaX Seeder] Seeded 5 resolution patterns');
@@ -1761,7 +1761,7 @@ seed.post('/seed-vantax', async (c) => {
     // ── STEP: Seed V2 ROI Tracking ──
     console.log('[VantaX Seeder] Seeding V2 ROI tracking...');
     await c.env.DB.prepare(
-      `INSERT INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, licence_cost_annual, roi_multiple, calculated_at)
+      `INSERT OR REPLACE INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, licence_cost_annual, roi_multiple, calculated_at)
        VALUES (?, ?, 'Q1 2026', 4850000, 3200000, 1800000, 2400, 580000, 8.3, ?)`
     ).bind(crypto.randomUUID(), tenantId, now).run();
     console.log('[VantaX Seeder] Seeded ROI tracking record');
