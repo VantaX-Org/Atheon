@@ -119,8 +119,8 @@ const GL_ACCOUNTS = [
 const ALLOWED_TABLES = new Set([
   'sub_catalyst_run_items', 'run_comments', 'sub_catalyst_kpi_values',
   'sub_catalyst_runs', 'catalyst_run_analytics', 'health_score_history',
-  'health_scores', 'risk_alerts', 'anomalies', 'process_metrics',
-  'process_flows', 'correlation_events', 'catalyst_actions',
+  'health_scores', 'risk_alerts', 'anomalies', 'process_metric_history', 'process_metrics',
+  'process_flows', 'correlation_events', 'agent_deployments', 'catalyst_actions',
   'executive_briefings', 'scenarios', 'run_insights', 'catalyst_insights',
   'catalyst_clusters', 'sub_catalyst_kpis', 'sub_catalyst_kpi_definitions',
   'cross_system_correlations', 'execution_logs',
