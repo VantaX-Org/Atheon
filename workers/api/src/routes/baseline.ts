@@ -129,6 +129,7 @@ app.get('/comparison', async (c) => {
     'SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
   ).bind(auth.tenantId).first();
   const greens = await db.prepare("SELECT COUNT(*) as c FROM process_metrics WHERE tenant_id = ? AND status = 'green'").bind(auth.tenantId).first<{ c: number }>();
+  const ambers = await db.prepare("SELECT COUNT(*) as c FROM process_metrics WHERE tenant_id = ? AND status = 'amber'").bind(auth.tenantId).first<{ c: number }>();
   const reds = await db.prepare("SELECT COUNT(*) as c FROM process_metrics WHERE tenant_id = ? AND status = 'red'").bind(auth.tenantId).first<{ c: number }>();
   const roi = await db.prepare(
     'SELECT total_discrepancy_value_recovered, roi_multiple FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
@@ -136,6 +137,12 @@ app.get('/comparison', async (c) => {
   const conformance = await db.prepare(
     'SELECT AVG(conformance_score) as avg FROM process_flows WHERE tenant_id = ?'
   ).bind(auth.tenantId).first<{ avg: number | null }>();
+  const successRate = await db.prepare(
+    'SELECT AVG(success_rate) as avg FROM catalyst_effectiveness WHERE tenant_id = ?'
+  ).bind(auth.tenantId).first<{ avg: number | null }>();
+  const discVal = await db.prepare(
+    'SELECT SUM(total_discrepancy_value) as total FROM sub_catalyst_runs WHERE tenant_id = ?'
+  ).bind(auth.tenantId).first<{ total: number | null }>();
 
   const currentHealth = (health?.overall_score as number) || 0;
   const baselineHealth = (dayZero.health_score as number) || 0;
@@ -161,11 +168,11 @@ app.get('/comparison', async (c) => {
     healthScore: currentHealth,
     dimensions: JSON.parse((health?.dimensions as string) || '{}'),
     metricCountGreen: greens?.c || 0,
-    metricCountAmber: 0,
+    metricCountAmber: ambers?.c || 0,
     metricCountRed: reds?.c || 0,
-    totalDiscrepancyValue: 0,
+    totalDiscrepancyValue: discVal?.total || 0,
     totalProcessConformance: conformance?.avg || 0,
-    avgCatalystSuccessRate: 0,
+    avgCatalystSuccessRate: successRate?.avg || 0,
     roiAtSnapshot: (roi?.total_discrepancy_value_recovered as number) || 0,
     capturedAt: new Date().toISOString(),
   };
@@ -173,9 +180,9 @@ app.get('/comparison', async (c) => {
   const improvement = {
     healthScore: currentHealth - baselineHealth,
     metricCountGreen: (greens?.c || 0) - (dayZero.metric_count_green as number),
-    discrepancyValue: 0 - (dayZero.total_discrepancy_value as number),
+    discrepancyValue: (discVal?.total || 0) - (dayZero.total_discrepancy_value as number),
     processConformance: (conformance?.avg || 0) - (dayZero.total_process_conformance as number),
-    catalystSuccessRate: 0,
+    catalystSuccessRate: (successRate?.avg || 0) - (dayZero.avg_catalyst_success_rate as number),
     roi: (roi?.roi_multiple as number) || 0,
   };
 
