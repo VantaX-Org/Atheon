@@ -1729,7 +1729,7 @@ seed.post('/seed-vantax', async (c) => {
     const benchDimensions = ['finance', 'operations', 'compliance', 'revenue', 'supply_chain'];
     for (const dim of benchDimensions) {
       await c.env.DB.prepare(
-        `INSERT INTO anonymised_benchmarks (id, industry, dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score) VALUES (?, 'manufacturing', ?, '2026-Q1', 8, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO anonymised_benchmarks (id, industry, dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score) VALUES (?, 'manufacturing', ?, '2026-Q1', 8, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(), dim,
         55 + Math.round(Math.random() * 15),
