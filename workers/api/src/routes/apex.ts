@@ -786,6 +786,13 @@ apex.post('/scenarios', async (c) => {
       try {
         return { ...JSON.parse(stripCodeFences(text)), generated_at: new Date().toISOString() };
       } catch {
+        // Try to extract JSON from text that may have preamble before the JSON block
+        const jsonMatch = text.match(/\{[\s\S]*"(?:npv_impact|recommendation|confidence)"[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            return { ...JSON.parse(jsonMatch[0]), generated_at: new Date().toISOString() };
+          } catch { /* fall through to raw text */ }
+        }
         return { recommendation: text, generated_at: new Date().toISOString() };
       }
     },
