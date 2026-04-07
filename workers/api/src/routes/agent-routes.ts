@@ -55,6 +55,62 @@ agentRoutes.post('/heartbeat', async (c) => {
   });
 });
 
+// ── AGENT: POST /api/agent/provision (on-premise auto-registration) ──
+// Creates a managed_deployments record so the agent can heartbeat locally.
+// Only works when ENVIRONMENT !== 'production' (i.e., on-premise/dev mode).
+agentRoutes.post('/provision', async (c) => {
+  // c.env.ENVIRONMENT comes from wrangler.toml [vars] in cloud, or --var override in Docker.
+  // Dockerfile passes --var ENVIRONMENT:${ENVIRONMENT:-on-premise} to override the wrangler.toml default.
+  const env = (c as unknown as { env: { ENVIRONMENT?: string } }).env;
+  if (env?.ENVIRONMENT === 'production') {
+    return c.json({ error: 'Provisioning disabled in production' }, 403);
+  }
+
+  const licenceKey = c.req.header('X-Licence-Key');
+  if (!licenceKey) return c.json({ error: 'Missing X-Licence-Key' }, 401);
+
+  // Check if already exists
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM managed_deployments WHERE licence_key = ?'
+  ).bind(licenceKey).first();
+  if (existing) return c.json({ ok: true, message: 'Already provisioned' });
+
+  const body = await c.req.json<{
+    deploymentId?: string;
+    agentVersion?: string;
+    hostname?: string;
+  }>();
+
+  const id = body.deploymentId || crypto.randomUUID();
+
+  // Get or create a default tenant for on-premise
+  let tenantId: string;
+  const tenant = await c.env.DB.prepare('SELECT id FROM tenants LIMIT 1').first<{ id: string }>();
+  if (tenant) {
+    tenantId = tenant.id;
+  } else {
+    tenantId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      "INSERT INTO tenants (id, name, slug, status, created_at) VALUES (?, 'On-Premise', 'on-premise', 'active', datetime('now'))"
+    ).bind(tenantId).run();
+  }
+
+  const config = JSON.stringify({
+    ollamaModel: 'Reshigan/atheon',
+    maxUsers: 50,
+    features: ['apex', 'pulse', 'catalysts', 'mind', 'memory'],
+    updateChannel: 'stable',
+  });
+
+  await c.env.DB.prepare(`
+    INSERT INTO managed_deployments
+    (id, tenant_id, name, deployment_type, status, licence_key, region, config, agent_version, last_heartbeat)
+    VALUES (?, ?, 'On-Premise Deployment', 'on-premise', 'active', ?, 'local', ?, ?, datetime('now'))
+  `).bind(id, tenantId, licenceKey, config, body.agentVersion || '1.0.0').run();
+
+  return c.json({ ok: true, id, message: 'Deployment auto-provisioned for on-premise mode' }, 201);
+});
+
 // ── AGENT: GET /api/agent/config ──────────────────────────────────────
 agentRoutes.get('/config', async (c) => {
   const licenceKey = c.req.header('X-Licence-Key');

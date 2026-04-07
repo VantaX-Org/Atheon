@@ -90,7 +90,8 @@ deployments.post('/', async (c) => {
   ).run();
 
   // Return the install config the customer IT team needs
-  const installConfig = buildInstallConfig(id, licenceKey, defaultConfig);
+  const deploymentType = body.deployment_type || 'hybrid';
+  const installConfig = buildInstallConfig(id, licenceKey, defaultConfig, deploymentType);
 
   return c.json({
     id,
@@ -245,18 +246,19 @@ function formatDeployment(d: Record<string, unknown>) {
   };
 }
 
-function buildInstallConfig(deploymentId: string, licenceKey: string, config: Record<string, unknown>) {
+function buildInstallConfig(deploymentId: string, licenceKey: string, config: Record<string, unknown>, deploymentType: string = 'hybrid') {
+  const controlPlaneUrl = deploymentType === 'on-premise' ? 'http://api:3000' : 'https://atheon-api.vantax.co.za';
   return {
     deploymentId,
     licenceKey,
-    controlPlaneUrl: 'https://atheon-api.vantax.co.za',
+    controlPlaneUrl,
     heartbeatIntervalSeconds: 60,
-    agentImage: `gonxt/atheon-api:${config.updateChannel || 'stable'}`,
+    agentImage: `ghcr.io/reshigan/atheon-agent:${config.updateChannel || 'latest'}`,
     initialConfig: config,
     envFile: [
       `ATHEON_DEPLOYMENT_ID=${deploymentId}`,
       `ATHEON_LICENCE_KEY=${licenceKey}`,
-      `ATHEON_CONTROL_PLANE_URL=https://atheon-api.vantax.co.za`,
+      `ATHEON_CONTROL_PLANE_URL=${controlPlaneUrl}`,
       `ATHEON_HEARTBEAT_INTERVAL=60`,
       `# Fill in these values:`,
       `DATABASE_URL=postgresql://atheon:CHANGEME@localhost:5432/atheon`,
@@ -269,7 +271,9 @@ function buildInstallConfig(deploymentId: string, licenceKey: string, config: Re
       `JWT_SECRET=CHANGEME_32_CHARS_MIN`,
       `ENCRYPTION_KEY=CHANGEME_32_CHARS_MIN`,
     ].join('\n'),
-    installCommand: `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId}`,
+    installCommand: deploymentType === 'on-premise'
+      ? `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId}`
+      : `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId} --control-plane https://atheon-api.vantax.co.za`,
   };
 }
 

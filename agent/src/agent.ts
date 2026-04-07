@@ -2,22 +2,24 @@
  * Atheon Agent Sidecar
  * Runs alongside the customer's on-premise Atheon deployment.
  * Responsibilities:
- *  1. Heartbeat — sends health/resource data to GONXT control plane every N seconds
+ *  1. Heartbeat — sends health/resource data to local API (or cloud control plane if configured)
  *  2. Config sync — receives config updates from heartbeat response
  *  3. Self-update — pulls new Docker images when targetVersion is set
- *  4. Error reporting — sends errors to control plane
+ *  4. Error reporting — sends errors to local API
  */
 
 import { execSync } from 'child_process';
 import * as os from 'os';
 
 // ── Environment Variables ────────────────────────────────────────────────
-const CONTROL_PLANE_URL = process.env.ATHEON_CONTROL_PLANE_URL || 'https://atheon-api.vantax.co.za';
+const CONTROL_PLANE_URL = process.env.ATHEON_CONTROL_PLANE_URL || 'http://api:3000';
 const LICENCE_KEY = process.env.ATHEON_LICENCE_KEY || '';
 const DEPLOYMENT_ID = process.env.ATHEON_DEPLOYMENT_ID || '';
 const HEARTBEAT_INTERVAL = parseInt(process.env.ATHEON_HEARTBEAT_INTERVAL || '60', 10) * 1000;
 const LOCAL_API_URL = process.env.ATHEON_LOCAL_API_URL || 'http://localhost:3000';
 const AGENT_VERSION = '1.0.0';
+const IS_LOCAL = CONTROL_PLANE_URL.includes('api:3000') || CONTROL_PLANE_URL.includes('localhost:3000');
+let provisionAttempted = false;
 
 if (!LICENCE_KEY) {
   console.error('[AGENT] ATHEON_LICENCE_KEY is required');
@@ -104,6 +106,35 @@ async function reportError(message: string, code?: string, severity?: string): P
   }
 }
 
+// ── Auto-Provision (on-premise only) ────────────────────────────────────
+async function autoProvision(): Promise<boolean> {
+  try {
+    const res = await fetch(`${CONTROL_PLANE_URL}/api/agent/provision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Licence-Key': LICENCE_KEY,
+      },
+      body: JSON.stringify({
+        deploymentId: DEPLOYMENT_ID,
+        agentVersion: AGENT_VERSION,
+        hostname: os.hostname(),
+      }),
+    });
+    if (res.ok) {
+      console.log('[AGENT] Auto-provisioned local deployment record');
+      return true;
+    } else {
+      const text = await res.text();
+      console.error(`[AGENT] Auto-provision failed (${res.status}): ${text}`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[AGENT] Auto-provision request failed:', err);
+    return false;
+  }
+}
+
 // ── Heartbeat ───────────────────────────────────────────────────────────
 async function sendHeartbeat(): Promise<void> {
   try {
@@ -134,8 +165,19 @@ async function sendHeartbeat(): Promise<void> {
       const text = await response.text();
       console.error(`[AGENT] Heartbeat rejected (${response.status}): ${text}`);
       if (response.status === 403) {
-        console.error('[AGENT] Licence revoked or suspended. Shutting down.');
-        process.exit(1);
+        if (IS_LOCAL && !provisionAttempted) {
+          // On-premise: no deployment record exists yet — auto-provision
+          console.log('[AGENT] Local deployment not found. Auto-provisioning...');
+          const success = await autoProvision();
+          if (success) provisionAttempted = true;
+          return;
+        }
+        if (!IS_LOCAL) {
+          console.error('[AGENT] Licence revoked or suspended. Shutting down.');
+          process.exit(1);
+        }
+        // Local mode: keep retrying — DB may not be migrated yet
+        console.warn('[AGENT] Waiting for local API to accept heartbeats...');
       }
       return;
     }

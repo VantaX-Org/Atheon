@@ -67,7 +67,7 @@ app.use('*', cors({
     if (PRODUCTION_ORIGINS.includes(origin)) return origin;
     // Allow Cloudflare Pages preview deployments
     if (origin.endsWith('.atheon-33b.pages.dev')) return origin;
-    // Phase 1.6: Only allow localhost in non-production environments
+    // Allow localhost in non-production environments (includes on-premise and dev)
     const env = (c as unknown as { env: { ENVIRONMENT?: string } }).env;
     if (env?.ENVIRONMENT !== 'production' && DEV_ORIGINS.includes(origin)) return origin;
     return null as unknown as string;
