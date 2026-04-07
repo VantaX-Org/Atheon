@@ -880,13 +880,34 @@ export function ApexPage() {
  <p className="text-xs t-muted mt-1">Click &quot;New Scenario&quot; above to create your first what-if analysis.</p>
  </div>
  )}
-  {scenarios.map((scenario) => {
+   {scenarios.map((scenario) => {
   // Filter out internal/technical fields that should never be shown to users
   const hiddenFields = new Set(['model', 'source', 'generated_at', 'recommendation', 'analysis_points']);
-  const resultEntries: [string, string | number][] = scenario.results
-    ? Object.entries(scenario.results).filter(([key]) => !hiddenFields.has(key)).map(([k, v]) => [k, typeof v === 'number' ? v : String(v)])
+
+  // If recommendation contains embedded JSON, extract structured fields from it
+  let effectiveResults = scenario.results ? { ...scenario.results } : null;
+  if (effectiveResults && typeof effectiveResults.recommendation === 'string') {
+    const rec = (effectiveResults.recommendation as string).replace(/```json\s*/g, '').replace(/```/g, '').replace(/\*\*/g, '').replace(/\*/g, '').trim();
+    try {
+      const parsed = JSON.parse(rec) as Record<string, unknown>;
+      // If the recommendation string was actually a JSON object with known fields, merge them
+      if (parsed && typeof parsed === 'object' && ('npv_impact' in parsed || 'recommendation' in parsed || 'confidence' in parsed)) {
+        if (typeof parsed.recommendation === 'string') effectiveResults.recommendation = parsed.recommendation;
+        if (Array.isArray(parsed.analysis_points)) effectiveResults.analysis_points = parsed.analysis_points;
+        // Merge numeric/metric fields that aren't already set
+        for (const [k, v] of Object.entries(parsed)) {
+          if (k !== 'recommendation' && k !== 'analysis_points' && !(k in effectiveResults)) {
+            (effectiveResults as Record<string, unknown>)[k] = v;
+          }
+        }
+      }
+    } catch { /* not JSON, keep as-is */ }
+  }
+
+  const resultEntries: [string, string | number][] = effectiveResults
+    ? Object.entries(effectiveResults).filter(([key]) => !hiddenFields.has(key)).map(([k, v]) => [k, typeof v === 'number' ? v : String(v)])
     : [];
-  const hasResults = resultEntries.length > 0 || !!scenario.results?.recommendation;
+  const hasResults = resultEntries.length > 0 || !!effectiveResults?.recommendation;
   return (
    <Card key={scenario.id}>
     <div className="flex items-start justify-between">
@@ -910,8 +931,8 @@ export function ApexPage() {
        <div className="flex items-center gap-2 mb-3">
         <BarChart3 className="w-4 h-4 text-accent" />
         <h4 className="text-sm font-semibold t-primary">Results Overview</h4>
-        {/* Spec 7 LLM-4: AI unavailable indicator */}
-        {scenario.results?.source === 'fallback' && (
+         {/* Spec 7 LLM-4: AI unavailable indicator */}
+         {effectiveResults?.source === 'fallback' && (
           <Badge variant="warning" size="sm">AI unavailable — data-driven estimate</Badge>
         )}
        </div>
@@ -929,14 +950,15 @@ export function ApexPage() {
        )}
 
        {/* AI Analysis — Recommendation */}
-       {typeof scenario.results?.recommendation === 'string' && scenario.results.recommendation.length > 0 && (
+       {typeof effectiveResults?.recommendation === 'string' && effectiveResults.recommendation.length > 0 && (
        <div className="mb-4">
         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Analysis</h5>
         <div className="text-sm t-secondary leading-relaxed space-y-2">
-         {(scenario.results.recommendation as string)
+         {(effectiveResults.recommendation as string)
           .replace(/```json\s*/g, '').replace(/```/g, '')
           .replace(/\*\*/g, '').replace(/\*/g, '')
           .split('\n').filter((line: string) => line.trim())
+          .filter((line: string) => !/^[{}\[\]]+$/.test(line.trim()) && !/^"\w+"\s*:/.test(line.trim()))
           .map((line: string, i: number) => (
            <p key={i}>{line.trim()}</p>
           ))}
@@ -945,11 +967,11 @@ export function ApexPage() {
        )}
 
        {/* Analysis Points */}
-       {Array.isArray(scenario.results?.analysis_points) && (scenario.results.analysis_points as string[]).length > 0 && (
+       {Array.isArray(effectiveResults?.analysis_points) && (effectiveResults.analysis_points as string[]).length > 0 && (
        <div className="mb-4">
         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Key Findings</h5>
         <ul className="space-y-1.5">
-         {(scenario.results.analysis_points as string[]).map((point: string, i: number) => (
+         {(effectiveResults.analysis_points as string[]).map((point: string, i: number) => (
           <li key={i} className="flex items-start gap-2 text-sm t-secondary">
            <span className="text-accent mt-1">{'\u2022'}</span>
            <span>{String(point).replace(/\*\*/g, '').replace(/\*/g, '')}</span>
