@@ -1252,10 +1252,9 @@ seed.post('/seed-vantax', async (c) => {
       { metric: 'Revenue Recognition Compliance', severity: 'medium', deviation: -21.3, expectedValue: 95, actualValue: 73.7, description: 'Revenue recognition timing gap widening. SD billing documents not synchronized with FI revenue posting. Month-end cut-off procedures need review.' },
     ];
     for (const an of anomaliesData) {
-      const matchingMetricId = metricIds[processMetricsData.findIndex(p => p.name === an.metric)] || metricIds[0];
       await c.env.DB.prepare(
-        `INSERT INTO anomalies (id, tenant_id, metric_id, metric, severity, deviation, expected_value, actual_value, description, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
-      ).bind(crypto.randomUUID(), tenantId, matchingMetricId, an.metric, an.severity, an.deviation, an.expectedValue, an.actualValue, an.description, now).run();
+        `INSERT INTO anomalies (id, tenant_id, metric, severity, deviation, expected_value, actual_value, description, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
+      ).bind(crypto.randomUUID(), tenantId, an.metric, an.severity, an.deviation, an.expectedValue, an.actualValue, an.description, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${anomaliesData.length} anomalies`);
 
