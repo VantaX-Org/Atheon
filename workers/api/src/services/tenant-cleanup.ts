@@ -30,6 +30,7 @@ const TENANT_TABLES = [
   'scenarios',
   'anomalies',
   'process_flows',
+  'process_metric_history',
   'process_metrics',
   'correlation_events',
   'risk_alerts',
@@ -57,6 +58,7 @@ const TENANT_TABLES = [
   'run_comments',
   'sub_catalyst_run_items',
   'sub_catalyst_kpi_values',
+  'run_insights',
   'sub_catalyst_runs',
   'sub_catalyst_kpi_definitions',
   'sub_catalyst_kpis',
@@ -98,8 +100,6 @@ const TENANT_TABLES = [
   'trial_assessments',
   'onboarding_progress',
   // V2 Engine tables — Additional tenant-scoped tables
-  'run_insights',
-  'process_metric_history',
   'tenant_settings',
   // SAP ERP data tables
   'sap_bseg',
