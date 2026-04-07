@@ -13,7 +13,7 @@ import {
  ChevronDown, ChevronUp, Loader2, Upload, Calendar, AlertTriangle,
  Play, X, FileText, Plus, Settings, Database, Mail, Cloud, HardDrive, Trash2, AlertCircle,
  ScrollText, ArrowUpRight, MessageSquare, Cog, Link2, Sparkles, BarChart3, Activity, Users,
- Brain, TrendingUp, TrendingDown, GitBranch, RefreshCw, Target
+ Brain, TrendingUp, TrendingDown, GitBranch, RefreshCw, Target, MoreHorizontal
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
 import { useAppStore } from "@/stores/appStore";
@@ -79,6 +79,19 @@ export function CatalystsPage() {
 
  // Sub-Catalyst Ops Panel state
  const [opsPanel, setOpsPanel] = useState<{ clusterId: string; clusterName: string; subName: string } | null>(null);
+  // Overflow menu state for sub-catalyst action buttons
+ const [overflowMenu, setOverflowMenu] = useState<string | null>(null);
+ const overflowRef = useRef<HTMLDivElement>(null);
+
+ // Click-outside handler to dismiss overflow menu
+ useEffect(() => {
+   if (!overflowMenu) return;
+   const handler = (e: MouseEvent) => {
+     if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) setOverflowMenu(null);
+   };
+   document.addEventListener('mousedown', handler);
+   return () => document.removeEventListener('mousedown', handler);
+ }, [overflowMenu]);
 
  // Quick Run modal state (streamlined per-sub-catalyst execution)
  const [showQuickRun, setShowQuickRun] = useState(false);
@@ -807,7 +820,7 @@ export function CatalystsPage() {
  { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
  { id: 'execution-logs', label: 'Execution Logs', icon: <ScrollText size={14} /> },
  { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
-  ...(isAdmin ? [{ id: 'hitl-permissions', label: 'HITL Permissions', icon: <Users size={14} /> }] : []),
+  ...(isAdmin ? [{ id: 'hitl-permissions', label: 'Review Assignments', icon: <Users size={14} /> }] : []),
   { id: 'run-analytics', label: 'Run Analytics', icon: <BarChart3 size={14} /> },
   ...(isAdmin ? [{ id: 'governance', label: 'Governance', icon: <Shield size={14} /> }] : []),
  ];
@@ -921,32 +934,13 @@ export function CatalystsPage() {
  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
  <div className="space-y-4 flex-1">
  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
- <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Catalysts</h1>
+ <h1 className="text-3xl sm:text-4xl font-bold t-primary">Catalysts</h1>
  <Badge variant="info">Autonomous Execution</Badge>
  <SectionFreshness section="Catalyst Runs" />
  </div>
- <div className="flex items-center justify-between">
- <p className="text-base t-muted max-w-3xl">
- <strong>Execution layer for Teams & Workers.</strong> Catalysts are autonomous AI workers that execute business processes — from invoice processing to compliance checks — with full audit trails and human oversight.
- </p>
- <div className="flex items-center gap-2 flex-shrink-0">
+  <div className="flex items-center gap-2 flex-shrink-0">
  <CSVExportButton endpoint="/api/catalyst-intelligence/patterns" filename="catalyst-patterns.csv" label="Export Patterns" />
  <CSVExportButton endpoint="/api/roi" filename="roi-tracking.csv" label="Export ROI" />
- </div>
- </div>
- <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
- <p className="text-sm t-primary font-medium">Teams / Operational Staff</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
- <p className="text-sm t-primary font-medium">Process Execution & Tasks</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Generates Data For</p>
- <p className="text-sm t-primary font-medium">Pulse → Apex</p>
- </div>
  </div>
  </div>
  </div>
@@ -1169,26 +1163,29 @@ export function CatalystsPage() {
  )}
  </div>
  )}
- {/* Row 4: Action buttons */}
+  {/* Row 4: Action buttons — 2 buttons + overflow menu per UI cleanup */}
  <div className="flex items-center gap-1 pl-4">
- {sub.enabled && getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0 && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); handleExecuteSubCatalyst(cluster.id, sub.name); }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Execute reconciliation/comparison">
- {subExecuting === `${cluster.id}:${sub.name}`? <Loader2 size={10} className="mr-1 animate-spin" /> : <Activity size={10} className="mr-1" />} Execute
- </Button>
- )}
  {sub.enabled && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openQuickRun(cluster.id, cluster.name, sub.name); }} title="Quick run this sub-catalyst">
- <Play size={10} className="mr-1" /> Run
+ <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" onClick={(e) => { e.stopPropagation(); if (getSubDataSources(sub).length >= 2 && sub.field_mappings && sub.field_mappings.length > 0) { handleExecuteSubCatalyst(cluster.id, sub.name); } else { openQuickRun(cluster.id, cluster.name, sub.name); } }} disabled={subExecuting === `${cluster.id}:${sub.name}`} title="Run this sub-catalyst">
+ {subExecuting === `${cluster.id}:${sub.name}` ? <Loader2 size={10} className="mr-1 animate-spin" /> : <Play size={10} className="mr-1" />} Run
  </Button>
  )}
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
+ <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
  <BarChart3 size={10} className="mr-1 text-accent" /> Ops
  </Button>
- {isAdmin && (
- <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); openDataSourceConfig(cluster.id, sub); }} title="Configure data sources, schedule, execution mode and field mappings">
- <Settings size={10} className="mr-1 text-accent" /> Configure
+  <div className="relative" ref={overflowRef}>
+ <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={(e) => { e.stopPropagation(); setOverflowMenu(overflowMenu === `${cluster.id}:${sub.name}` ? null : `${cluster.id}:${sub.name}`); }} title="More actions">
+ <MoreHorizontal size={14} />
  </Button>
+ {overflowMenu === `${cluster.id}:${sub.name}` && (
+ <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border border-[var(--border-card)] bg-[var(--bg-primary)] shadow-lg py-1">
+ {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openDataSourceConfig(cluster.id, sub); }}><Database size={10} /> Configure Data Sources</button>}
+  {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openScheduleConfig(cluster.id, sub); }}><Calendar size={10} /> Set Schedule</button>}
+ {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openFieldMappingConfig(cluster.id, sub); }}><Link2 size={10} /> Field Mappings</button>}
+ {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openExecutionConfig(cluster.id, sub); }}><Cog size={10} /> Execution Mode</button>}
+ </div>
  )}
+ </div>
  </div>
  </div>
  ))}
@@ -1207,7 +1204,7 @@ export function CatalystsPage() {
  <div className="space-y-3">
  {actions.map((action) => renderActionCard(action, false))}
  {actions.length === 0 && (
- <div className="text-center py-12 text-gray-500"><Zap size={32} className="mx-auto mb-2 opacity-50" /><p className="text-sm">No catalyst actions yet</p></div>
+ <div className="flex items-center gap-3 py-6 px-4"><Zap size={16} className="t-muted opacity-40 flex-shrink-0" /><p className="text-sm t-muted">No catalyst actions yet</p></div>
  )}
  </div>
  </TabPanel>
@@ -1249,10 +1246,9 @@ export function CatalystsPage() {
  )}
 
  {!logsLoading && executionLogs.length === 0 && (
- <div className="text-center py-12 text-gray-500">
- <ScrollText size={32} className="mx-auto mb-2 opacity-50" />
- <p className="text-sm">No execution logs yet</p>
- <p className="text-xs t-muted mt-1">Run a catalyst to generate step-by-step execution logs.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <ScrollText size={16} className="t-muted opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No execution logs yet</p>
  </div>
  )}
 
@@ -1310,10 +1306,9 @@ export function CatalystsPage() {
  </div>
 
  {exceptionCount === 0 && (
- <div className="text-center py-12 text-gray-500">
- <CheckCircle size={32} className="mx-auto mb-2 text-emerald-500 opacity-50" />
- <p className="text-sm">No exceptions — all clear</p>
- <p className="text-xs t-muted mt-1">All catalyst actions are running normally.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <CheckCircle size={16} className="text-emerald-500 opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No exceptions — all clear</p>
  </div>
  )}
 
@@ -1426,7 +1421,7 @@ export function CatalystsPage() {
  <div className="space-y-4">
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
- <Users size={18} className="text-accent" /> HITL Permission Assignments
+ <Users size={18} className="text-accent" /> Review Assignments
  </h3>
  <p className="text-xs t-muted">{hitlConfigs.length} configuration{hitlConfigs.length !== 1 ? 's' : ''} active</p>
  </div>
@@ -1509,10 +1504,9 @@ export function CatalystsPage() {
  )}
 
  {!hitlLoading && clusters.length === 0 && (
- <div className="text-center py-12 text-gray-500">
- <Users size={32} className="mx-auto mb-2 opacity-50" />
- <p className="text-sm">No catalyst clusters configured</p>
- <p className="text-xs t-muted mt-1">Catalyst clusters are auto-provisioned when a system is connected. Assign HITL permissions once clusters appear.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <Users size={16} className="t-muted opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No catalyst clusters configured</p>
  </div>
  )}
  </div>
@@ -1560,10 +1554,9 @@ export function CatalystsPage() {
  )}
 
  {!analyticsLoading && runAnalytics.length === 0 && (
- <div className="text-center py-12 text-gray-500">
- <BarChart3 size={32} className="mx-auto mb-2 opacity-50" />
- <p className="text-sm">No run analytics yet</p>
- <p className="text-xs t-muted mt-1">Execute a catalyst to generate analytics data.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <BarChart3 size={16} className="t-muted opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No run analytics yet</p>
  </div>
  )}
 
@@ -2776,24 +2769,20 @@ export function CatalystsPage() {
     <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
    )}
    {!intellLoading && !intellOverview && (
-    <Card className="text-center py-12">
-     <Brain className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
-     <p className="text-sm font-medium t-primary">No intelligence data yet</p>
-     <p className="text-xs t-muted mt-1">Analyse catalyst runs to discover patterns, effectiveness, and dependencies.</p>
-     <Button variant="primary" size="sm" className="mt-4" onClick={loadIntelligence}>Load Intelligence</Button>
+    <Card className="flex items-center gap-3 py-6 px-4">
+     <Brain className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+     <p className="text-sm t-muted">No intelligence data yet</p>
+     <Button variant="primary" size="sm" className="ml-auto" onClick={loadIntelligence}>Load Intelligence</Button>
     </Card>
    )}
    {intellOverview && (
     <div className="space-y-4">
-     {/* Summary Cards */}
-     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+     {/* Summary Cards — reduced from 7 to 4 per UI cleanup */}
+     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <Card><div className="text-center"><p className="text-2xl font-bold text-amber-400">{intellOverview.summary.activePatterns}</p><p className="text-[10px] t-muted uppercase">Active Patterns</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold text-red-400">{intellOverview.summary.criticalPatterns}</p><p className="text-[10px] t-muted uppercase">Critical</p></div></Card>
-      <Card><div className="text-center"><p className="text-2xl font-bold t-primary">{intellOverview.summary.totalSubCatalysts}</p><p className="text-[10px] t-muted uppercase">Sub-Catalysts</p></div></Card>
-      <Card><div className="text-center"><p className="text-2xl font-bold text-emerald-400">{Math.round(intellOverview.summary.avgSuccessRate)}%</p><p className="text-[10px] t-muted uppercase">Avg Success</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold t-primary">R{(intellOverview.summary.totalValueProcessed / 1000).toFixed(0)}k</p><p className="text-[10px] t-muted uppercase">Value Processed</p></div></Card>
       <Card><div className="text-center"><p className="text-2xl font-bold text-purple-400">{intellOverview.summary.avgRoi > 0 ? '+' : ''}{Math.round(intellOverview.summary.avgRoi)}%</p><p className="text-[10px] t-muted uppercase">Avg ROI</p></div></Card>
-      <Card><div className="text-center"><p className="text-2xl font-bold text-accent">{intellOverview.summary.totalDependencies}</p><p className="text-[10px] t-muted uppercase">Dependencies</p></div></Card>
      </div>
 
      {/* ROI Card */}
