@@ -883,7 +883,9 @@ export function ApexPage() {
   {scenarios.map((scenario) => {
   // Filter out internal/technical fields that should never be shown to users
   const hiddenFields = new Set(['model', 'source', 'generated_at', 'recommendation', 'analysis_points']);
-  const resultEntries = scenario.results ? Object.entries(scenario.results).filter(([key]) => !hiddenFields.has(key)) : [];
+  const resultEntries: [string, string | number][] = scenario.results
+    ? Object.entries(scenario.results).filter(([key]) => !hiddenFields.has(key)).map(([k, v]) => [k, typeof v === 'number' ? v : String(v)])
+    : [];
   const hasResults = resultEntries.length > 0 || !!scenario.results?.recommendation;
   return (
    <Card key={scenario.id}>
@@ -920,18 +922,18 @@ export function ApexPage() {
         {resultEntries.map(([key, val]) => (
          <div key={key} className="p-2.5 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
           <span className="text-[10px] t-muted uppercase tracking-wider">{key.replace(/[_-]/g, ' ')}</span>
-          <p className="text-lg font-bold t-primary mt-0.5">{typeof val === 'number' ? val.toLocaleString() : String(val)}</p>
+          <p className="text-lg font-bold t-primary mt-0.5">{typeof val === 'number' ? val.toLocaleString() : val}</p>
          </div>
         ))}
        </div>
        )}
 
        {/* AI Analysis — Recommendation */}
-       {scenario.results?.recommendation && (
+       {typeof scenario.results?.recommendation === 'string' && scenario.results.recommendation.length > 0 && (
        <div className="mb-4">
         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Analysis</h5>
         <div className="text-sm t-secondary leading-relaxed space-y-2">
-         {String(scenario.results.recommendation)
+         {(scenario.results.recommendation as string)
           .replace(/```json\s*/g, '').replace(/```/g, '')
           .replace(/\*\*/g, '').replace(/\*/g, '')
           .split('\n').filter((line: string) => line.trim())
@@ -943,14 +945,14 @@ export function ApexPage() {
        )}
 
        {/* Analysis Points */}
-       {Array.isArray(scenario.results?.analysis_points) && scenario.results.analysis_points.length > 0 && (
+       {Array.isArray(scenario.results?.analysis_points) && (scenario.results.analysis_points as string[]).length > 0 && (
        <div className="mb-4">
         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Key Findings</h5>
         <ul className="space-y-1.5">
          {(scenario.results.analysis_points as string[]).map((point: string, i: number) => (
           <li key={i} className="flex items-start gap-2 text-sm t-secondary">
-           <span className="text-accent mt-1">•</span>
-           <span>{point.replace(/\*\*/g, '').replace(/\*/g, '')}</span>
+           <span className="text-accent mt-1">{'\u2022'}</span>
+           <span>{String(point).replace(/\*\*/g, '').replace(/\*/g, '')}</span>
           </li>
          ))}
         </ul>
