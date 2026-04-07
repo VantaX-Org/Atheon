@@ -1157,11 +1157,139 @@ seed.post('/seed-vantax', async (c) => {
       `).bind(crypto.randomUUID(), tenantId, sub.clusterId, sub.name).run();
     }
 
-    // STEP 12: Baseline health score (overwritten by first catalyst run)
+    // STEP 12: Realistic health score with dimensions
+    const healthDimensions = {
+      financial: { score: 75, trend: 'improving', delta: 4.2 },
+      operational: { score: 68, trend: 'stable', delta: 1.1 },
+      compliance: { score: 82, trend: 'improving', delta: 6.5 },
+      strategic: { score: 61, trend: 'declining', delta: -2.3 },
+      supply_chain: { score: 58, trend: 'declining', delta: -4.8 },
+      revenue: { score: 71, trend: 'improving', delta: 3.1 },
+    };
+    const overallHealthScore = Math.round(Object.values(healthDimensions).reduce((s, d) => s + d.score, 0) / Object.keys(healthDimensions).length);
     await c.env.DB.prepare(`
       INSERT INTO health_scores (id, tenant_id, overall_score, dimensions, calculated_at)
-      VALUES (?, ?, 0, '{}', ?)
-    `).bind(crypto.randomUUID(), tenantId, now).run();
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), tenantId, overallHealthScore, JSON.stringify(healthDimensions), now).run();
+
+    // STEP 12b: Health score history for trend sparklines (6 months)
+    const healthHistory = [
+      { offset: -5, score: 48, dims: { financial: 45, operational: 42, compliance: 52, strategic: 55, supply_chain: 50, revenue: 44 } },
+      { offset: -4, score: 54, dims: { financial: 52, operational: 48, compliance: 58, strategic: 60, supply_chain: 55, revenue: 51 } },
+      { offset: -3, score: 59, dims: { financial: 58, operational: 55, compliance: 65, strategic: 63, supply_chain: 58, revenue: 56 } },
+      { offset: -2, score: 63, dims: { financial: 65, operational: 60, compliance: 72, strategic: 64, supply_chain: 62, revenue: 60 } },
+      { offset: -1, score: 67, dims: { financial: 70, operational: 65, compliance: 78, strategic: 63, supply_chain: 60, revenue: 66 } },
+      { offset: 0, score: overallHealthScore, dims: Object.fromEntries(Object.entries(healthDimensions).map(([k, v]) => [k, v.score])) },
+    ];
+    for (const hh of healthHistory) {
+      const d = new Date(); d.setMonth(d.getMonth() + hh.offset);
+      const hhDims = Object.fromEntries(Object.entries(hh.dims).map(([k, v]) => [k, { score: v, trend: v > 60 ? 'improving' : 'stable', delta: Math.round((Math.random() * 6 - 2) * 10) / 10 }]));
+      await c.env.DB.prepare(
+        `INSERT INTO health_score_history (id, tenant_id, overall_score, dimensions, catalyst_name, recorded_at) VALUES (?, ?, ?, ?, 'System Health Check', ?)`
+      ).bind(crypto.randomUUID(), tenantId, hh.score, JSON.stringify(hhDims), d.toISOString()).run();
+    }
+    console.log('[VantaX Seeder] Seeded health score + 6 history records');
+
+    // STEP 12c: Process Metrics with trend arrays
+    const processMetricsData = [
+      { name: 'AP Invoice Match Rate', value: 81.25, unit: '%', status: 'amber', domain: 'finance', category: 'reconciliation', thresholdGreen: 95, thresholdAmber: 80, thresholdRed: 60, trend: [76.5, 78.2, 79.1, 80.3, 81.25], sourceSystem: 'SAP FI' },
+      { name: 'Bank Reconciliation Rate', value: 68.75, unit: '%', status: 'red', domain: 'finance', category: 'reconciliation', thresholdGreen: 95, thresholdAmber: 80, thresholdRed: 60, trend: [75.0, 73.2, 71.5, 70.1, 68.75], sourceSystem: 'SAP FI' },
+      { name: 'Inventory Accuracy', value: 55.6, unit: '%', status: 'red', domain: 'supply_chain', category: 'inventory', thresholdGreen: 95, thresholdAmber: 80, thresholdRed: 60, trend: [60.0, 58.5, 57.2, 56.4, 55.6], sourceSystem: 'SAP MM' },
+      { name: 'Sales Order Fulfillment', value: 89.3, unit: '%', status: 'amber', domain: 'revenue', category: 'order_management', thresholdGreen: 95, thresholdAmber: 85, thresholdRed: 70, trend: [85.0, 86.5, 87.8, 88.6, 89.3], sourceSystem: 'SAP SD' },
+      { name: 'GR/IR Match Rate', value: 81.25, unit: '%', status: 'amber', domain: 'finance', category: 'reconciliation', thresholdGreen: 95, thresholdAmber: 80, thresholdRed: 60, trend: [78.5, 79.2, 80.1, 80.8, 81.25], sourceSystem: 'SAP MM' },
+      { name: 'Production OEE', value: 72.5, unit: '%', status: 'red', domain: 'operational', category: 'production', thresholdGreen: 85, thresholdAmber: 75, thresholdRed: 60, trend: [74.1, 73.5, 73.0, 72.8, 72.5], sourceSystem: 'SAP PP' },
+      { name: 'Revenue Recognition Compliance', value: 73.7, unit: '%', status: 'amber', domain: 'compliance', category: 'ifrs', thresholdGreen: 95, thresholdAmber: 70, thresholdRed: 50, trend: [68.0, 70.2, 71.5, 72.8, 73.7], sourceSystem: 'SAP FI' },
+      { name: 'Supplier Lead Time', value: 14.2, unit: 'days', status: 'amber', domain: 'supply_chain', category: 'procurement', thresholdGreen: 10, thresholdAmber: 15, thresholdRed: 21, trend: [12.5, 13.1, 13.6, 13.9, 14.2], sourceSystem: 'SAP MM' },
+      { name: 'Cash Conversion Cycle', value: 42, unit: 'days', status: 'green', domain: 'finance', category: 'treasury', thresholdGreen: 45, thresholdAmber: 60, thresholdRed: 90, trend: [48.0, 46.5, 45.0, 43.5, 42.0], sourceSystem: 'SAP FI' },
+      { name: 'Customer Satisfaction Score', value: 78.5, unit: '%', status: 'amber', domain: 'revenue', category: 'customer', thresholdGreen: 85, thresholdAmber: 70, thresholdRed: 55, trend: [74.0, 75.5, 76.8, 77.6, 78.5], sourceSystem: 'CRM' },
+    ];
+    const metricIds: string[] = [];
+    for (const pm of processMetricsData) {
+      const pmId = crypto.randomUUID();
+      metricIds.push(pmId);
+      await c.env.DB.prepare(
+        `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, domain, category, threshold_green, threshold_amber, threshold_red, trend, source_system, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(pmId, tenantId, pm.name, pm.value, pm.unit, pm.status, pm.domain, pm.category, pm.thresholdGreen, pm.thresholdAmber, pm.thresholdRed, JSON.stringify(pm.trend), pm.sourceSystem, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${processMetricsData.length} process metrics`);
+
+    // STEP 12d: Process Metric History for "Metrics Over Time" chart
+    for (let mi = 0; mi < Math.min(3, processMetricsData.length); mi++) {
+      const pm = processMetricsData[mi];
+      for (let mo = -5; mo <= 0; mo++) {
+        const d = new Date(); d.setMonth(d.getMonth() + mo);
+        const histVal = pm.trend[Math.max(0, mo + 5)] ?? pm.value;
+        await c.env.DB.prepare(
+          `INSERT INTO process_metric_history (id, tenant_id, metric_id, value, recorded_at) VALUES (?, ?, ?, ?, ?)`
+        ).bind(crypto.randomUUID(), tenantId, metricIds[mi], histVal, d.toISOString()).run();
+      }
+    }
+    console.log('[VantaX Seeder] Seeded process metric history (18 records)');
+
+    // STEP 12e: Risk Alerts
+    const riskAlerts = [
+      { title: 'Critical Inventory Shrinkage', description: 'Inventory accuracy at 55.6% — well below the 80% threshold. Physical count variances indicate potential theft, spoilage, or receiving errors across 4 warehouse locations.', severity: 'critical', category: 'operational', probability: 0.85, impactValue: 2450000, actions: ['Immediate cycle count of high-value items', 'Review warehouse access controls', 'Audit receiving processes'] },
+      { title: 'Bank Reconciliation Backlog', description: 'Unreconciled bank transactions at 31.25% — 15 unmatched EFT payments and 10 unallocated bank fees. Risk of misstated cash position and delayed financial reporting.', severity: 'high', category: 'financial', probability: 0.72, impactValue: 890000, actions: ['Clear backlog of unmatched EFTs', 'Implement auto-matching rules for recurring payments', 'Review bank fee allocation process'] },
+      { title: 'Revenue Recognition Non-Compliance', description: '26.3% of revenue not recognized in the correct period per IFRS 15. Timing differences between SD billing and FI revenue posting create compliance exposure.', severity: 'high', category: 'compliance', probability: 0.65, impactValue: 1200000, actions: ['Review SD-FI integration configuration', 'Audit revenue recognition cut-off procedures', 'Implement automated IFRS 15 checks'] },
+      { title: 'Duplicate Payment Exposure', description: 'AP invoice validation detected potential duplicate payments totalling R180K. Weak duplicate detection in SAP invoice verification (MIRO) allows same-vendor invoices with minor reference variations.', severity: 'medium', category: 'financial', probability: 0.45, impactValue: 180000, actions: ['Enable SAP duplicate invoice check (OMR6)', 'Run retrospective duplicate payment analysis', 'Strengthen vendor invoice reference standards'] },
+      { title: 'Load Shedding Production Impact', description: 'Stage 4 load shedding reducing production output by 15-20%. Generator switchover taking 15 minutes per event, with 3-4 events daily. OEE dropped to 72.5%.', severity: 'critical', category: 'operational', probability: 0.90, impactValue: 3500000, actions: ['Install automatic transfer switches', 'Increase diesel fuel reserves to 7-day buffer', 'Shift production schedules to off-peak windows'] },
+      { title: 'Rand Depreciation Margin Pressure', description: 'ZAR past R19/USD creating 8-12% cost increase on imported raw materials. Current hedging covers only 40% of FX exposure. Gross margins under pressure.', severity: 'high', category: 'financial', probability: 0.80, impactValue: 2100000, actions: ['Increase FX hedge ratio to 70%', 'Renegotiate supplier contracts with ZAR escalation clauses', 'Identify local alternative suppliers'] },
+      { title: 'Supplier Concentration Risk', description: '3 critical raw material suppliers account for 65% of procurement spend. Loss of any single supplier would halt production within 2 weeks.', severity: 'medium', category: 'strategic', probability: 0.30, impactValue: 5000000, actions: ['Diversify supplier base — qualify 2 additional suppliers per category', 'Increase safety stock for critical items', 'Negotiate dual-source agreements'] },
+    ];
+    for (const ra of riskAlerts) {
+      await c.env.DB.prepare(
+        `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, 'active', ?)`
+      ).bind(crypto.randomUUID(), tenantId, ra.title, ra.description, ra.severity, ra.category, ra.probability, ra.impactValue, JSON.stringify(ra.actions), now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${riskAlerts.length} risk alerts`);
+
+    // STEP 12f: Anomalies
+    const anomaliesData = [
+      { metric: 'Inventory Accuracy', severity: 'critical', deviation: -24.4, expectedValue: 80, actualValue: 55.6, description: 'Inventory accuracy dropped significantly below threshold. 4 storage locations showing shrinkage patterns consistent with systematic receiving errors.' },
+      { metric: 'Bank Reconciliation Rate', severity: 'high', deviation: -16.25, expectedValue: 85, actualValue: 68.75, description: 'Sharp decline in bank reconciliation rate over past 3 months. Unmatched EFT payments increasing — likely caused by new payment reference format from major customer.' },
+      { metric: 'Production OEE', severity: 'high', deviation: -12.5, expectedValue: 85, actualValue: 72.5, description: 'OEE declining due to load shedding disruptions. Availability component dropped 18 points while performance and quality remain stable.' },
+      { metric: 'Supplier Lead Time', severity: 'medium', deviation: 42.0, expectedValue: 10, actualValue: 14.2, description: 'Average supplier lead time increasing. Durban port congestion adding 3-5 days to import shipments. Domestic suppliers unaffected.' },
+      { metric: 'Revenue Recognition Compliance', severity: 'medium', deviation: -21.3, expectedValue: 95, actualValue: 73.7, description: 'Revenue recognition timing gap widening. SD billing documents not synchronized with FI revenue posting. Month-end cut-off procedures need review.' },
+    ];
+    for (const an of anomaliesData) {
+      const matchingMetricId = metricIds[processMetricsData.findIndex(p => p.name === an.metric)] || metricIds[0];
+      await c.env.DB.prepare(
+        `INSERT INTO anomalies (id, tenant_id, metric_id, metric, severity, deviation, expected_value, actual_value, description, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
+      ).bind(crypto.randomUUID(), tenantId, matchingMetricId, an.metric, an.severity, an.deviation, an.expectedValue, an.actualValue, an.description, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${anomaliesData.length} anomalies`);
+
+    // STEP 12g: Catalyst Actions
+    const catalystActionsData = [
+      { clusterId: financeClusterId, catalystName: 'GR/IR Reconciliation', action: 'Auto-matched 45 of 55 GR/IR items with 87.2% confidence', status: 'completed', confidence: 0.872, reasoning: 'High match rates on PO-invoice pairs with exact quantity and within 1% price tolerance.' },
+      { clusterId: financeClusterId, catalystName: 'AP Invoice Validation', action: 'Flagged 3 potential duplicate invoices totalling R52,400', status: 'pending', confidence: 0.78, reasoning: 'Vendor reference patterns suggest possible duplicate submissions. Manual review recommended.' },
+      { clusterId: financeClusterId, catalystName: 'Bank Reconciliation', action: 'Reconciled 55 of 80 bank transactions automatically', status: 'completed', confidence: 0.845, reasoning: 'EFT payments matched using reference and amount. 15 items require manual matching due to new reference format.' },
+      { clusterId: supplyChainClusterId, catalystName: 'Inventory Reconciliation', action: 'Identified 4 high-value items with >10% count variance', status: 'in_progress', confidence: 0.91, reasoning: 'Systematic shortage pattern in Warehouse B — possible receiving process breakdown.' },
+      { clusterId: revenueClusterId, catalystName: 'Sales Order Matching', action: 'Matched 55 of 80 billing documents to AR postings', status: 'completed', confidence: 0.82, reasoning: 'Primary match on document number and amount. 10 items show amount variances within tolerance.' },
+      { clusterId: supplyChainClusterId, catalystName: 'Demand Forecasting', action: 'Generated Q3 demand forecast — 12% volume increase projected', status: 'completed', confidence: 0.74, reasoning: 'Seasonal patterns and order pipeline analysis suggest Q3 uptick. Load shedding impact factored in as 8% production constraint.' },
+      { clusterId: financeClusterId, catalystName: 'AP Invoice Validation', action: 'Processing R1.2M in pending invoice approvals', status: 'in_progress', confidence: 0.85, reasoning: 'Batch of 12 invoices from 3 major suppliers awaiting 3-way match verification.' },
+    ];
+    for (const ca of catalystActionsData) {
+      await c.env.DB.prepare(
+        `INSERT INTO catalyst_actions (id, tenant_id, cluster_id, catalyst_name, action, status, confidence, reasoning, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), tenantId, ca.clusterId, ca.catalystName, ca.action, ca.status, ca.confidence, ca.reasoning, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${catalystActionsData.length} catalyst actions`);
+
+    // STEP 12h: Agent Deployments (Control Plane)
+    const agentDeployments = [
+      { clusterId: financeClusterId, name: 'Finance Reconciliation Agent', agentType: 'reconciliation', status: 'running', version: '2.4.1', healthScore: 94, uptime: 99.7, tasksExecuted: 1245 },
+      { clusterId: supplyChainClusterId, name: 'Supply Chain Monitor', agentType: 'monitoring', status: 'running', version: '2.4.1', healthScore: 88, uptime: 98.5, tasksExecuted: 892 },
+      { clusterId: revenueClusterId, name: 'Revenue Cycle Agent', agentType: 'reconciliation', status: 'running', version: '2.4.1', healthScore: 91, uptime: 99.2, tasksExecuted: 678 },
+      { clusterId: financeClusterId, name: 'AP Validation Agent', agentType: 'validation', status: 'running', version: '2.3.8', healthScore: 96, uptime: 99.9, tasksExecuted: 2034 },
+      { clusterId: null, name: 'Radar Signal Collector', agentType: 'intelligence', status: 'running', version: '1.2.0', healthScore: 85, uptime: 97.8, tasksExecuted: 156 },
+    ];
+    for (const ad of agentDeployments) {
+      await c.env.DB.prepare(
+        `INSERT INTO agent_deployments (id, tenant_id, cluster_id, name, agent_type, status, deployment_model, version, health_score, uptime, tasks_executed, config, last_heartbeat) VALUES (?, ?, ?, ?, ?, ?, 'saas', ?, ?, ?, ?, '{}', ?)`
+      ).bind(crypto.randomUUID(), tenantId, ad.clusterId, ad.name, ad.agentType, ad.status, ad.version, ad.healthScore, ad.uptime, ad.tasksExecuted, now).run();
+    }
+    console.log(`[VantaX Seeder] Seeded ${agentDeployments.length} agent deployments`);
 
     // Step 10: Create Executive Briefing
     await c.env.DB.prepare(`
@@ -1193,9 +1321,9 @@ seed.post('/seed-vantax', async (c) => {
       ]),
       now,
       -1.2,  // health_delta
-      2,     // red_metric_count
-      1,     // anomaly_count
-      4      // active_risk_count
+      3,     // red_metric_count (Bank Recon, Inventory, OEE)
+      5,     // anomaly_count
+      7      // active_risk_count
     ).run();
 
     // ── STEP: Seed Apex Radar signals + impacts ──
@@ -1738,7 +1866,15 @@ seed.post('/seed-vantax', async (c) => {
           withDataSources: allSubCatalysts.filter(s => s.data_sources && s.data_sources.length > 0).length,
           reconciliationReady: allSubCatalysts.filter(s => s.data_sources && s.data_sources.length >= 2).length,
         },
-        healthScore: { overall: 0, note: 'Baseline - will be calculated on first catalyst run' },
+        healthScore: { overall: overallHealthScore, dimensions: Object.keys(healthDimensions).length, historyRecords: healthHistory.length },
+        dashboardData: {
+          processMetrics: processMetricsData.length,
+          processMetricHistory: Math.min(3, processMetricsData.length) * 6,
+          riskAlerts: riskAlerts.length,
+          anomalies: anomaliesData.length,
+          catalystActions: catalystActionsData.length,
+          agentDeployments: agentDeployments.length,
+        },
         newEngines: {
           radarSignals: radarSignals.length,
           radarImpacts: impactData.length,
