@@ -271,7 +271,9 @@ function buildInstallConfig(deploymentId: string, licenceKey: string, config: Re
       `JWT_SECRET=CHANGEME_32_CHARS_MIN`,
       `ENCRYPTION_KEY=CHANGEME_32_CHARS_MIN`,
     ].join('\n'),
-    installCommand: `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId}`,
+    installCommand: deploymentType === 'on-premise'
+      ? `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId}`
+      : `curl -sSL https://atheon.vantax.co.za/install.sh | bash -s -- --licence-key ${licenceKey} --deployment-id ${deploymentId} --control-plane https://atheon-api.vantax.co.za`,
   };
 }
 
