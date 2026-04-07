@@ -79,8 +79,19 @@ export function CatalystsPage() {
 
  // Sub-Catalyst Ops Panel state
  const [opsPanel, setOpsPanel] = useState<{ clusterId: string; clusterName: string; subName: string } | null>(null);
- // Overflow menu state for sub-catalyst action buttons
+  // Overflow menu state for sub-catalyst action buttons
  const [overflowMenu, setOverflowMenu] = useState<string | null>(null);
+ const overflowRef = useRef<HTMLDivElement>(null);
+
+ // Click-outside handler to dismiss overflow menu
+ useEffect(() => {
+   if (!overflowMenu) return;
+   const handler = (e: MouseEvent) => {
+     if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) setOverflowMenu(null);
+   };
+   document.addEventListener('mousedown', handler);
+   return () => document.removeEventListener('mousedown', handler);
+ }, [overflowMenu]);
 
  // Quick Run modal state (streamlined per-sub-catalyst execution)
  const [showQuickRun, setShowQuickRun] = useState(false);
@@ -1162,16 +1173,16 @@ export function CatalystsPage() {
  <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" onClick={(e) => { e.stopPropagation(); setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name }); }} title="View operations dashboard">
  <BarChart3 size={10} className="mr-1 text-accent" /> Ops
  </Button>
- <div className="relative">
+  <div className="relative" ref={overflowRef}>
  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={(e) => { e.stopPropagation(); setOverflowMenu(overflowMenu === `${cluster.id}:${sub.name}` ? null : `${cluster.id}:${sub.name}`); }} title="More actions">
  <MoreHorizontal size={14} />
  </Button>
  {overflowMenu === `${cluster.id}:${sub.name}` && (
  <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border border-[var(--border-card)] bg-[var(--bg-primary)] shadow-lg py-1">
  {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openDataSourceConfig(cluster.id, sub); }}><Database size={10} /> Configure Data Sources</button>}
- <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openScheduleConfig(cluster.id, sub); }}><Calendar size={10} /> Set Schedule</button>
- <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openFieldMappingConfig(cluster.id, sub); }}><Link2 size={10} /> Field Mappings</button>
- <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openExecutionConfig(cluster.id, sub); }}><Cog size={10} /> Execution Mode</button>
+  {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openScheduleConfig(cluster.id, sub); }}><Calendar size={10} /> Set Schedule</button>}
+ {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openFieldMappingConfig(cluster.id, sub); }}><Link2 size={10} /> Field Mappings</button>}
+ {isAdmin && <button className="w-full text-left px-3 py-1.5 text-xs t-secondary hover:bg-[var(--bg-secondary)] flex items-center gap-2" onClick={(e) => { e.stopPropagation(); setOverflowMenu(null); openExecutionConfig(cluster.id, sub); }}><Cog size={10} /> Execution Mode</button>}
  </div>
  )}
  </div>
