@@ -140,7 +140,7 @@ export function ApexPage() {
    const data = await api.apex.healthDimension(dimension);
    if (!data || data.score === null) {
      console.warn('No traceability data available for dimension:', dimension);
-     alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+     setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
      return;
    }
    setTraceabilityData(data);
@@ -148,7 +148,7 @@ export function ApexPage() {
    setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load dimension traceability:', err);
-   alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+   setActionError('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
   }
  };
  
@@ -157,7 +157,7 @@ export function ApexPage() {
    const data = await api.apex.riskTrace(riskId);
    if (!data || !data.riskAlert) {
      console.warn('No traceability data available for risk:', riskId);
-     alert('No traceability data available for this risk.');
+     setActionError('No traceability data available for this risk.');
      return;
    }
    setTraceabilityData(data);
@@ -165,7 +165,7 @@ export function ApexPage() {
    setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load risk traceability:', err);
-   alert('Failed to load risk traceability data.');
+   setActionError('Failed to load risk traceability data.');
   }
  };
 
@@ -245,32 +245,18 @@ export function ApexPage() {
  { id: 'peer-benchmarks', label: 'Peer Benchmarks', icon: <Globe size={14} />, count: peerBenchmarks?.benchmarks?.length || undefined },
  ];
 
+  const pageHeader = (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <h1 className="text-3xl sm:text-4xl font-bold t-primary">Apex</h1>
+      <Badge variant="info">Executive Intelligence</Badge>
+      <SectionFreshness section="Health" />
+    </div>
+  );
+
   if (loading) {
   return (
   <div className="space-y-6 animate-fadeIn">
-  <div className="space-y-4">
-  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-  <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Apex</h1>
-  <Badge variant="info">Executive Intelligence</Badge>
-  </div>
-  <p className="text-base t-muted max-w-3xl">
-  <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
-  </p>
-  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-  <p className="text-sm t-primary font-medium">Executive / Board</p>
-  </div>
-  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-  <p className="text-sm t-primary font-medium">Business Health & Risk</p>
-  </div>
-  <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-  <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
-  <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
-  </div>
-  </div>
-  </div>
+  {pageHeader}
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
   {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
   </div>
@@ -284,28 +270,7 @@ export function ApexPage() {
   return (
  <div className="space-y-6 animate-fadeIn">
  <div className="space-y-4">
- <div className="flex flex-col sm:flex-row sm:items-center gap-3">
- <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Apex</h1>
- <Badge variant="info">Executive Intelligence</Badge>
- <SectionFreshness section="Health" />
- </div>
- <p className="text-base t-muted max-w-3xl">
- <strong>Strategic oversight for C-Suite & Board.</strong> Apex transforms enterprise data into executive intelligence — business health scores, risk alerts, and what-if scenario modeling.
- </p>
- <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
- <p className="text-sm t-primary font-medium">Executive / Board</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
- <p className="text-sm t-primary font-medium">Business Health & Risk</p>
- </div>
- <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
- <p className="text-sm t-primary font-medium">Pulse → Catalysts</p>
- </div>
- </div>
+ {pageHeader}
  <div className="flex items-center gap-2 flex-shrink-0">
  <CSVExportButton endpoint="/api/radar/signals" filename="apex-radar-signals.csv" label="Export Signals" />
  <CSVExportButton endpoint="/api/board-report" filename="board-reports.csv" label="Export Reports" />
@@ -467,15 +432,14 @@ export function ApexPage() {
    <Card className="lg:col-span-2">
     <h3 className="text-lg font-semibold t-primary mb-4">Business Dimensions</h3>
     {dimensions.length === 0 || overallScore === 0 ? (
-     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <Crown className="w-10 h-10 t-muted mb-3 opacity-30" />
-      <p className="text-sm t-muted">No dimensions available yet.</p>
-      <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating executive insights.</p>
+     <div className="flex items-center gap-3 py-6 px-4">
+      <Crown className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+      <p className="text-sm t-muted">No dimensions available yet</p>
      </div>
     ) : (
      <div className="space-y-4">
       {dimensions.map((dim) => (
-       <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+       <div key={dim.key} className="group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
         <div className="sm:w-44 flex-shrink-0">
          <span className="text-sm t-secondary">{dim.name}</span>
         </div>
@@ -495,10 +459,10 @@ export function ApexPage() {
          <Sparkline data={dim.sparkline} width={60} height={20} color={dim.score >= 80 ? '#10b981' : dim.score >= 60 ? '#f59e0b' : '#ef4444'} />
          <button
           onClick={() => handleOpenDimensionTrace(dim.key)}
-          className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors ml-2"
+          className="opacity-0 group-hover:opacity-100 text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-all ml-2"
           title={`Trace ${dim.name}`}
          >
-          <Eye size={10} /> Trace
+          <Eye size={10} />
          </button>
         </div>
        </div>
@@ -508,128 +472,68 @@ export function ApexPage() {
    </Card>
   </div>
 
-  {/* Status Breakdown Cards (Flippable) */}
+  {/* Status Breakdown Cards (Static — FlipCards removed per UI cleanup) */}
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-   {/* Dimensions */}
-   <FlipCard
-    isFlipped={!!flippedCards['apex-dims']}
-    onFlip={() => toggleFlip('apex-dims')}
-    front={
-     <Card hover className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
-       <Gauge size={14} className="text-accent" />
+   <Card className="h-full">
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
+     <Gauge size={14} className="text-accent" />
+    </div>
+    <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
+    <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+     {dimensions.slice(0, 3).map((d) => (
+      <div key={d.key} className="flex items-center justify-between text-[10px]">
+       <span className="t-secondary truncate mr-2">{d.name}</span>
+       <span className={`font-medium ${d.score >= 80 ? 'text-emerald-400' : d.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{d.score}</span>
       </div>
-      <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
-     </Card>
-    }
-    back={
-     <Card className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs font-semibold t-primary">All Dimensions</span>
+     ))}
+    </div>
+   </Card>
+   <Card className="h-full">
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+     <CheckCircle2 size={14} className="text-emerald-400" />
+    </div>
+    <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
+    <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+     {dimensions.filter(d => d.score >= 80).slice(0, 3).map((d) => (
+      <div key={d.key} className="flex items-center justify-between text-[10px]">
+       <span className="t-secondary truncate mr-2">{d.name}</span>
+       <span className="font-medium text-emerald-400">{d.score}</span>
       </div>
-      <div className="space-y-1 max-h-32 overflow-y-auto">
-       {dimensions.map((d) => (
-        <div key={d.key} className="flex items-center justify-between text-[10px]">
-         <span className="t-secondary truncate mr-2">{d.name}</span>
-         <span className={`font-medium ${d.score >= 80 ? 'text-emerald-400' : d.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{d.score}</span>
-        </div>
-       ))}
-       {dimensions.length === 0 && <p className="text-[9px] t-muted text-center py-2">No dimensions yet</p>}
+     ))}
+    </div>
+   </Card>
+   <Card className="h-full">
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
+     <AlertTriangle size={14} className="text-amber-400" />
+    </div>
+    <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
+    <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+     {dimensions.filter(d => d.score >= 60 && d.score < 80).slice(0, 3).map((d) => (
+      <div key={d.key} className="flex items-center justify-between text-[10px]">
+       <span className="t-secondary truncate mr-2">{d.name}</span>
+       <span className="font-medium text-amber-400">{d.score}</span>
       </div>
-     </Card>
-    }
-   />
-   {/* Healthy */}
-   <FlipCard
-    isFlipped={!!flippedCards['apex-healthy']}
-    onFlip={() => toggleFlip('apex-healthy')}
-    front={
-     <Card hover className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
-       <CheckCircle2 size={14} className="text-emerald-400" />
+     ))}
+    </div>
+   </Card>
+   <Card className="h-full">
+    <div className="flex items-center justify-between mb-2">
+     <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+     <XCircle size={14} className="text-red-400" />
+    </div>
+    <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
+    <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+     {dimensions.filter(d => d.score < 60).slice(0, 3).map((d) => (
+      <div key={d.key} className="flex items-center justify-between text-[10px]">
+       <span className="t-secondary truncate mr-2">{d.name}</span>
+       <span className="font-medium text-red-400">{d.score}</span>
       </div>
-      <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
-     </Card>
-    }
-    back={
-     <Card className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs font-semibold text-emerald-400">Healthy Dimensions</span>
-      </div>
-      <div className="space-y-1 max-h-32 overflow-y-auto">
-       {dimensions.filter(d => d.score >= 80).map((d) => (
-        <div key={d.key} className="flex items-center justify-between text-[10px]">
-         <span className="t-secondary truncate mr-2">{d.name}</span>
-         <span className="font-medium text-emerald-400">{d.score}</span>
-        </div>
-       ))}
-       {dimensions.filter(d => d.score >= 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy dimensions</p>}
-      </div>
-     </Card>
-    }
-   />
-   {/* At Risk */}
-   <FlipCard
-    isFlipped={!!flippedCards['apex-atrisk']}
-    onFlip={() => toggleFlip('apex-atrisk')}
-    front={
-     <Card hover className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
-       <AlertTriangle size={14} className="text-amber-400" />
-      </div>
-      <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
-     </Card>
-    }
-    back={
-     <Card className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs font-semibold text-amber-400">At Risk Dimensions</span>
-      </div>
-      <div className="space-y-1 max-h-32 overflow-y-auto">
-       {dimensions.filter(d => d.score >= 60 && d.score < 80).map((d) => (
-        <div key={d.key} className="flex items-center justify-between text-[10px]">
-         <span className="t-secondary truncate mr-2">{d.name}</span>
-         <span className="font-medium text-amber-400">{d.score}</span>
-        </div>
-       ))}
-       {dimensions.filter(d => d.score >= 60 && d.score < 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No at-risk dimensions</p>}
-      </div>
-     </Card>
-    }
-   />
-   {/* Critical */}
-   <FlipCard
-    isFlipped={!!flippedCards['apex-critical']}
-    onFlip={() => toggleFlip('apex-critical')}
-    front={
-     <Card hover className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
-       <XCircle size={14} className="text-red-400" />
-      </div>
-      <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
-     </Card>
-    }
-    back={
-     <Card className="h-full">
-      <div className="flex items-center justify-between mb-2">
-       <span className="text-xs font-semibold text-red-400">Critical Dimensions</span>
-      </div>
-      <div className="space-y-1 max-h-32 overflow-y-auto">
-       {dimensions.filter(d => d.score < 60).map((d) => (
-        <div key={d.key} className="flex items-center justify-between text-[10px]">
-         <span className="t-secondary truncate mr-2">{d.name}</span>
-         <span className="font-medium text-red-400">{d.score}</span>
-        </div>
-       ))}
-       {dimensions.filter(d => d.score < 60).length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical dimensions</p>}
-      </div>
-     </Card>
-    }
-   />
+     ))}
+    </div>
+   </Card>
   </div>
 
   {/* Executive Summary + Risk Snapshot */}
@@ -725,10 +629,9 @@ export function ApexPage() {
  )}
  </>
  ) : (
- <div className="flex flex-col items-center justify-center py-8 text-center">
- <FileText className="w-10 h-10 t-muted mb-3 opacity-30" />
- <p className="text-sm t-muted">No executive briefing generated yet.</p>
- <p className="text-xs t-muted mt-1">Run a catalyst to generate your first briefing.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <FileText className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No executive briefing generated yet</p>
  </div>
  )}
  </Card>
@@ -803,17 +706,16 @@ export function ApexPage() {
  {activeTab === 'risks' && (
  <TabPanel><div className="space-y-4">
  {risks.length === 0 && (
- <div className="flex flex-col items-center justify-center py-12 text-center">
- <Shield className="w-10 h-10 t-muted mb-3 opacity-30" />
- <p className="text-sm t-muted">No risk alerts detected yet.</p>
- <p className="text-xs t-muted mt-1">Run a catalyst to scan for organisational risks.</p>
+  <div className="flex items-center gap-3 py-6 px-4">
+ <Shield className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+ <p className="text-sm t-muted">No risk alerts detected yet</p>
  </div>
  )}
  {risks.map((risk) => (
  <div
  key={risk.id}
- onClick={() => setExpandedRisk(expandedRisk === risk.id ? null : risk.id)}
- className="rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-all"
+  onClick={() => setExpandedRisk(expandedRisk === risk.id ? null : risk.id)}
+ className="group rounded-2xl p-5 cursor-pointer hover:-translate-y-0.5 transition-all"
  style={{
   background: 'var(--bg-card-solid)',
   border: expandedRisk === risk.id ? '1px solid rgba(74, 107, 90, 0.20)' : '1px solid var(--border-card)',
@@ -829,18 +731,17 @@ export function ApexPage() {
  }`} />
  </div>
  <div className="flex-1 min-w-0">
- <div className="flex items-start justify-between gap-3">
+  <div className="flex items-start justify-between gap-3">
  <h3 className="text-base font-semibold t-primary">{risk.title}</h3>
  <div className="flex items-center gap-2 flex-shrink-0">
  <button
  onClick={(e) => { e.stopPropagation(); handleOpenRiskTrace(risk.id); }}
- className="text-accent hover:text-accent/80"
+ className="opacity-0 group-hover:opacity-100 text-accent hover:text-accent/80 transition-all"
  title="Trace to source"
  >
  <Link2 size={14} />
  </button>
  <Badge variant={severityColor(risk.severity)}>{risk.severity}</Badge>
- <Badge variant="outline">{risk.category}</Badge>
  </div>
  </div>
  <p className="text-sm t-muted mt-1">{risk.description}</p>

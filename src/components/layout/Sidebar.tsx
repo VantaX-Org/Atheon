@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
   { path: '/pulse', label: 'Pulse', icon: IconPulse, section: 'intelligence', sublabel: 'Process Intelligence', roles: STANDARD_ROLES },
   { path: '/catalysts', label: 'Catalysts', icon: IconCatalysts, section: 'intelligence', sublabel: 'Autonomous Execution', roles: OPERATOR_ROLES },
   { path: '/chat', label: 'Chat', icon: IconChat, section: 'intelligence', sublabel: 'Conversational AI', roles: STANDARD_ROLES },
-  { path: '/mind', label: 'Mind', icon: IconMind, section: 'intelligence', sublabel: 'Domain LLM', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/mind', label: 'Mind', icon: IconMind, section: 'intelligence', sublabel: 'AI Configuration', roles: PLATFORM_ADMIN_ROLES },
   // UX-14: Data — knowledge graph
   { path: '/memory', label: 'Memory', icon: IconMemory, section: 'data', sublabel: 'Knowledge Graph', roles: MANAGER_ROLES },
   // UX-14: Administration — IAM, Settings, Integrations, Audit, Clients
@@ -57,7 +57,7 @@ const navItems: NavItem[] = [
   { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform-ops', sublabel: 'Agent Management', roles: SUPERADMIN_ROLES },
   { path: '/deployments', label: 'Deployments', icon: IconNetwork, section: 'platform-ops', sublabel: 'Hybrid & On-Premise', roles: SUPERADMIN_ROLES },
   { path: '/assessments', label: 'Assessments', icon: IconBarChart, section: 'platform-ops', sublabel: 'Pre-Sale Analysis', roles: SUPERADMIN_ROLES },
-  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'MCP + A2A', roles: SUPERADMIN_ROLES },
+  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'Protocols', roles: SUPERADMIN_ROLES },
   { path: '/executive', label: 'Executive', icon: IconBarChart, section: 'intelligence', sublabel: 'Mobile Summary', roles: EXECUTIVE_ROLES },
 ];
 

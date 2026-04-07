@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
-import { ScoreRing } from "@/components/ui/score-ring";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
@@ -17,12 +16,12 @@ import {
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
-  UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench
+  UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { SkeletonCard } from "@/components/ui/skeleton";
-import { FlipCard } from "@/components/ui/flip-card";
+// FlipCard removed per UI cleanup spec
 
 /* ── helpers ──────────────────────────────────────────────── */
 const trendIcon = (trend: string, size = 14) => {
@@ -272,6 +271,7 @@ export function PulsePage() {
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [runsLoading, setRunsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // AI Insights state
   const [aiInsights, setAiInsights] = useState<PulseInsightsResponse | null>(null);
@@ -322,10 +322,6 @@ export function PulsePage() {
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [availableDomains, setAvailableDomains] = useState<string[]>([]);
 
-  // Flip card state for dashboard cards
-  const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
-  const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
-
   // Traceability modal state
   const [showMetricTraceModal, setShowMetricTraceModal] = useState(false);
   const [metricTraceData, setMetricTraceData] = useState<MetricTraceResponse | null>(null);
@@ -359,14 +355,14 @@ export function PulsePage() {
       const data = await api.pulse.metricTrace(metricId);
       if (!data || !data.metric) {
         console.warn('No traceability data available for metric:', metricId);
-        alert('No traceability data available for this metric.');
+        setActionError('No traceability data available for this metric.');
         return;
       }
       setMetricTraceData(data);
       setShowMetricTraceModal(true);
     } catch (err) {
       console.error('Failed to load metric traceability:', err);
-      alert('Failed to load metric traceability data. This metric may not have source attribution yet.');
+      setActionError('Failed to load metric traceability data. This metric may not have source attribution yet.');
     } finally {
       setLoadingMetricTrace(false);
     }
@@ -386,14 +382,14 @@ export function PulsePage() {
     try {
       const data = await api.apex.healthDimension(apexDimension);
       if (!data || data.score === null) {
-        alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+        setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
         return;
       }
       setDimTraceData(data);
       setShowDimTraceModal(true);
     } catch (err) {
       console.error('Failed to load dimension traceability', err);
-      alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+      setActionError('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
     } finally {
       setLoadingDimTrace(false);
     }
@@ -524,42 +520,26 @@ export function PulsePage() {
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'Operations Dashboard', icon: <Gauge size={14} /> },
-    { id: 'monitoring', label: 'Live Monitoring', icon: <Activity size={14} />, count: metrics.length || undefined },
+    { id: 'dashboard', label: 'Overview', icon: <Gauge size={14} /> },
+    { id: 'monitoring', label: 'Metrics', icon: <Activity size={14} />, count: metrics.length || undefined },
     { id: 'diagnostics', label: 'Diagnostics', icon: <Stethoscope size={14} />, count: diagSummary?.criticalFindings || undefined },
-    { id: 'cost-of-inaction', label: 'Cost of Inaction', icon: <AlertCircle size={14} />, count: costOfInaction?.activeRcaCount || undefined },
-    { id: 'anomalies', label: 'Anomaly Detection', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
-    { id: 'processes', label: 'Process Mining', icon: <GitBranch size={14} /> },
-    { id: 'catalyst-runs', label: 'Catalyst Runs', icon: <Play size={14} />, count: catalystSummary.reduce((s, c) => s + (c.exceptions || 0), 0) || undefined },
-    { id: 'correlations', label: 'Cross-System Correlations', icon: <Link2 size={14} /> },
+    { id: 'anomalies', label: 'Anomalies', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
+    { id: 'processes', label: 'Processes', icon: <GitBranch size={14} /> },
+    { id: 'correlations', label: 'Correlations', icon: <Link2 size={14} /> },
   ];
+
+  const pageHeader = (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <h1 className="text-3xl sm:text-4xl font-bold t-primary">Pulse</h1>
+      <Badge variant="info">Process Intelligence</Badge>
+      <SectionFreshness section="Diagnostics" />
+    </div>
+  );
 
   if (loading) {
     return (
       <div className="space-y-6 animate-fadeIn">
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
-            <Badge variant="info">Process Intelligence</Badge>
-          </div>
-          <p className="text-base t-muted max-w-3xl">
-            <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-              <p className="text-sm t-primary font-medium">Management / Operations</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-              <p className="text-sm t-primary font-medium">Process Metrics & Anomalies</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
-              <p className="text-sm t-primary font-medium">Catalyst Runs</p>
-            </div>
-          </div>
-        </div>
+        {pageHeader}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
         </div>
@@ -574,32 +554,19 @@ export function PulsePage() {
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Pulse</h1>
-          <Badge variant="info">Process Intelligence</Badge>
-          <SectionFreshness section="Diagnostics" />
-        </div>
-        <div className="flex items-center justify-between">
-          <p className="text-base t-muted max-w-3xl">
-            <strong>Operational monitoring for Management & Operations.</strong> Pulse tracks real-time process metrics, detects anomalies, and provides process mining across your enterprise systems.
-          </p>
+        {pageHeader}
+        <div className="flex items-center justify-end">
           <CSVExportButton endpoint="/api/diagnostics" filename="pulse-diagnostics.csv" label="Export Diagnostics" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-            <p className="text-sm t-primary font-medium">Management / Operations</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-            <p className="text-sm t-primary font-medium">Process Metrics & Anomalies</p>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Drill Down To</p>
-            <p className="text-sm t-primary font-medium">Catalyst Runs</p>
-          </div>
-        </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <AlertTriangle size={16} className="text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-amber-400 flex-1">{actionError}</p>
+          <button onClick={() => setActionError(null)} className="text-amber-400 hover:text-amber-300" title="Dismiss"><X size={14} /></button>
+        </div>
+      )}
 
       {/* Department Filter */}
       {availableDomains.length > 0 && (
@@ -689,67 +656,65 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'dashboard' && (
         <TabPanel>
-          {/* Top Row: Health Ring + Dimensions */}
+          {/* Top Row: Status Strip + Dimensions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <FlipCard
-              className="lg:col-span-1"
-              isFlipped={!!flippedCards['pulse-health']}
-              onFlip={() => toggleFlip('pulse-health')}
-              front={
-                <Card variant="black" className="h-full flex flex-col items-center justify-center">
-                  <ScoreRing score={health.score} size="xl" label="Operational Health" />
-                  <div className="flex items-center gap-2 mt-4">
-                    {trendIcon(health.trend)}
-                    <span className={`text-sm ${health.trend === 'improving' ? 'text-emerald-400' : health.trend === 'declining' ? 'text-red-400' : 'text-gray-400'}`}>
-                      {health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs Attention' : 'Stable'}
-                    </span>
-                  </div>
-                  {health.score === 0 && (
-                    <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
-                  )}
-                </Card>
-              }
-              back={
-                <Card variant="black" className="h-full">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold t-primary">Health Score Breakdown</h4>
-                  </div>
-                  <div className="space-y-2.5">
-                    {Object.entries(health.dimensions).map(([name, dim]) => (
-                      <div key={name} className="flex items-center gap-2">
-                        <span className="text-xs t-secondary w-32 truncate">{name}</span>
-                        <div className="flex-1">
-                          <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
-                        </div>
-                        <span className="text-xs font-bold t-primary w-8 text-right">{dim.score}</span>
-                      </div>
-                    ))}
-                    {Object.keys(health.dimensions).length === 0 && (
-                      <p className="text-xs t-muted text-center py-4">No dimension data yet</p>
-                    )}
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[var(--border-card)]">
-                    <div className="flex justify-between text-xs">
-                      <span className="t-muted">Composite Score</span>
-                      <span className="font-bold t-primary">{health.score}/100</span>
+            <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
+              {/* Pulse Status Strip (visual differentiation from Apex ring) */}
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-2">Operational Health</p>
+              <p className="text-3xl font-bold t-primary mb-3">{health.score}<span className="text-sm font-normal t-muted">/100</span></p>
+              <div className="w-full h-3 rounded-full overflow-hidden flex" title={`Green: ${summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length} | Amber: ${summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length} | Red: ${summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}`}>
+                {(() => {
+                  const green = summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length;
+                  const amber = summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length;
+                  const red = summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length;
+                  const total = green + amber + red || 1;
+                  return (
+                    <>
+                      <div className="bg-emerald-500 h-full" style={{ width: `${(green / total) * 100}%` }} />
+                      <div className="bg-amber-500 h-full" style={{ width: `${(amber / total) * 100}%` }} />
+                      <div className="bg-red-500 h-full" style={{ width: `${(red / total) * 100}%` }} />
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="flex items-center justify-between w-full mt-2 text-[10px]">
+                <span className="text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length} green</span>
+                <span className="text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length} amber</span>
+                <span className="text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length} red</span>
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                {trendIcon(health.trend)}
+                <span className={`text-sm ${health.trend === 'improving' ? 'text-emerald-400' : health.trend === 'declining' ? 'text-red-400' : 'text-gray-400'}`}>
+                  {health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs Attention' : 'Stable'}
+                </span>
+              </div>
+              {health.score === 0 && (
+                <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
+              )}
+              <div className="mt-3 pt-2 border-t border-[var(--border-card)] w-full space-y-1.5">
+                {Object.entries(health.dimensions).slice(0, 4).map(([name, dim]) => (
+                  <div key={name} className="flex items-center gap-2">
+                    <span className="text-[10px] t-secondary w-24 truncate">{name}</span>
+                    <div className="flex-1">
+                      <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
                     </div>
+                    <span className="text-[10px] font-bold t-primary w-6 text-right">{dim.score}</span>
                   </div>
-                </Card>
-              }
-            />
+                ))}
+              </div>
+            </Card>
 
             <Card className="lg:col-span-2">
               <h3 className="text-lg font-semibold t-primary mb-4">Operational Dimensions</h3>
               {dimensions.length === 0 || health.score === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Gauge className="w-10 h-10 t-muted mb-3 opacity-30" />
-                  <p className="text-sm t-muted">No dimensions available yet.</p>
-                  <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to start generating operational insights.</p>
+                <div className="flex items-center gap-3 py-6 px-4">
+                  <Gauge className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+                  <p className="text-sm t-muted">No dimensions available yet</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {dimensions.map((dim) => (
-                    <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <div key={dim.key} className="group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                       <div className="sm:w-44 flex-shrink-0">
                         <span className="text-sm t-secondary">{dim.name}</span>
                       </div>
@@ -769,10 +734,10 @@ export function PulsePage() {
                         <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'improving' ? '#10b981' : dim.trend === 'declining' ? '#ef4444' : '#6b7280'} />
                         <button
                           onClick={() => handleOpenDimensionTrace(dim.key)}
-                          className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors ml-2"
+                          className="opacity-0 group-hover:opacity-100 text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-all ml-2"
                           title={`Trace ${dim.name}`}
                         >
-                          <Eye size={10} /> Trace
+                          <Eye size={10} />
                         </button>
                       </div>
                     </div>
@@ -782,136 +747,68 @@ export function PulsePage() {
             </Card>
           </div>
 
-          {/* Status Breakdown Cards (Flippable) */}
+          {/* Status Breakdown Cards (Static — FlipCards removed per UI cleanup) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            {/* Total Metrics */}
-            <FlipCard
-              isFlipped={!!flippedCards['pulse-total']}
-              onFlip={() => toggleFlip('pulse-total')}
-              front={
-                <Card hover className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs t-muted uppercase tracking-wider">Total Metrics</span>
-                    <Activity size={14} className="text-accent" />
+            <Card className="h-full">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted uppercase tracking-wider">Total Metrics</span>
+                <Activity size={14} className="text-accent" />
+              </div>
+              <p className="text-2xl font-bold t-primary">{summary?.totalMetrics ?? metrics.length}</p>
+              <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+                {metrics.slice(0, 3).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between text-[10px]">
+                    <span className="t-secondary truncate mr-2">{m.name}</span>
+                    <span className={`font-medium ${statusColor(m.status)}`}>{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
                   </div>
-                  <p className="text-2xl font-bold t-primary">{summary?.totalMetrics ?? metrics.length}</p>
-                </Card>
-              }
-              back={
-                <Card className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold t-primary">All Metrics</span>
+                ))}
+              </div>
+            </Card>
+            <Card className="h-full">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+                <CheckCircle2 size={14} className="text-emerald-400" />
+              </div>
+              <p className="text-2xl font-bold text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length}</p>
+              <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+                {metrics.filter(m => m.status === 'green').slice(0, 3).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between text-[10px]">
+                    <span className="t-secondary truncate mr-2">{m.name}</span>
+                    <span className="font-medium text-emerald-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
                   </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {metrics.slice(0, 8).map((m, i) => (
-                      <div key={i} className="flex items-center justify-between text-[10px]">
-                        <span className="t-secondary truncate mr-2">{m.name}</span>
-                        <span className={`font-medium ${statusColor(m.status)}`}>{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}{m.unit ? ` ${m.unit}` : ''}</span>
-                      </div>
-                    ))}
-                    {metrics.length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.length - 8} more</p>}
-                    {metrics.length === 0 && <p className="text-[9px] t-muted text-center py-2">No metrics yet</p>}
+                ))}
+              </div>
+            </Card>
+            <Card className="h-full">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted uppercase tracking-wider">Warning</span>
+                <AlertTriangle size={14} className="text-amber-400" />
+              </div>
+              <p className="text-2xl font-bold text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length}</p>
+              <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+                {metrics.filter(m => m.status === 'amber').slice(0, 3).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between text-[10px]">
+                    <span className="t-secondary truncate mr-2">{m.name}</span>
+                    <span className="font-medium text-amber-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('all'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-accent hover:text-accent/80 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
-                </Card>
-              }
-            />
-            {/* Healthy */}
-            <FlipCard
-              isFlipped={!!flippedCards['pulse-healthy']}
-              onFlip={() => toggleFlip('pulse-healthy')}
-              front={
-                <Card hover className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
-                    <CheckCircle2 size={14} className="text-emerald-400" />
+                ))}
+              </div>
+            </Card>
+            <Card className="h-full">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+                <XCircle size={14} className="text-red-400" />
+              </div>
+              <p className="text-2xl font-bold text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}</p>
+              <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+                {metrics.filter(m => m.status === 'red').slice(0, 3).map((m, i) => (
+                  <div key={i} className="flex items-center justify-between text-[10px]">
+                    <span className="t-secondary truncate mr-2">{m.name}</span>
+                    <span className="font-medium text-red-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
                   </div>
-                  <p className="text-2xl font-bold text-emerald-400">{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length}</p>
-                </Card>
-              }
-              back={
-                <Card className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-emerald-400">Healthy Metrics</span>
-                  </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {metrics.filter(m => m.status === 'green').slice(0, 8).map((m, i) => (
-                      <div key={i} className="flex items-center justify-between text-[10px]">
-                        <span className="t-secondary truncate mr-2">{m.name}</span>
-                        <span className="font-medium text-emerald-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
-                      </div>
-                    ))}
-                    {metrics.filter(m => m.status === 'green').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'green').length - 8} more</p>}
-                    {metrics.filter(m => m.status === 'green').length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy metrics</p>}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('green'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-emerald-400 hover:text-emerald-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
-                </Card>
-              }
-            />
-            {/* Warning */}
-            <FlipCard
-              isFlipped={!!flippedCards['pulse-warning']}
-              onFlip={() => toggleFlip('pulse-warning')}
-              front={
-                <Card hover className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs t-muted uppercase tracking-wider">Warning</span>
-                    <AlertTriangle size={14} className="text-amber-400" />
-                  </div>
-                  <p className="text-2xl font-bold text-amber-400">{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length}</p>
-                </Card>
-              }
-              back={
-                <Card className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-amber-400">Warning Metrics</span>
-                  </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {metrics.filter(m => m.status === 'amber').slice(0, 8).map((m, i) => (
-                      <div key={i} className="flex items-center justify-between text-[10px]">
-                        <span className="t-secondary truncate mr-2">{m.name}</span>
-                        <span className="font-medium text-amber-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
-                      </div>
-                    ))}
-                    {metrics.filter(m => m.status === 'amber').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'amber').length - 8} more</p>}
-                    {metrics.filter(m => m.status === 'amber').length === 0 && <p className="text-[9px] t-muted text-center py-2">No warning metrics</p>}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('amber'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-amber-400 hover:text-amber-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
-                </Card>
-              }
-            />
-            {/* Critical */}
-            <FlipCard
-              isFlipped={!!flippedCards['pulse-critical']}
-              onFlip={() => toggleFlip('pulse-critical')}
-              front={
-                <Card hover className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
-                    <XCircle size={14} className="text-red-400" />
-                  </div>
-                  <p className="text-2xl font-bold text-red-400">{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}</p>
-                </Card>
-              }
-              back={
-                <Card className="h-full">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-red-400">Critical Metrics</span>
-                  </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {metrics.filter(m => m.status === 'red').slice(0, 8).map((m, i) => (
-                      <div key={i} className="flex items-center justify-between text-[10px]">
-                        <span className="t-secondary truncate mr-2">{m.name}</span>
-                        <span className="font-medium text-red-400">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</span>
-                      </div>
-                    ))}
-                    {metrics.filter(m => m.status === 'red').length > 8 && <p className="text-[9px] t-muted text-center">+{metrics.filter(m => m.status === 'red').length - 8} more</p>}
-                    {metrics.filter(m => m.status === 'red').length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical metrics</p>}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); setMetricFilter('red'); setActiveTab('monitoring'); }} className="mt-2 w-full text-[10px] text-red-400 hover:text-red-300 text-center py-1 border-t border-[var(--border-card)]">View in Monitoring →</button>
-                </Card>
-              }
-            />
+                ))}
+              </div>
+            </Card>
           </div>
 
           {/* Narrative + Insights */}
@@ -999,10 +896,9 @@ export function PulsePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredMetrics.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
-                <Activity className="w-10 h-10 t-muted mb-3 opacity-30" />
-                <p className="text-sm t-muted">No metrics {metricFilter !== 'all' ? `with ${metricFilter} status` : 'available yet'}.</p>
-                <p className="text-xs t-muted mt-1">Run a catalyst to start monitoring your processes.</p>
+              <div className="col-span-full flex items-center gap-3 py-6 px-4">
+                <Activity className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+                <p className="text-sm t-muted">No metrics {metricFilter !== 'all' ? `with ${metricFilter} status` : 'available yet'}</p>
               </div>
             )}
             {filteredMetrics.map((metric) => {
@@ -1012,14 +908,14 @@ export function PulsePage() {
                   key={metric.id}
                   hover
                   onClick={() => setExpandedMetric(isExpanded ? null : metric.id)}
-                  className={isExpanded ? 'border-accent/20 col-span-1 md:col-span-2 lg:col-span-3' : ''}
+                  className={`group ${isExpanded ? 'border-accent/20 col-span-1 md:col-span-2 lg:col-span-3' : ''}`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs t-secondary truncate flex-1">{metric.name}</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleOpenMetricTrace(metric.id); }}
-                        className="text-accent hover:text-accent/80"
+                        className="opacity-0 group-hover:opacity-100 text-accent hover:text-accent/80 transition-all"
                         title="Trace to source"
                       >
                         <Link2 size={12} />
@@ -1208,10 +1104,9 @@ export function PulsePage() {
 
           <div className="space-y-4">
             {filteredAnomalies.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <AlertTriangle className="w-10 h-10 t-muted mb-3 opacity-30" />
-                <p className="text-sm t-muted">No anomalies {anomalyFilter !== 'all' ? `with ${anomalyFilter} severity` : 'detected yet'}.</p>
-                <p className="text-xs t-muted mt-1">Run a catalyst to start anomaly detection.</p>
+              <div className="flex items-center gap-3 py-6 px-4">
+                <AlertTriangle className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+                <p className="text-sm t-muted">No anomalies {anomalyFilter !== 'all' ? `with ${anomalyFilter} severity` : 'detected yet'}</p>
               </div>
             )}
             {filteredAnomalies.map((anom) => {
@@ -1389,10 +1284,9 @@ export function PulsePage() {
         <TabPanel>
           <div className="space-y-6">
             {processes.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <GitBranch className="w-10 h-10 t-muted mb-3 opacity-30" />
-                <p className="text-sm t-muted">No process flows mapped yet.</p>
-                <p className="text-xs t-muted mt-1">Run a catalyst to discover and map your business processes.</p>
+              <div className="flex items-center gap-3 py-6 px-4">
+                <GitBranch className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+                <p className="text-sm t-muted">No process flows mapped yet</p>
               </div>
             )}
 
@@ -1670,10 +1564,9 @@ export function PulsePage() {
 
           <div className="space-y-4">
             {correlations.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Link2 className="w-10 h-10 t-muted mb-3 opacity-30" />
-                <p className="text-sm t-muted">No correlations discovered yet.</p>
-                <p className="text-xs t-muted mt-1">Run a catalyst to identify cross-system correlations.</p>
+              <div className="flex items-center gap-3 py-6 px-4">
+                <Link2 className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+                <p className="text-sm t-muted">No correlations discovered yet</p>
               </div>
             )}
             {correlations.map((event) => {
@@ -2209,11 +2102,10 @@ export function PulsePage() {
             <div className="flex items-center justify-center h-32"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
           )}
           {!diagLoading && !diagSummary && (
-            <Card className="text-center py-12">
-              <Stethoscope className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium t-primary">No diagnostics data yet</p>
-              <p className="text-xs t-muted mt-1">Run a diagnostic analysis on any metric to identify root causes.</p>
-              <Button variant="primary" size="sm" className="mt-4" onClick={loadDiagnostics}>Load Diagnostics</Button>
+            <Card className="flex items-center gap-3 py-6 px-4">
+              <Stethoscope className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+              <p className="text-sm t-muted">No diagnostics data yet</p>
+              <Button variant="primary" size="sm" className="ml-auto" onClick={loadDiagnostics}>Load Diagnostics</Button>
             </Card>
           )}
           {diagSummary && (
@@ -2262,18 +2154,19 @@ export function PulsePage() {
               </div>
 
               {diagAnalyses.length === 0 ? (
-                <Card className="text-center py-8">
-                  <p className="text-xs t-muted">No analyses yet. Use "Quick Diagnose" above to analyze at-risk metrics.</p>
-                </Card>
+                <div className="flex items-center gap-3 py-4 px-4">
+                  <Stethoscope className="w-4 h-4 t-muted opacity-40 flex-shrink-0" />
+                  <p className="text-xs t-muted">No analyses yet</p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {diagAnalyses.map(analysis => (
                     <Card key={analysis.id} hover onClick={() => { setExpandedAnalysis(expandedAnalysis === analysis.id ? null : analysis.id); if (expandedAnalysis !== analysis.id) handleViewAnalysis(analysis.id); }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          <span className={`w-1 h-4 rounded-full flex-shrink-0 ${analysis.metricStatus === 'red' ? 'bg-red-400' : analysis.metricStatus === 'amber' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                           <Badge variant={analysis.status === 'completed' ? 'success' : analysis.status === 'failed' ? 'danger' : 'warning'} size="sm">{analysis.status}</Badge>
                           <span className="text-sm font-medium t-primary">{analysis.metricName}</span>
-                          <Badge variant={analysis.metricStatus === 'red' ? 'danger' : analysis.metricStatus === 'amber' ? 'warning' : 'success'} size="sm">{analysis.metricStatus}</Badge>
                         </div>
                         <div className="flex items-center gap-2 text-[10px] t-muted">
                           <span>{new Date(analysis.createdAt).toLocaleDateString()}</span>
@@ -2333,11 +2226,10 @@ export function PulsePage() {
       {activeTab === 'cost-of-inaction' && (
         <TabPanel>
           {!costOfInaction && !coiLoading && (
-            <Card className="text-center py-12">
-              <AlertCircle className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium t-primary">Cost of Inaction</p>
-              <p className="text-xs t-muted mt-1">See the real-time financial cost of unresolved issues and pending prescriptions.</p>
-              <Button variant="primary" size="sm" className="mt-4" onClick={() => {
+            <Card className="flex items-center gap-3 py-6 px-4">
+              <AlertCircle className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+              <p className="text-sm t-muted">No cost-of-inaction data yet</p>
+              <Button variant="primary" size="sm" className="ml-auto" onClick={() => {
                 setCoiLoading(true);
                 api.costOfInaction.get().then(setCostOfInaction).catch(() => {}).finally(() => setCoiLoading(false));
               }}>Calculate Cost</Button>

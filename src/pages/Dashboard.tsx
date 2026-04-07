@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { ScoreRing } from "@/components/ui/score-ring";
-import { FlipCard } from "@/components/ui/flip-card";
+// FlipCard removed per UI cleanup spec
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
@@ -13,7 +13,7 @@ import { AtheonScoreRing } from "@/components/ui/atheon-score-ring";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
-  ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight,
+  ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight, X,
   CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
 import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
@@ -77,7 +77,7 @@ export function Dashboard() {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [cpHealth, setCpHealth] = useState<ControlPlaneHealth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "health" | "risks">("overview");
+  // Tabs removed per UI cleanup spec — overview is now the entire page
   // UX-05: Silent auto-refresh every 60s (no user-facing toggle)
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [refreshFlash, setRefreshFlash] = useState(false);
@@ -96,10 +96,6 @@ export function Dashboard() {
   // §11.2 Baseline journey state
   const [baselineComparison, setBaselineComparison] = useState<BaselineComparisonResponse | null>(null);
 
-  // Flip card state for dashboard cards
-  const [flippedCards, setFlippedCards] = useState<Record<string, boolean>>({});
-  const toggleFlip = (cardId: string) => setFlippedCards(prev => ({ ...prev, [cardId]: !prev[cardId] }));
-
   const loadDashboardIntelligence = async () => {
     setDashIntelLoading(true);
     try {
@@ -113,20 +109,21 @@ export function Dashboard() {
   const [showTraceModal, setShowTraceModal] = useState(false);
   const [traceData, setTraceData] = useState<HealthDimensionTraceResponse | null>(null);
   const [, setLoadingTrace] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleOpenDimensionTrace = async (dimension: string) => {
     setLoadingTrace(true);
     try {
       const data = await api.apex.healthDimension(dimension);
       if (!data || data.score === null) {
-        alert('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+        setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
         return;
       }
       setTraceData(data);
       setShowTraceModal(true);
     } catch (err) {
       console.error('Failed to load dimension traceability', err);
-      alert('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+      setActionError('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
     } finally {
       setLoadingTrace(false);
     }
@@ -241,7 +238,7 @@ export function Dashboard() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Atheon Dashboard</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Dashboard</h1>
             <SectionFreshness section="Health" />
           </div>
           <div className="flex items-center gap-2">
@@ -261,23 +258,15 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
-          {(["overview", "health", "risks"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className="px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize"
-              style={
-                activeTab === tab
-                  ? { background: "var(--bg-card-solid)", color: "var(--text-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }
-                  : { color: "var(--text-muted)" }
-              }
-            >
-              {tab === "health" ? "Health Trend" : tab}
-            </button>
-          ))}
+      {actionError && (
+        <div className="flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <AlertTriangle size={16} className="text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-amber-400 flex-1">{actionError}</p>
+          <button onClick={() => setActionError(null)} className="text-amber-400 hover:text-amber-300" title="Dismiss"><X size={14} /></button>
         </div>
+      )}
+
+      <div className="flex items-center gap-2">
         <button
           onClick={loadDashboardIntelligence}
           disabled={dashIntelLoading}
@@ -348,7 +337,6 @@ export function Dashboard() {
       )}
 
       {/* §11.7 Atheon Score + §11.2 Journey Card */}
-      {activeTab === 'overview' && (
       <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <DashCard className="lg:col-span-1">
@@ -394,54 +382,32 @@ export function Dashboard() {
 
       {/* Hero: Health Score as central KPI */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <FlipCard
-          className="lg:col-span-1"
-          isFlipped={!!flippedCards['dash-health']}
-          onFlip={() => toggleFlip('dash-health')}
-          front={
-            <TintedCard className="h-full flex flex-col items-center justify-center py-6">
-              <ScoreRing score={overallScore} size="xl" label="Business Health" />
-              <div className="flex items-center gap-2 mt-4">
-                {trendIcon(healthTrend)}
-                <span className={`text-sm ${avgDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                  {avgDelta >= 0 ? '+' : ''}{avgDelta.toFixed(1)} pts
-                </span>
-              </div>
-              <div className="w-28 h-8 mt-2">
-                <Sparkline data={dimEntries.map((d) => d.score)} width={112} height={32} color={ACCENT} />
-              </div>
-              <p className="text-[10px] t-muted mt-3">Click to see breakdown</p>
-            </TintedCard>
-          }
-          back={
-            <TintedCard className="h-full">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-semibold t-primary flex items-center gap-1.5"><Gauge size={14} className="text-accent" /> Health Breakdown</h4>
-                <span className="text-xs font-bold t-primary">{overallScore}/100</span>
-              </div>
-              <div className="space-y-2.5">
-                {dimensions.map((dim) => (
-                  <div key={dim.key} className="flex items-center gap-2">
-                    <span className="text-xs t-secondary w-28 truncate">{dim.name}</span>
-                    <div className="flex-1">
-                      <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
-                    </div>
-                    <span className="text-xs font-bold t-primary w-8 text-right">{dim.score}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleOpenDimensionTrace(dim.key); }}
-                      className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors"
-                      title={`Trace ${dim.name}`}
-                    >
-                      <Eye size={10} />
-                    </button>
+        <TintedCard className="lg:col-span-1 flex flex-col items-center justify-center py-6">
+          <ScoreRing score={overallScore} size="xl" label="Business Health" />
+          <div className="flex items-center gap-2 mt-4">
+            {trendIcon(healthTrend)}
+            <span className={`text-sm ${avgDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+              {avgDelta >= 0 ? '+' : ''}{avgDelta.toFixed(1)} pts
+            </span>
+          </div>
+          <div className="w-28 h-8 mt-2">
+            <Sparkline data={dimEntries.map((d) => d.score)} width={112} height={32} color={ACCENT} />
+          </div>
+          <div className="mt-3 pt-2 border-t border-[var(--border-card)] w-full">
+            <div className="space-y-1.5">
+              {dimensions.slice(0, 4).map((dim) => (
+                <div key={dim.key} className="flex items-center gap-2">
+                  <span className="text-[10px] t-secondary w-20 truncate">{dim.name}</span>
+                  <div className="flex-1">
+                    <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
                   </div>
-                ))}
-                {dimensions.length === 0 && <p className="text-xs t-muted text-center py-4">No dimension data yet</p>}
-              </div>
-              <p className="text-[10px] t-muted mt-3 text-center">Click to flip back</p>
-            </TintedCard>
-          }
-        />
+                  <span className="text-[10px] font-bold t-primary w-6 text-right">{dim.score}</span>
+                </div>
+              ))}
+              {dimensions.length === 0 && <p className="text-[9px] t-muted text-center py-2">No dimension data yet</p>}
+            </div>
+          </div>
+        </TintedCard>
 
         <DashCard className="lg:col-span-2">
           <h3 className="text-lg font-semibold t-primary mb-4">Business Dimensions</h3>
@@ -454,7 +420,7 @@ export function Dashboard() {
           ) : (
             <div className="space-y-3">
               {dimensions.map((dim, i) => (
-                <div key={dim.key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div key={dim.key} className="group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                   <div className="sm:w-36 flex-shrink-0 flex items-center gap-2">
                     <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: piePalette[i % piePalette.length] }} />
                     <span className="text-sm t-secondary truncate">{dim.name}</span>
@@ -472,10 +438,10 @@ export function Dashboard() {
                     </div>
                     <button
                       onClick={() => handleOpenDimensionTrace(dim.key)}
-                      className="text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-colors"
+                      className="opacity-0 group-hover:opacity-100 text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-all"
                       title={`Trace ${dim.name}`}
                     >
-                      <Eye size={10} /> Trace
+                      <Eye size={10} />
                     </button>
                   </div>
                 </div>
@@ -485,120 +451,72 @@ export function Dashboard() {
         </DashCard>
       </div>
 
-      {/* Status Breakdown Cards (Flippable) */}
+      {/* Status Breakdown Cards (Static — FlipCards removed per UI cleanup) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <FlipCard
-          isFlipped={!!flippedCards['dash-dims']}
-          onFlip={() => toggleFlip('dash-dims')}
-          front={
-            <DashCard className="h-full">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
-                <Gauge size={14} className="text-accent" />
+        <DashCard className="h-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs t-muted uppercase tracking-wider">Dimensions</span>
+            <Gauge size={14} className="text-accent" />
+          </div>
+          <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
+          <p className="text-[10px] t-muted mt-1">monitored areas</p>
+          <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+            {dimensions.slice(0, 3).map((d) => (
+              <div key={d.key} className="flex items-center justify-between text-[10px]">
+                <span className="t-secondary truncate mr-2">{d.name}</span>
+                <span className={`font-medium ${d.score >= 80 ? 'text-emerald-400' : d.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{d.score}</span>
               </div>
-              <p className="text-2xl font-bold t-primary">{dimensions.length}</p>
-              <p className="text-[10px] t-muted mt-1">monitored areas</p>
-            </DashCard>
-          }
-          back={
-            <DashCard className="h-full">
-              <span className="text-xs font-semibold t-primary mb-2 block">All Dimensions</span>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {dimensions.map((d) => (
-                  <div key={d.key} className="flex items-center justify-between text-[10px]">
-                    <span className="t-secondary truncate mr-2">{d.name}</span>
-                    <span className={`font-medium ${d.score >= 80 ? 'text-emerald-400' : d.score >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{d.score}</span>
-                  </div>
-                ))}
-                {dimensions.length === 0 && <p className="text-[9px] t-muted text-center py-2">No dimensions yet</p>}
+            ))}
+          </div>
+        </DashCard>
+        <DashCard className="h-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
+            <CheckCircle2 size={14} className="text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
+          <p className="text-[10px] t-muted mt-1">above threshold</p>
+          <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+            {dimensions.filter(d => d.score >= 80).slice(0, 3).map((d) => (
+              <div key={d.key} className="flex items-center justify-between text-[10px]">
+                <span className="t-secondary truncate mr-2">{d.name}</span>
+                <span className="font-medium text-emerald-400">{d.score}</span>
               </div>
-            </DashCard>
-          }
-        />
-        <FlipCard
-          isFlipped={!!flippedCards['dash-healthy']}
-          onFlip={() => toggleFlip('dash-healthy')}
-          front={
-            <DashCard className="h-full">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Healthy</span>
-                <CheckCircle2 size={14} className="text-emerald-400" />
+            ))}
+          </div>
+        </DashCard>
+        <DashCard className="h-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
+            <AlertTriangle size={14} className="text-amber-400" />
+          </div>
+          <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
+          <p className="text-[10px] t-muted mt-1">needs attention</p>
+          <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+            {dimensions.filter(d => d.score >= 60 && d.score < 80).slice(0, 3).map((d) => (
+              <div key={d.key} className="flex items-center justify-between text-[10px]">
+                <span className="t-secondary truncate mr-2">{d.name}</span>
+                <span className="font-medium text-amber-400">{d.score}</span>
               </div>
-              <p className="text-2xl font-bold text-emerald-400">{dimensions.filter(d => d.score >= 80).length}</p>
-              <p className="text-[10px] t-muted mt-1">above threshold</p>
-            </DashCard>
-          }
-          back={
-            <DashCard className="h-full">
-              <span className="text-xs font-semibold text-emerald-400 mb-2 block">Healthy Dimensions</span>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {dimensions.filter(d => d.score >= 80).map((d) => (
-                  <div key={d.key} className="flex items-center justify-between text-[10px]">
-                    <span className="t-secondary truncate mr-2">{d.name}</span>
-                    <span className="font-medium text-emerald-400">{d.score}</span>
-                  </div>
-                ))}
-                {dimensions.filter(d => d.score >= 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No healthy dimensions</p>}
+            ))}
+          </div>
+        </DashCard>
+        <DashCard className="h-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
+            <XCircle size={14} className="text-red-400" />
+          </div>
+          <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
+          <p className="text-[10px] t-muted mt-1">requires action</p>
+          <div className="mt-2 pt-2 border-t border-[var(--border-card)] space-y-1 max-h-24 overflow-y-auto">
+            {dimensions.filter(d => d.score < 60).slice(0, 3).map((d) => (
+              <div key={d.key} className="flex items-center justify-between text-[10px]">
+                <span className="t-secondary truncate mr-2">{d.name}</span>
+                <span className="font-medium text-red-400">{d.score}</span>
               </div>
-            </DashCard>
-          }
-        />
-        <FlipCard
-          isFlipped={!!flippedCards['dash-atrisk']}
-          onFlip={() => toggleFlip('dash-atrisk')}
-          front={
-            <DashCard className="h-full">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">At Risk</span>
-                <AlertTriangle size={14} className="text-amber-400" />
-              </div>
-              <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score >= 60 && d.score < 80).length}</p>
-              <p className="text-[10px] t-muted mt-1">needs attention</p>
-            </DashCard>
-          }
-          back={
-            <DashCard className="h-full">
-              <span className="text-xs font-semibold text-amber-400 mb-2 block">At Risk Dimensions</span>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {dimensions.filter(d => d.score >= 60 && d.score < 80).map((d) => (
-                  <div key={d.key} className="flex items-center justify-between text-[10px]">
-                    <span className="t-secondary truncate mr-2">{d.name}</span>
-                    <span className="font-medium text-amber-400">{d.score}</span>
-                  </div>
-                ))}
-                {dimensions.filter(d => d.score >= 60 && d.score < 80).length === 0 && <p className="text-[9px] t-muted text-center py-2">No at-risk dimensions</p>}
-              </div>
-            </DashCard>
-          }
-        />
-        <FlipCard
-          isFlipped={!!flippedCards['dash-critical']}
-          onFlip={() => toggleFlip('dash-critical')}
-          front={
-            <DashCard className="h-full">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted uppercase tracking-wider">Critical</span>
-                <XCircle size={14} className="text-red-400" />
-              </div>
-              <p className="text-2xl font-bold text-red-400">{dimensions.filter(d => d.score < 60).length}</p>
-              <p className="text-[10px] t-muted mt-1">requires action</p>
-            </DashCard>
-          }
-          back={
-            <DashCard className="h-full">
-              <span className="text-xs font-semibold text-red-400 mb-2 block">Critical Dimensions</span>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {dimensions.filter(d => d.score < 60).map((d) => (
-                  <div key={d.key} className="flex items-center justify-between text-[10px]">
-                    <span className="t-secondary truncate mr-2">{d.name}</span>
-                    <span className="font-medium text-red-400">{d.score}</span>
-                  </div>
-                ))}
-                {dimensions.filter(d => d.score < 60).length === 0 && <p className="text-[9px] t-muted text-center py-2">No critical dimensions</p>}
-              </div>
-            </DashCard>
-          }
-        />
+            ))}
+          </div>
+        </DashCard>
       </div>
 
       {/* New Engine Summary Cards */}
@@ -957,10 +875,8 @@ export function Dashboard() {
       </div>
       </>
 
-      )}
-
-      {/* HEALTH TREND TAB */}
-      {activeTab === 'health' && (
+      {/* HEALTH TREND — inline below overview (tabs removed) */}
+      {false && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <TintedCard>
@@ -1062,8 +978,8 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* RISKS TAB */}
-      {activeTab === 'risks' && (
+      {/* RISKS — hidden (tabs removed) */}
+      {false && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             {(['critical', 'high', 'medium', 'low'] as const).map((sev) => {
