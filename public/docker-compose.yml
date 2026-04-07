@@ -17,7 +17,7 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET:-atheon-storage}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-atheon}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-atheon123}
-      - ENVIRONMENT=production
+      - ENVIRONMENT=${ENVIRONMENT:-on-premise}
     restart: unless-stopped
     depends_on:
       - db

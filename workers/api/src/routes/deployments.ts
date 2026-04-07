@@ -249,13 +249,14 @@ function buildInstallConfig(deploymentId: string, licenceKey: string, config: Re
   return {
     deploymentId,
     licenceKey,
-    controlPlaneUrl: 'http://api:3000',
+    controlPlaneUrl: 'https://atheon-api.vantax.co.za',
     heartbeatIntervalSeconds: 60,
     agentImage: `ghcr.io/reshigan/atheon-agent:${config.updateChannel || 'latest'}`,
     initialConfig: config,
     envFile: [
       `ATHEON_DEPLOYMENT_ID=${deploymentId}`,
       `ATHEON_LICENCE_KEY=${licenceKey}`,
+      `# On-premise default: agent talks to local API. For hybrid mode, change to https://atheon-api.vantax.co.za`,
       `ATHEON_CONTROL_PLANE_URL=http://api:3000`,
       `ATHEON_HEARTBEAT_INTERVAL=60`,
       `# Fill in these values:`,

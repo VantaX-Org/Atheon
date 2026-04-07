@@ -18,6 +18,8 @@ const DEPLOYMENT_ID = process.env.ATHEON_DEPLOYMENT_ID || '';
 const HEARTBEAT_INTERVAL = parseInt(process.env.ATHEON_HEARTBEAT_INTERVAL || '60', 10) * 1000;
 const LOCAL_API_URL = process.env.ATHEON_LOCAL_API_URL || 'http://localhost:3000';
 const AGENT_VERSION = '1.0.0';
+const IS_LOCAL = CONTROL_PLANE_URL.includes('api:3000') || CONTROL_PLANE_URL.includes('localhost:3000');
+let provisionAttempted = false;
 
 if (!LICENCE_KEY) {
   console.error('[AGENT] ATHEON_LICENCE_KEY is required');
@@ -104,6 +106,32 @@ async function reportError(message: string, code?: string, severity?: string): P
   }
 }
 
+// ── Auto-Provision (on-premise only) ────────────────────────────────────
+async function autoProvision(): Promise<void> {
+  try {
+    const res = await fetch(`${CONTROL_PLANE_URL}/api/agent/provision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Licence-Key': LICENCE_KEY,
+      },
+      body: JSON.stringify({
+        deploymentId: DEPLOYMENT_ID,
+        agentVersion: AGENT_VERSION,
+        hostname: os.hostname(),
+      }),
+    });
+    if (res.ok) {
+      console.log('[AGENT] Auto-provisioned local deployment record');
+    } else {
+      const text = await res.text();
+      console.error(`[AGENT] Auto-provision failed (${res.status}): ${text}`);
+    }
+  } catch (err) {
+    console.error('[AGENT] Auto-provision request failed:', err);
+  }
+}
+
 // ── Heartbeat ───────────────────────────────────────────────────────────
 async function sendHeartbeat(): Promise<void> {
   try {
@@ -134,8 +162,19 @@ async function sendHeartbeat(): Promise<void> {
       const text = await response.text();
       console.error(`[AGENT] Heartbeat rejected (${response.status}): ${text}`);
       if (response.status === 403) {
-        console.error('[AGENT] Licence revoked or suspended. Shutting down.');
-        process.exit(1);
+        if (IS_LOCAL && !provisionAttempted) {
+          // On-premise: no deployment record exists yet — auto-provision
+          console.log('[AGENT] Local deployment not found. Auto-provisioning...');
+          provisionAttempted = true;
+          await autoProvision();
+          return;
+        }
+        if (!IS_LOCAL) {
+          console.error('[AGENT] Licence revoked or suspended. Shutting down.');
+          process.exit(1);
+        }
+        // Local mode: keep retrying — DB may not be migrated yet
+        console.warn('[AGENT] Waiting for local API to accept heartbeats...');
       }
       return;
     }
