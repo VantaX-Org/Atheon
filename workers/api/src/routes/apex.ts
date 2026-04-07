@@ -784,9 +784,9 @@ apex.post('/scenarios', async (c) => {
       const text = aiResult?.response || '';
       if (!text) throw new Error('Empty AI response');
       try {
-        return { ...JSON.parse(stripCodeFences(text)), generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+        return { ...JSON.parse(stripCodeFences(text)), generated_at: new Date().toISOString() };
       } catch {
-        return { recommendation: text, generated_at: new Date().toISOString(), model: 'llama-3.1-8b-instruct' };
+        return { recommendation: text, generated_at: new Date().toISOString() };
       }
     },
     () => {
@@ -804,7 +804,6 @@ apex.post('/scenarios', async (c) => {
           riskCount > 0 ? `${riskCount} active risk alert(s) may impact outcome` : 'No active risk alerts',
         ],
         generated_at: new Date().toISOString(),
-        model: 'fallback-calculation',
       };
     },
     10000, // 10s timeout
