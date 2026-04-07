@@ -1253,7 +1253,7 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const an of anomaliesData) {
       await c.env.DB.prepare(
-        `INSERT INTO anomalies (id, tenant_id, metric, severity, deviation, expected_value, actual_value, description, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
+        `INSERT INTO anomalies (id, tenant_id, metric, severity, deviation, expected_value, actual_value, hypothesis, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`
       ).bind(crypto.randomUUID(), tenantId, an.metric, an.severity, an.deviation, an.expectedValue, an.actualValue, an.description, now).run();
     }
     console.log(`[VantaX Seeder] Seeded ${anomaliesData.length} anomalies`);
