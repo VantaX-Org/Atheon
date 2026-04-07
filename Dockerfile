@@ -46,7 +46,7 @@ ENV ENVIRONMENT=on-premise
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD wget -q --spider http://localhost:3000/healthz || exit 1
+  CMD node -e "const http = require('http'); http.get('http://localhost:3000/healthz', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Switch to non-root user
 USER atheon
