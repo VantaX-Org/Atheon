@@ -880,9 +880,13 @@ export function ApexPage() {
  <p className="text-xs t-muted mt-1">Click &quot;New Scenario&quot; above to create your first what-if analysis.</p>
  </div>
  )}
- {scenarios.map((scenario) => {
-  const resultEntries = scenario.results ? Object.entries(scenario.results) : [];
-  const hasResults = resultEntries.length > 0;
+  {scenarios.map((scenario) => {
+  // Filter out internal/technical fields that should never be shown to users
+  const hiddenFields = new Set(['model', 'source', 'generated_at', 'recommendation', 'analysis_points']);
+  const resultEntries: [string, string | number][] = scenario.results
+    ? Object.entries(scenario.results).filter(([key]) => !hiddenFields.has(key)).map(([k, v]) => [k, typeof v === 'number' ? v : String(v)])
+    : [];
+  const hasResults = resultEntries.length > 0 || !!scenario.results?.recommendation;
   return (
    <Card key={scenario.id}>
     <div className="flex items-start justify-between">
@@ -913,39 +917,46 @@ export function ApexPage() {
        </div>
 
        {/* Key Metrics Grid */}
-       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {resultEntries.slice(0, 4).map(([key, val]) => (
+       {resultEntries.length > 0 && (
+       <div className={`grid grid-cols-2 ${resultEntries.length >= 3 ? 'md:grid-cols-3' : ''} gap-3 mb-4`}>
+        {resultEntries.map(([key, val]) => (
          <div key={key} className="p-2.5 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
           <span className="text-[10px] t-muted uppercase tracking-wider">{key.replace(/[_-]/g, ' ')}</span>
-          <p className="text-lg font-bold t-primary mt-0.5">{String(val)}</p>
+          <p className="text-lg font-bold t-primary mt-0.5">{typeof val === 'number' ? val.toLocaleString() : val}</p>
          </div>
         ))}
        </div>
+       )}
 
-       {/* Analysis Narrative */}
+       {/* AI Analysis — Recommendation */}
+       {typeof scenario.results?.recommendation === 'string' && scenario.results.recommendation.length > 0 && (
+       <div className="mb-4">
+        <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Analysis</h5>
+        <div className="text-sm t-secondary leading-relaxed space-y-2">
+         {(scenario.results.recommendation as string)
+          .replace(/```json\s*/g, '').replace(/```/g, '')
+          .replace(/\*\*/g, '').replace(/\*/g, '')
+          .split('\n').filter((line: string) => line.trim())
+          .map((line: string, i: number) => (
+           <p key={i}>{line.trim()}</p>
+          ))}
+        </div>
+       </div>
+       )}
+
+       {/* Analysis Points */}
+       {Array.isArray(scenario.results?.analysis_points) && (scenario.results.analysis_points as string[]).length > 0 && (
        <div className="mb-4">
         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Key Findings</h5>
-        <p className="text-sm t-muted leading-relaxed">
-         The <span className="font-medium t-primary">{scenario.title}</span> scenario analysis
-         evaluated {scenario.variables.length > 0 ? `the impact of changes to ${scenario.variables.join(', ')}` : 'the projected outcomes'}.
-         {resultEntries.length > 0 && ` The model produced ${resultEntries.length} output metric${resultEntries.length > 1 ? 's' : ''}.`}
-         {scenario.inputQuery && ` Query: "${scenario.inputQuery}".`}
-        </p>
+        <ul className="space-y-1.5">
+         {(scenario.results.analysis_points as string[]).map((point: string, i: number) => (
+          <li key={i} className="flex items-start gap-2 text-sm t-secondary">
+           <span className="text-accent mt-1">{'\u2022'}</span>
+           <span>{String(point).replace(/\*\*/g, '').replace(/\*/g, '')}</span>
+          </li>
+         ))}
+        </ul>
        </div>
-
-       {/* All Results Table */}
-       {resultEntries.length > 4 && (
-        <div className="mb-4">
-         <h5 className="text-xs font-semibold t-primary mb-2 uppercase tracking-wider">Detailed Results</h5>
-         <div className="space-y-1.5">
-          {resultEntries.slice(4).map(([key, val]) => (
-           <div key={key} className="flex items-center justify-between py-1.5 border-b border-[var(--border-card)] last:border-0">
-            <span className="text-xs t-secondary capitalize">{key.replace(/[_-]/g, ' ')}</span>
-            <span className="text-xs font-semibold t-primary">{String(val)}</span>
-           </div>
-          ))}
-         </div>
-        </div>
        )}
 
        {/* Recommendations */}
