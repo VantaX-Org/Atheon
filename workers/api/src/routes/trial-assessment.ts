@@ -25,15 +25,15 @@ app.post('/start', async (c) => {
     return c.json({ error: 'Rate limit exceeded. Maximum 3 assessments per day.' }, 429);
   }
 
-  let body: { companyName: string; industry: string; contactName: string; contactEmail: string; dataSource?: string };
+  let body: { company_name: string; industry: string; contact_name: string; contact_email: string; data_source?: string };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  if (!body.companyName || !body.industry || !body.contactName || !body.contactEmail) {
-    return c.json({ error: 'companyName, industry, contactName, and contactEmail are required' }, 400);
+  if (!body.company_name || !body.industry || !body.contact_name || !body.contact_email) {
+    return c.json({ error: 'company_name, industry, contact_name, and contact_email are required' }, 400);
   }
 
   const assessmentId = crypto.randomUUID();
@@ -44,7 +44,7 @@ app.post('/start', async (c) => {
   try {
     await db.prepare(
       "INSERT INTO tenants (id, slug, name, plan, status, industry, created_at) VALUES (?, ?, ?, 'trial', 'trial', ?, datetime('now'))"
-    ).bind(tenantId, tenantId, body.companyName, body.industry).run();
+    ).bind(tenantId, tenantId, body.company_name, body.industry).run();
   } catch { /* tenant may already exist */ }
 
   // Create trial user
@@ -52,15 +52,15 @@ app.post('/start', async (c) => {
   try {
     await db.prepare(
       "INSERT INTO users (id, tenant_id, email, name, role, permissions) VALUES (?, ?, ?, ?, 'analyst', '[\"*\"]')"
-    ).bind(userId, tenantId, body.contactEmail, body.contactName).run();
+    ).bind(userId, tenantId, body.contact_email, body.contact_name).run();
   } catch { /* user may already exist */ }
 
   // Create assessment record
   await db.prepare(
     'INSERT INTO trial_assessments (id, tenant_id, company_name, industry, contact_name, contact_email, data_source, status, ip_address, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(assessmentId, tenantId, body.companyName, body.industry, body.contactName, body.contactEmail, body.dataSource || 'csv_upload', 'pending', ip, expiresAt).run();
+  ).bind(assessmentId, tenantId, body.company_name, body.industry, body.contact_name, body.contact_email, body.data_source || 'csv_upload', 'pending', ip, expiresAt).run();
 
-  return c.json({ assessmentId, tenantId, temporaryToken: assessmentId });
+  return c.json({ id: assessmentId, tenantId, status: 'pending' });
 });
 
 // POST /:id/upload — Accept CSV upload (simulated — stores metadata)
@@ -172,7 +172,7 @@ app.get('/:id/results', async (c) => {
     estimatedExposure: assessment.estimated_exposure,
     topRisks: JSON.parse((assessment.top_risks as string) || '[]'),
     topOpportunities: JSON.parse((assessment.top_opportunities as string) || '[]'),
-    projectedROI: assessment.projected_roi,
+    projectedRoi: assessment.projected_roi,
     completedAt: assessment.completed_at,
   });
 });
@@ -195,7 +195,7 @@ app.get('/:id/report', async (c) => {
     estimatedExposure: assessment.estimated_exposure,
     topRisks: JSON.parse((assessment.top_risks as string) || '[]'),
     topOpportunities: JSON.parse((assessment.top_opportunities as string) || '[]'),
-    projectedROI: assessment.projected_roi,
+    projectedRoi: assessment.projected_roi,
     assessmentDate: assessment.completed_at,
     reportTitle: `Atheon Intelligence Assessment — ${assessment.company_name}`,
   });

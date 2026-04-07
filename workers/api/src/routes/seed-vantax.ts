@@ -1550,7 +1550,7 @@ seed.post('/seed-vantax', async (c) => {
     for (const sm of scoreMonths) {
       const d = new Date(); d.setMonth(d.getMonth() + sm.offset);
       await c.env.DB.prepare(
-        `INSERT INTO atheon_score_history (id, tenant_id, score, components, calculated_at) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO atheon_score_history (id, tenant_id, score, components, recorded_at) VALUES (?, ?, ?, ?, ?)`
       ).bind(crypto.randomUUID(), tenantId, sm.score,
         JSON.stringify([
           { name: 'Health', weight: 30, score: sm.score + 5 },
