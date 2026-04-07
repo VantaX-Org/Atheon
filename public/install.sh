@@ -60,9 +60,21 @@ fi
 docker info >/dev/null 2>&1 || fail "Docker daemon is not running. Start it with: sudo systemctl start docker"
 ok "Docker daemon is running"
 
+# ── Sudo check ─────────────────────────────────────────────────────────
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+    info "Not running as root — will use sudo for privileged operations"
+  else
+    fail "This script requires root privileges. Run with: sudo bash install.sh ..."
+  fi
+fi
+
 # ── Create installation directory ─────────────────────────────────────────
 info "Creating installation directory: $INSTALL_DIR"
-mkdir -p "$INSTALL_DIR"
+$SUDO mkdir -p "$INSTALL_DIR"
+$SUDO chown "$(id -u):$(id -g)" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # ── Download docker-compose.yml ───────────────────────────────────────────
