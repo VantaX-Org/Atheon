@@ -67,8 +67,10 @@ app.use('*', cors({
     if (PRODUCTION_ORIGINS.includes(origin)) return origin;
     // Allow Cloudflare Pages preview deployments
     if (origin.endsWith('.atheon-33b.pages.dev')) return origin;
-    // Phase 1.6: Only allow localhost in non-production environments
+    // On-premise deployments run locally — always allow localhost origins
     const env = (c as unknown as { env: { ENVIRONMENT?: string } }).env;
+    if (env?.ENVIRONMENT === 'on-premise' && DEV_ORIGINS.includes(origin)) return origin;
+    // Dev environments also allow localhost
     if (env?.ENVIRONMENT !== 'production' && DEV_ORIGINS.includes(origin)) return origin;
     return null as unknown as string;
   },

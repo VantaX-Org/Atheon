@@ -19,7 +19,7 @@ fail()  { echo -e "${RED}[FAIL]${NC}  $*"; exit 1; }
 LICENCE_KEY=""
 DEPLOYMENT_ID=""
 INSTALL_DIR="${ATHEON_INSTALL_DIR:-$HOME/.atheon}"
-CONTROL_PLANE_URL="${ATHEON_CONTROL_PLANE_URL:-https://atheon-api.vantax.co.za}"
+CONTROL_PLANE_URL="${ATHEON_CONTROL_PLANE_URL:-http://api:3000}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -150,8 +150,8 @@ echo ""
 echo "  Licence key:           ${LICENCE_KEY}"
 echo "  Deployment ID:         ${DEPLOYMENT_ID}"
 echo ""
-echo "  The agent sidecar is now sending heartbeats"
-echo "  to ${CONTROL_PLANE_URL} every 60 seconds."
+echo "  All data stays within your environment."
+echo "  Agent heartbeats go to the local API (${CONTROL_PLANE_URL})."
 echo ""
 info "To view logs: cd $INSTALL_DIR && docker compose logs -f"
 info "To stop:      cd $INSTALL_DIR && docker compose down"

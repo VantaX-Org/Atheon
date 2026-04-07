@@ -2,17 +2,17 @@
  * Atheon Agent Sidecar
  * Runs alongside the customer's on-premise Atheon deployment.
  * Responsibilities:
- *  1. Heartbeat — sends health/resource data to GONXT control plane every N seconds
+ *  1. Heartbeat — sends health/resource data to local API (or cloud control plane if configured)
  *  2. Config sync — receives config updates from heartbeat response
  *  3. Self-update — pulls new Docker images when targetVersion is set
- *  4. Error reporting — sends errors to control plane
+ *  4. Error reporting — sends errors to local API
  */
 
 import { execSync } from 'child_process';
 import * as os from 'os';
 
 // ── Environment Variables ────────────────────────────────────────────────
-const CONTROL_PLANE_URL = process.env.ATHEON_CONTROL_PLANE_URL || 'https://atheon-api.vantax.co.za';
+const CONTROL_PLANE_URL = process.env.ATHEON_CONTROL_PLANE_URL || 'http://api:3000';
 const LICENCE_KEY = process.env.ATHEON_LICENCE_KEY || '';
 const DEPLOYMENT_ID = process.env.ATHEON_DEPLOYMENT_ID || '';
 const HEARTBEAT_INTERVAL = parseInt(process.env.ATHEON_HEARTBEAT_INTERVAL || '60', 10) * 1000;
