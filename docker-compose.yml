@@ -1,7 +1,6 @@
 # Atheon™ Hybrid / On-Premise Deployment
 # Usage: docker compose up -d
 # Requires: .env file with ATHEON_DEPLOYMENT_ID, ATHEON_LICENCE_KEY, etc.
-version: '3.8'
 
 services:
   api:
@@ -30,8 +29,7 @@ services:
       retries: 3
 
   agent:
-    build:
-      context: ./agent
+    image: gonxt/atheon-agent:${ATHEON_API_TAG:-latest}
     environment:
       - ATHEON_DEPLOYMENT_ID=${ATHEON_DEPLOYMENT_ID}
       - ATHEON_LICENCE_KEY=${ATHEON_LICENCE_KEY}
