@@ -67,8 +67,12 @@ cd "$INSTALL_DIR"
 
 # ── Download docker-compose.yml ───────────────────────────────────────────
 info "Downloading docker-compose.yml..."
-curl -sSL "https://atheon.vantax.co.za/docker-compose.yml" -o docker-compose.yml 2>/dev/null || \
-  curl -sSL "https://raw.githubusercontent.com/Reshigan/Atheon/main/docker-compose.yml" -o docker-compose.yml
+COMPOSE_URL="https://raw.githubusercontent.com/Reshigan/Atheon/main/docker-compose.yml"
+curl -sSL "$COMPOSE_URL" -o docker-compose.yml
+# Sanity-check: the file must start with a YAML comment or 'services:', not HTML
+if head -1 docker-compose.yml | grep -qi '<!doctype\|<html'; then
+  fail "Downloaded file is HTML, not YAML. Check $COMPOSE_URL"
+fi
 ok "docker-compose.yml downloaded"
 
 # ── Create .env file ──────────────────────────────────────────────────────
