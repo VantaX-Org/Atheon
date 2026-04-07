@@ -4,7 +4,7 @@
 
 services:
   api:
-    image: gonxt/atheon-api:${ATHEON_API_TAG:-latest}
+    image: ghcr.io/reshigan/atheon-api:${ATHEON_API_TAG:-latest}
     ports:
       - "3000:3000"
     environment:
@@ -29,7 +29,7 @@ services:
       retries: 3
 
   agent:
-    image: gonxt/atheon-agent:${ATHEON_API_TAG:-latest}
+    image: ghcr.io/reshigan/atheon-agent:${ATHEON_API_TAG:-latest}
     environment:
       - ATHEON_DEPLOYMENT_ID=${ATHEON_DEPLOYMENT_ID}
       - ATHEON_LICENCE_KEY=${ATHEON_LICENCE_KEY}
