@@ -602,8 +602,14 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
   const [findingFilter, setFindingFilter] = useState<{ category?: string; severity?: string; domain?: string }>({});
   const [feePercent, setFeePercent] = useState(20);
   const [runningVA, setRunningVA] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const results = assessment.results as AssessmentResults | null;
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
   // Load value assessment data
   useEffect(() => {
@@ -636,10 +642,11 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
     try {
       await api.assessments.runValueAssessment(assessment.id, mode);
       // Poll until complete
-      const poll = setInterval(async () => {
+      pollRef.current = setInterval(async () => {
         const status = await api.assessments.status(assessment.id);
         if (status.status === 'complete' || status.status === 'failed') {
-          clearInterval(poll);
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
           setRunningVA(false);
           // Reload data
           const [fRes, dqRes, ptRes, vsRes] = await Promise.all([
@@ -657,6 +664,8 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
     } catch (err) {
       console.error('Failed to run value assessment:', err);
       setRunningVA(false);
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   };
 
