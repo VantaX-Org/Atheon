@@ -96,7 +96,7 @@ app.post('/:id/upload', async (c) => {
   });
 });
 
-// POST /:id/run — Trigger assessment
+// POST /:id/run — Trigger assessment (uses Value Assessment Engine in quick mode)
 app.post('/:id/run', async (c) => {
   const db = c.env.DB;
   const id = c.req.param('id');
@@ -106,15 +106,75 @@ app.post('/:id/run', async (c) => {
 
   // Start assessment processing
   await db.prepare(
-    "UPDATE trial_assessments SET status = 'running', progress = 10, current_step = 'Deploying catalysts...' WHERE id = ?"
+    "UPDATE trial_assessments SET status = 'running', progress = 10, current_step = 'Auditing data quality...' WHERE id = ?"
   ).bind(id).run();
 
-  // Simulate assessment steps (in production, this would be async with a queue)
+  const tenantId = assessment.tenant_id as string;
   const industry = assessment.industry as string;
   const companyName = assessment.company_name as string;
 
-  // Step 1: Compute preliminary health score based on industry defaults
-  const healthScore = Math.round(45 + Math.random() * 30); // 45-75 range for trial
+  // Try to run value assessment engine in quick mode (DQ + timing only, no full catalyst runs)
+  // If the tenant has ERP data, the engine will produce real findings.
+  // Fall back to estimation if no data is available.
+  try {
+    const { runValueAssessment, DEFAULT_VALUE_ASSESSMENT_CONFIG } = await import('../services/value-assessment-engine');
+
+    // Create a temporary assessment record for the engine to write to
+    const assessmentRecordId = `trial-va-${id.slice(0, 8)}`;
+    try {
+      await db.prepare(
+        `INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, status, config, created_by)
+         VALUES (?, ?, ?, ?, 'pending', '{}', 'trial-system')`
+      ).bind(assessmentRecordId, tenantId, companyName, industry).run();
+    } catch { /* may already exist */ }
+
+    await runValueAssessment(
+      db, c.env.AI, c.env.STORAGE,
+      tenantId, assessmentRecordId, '',
+      { ...DEFAULT_VALUE_ASSESSMENT_CONFIG, mode: 'quick' },
+      industry, companyName,
+    );
+
+    // Read back the value summary
+    const summary = await db.prepare(
+      'SELECT * FROM assessment_value_summary WHERE assessment_id = ? LIMIT 1'
+    ).bind(assessmentRecordId).first();
+
+    const findingsCount = await db.prepare(
+      'SELECT COUNT(*) as cnt FROM assessment_findings WHERE assessment_id = ?'
+    ).bind(assessmentRecordId).first<{ cnt: number }>();
+
+    if (summary) {
+      const totalFindings = findingsCount?.cnt || 0;
+      const immediateValue = (summary.total_immediate_value as number) || 0;
+      const ongoingAnnual = (summary.total_ongoing_annual_value as number) || 0;
+      const healthScore = Math.max(20, 100 - Math.round(totalFindings * 3));
+      const projectedRoi = ongoingAnnual > 0 ? Math.round((ongoingAnnual / Math.max((summary.outcome_based_monthly_fee as number) * 12, 1)) * 10) / 10 : 3.5;
+
+      const topRisks = [
+        { title: 'Data Quality Issues', description: `${summary.total_data_quality_issues || 0} data quality issues across ERP tables`, impact: Math.round(immediateValue * 0.4) },
+        { title: 'Process Delays', description: `${summary.total_process_delays || 0} processes exceeding industry benchmarks`, impact: Math.round(immediateValue * 0.3) },
+        { title: 'Financial Exposure', description: `${summary.total_critical_findings || 0} critical findings requiring immediate attention`, impact: Math.round(immediateValue * 0.3) },
+      ];
+      const topOpportunities = [
+        { title: 'Immediate Recovery', description: `R${Math.round(immediateValue / 1000)}k recoverable through data cleanup and process fixes`, value: immediateValue },
+        { title: 'Ongoing Prevention', description: `R${Math.round(ongoingAnnual / 1000)}k annual value through continuous monitoring`, value: ongoingAnnual },
+      ];
+
+      await db.prepare(
+        `UPDATE trial_assessments SET status = 'complete', progress = 100, current_step = 'Assessment complete',
+         health_score = ?, issues_found = ?, estimated_exposure = ?, projected_roi = ?,
+         top_risks = ?, top_opportunities = ?, completed_at = datetime('now') WHERE id = ?`
+      ).bind(healthScore, totalFindings, immediateValue + ongoingAnnual, projectedRoi, JSON.stringify(topRisks), JSON.stringify(topOpportunities), id).run();
+
+      return c.json({ status: 'complete', mode: 'value_assessment' });
+    }
+  } catch (err) {
+    console.error('Value assessment engine failed for trial, falling back to estimation:', err);
+  }
+
+  // Fallback: estimation-based assessment (when no ERP data available)
+  const healthScore = Math.round(45 + Math.random() * 30);
   const issuesFound = Math.round(5 + Math.random() * 15);
   const estimatedExposure = Math.round((100000 + Math.random() * 900000) / 1000) * 1000;
   const projectedRoi = Math.round((2 + Math.random() * 8) * 10) / 10;
@@ -135,7 +195,7 @@ app.post('/:id/run', async (c) => {
      top_risks = ?, top_opportunities = ?, completed_at = datetime('now') WHERE id = ?`
   ).bind(healthScore, issuesFound, estimatedExposure, projectedRoi, JSON.stringify(topRisks), JSON.stringify(topOpportunities), id).run();
 
-  return c.json({ status: 'complete' });
+  return c.json({ status: 'complete', mode: 'estimation' });
 });
 
 // GET /:id/status — Poll assessment status

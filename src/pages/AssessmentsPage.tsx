@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
-import type { Assessment, AssessmentResults, CatalystScore, SubCatalystScore, ERPConnection } from '@/lib/api';
+import type { Assessment, AssessmentResults, CatalystScore, SubCatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -590,36 +590,459 @@ function RunningView({ id, onComplete }: {
   );
 }
 
-// ── Results View ──────────────────────────────────────────────────────────
+// ── Results View (Value Assessment — 7 Sections) ─────────────────────────
 function ResultsView({ assessment }: { assessment: Assessment }) {
-  const [tab, setTab] = useState<'business' | 'technical'>('business');
+  const [tab, setTab] = useState<'value' | 'legacy'>('value');
+  const [findings, setFindings] = useState<ValueAssessmentFinding[]>([]);
+  const [dataQuality, setDataQuality] = useState<DataQualityRecord[]>([]);
+  const [processTiming, setProcessTiming] = useState<ProcessTimingRecord[]>([]);
+  const [valueSummary, setValueSummary] = useState<ValueSummaryRecord | null>(null);
+  const [loadingVA, setLoadingVA] = useState(true);
+  const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
+  const [findingFilter, setFindingFilter] = useState<{ category?: string; severity?: string; domain?: string }>({});
+  const [feePercent, setFeePercent] = useState(20);
+  const [runningVA, setRunningVA] = useState(false);
+
   const results = assessment.results as AssessmentResults | null;
 
-  if (!results || (!results.catalyst_scores && (results as Record<string, unknown>).error)) {
+  // Load value assessment data
+  useEffect(() => {
+    const loadVA = async () => {
+      setLoadingVA(true);
+      try {
+        const [fRes, dqRes, ptRes, vsRes] = await Promise.all([
+          api.assessments.findings(assessment.id).catch(() => ({ findings: [], total: 0 })),
+          api.assessments.dataQuality(assessment.id).catch(() => ({ dataQuality: [], total: 0 })),
+          api.assessments.processTiming(assessment.id).catch(() => ({ processTiming: [], total: 0 })),
+          api.assessments.valueSummary(assessment.id).catch(() => null),
+        ]);
+        setFindings(fRes.findings);
+        setDataQuality(dqRes.dataQuality);
+        setProcessTiming(ptRes.processTiming);
+        setValueSummary(vsRes);
+        if (vsRes?.outcome_based_fee_pct) setFeePercent(vsRes.outcome_based_fee_pct);
+      } catch (err) {
+        console.error('Failed to load value assessment data:', err);
+      } finally {
+        setLoadingVA(false);
+      }
+    };
+    loadVA();
+  }, [assessment.id]);
+
+  // Run value assessment
+  const runVA = async (mode: 'full' | 'quick') => {
+    setRunningVA(true);
+    try {
+      await api.assessments.runValueAssessment(assessment.id, mode);
+      // Poll until complete
+      const poll = setInterval(async () => {
+        const status = await api.assessments.status(assessment.id);
+        if (status.status === 'complete' || status.status === 'failed') {
+          clearInterval(poll);
+          setRunningVA(false);
+          // Reload data
+          const [fRes, dqRes, ptRes, vsRes] = await Promise.all([
+            api.assessments.findings(assessment.id).catch(() => ({ findings: [], total: 0 })),
+            api.assessments.dataQuality(assessment.id).catch(() => ({ dataQuality: [], total: 0 })),
+            api.assessments.processTiming(assessment.id).catch(() => ({ processTiming: [], total: 0 })),
+            api.assessments.valueSummary(assessment.id).catch(() => null),
+          ]);
+          setFindings(fRes.findings);
+          setDataQuality(dqRes.dataQuality);
+          setProcessTiming(ptRes.processTiming);
+          setValueSummary(vsRes);
+        }
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to run value assessment:', err);
+      setRunningVA(false);
+    }
+  };
+
+  // Filtered findings
+  const filteredFindings = findings.filter(f => {
+    if (findingFilter.category && f.category !== findingFilter.category) return false;
+    if (findingFilter.severity && f.severity !== findingFilter.severity) return false;
+    if (findingFilter.domain && f.domain !== findingFilter.domain) return false;
+    return true;
+  });
+
+  const hasValueData = valueSummary !== null || findings.length > 0;
+
+  // If assessment failed
+  if (assessment.status === 'failed') {
     const errorMsg = (results as Record<string, unknown>)?.error as string;
     return (
       <div className="text-center py-10">
         <p className="text-lg font-medium text-red-600">Assessment Failed</p>
         {errorMsg && <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{errorMsg}</p>}
-        {!errorMsg && <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>No results available.</p>}
       </div>
     );
   }
 
-  const catalysts = results.catalyst_scores || [];
-  const sizing = results.technical_sizing;
-  const totalSaving = catalysts.reduce((s: number, c: CatalystScore) => s + (c.estimated_annual_saving_zar || 0), 0);
-  const avgPriority = catalysts.length > 0 ? (catalysts.reduce((s: number, c: CatalystScore) => s + (c.priority || 0), 0) / catalysts.length).toFixed(1) : '0';
+  const formatR = (n: number) => `R ${Math.round(n).toLocaleString('en-ZA')}`;
+  const formatRk = (n: number) => n >= 1000000 ? `R ${(n / 1000000).toFixed(1)}M` : `R ${Math.round(n / 1000)}k`;
+
+  // Compute domain chart data from value summary
+  const domainData = valueSummary?.value_by_domain
+    ? Object.entries(valueSummary.value_by_domain).map(([domain, val]) => ({
+        domain, immediate: (val as { immediate: number }).immediate || 0, ongoing: ((val as { ongoing: number }).ongoing || 0) * 12,
+      })).sort((a, b) => (b.immediate + b.ongoing) - (a.immediate + a.ongoing))
+    : [];
+  const maxDomainValue = Math.max(...domainData.map(d => d.immediate + d.ongoing), 1);
 
   return (
     <div className="space-y-6">
-      {/* Header metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Tab selector */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
+        {[
+          { key: 'value' as const, label: 'Value Assessment' },
+          { key: 'legacy' as const, label: 'Legacy Sizing' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === t.key ? 'text-white' : ''}`}
+            style={tab === t.key ? { background: 'var(--accent)' } : { color: 'var(--text-secondary)' }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'value' && (
+        <div className="space-y-6">
+          {/* Run Value Assessment button if no data */}
+          {!hasValueData && !loadingVA && (
+            <div className="rounded-xl p-8 text-center" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+              <div className="text-4xl mb-3">📊</div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Run Value Assessment</h3>
+              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                Analyse the prospect&apos;s ERP data to discover specific issues, quantify financial impact, and generate an outcome-based pricing proposal.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => runVA('quick')} disabled={runningVA}
+                  className="px-4 py-2 text-sm font-medium rounded-lg"
+                  style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}
+                >{runningVA ? 'Running...' : 'Quick (DQ + Timing)'}</button>
+                <button onClick={() => runVA('full')} disabled={runningVA}
+                  className="px-4 py-2 text-sm font-medium rounded-lg text-white"
+                  style={{ background: 'var(--accent)' }}
+                >{runningVA ? 'Running...' : 'Full Assessment'}</button>
+              </div>
+            </div>
+          )}
+
+          {loadingVA && <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'var(--bg-secondary)' }} />)}</div>}
+
+          {runningVA && (
+            <div className="rounded-xl p-6 text-center" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center animate-pulse" style={{ background: 'var(--accent-subtle)' }}>
+                <span className="text-xl">🔍</span>
+              </div>
+              <p className="font-medium" style={{ color: 'var(--text-primary)' }}>Value Assessment Running...</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Auditing data quality, measuring processes, running reconciliations...</p>
+            </div>
+          )}
+
+          {hasValueData && !loadingVA && valueSummary && (
+            <>
+              {/* Section 1: Headline Numbers */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: 'Total Issues Found', value: valueSummary.total_findings.toString(), sub: `${valueSummary.total_critical_findings} critical`, color: 'var(--text-primary)' },
+                  { label: 'Immediate Recovery', value: formatRk(valueSummary.total_immediate_value), sub: 'One-time cleanup value', color: '#10b981' },
+                  { label: 'Ongoing Monthly Value', value: formatRk(valueSummary.total_ongoing_monthly_value), sub: `${formatRk(valueSummary.total_ongoing_annual_value)}/year`, color: '#3b82f6' },
+                  { label: 'Payback Period', value: `${valueSummary.payback_days} days`, sub: `Outcome fee: ${formatRk(valueSummary.outcome_based_monthly_fee)}/mo`, color: '#8b5cf6' },
+                ].map(m => (
+                  <div key={m.label} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.label}</span>
+                    <p className="text-xl font-bold mt-1" style={{ color: m.color }}>{m.value}</p>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.sub}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Section 2: Executive Narrative */}
+              {valueSummary.executive_narrative && (
+                <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                  <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Executive Summary</h3>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{valueSummary.executive_narrative}</p>
+                </div>
+              )}
+
+              {/* Section 3: Value by Domain */}
+              {domainData.length > 0 && (
+                <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                  <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Value by Domain</h3>
+                  <div className="space-y-3">
+                    {domainData.map(d => (
+                      <div key={d.domain}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="capitalize font-medium" style={{ color: 'var(--text-primary)' }}>{d.domain}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{formatRk(d.immediate + d.ongoing)}</span>
+                        </div>
+                        <div className="flex gap-0.5 h-5 rounded overflow-hidden" style={{ background: 'var(--bg-secondary)' }}>
+                          <div className="h-full rounded-l" style={{ width: `${(d.immediate / maxDomainValue) * 100}%`, background: '#10b981', minWidth: d.immediate > 0 ? '4px' : '0' }} />
+                          <div className="h-full rounded-r" style={{ width: `${(d.ongoing / maxDomainValue) * 100}%`, background: '#3b82f6', minWidth: d.ongoing > 0 ? '4px' : '0' }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex gap-4 text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: '#10b981' }} /> Immediate</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: '#3b82f6' }} /> Ongoing (annual)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 4: Findings Explorer */}
+              <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-card)' }}>
+                  <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Findings Explorer ({filteredFindings.length})</h3>
+                  <div className="flex gap-2">
+                    <select className="text-xs rounded px-2 py-1" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                      value={findingFilter.severity || ''} onChange={e => setFindingFilter(p => ({ ...p, severity: e.target.value || undefined }))}>
+                      <option value="">All severities</option>
+                      {['critical','high','medium','low'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select className="text-xs rounded px-2 py-1" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                      value={findingFilter.domain || ''} onChange={e => setFindingFilter(p => ({ ...p, domain: e.target.value || undefined }))}>
+                      <option value="">All domains</option>
+                      {[...new Set(findings.map(f => f.domain))].map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
+                  {filteredFindings.slice(0, 20).map(f => (
+                    <div key={f.id}>
+                      <div className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        onClick={() => setExpandedFinding(expandedFinding === f.id ? null : f.id)}>
+                        <span className="text-xs">{expandedFinding === f.id ? '▾' : '▸'}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          f.severity === 'critical' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          f.severity === 'high' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                          f.severity === 'medium' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                          'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                        }`}>{f.severity}</span>
+                        <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{f.title}</span>
+                        <span className="text-xs capitalize px-2 py-0.5 rounded" style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}>{f.domain}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#10b981' }}>{formatRk(f.financial_impact)}</span>
+                      </div>
+                      {expandedFinding === f.id && (
+                        <div className="px-4 pb-3 pt-0 ml-6 space-y-2" style={{ borderTop: '1px solid var(--border-card)' }}>
+                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{f.description}</p>
+                          {f.root_cause && (
+                            <div className="text-xs"><span className="font-medium" style={{ color: 'var(--text-primary)' }}>Root Cause: </span><span style={{ color: 'var(--text-secondary)' }}>{f.root_cause}</span></div>
+                          )}
+                          {f.prescription && (
+                            <div className="text-xs"><span className="font-medium" style={{ color: 'var(--text-primary)' }}>Prescription: </span><span style={{ color: 'var(--text-secondary)' }}>{f.prescription}</span></div>
+                          )}
+                          {f.evidence?.sample_records && f.evidence.sample_records.length > 0 && (
+                            <div className="mt-2">
+                              <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Evidence:</span>
+                              <div className="mt-1 rounded overflow-hidden text-xs" style={{ border: '1px solid var(--border-card)' }}>
+                                <table className="w-full">
+                                  <thead><tr style={{ background: 'var(--bg-secondary)' }}>
+                                    <th className="px-2 py-1 text-left" style={{ color: 'var(--text-muted)' }}>Reference</th>
+                                    <th className="px-2 py-1 text-left" style={{ color: 'var(--text-muted)' }}>Source</th>
+                                    <th className="px-2 py-1 text-left" style={{ color: 'var(--text-muted)' }}>Target</th>
+                                    <th className="px-2 py-1 text-right" style={{ color: 'var(--text-muted)' }}>Difference</th>
+                                  </tr></thead>
+                                  <tbody>{f.evidence.sample_records.slice(0, 5).map((r, i) => (
+                                    <tr key={i} className="border-t" style={{ borderColor: 'var(--border-card)' }}>
+                                      <td className="px-2 py-1 font-medium" style={{ color: 'var(--text-primary)' }}>{String(r.ref)}</td>
+                                      <td className="px-2 py-1" style={{ color: 'var(--text-secondary)' }}>{String(r.source_value)}</td>
+                                      <td className="px-2 py-1" style={{ color: 'var(--text-secondary)' }}>{String(r.target_value)}</td>
+                                      <td className="px-2 py-1 text-right font-medium" style={{ color: r.difference > 0 ? '#ef4444' : 'var(--text-secondary)' }}>{r.difference > 0 ? formatR(r.difference) : '—'}</td>
+                                    </tr>
+                                  ))}</tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex gap-4 text-xs mt-1">
+                            <span style={{ color: 'var(--text-muted)' }}>Immediate: <span className="font-medium" style={{ color: '#10b981' }}>{formatRk(f.immediate_value)}</span></span>
+                            <span style={{ color: 'var(--text-muted)' }}>Ongoing: <span className="font-medium" style={{ color: '#3b82f6' }}>{formatRk(f.ongoing_monthly_value)}/mo</span></span>
+                            <span style={{ color: 'var(--text-muted)' }}>Records: {f.affected_records}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {filteredFindings.length === 0 && (
+                    <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>No findings match the current filters.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section 5: Data Quality Report Card */}
+              {dataQuality.length > 0 && (
+                <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                  <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Data Quality Report Card</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {dataQuality.map(dq => {
+                      const scoreColor = dq.overall_quality_score >= 80 ? '#10b981' : dq.overall_quality_score >= 60 ? '#f59e0b' : '#ef4444';
+                      return (
+                        <div key={dq.id} className="rounded-lg p-4" style={{ background: 'var(--bg-secondary)' }}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium capitalize" style={{ color: 'var(--text-primary)' }}>{dq.table_name.replace('erp_', '').replace(/_/g, ' ')}</span>
+                            <span className="text-lg font-bold" style={{ color: scoreColor }}>{Math.round(dq.overall_quality_score)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'var(--bg-card)' }}>
+                            <div className="h-full rounded-full transition-all" style={{ width: `${dq.overall_quality_score}%`, background: scoreColor }} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            <span>{dq.total_records.toLocaleString()} records</span>
+                            <span>{dq.completeness_pct.toFixed(0)}% complete</span>
+                            <span>{dq.duplicate_records} duplicates</span>
+                            <span>{dq.orphan_records} orphans</span>
+                            <span>{dq.stale_records} stale</span>
+                            <span>{dq.referential_issues} ref issues</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Section 6: Process Timing */}
+              {processTiming.length > 0 && (
+                <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                  <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Process Timing Analysis</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {processTiming.map(t => {
+                      const overBenchmark = t.avg_cycle_time_days > t.benchmark_cycle_time_days;
+                      const maxTime = Math.max(t.p90_cycle_time_days, t.benchmark_cycle_time_days) * 1.2;
+                      return (
+                        <div key={t.id} className="rounded-lg p-4" style={{ background: 'var(--bg-secondary)' }}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{t.process_name}</span>
+                            {overBenchmark && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Over benchmark</span>}
+                          </div>
+                          <div className="space-y-2 mt-3">
+                            <div>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span style={{ color: 'var(--text-muted)' }}>Your avg: {t.avg_cycle_time_days.toFixed(1)} days</span>
+                                <span style={{ color: 'var(--text-muted)' }}>P90: {t.p90_cycle_time_days.toFixed(1)} days</span>
+                              </div>
+                              <div className="h-3 rounded-full overflow-hidden" style={{ background: 'var(--bg-card)' }}>
+                                <div className="h-full rounded-full" style={{ width: `${(t.avg_cycle_time_days / maxTime) * 100}%`, background: overBenchmark ? '#ef4444' : '#10b981' }} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span style={{ color: 'var(--text-muted)' }}>Benchmark: {t.benchmark_cycle_time_days} days</span>
+                              </div>
+                              <div className="h-3 rounded-full overflow-hidden" style={{ background: 'var(--bg-card)' }}>
+                                <div className="h-full rounded-full" style={{ width: `${(t.benchmark_cycle_time_days / maxTime) * 100}%`, background: '#6b7280' }} />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {t.records_analysed} records | {t.records_exceeding_benchmark} over benchmark
+                            {t.financial_impact_of_delay > 0 && <span className="ml-2 font-medium" style={{ color: '#ef4444' }}>Impact: {formatRk(t.financial_impact_of_delay)}</span>}
+                          </div>
+                          {t.bottleneck_step && (
+                            <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Bottleneck: {t.bottleneck_step} ({t.bottleneck_avg_days.toFixed(1)} days)</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Section 7: Outcome-Based Pricing */}
+              <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+                <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Outcome-Based Pricing Proposal</h3>
+                <div className="mb-4">
+                  <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Fee as % of ongoing value delivered</label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <input type="range" min={5} max={50} step={1} value={feePercent} onChange={e => setFeePercent(Number(e.target.value))} className="flex-1" />
+                    <span className="text-lg font-bold" style={{ color: 'var(--accent)' }}>{feePercent}%</span>
+                  </div>
+                </div>
+                <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-card)' }}>
+                  <table className="w-full text-sm">
+                    <thead><tr style={{ background: 'var(--bg-secondary)' }}>
+                      <th className="px-4 py-2 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Metric</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Year 1</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Year 2</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Year 3</th>
+                    </tr></thead>
+                    <tbody className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
+                      {(() => {
+                        const monthlyOngoing = valueSummary.total_ongoing_monthly_value;
+                        const immediate = valueSummary.total_immediate_value;
+                        const fee = feePercent / 100;
+                        const y1Value = immediate + monthlyOngoing * 12;
+                        const y2Value = monthlyOngoing * 12 * 1.1;
+                        const y3Value = monthlyOngoing * 12 * 1.2;
+                        return [
+                          { label: 'Value Delivered', y1: formatRk(y1Value), y2: formatRk(y2Value), y3: formatRk(y3Value) },
+                          { label: 'Atheon Fee', y1: formatRk(monthlyOngoing * 12 * fee), y2: formatRk(monthlyOngoing * 12 * 1.1 * fee), y3: formatRk(monthlyOngoing * 12 * 1.2 * fee) },
+                          { label: 'Monthly Fee', y1: formatRk(monthlyOngoing * fee), y2: formatRk(monthlyOngoing * 1.1 * fee), y3: formatRk(monthlyOngoing * 1.2 * fee) },
+                          { label: 'Net Value to Client', y1: formatRk(y1Value - monthlyOngoing * 12 * fee), y2: formatRk(y2Value * (1 - fee)), y3: formatRk(y3Value * (1 - fee)) },
+                        ].map(row => (
+                          <tr key={row.label}>
+                            <td className="px-4 py-2 font-medium" style={{ color: 'var(--text-primary)' }}>{row.label}</td>
+                            <td className="px-4 py-2 text-right" style={{ color: 'var(--text-secondary)' }}>{row.y1}</td>
+                            <td className="px-4 py-2 text-right" style={{ color: 'var(--text-secondary)' }}>{row.y2}</td>
+                            <td className="px-4 py-2 text-right" style={{ color: 'var(--text-secondary)' }}>{row.y3}</td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Download buttons */}
+              <div className="flex gap-2">
+                <button onClick={() => api.assessments.downloadValueReport(assessment.id)}
+                  className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}
+                >Download Value Assessment Report</button>
+                {assessment.businessReportKey && (
+                  <button onClick={() => api.assessments.downloadBusiness(assessment.id)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                  >Business Case PDF</button>
+                )}
+                {assessment.excelModelKey && (
+                  <button onClick={() => api.assessments.downloadExcel(assessment.id)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                  >Excel Model</button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Legacy Sizing Tab (preserved for backward compatibility) */}
+      {tab === 'legacy' && (
+        <LegacySizingView assessment={assessment} />
+      )}
+    </div>
+  );
+}
+
+// ── Legacy Sizing View (backward compat) ─────────────────────────────────
+function LegacySizingView({ assessment }: { assessment: Assessment }) {
+  const results = assessment.results as AssessmentResults | null;
+  const catalysts = results?.catalyst_scores || [];
+  const sizing = results?.technical_sizing;
+  const totalSaving = catalysts.reduce((s: number, c: CatalystScore) => s + (c.estimated_annual_saving_zar || 0), 0);
+
+  if (!results || catalysts.length === 0) {
+    return <div className="text-center py-10 text-sm" style={{ color: 'var(--text-muted)' }}>No legacy sizing data available.</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {[
           { label: 'Total Annual Saving', value: `R ${(totalSaving / 1000).toFixed(0)}k` },
-          { label: 'Catalysts Identified', value: catalysts.length.toString() },
-          { label: 'Avg Priority', value: avgPriority },
-          { label: 'Payback Period', value: sizing ? `${((sizing.total_infra_cost_pm_saas * 12) / Math.max(totalSaving, 1)).toFixed(1)} yrs` : '—' },
+          { label: 'Catalysts', value: catalysts.length.toString() },
+          { label: 'Payback', value: sizing ? `${((sizing.total_infra_cost_pm_saas * 12) / Math.max(totalSaving, 1)).toFixed(1)} yrs` : '—' },
         ].map(m => (
           <div key={m.label} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.label}</span>
@@ -627,173 +1050,39 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
           </div>
         ))}
       </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
-        {(['business', 'technical'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === t ? 'text-white' : ''}`}
-            style={tab === t ? { background: 'var(--accent)' } : { color: 'var(--text-secondary)' }}
-          >
-            {t === 'business' ? 'Business Case' : 'Technical Sizing'}
-          </button>
-        ))}
+      <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+        <table className="w-full text-sm">
+          <thead><tr style={{ background: 'var(--bg-secondary)' }}>
+            {['Domain', 'Priority', 'Saving', 'Confidence'].map(h => (
+              <th key={h} className="px-4 py-2.5 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
+            {[...catalysts].sort((a, b) => (a.priority || 0) - (b.priority || 0)).map(c => (
+              <tr key={c.catalyst_name}>
+                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>{c.catalyst_name}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{c.priority}</td>
+                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>R {(c.estimated_annual_saving_zar / 1000).toFixed(0)}k</td>
+                <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{c.confidence}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-
-      {/* Business Case Tab */}
-      {tab === 'business' && (
-        <div className="space-y-4">
-          {/* Catalyst Priority Table */}
-          <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: 'var(--bg-secondary)' }}>
-                  {['Domain', 'Priority', 'Total Saving', 'Confidence', 'Sub-Catalysts'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
-                {[...catalysts].sort((a: CatalystScore, b: CatalystScore) => (a.priority || 0) - (b.priority || 0)).map((c: CatalystScore) => (
-                  <CatalystRow key={c.catalyst_name} catalyst={c} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Download */}
-          {assessment.businessReportKey && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => api.assessments.downloadBusiness(assessment.id)}
-                className="px-4 py-2 text-sm font-medium rounded-lg text-white"
-                style={{ background: 'var(--accent)' }}
-              >
-                Download Business Case PDF
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Technical Sizing Tab */}
-      {tab === 'technical' && sizing && (
-        <div className="space-y-4">
-          {/* Cost comparison */}
-          <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-            <h3 className="font-medium mb-3" style={{ color: 'var(--text-primary)' }}>Infrastructure Cost Comparison</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-lg p-4" style={{ background: 'var(--bg-secondary)' }}>
-                <h4 className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>SaaS (Cloudflare)</h4>
-                <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>R {sizing.total_infra_cost_pm_saas.toLocaleString()}/mo</p>
-                <div className="text-xs mt-2 space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                  <p>API calls: {sizing.total_monthly_api_calls.toLocaleString()}</p>
-                  <p>D1 storage: {sizing.total_db_size_gb.toFixed(2)} GB</p>
-                  <p>R2 storage: {sizing.total_storage_gb.toFixed(2)} GB</p>
-                  <p>Vectorize queries: {sizing.total_monthly_vector_queries.toLocaleString()}</p>
-                  <p>AI tokens: {sizing.total_monthly_llm_tokens.toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="rounded-lg p-4" style={{ background: 'var(--bg-secondary)' }}>
-                <h4 className="text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>On-Premise</h4>
-                <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>R {sizing.monthly_licence_revenue.toLocaleString()}/mo revenue</p>
-                <div className="text-xs mt-2 space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                  <p>Infra cost: R {sizing.total_infra_cost_pm_onprem.toLocaleString()}/mo</p>
-                  <p>Margin: {sizing.gross_margin_pct_onprem.toFixed(1)}%</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Margin */}
-          {sizing.gross_margin_pct_saas !== undefined && (
-            <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-              <h3 className="font-medium mb-2" style={{ color: 'var(--text-primary)' }}>Gross Margin (SaaS)</h3>
-              <p className="text-2xl font-semibold" style={{ color: sizing.gross_margin_pct_saas >= 50 ? 'var(--color-success, #10b981)' : 'var(--color-warning, #f59e0b)' }}>
-                {sizing.gross_margin_pct_saas.toFixed(1)}%
-              </p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                (Monthly licence revenue - SaaS infra cost) / Monthly licence revenue
-              </p>
-            </div>
-          )}
-
-          {/* Downloads */}
-          <div className="flex gap-2">
-            {assessment.technicalReportKey && (
-              <button
-                onClick={() => api.assessments.downloadTechnical(assessment.id)}
-                className="px-4 py-2 text-sm font-medium rounded-lg text-white"
-                style={{ background: 'var(--accent)' }}
-              >
-                Download Technical PDF
-              </button>
-            )}
-            {assessment.excelModelKey && (
-              <button
-                onClick={() => api.assessments.downloadExcel(assessment.id)}
-                className="px-4 py-2 text-sm font-medium rounded-lg"
-                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
-              >
-                Download Excel Model
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <div className="flex gap-2">
+        {assessment.businessReportKey && (
+          <button onClick={() => api.assessments.downloadBusiness(assessment.id)}
+            className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}>Business Case PDF</button>
+        )}
+        {assessment.technicalReportKey && (
+          <button onClick={() => api.assessments.downloadTechnical(assessment.id)}
+            className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>Technical PDF</button>
+        )}
+        {assessment.excelModelKey && (
+          <button onClick={() => api.assessments.downloadExcel(assessment.id)}
+            className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>Excel Model</button>
+        )}
+      </div>
     </div>
-  );
-}
-
-// ── Catalyst Row (expandable) ─────────────────────────────────────────────
-function CatalystRow({ catalyst }: { catalyst: CatalystScore }) {
-  const [expanded, setExpanded] = useState(false);
-  const c = catalyst;
-  const priorityLabel = c.priority <= 1 ? 'critical' : c.priority <= 2 ? 'high' : c.priority <= 3 ? 'medium' : 'low';
-  const priorityColor: Record<string, string> = {
-    critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  };
-
-  return (
-    <>
-      <tr
-        className="cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>
-          <span className="mr-1">{expanded ? '▾' : '▸'}</span>
-          {c.catalyst_name}
-        </td>
-        <td className="px-4 py-3">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityColor[priorityLabel] || priorityColor.low}`}>
-            {priorityLabel}
-          </span>
-        </td>
-        <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>
-          R {(c.estimated_annual_saving_zar / 1000).toFixed(0)}k
-        </td>
-        <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{c.confidence}</td>
-        <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{c.sub_catalysts?.length || 0}</td>
-      </tr>
-      {expanded && c.sub_catalysts && c.sub_catalysts.length > 0 && (
-        <tr>
-          <td colSpan={5} className="px-4 py-2" style={{ background: 'var(--bg-secondary)' }}>
-            <div className="space-y-1.5">
-              {c.sub_catalysts.map((sc: SubCatalystScore, i: number) => (
-                <div key={i} className="flex justify-between text-xs">
-                  <span style={{ color: 'var(--text-secondary)' }}>{sc.name}</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>R {(sc.estimated_annual_saving_zar / 1000).toFixed(0)}k</span>
-                </div>
-              ))}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   );
 }

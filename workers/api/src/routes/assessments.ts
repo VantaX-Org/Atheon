@@ -7,6 +7,12 @@ import {
   DEFAULT_ASSESSMENT_CONFIG,
   type AssessmentConfig,
 } from '../services/assessment-engine';
+import {
+  runValueAssessment,
+  generateValueReportPDF,
+  DEFAULT_VALUE_ASSESSMENT_CONFIG,
+  type ValueAssessmentConfig,
+} from '../services/value-assessment-engine';
 
 const assessments = new Hono<AppBindings>();
 
@@ -224,6 +230,164 @@ assessments.get('/:id/report/excel', async (c) => {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${sanitizeFilename(assessment.prospect_name as string)}-model.xlsx"`,
     },
+  });
+});
+
+// ── POST /api/assessments/:id/run-value-assessment ────────────────────────
+assessments.post('/:id/run-value-assessment', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessmentId = c.req.param('id');
+  const body = await c.req.json<{ mode?: 'full' | 'quick'; outcomeFeePercent?: number }>().catch(() => ({}));
+
+  const assessment = await c.env.DB.prepare(
+    'SELECT * FROM assessments WHERE id = ?'
+  ).bind(assessmentId).first<Record<string, unknown>>();
+  if (!assessment) return c.json({ error: 'Not found' }, 404);
+
+  const tenantId = assessment.tenant_id as string;
+  const config: ValueAssessmentConfig = {
+    ...DEFAULT_VALUE_ASSESSMENT_CONFIG,
+    mode: body.mode || 'full',
+    outcomeFeePercent: body.outcomeFeePercent || 20,
+  };
+
+  // Run in background
+  const promise = runValueAssessment(
+    c.env.DB, c.env.AI, c.env.STORAGE,
+    tenantId, assessmentId,
+    (assessment.erp_connection_id as string) || '',
+    config,
+    (assessment.prospect_industry as string) || 'general',
+    (assessment.prospect_name as string) || 'Prospect',
+  );
+  c.executionCtx.waitUntil(promise);
+
+  return c.json({ id: assessmentId, status: 'running', mode: config.mode }, 200);
+});
+
+// ── GET /api/assessments/:id/findings ──────────────────────────────────────
+assessments.get('/:id/findings', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessmentId = c.req.param('id');
+  const category = c.req.query('category');
+  const severity = c.req.query('severity');
+  const domain = c.req.query('domain');
+
+  let sql = 'SELECT * FROM assessment_findings WHERE assessment_id = ?';
+  const binds: unknown[] = [assessmentId];
+
+  if (category) { sql += ' AND category = ?'; binds.push(category); }
+  if (severity) { sql += ' AND severity = ?'; binds.push(severity); }
+  if (domain) { sql += ' AND domain = ?'; binds.push(domain); }
+  sql += ' ORDER BY financial_impact DESC';
+
+  const results = await c.env.DB.prepare(sql).bind(...binds).all<Record<string, unknown>>();
+  return c.json({
+    findings: (results.results || []).map(f => ({
+      ...f,
+      evidence: JSON.parse(f.evidence as string || '{}'),
+    })),
+    total: results.results?.length || 0,
+  });
+});
+
+// ── GET /api/assessments/:id/data-quality ──────────────────────────────────
+assessments.get('/:id/data-quality', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const results = await c.env.DB.prepare(
+    'SELECT * FROM assessment_data_quality WHERE assessment_id = ? ORDER BY table_name'
+  ).bind(c.req.param('id')).all<Record<string, unknown>>();
+
+  return c.json({
+    dataQuality: (results.results || []).map(dq => ({
+      ...dq,
+      field_scores: JSON.parse(dq.field_scores as string || '{}'),
+      issues: JSON.parse(dq.issues as string || '[]'),
+    })),
+    total: results.results?.length || 0,
+  });
+});
+
+// ── GET /api/assessments/:id/process-timing ────────────────────────────────
+assessments.get('/:id/process-timing', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const results = await c.env.DB.prepare(
+    'SELECT * FROM assessment_process_timing WHERE assessment_id = ? ORDER BY process_name'
+  ).bind(c.req.param('id')).all<Record<string, unknown>>();
+
+  return c.json({
+    processTiming: (results.results || []).map(t => ({
+      ...t,
+      evidence: JSON.parse(t.evidence as string || '{}'),
+    })),
+    total: results.results?.length || 0,
+  });
+});
+
+// ── GET /api/assessments/:id/value-summary ─────────────────────────────────
+assessments.get('/:id/value-summary', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const summary = await c.env.DB.prepare(
+    'SELECT * FROM assessment_value_summary WHERE assessment_id = ? LIMIT 1'
+  ).bind(c.req.param('id')).first<Record<string, unknown>>();
+
+  if (!summary) return c.json({ error: 'No value summary found' }, 404);
+
+  return c.json({
+    ...summary,
+    value_by_domain: JSON.parse(summary.value_by_domain as string || '{}'),
+    value_by_category: JSON.parse(summary.value_by_category as string || '{}'),
+  });
+});
+
+// ── GET /api/assessments/:id/report/value — download Value Assessment HTML report ──
+assessments.get('/:id/report/value', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessment = await c.env.DB.prepare(
+    'SELECT business_report_key, prospect_name FROM assessments WHERE id = ?'
+  ).bind(c.req.param('id')).first<Record<string, unknown>>();
+
+  if (!assessment || !assessment.business_report_key) {
+    return c.json({ error: 'Value report not available' }, 404);
+  }
+
+  const obj = await c.env.STORAGE.get(assessment.business_report_key as string);
+  if (!obj) return c.json({ error: 'Report file not found' }, 404);
+
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': 'text/html',
+      'Content-Disposition': `inline; filename="${sanitizeFilename(assessment.prospect_name as string)}-value-assessment.html"`,
+    },
+  });
+});
+
+// ── GET /api/assessments/:id/evidence/:findingId ──────────────────────────
+assessments.get('/:id/evidence/:findingId', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const finding = await c.env.DB.prepare(
+    'SELECT * FROM assessment_findings WHERE id = ? AND assessment_id = ?'
+  ).bind(c.req.param('findingId'), c.req.param('id')).first<Record<string, unknown>>();
+
+  if (!finding) return c.json({ error: 'Finding not found' }, 404);
+
+  return c.json({
+    ...finding,
+    evidence: JSON.parse(finding.evidence as string || '{}'),
   });
 });
 

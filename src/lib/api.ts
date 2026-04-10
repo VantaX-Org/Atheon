@@ -616,6 +616,30 @@ export const api = {
       const a = document.createElement('a'); a.href = url; a.download = `financial-model-${id}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     },
+    // ── Value Assessment Engine endpoints ──
+    runValueAssessment: (id: string, mode: 'full' | 'quick' = 'full', outcomeFeePercent?: number) =>
+      request<{ id: string; status: string; mode: string }>(`/api/assessments/${id}/run-value-assessment`, {
+        method: 'POST', body: JSON.stringify({ mode, outcomeFeePercent }),
+      }),
+    findings: (id: string, filters?: { category?: string; severity?: string; domain?: string }) =>
+      request<{ findings: ValueAssessmentFinding[]; total: number }>(`/api/assessments/${id}/findings${qs({ category: filters?.category, severity: filters?.severity, domain: filters?.domain })}`),
+    dataQuality: (id: string) =>
+      request<{ dataQuality: DataQualityRecord[]; total: number }>(`/api/assessments/${id}/data-quality`),
+    processTiming: (id: string) =>
+      request<{ processTiming: ProcessTimingRecord[]; total: number }>(`/api/assessments/${id}/process-timing`),
+    valueSummary: (id: string) =>
+      request<ValueSummaryRecord>(`/api/assessments/${id}/value-summary`),
+    downloadValueReport: async (id: string) => {
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch(`${API_URL}/api/assessments/${id}/report/value`, { headers });
+      if (!res.ok) throw new Error('Failed to download value report');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    },
+    evidence: (id: string, findingId: string) =>
+      request<ValueAssessmentFinding>(`/api/assessments/${id}/evidence/${findingId}`),
   },
 
   // ── Admin (Superadmin only) ────────────────────────────────────────
@@ -2692,6 +2716,89 @@ export interface SuccessStoriesResponse {
   industry: string;
   stories: SuccessStory[];
   total: number;
+}
+
+// ── Value Assessment Engine Types ──
+export interface ValueAssessmentFinding {
+  id: string;
+  assessment_id: string;
+  run_id: string;
+  tenant_id: string;
+  finding_type: 'discrepancy' | 'exception' | 'data_quality' | 'process_delay' | 'risk';
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  affected_records: number;
+  financial_impact: number;
+  evidence: {
+    sample_records?: Array<{ ref: string; source_value: string | number; target_value: string | number; difference: number }>;
+    pattern?: string;
+    first_occurrence?: string;
+    frequency?: string;
+  };
+  root_cause: string | null;
+  prescription: string | null;
+  category: string;
+  immediate_value: number;
+  ongoing_monthly_value: number;
+  domain: string;
+  created_at: string;
+}
+
+export interface DataQualityRecord {
+  id: string;
+  assessment_id: string;
+  tenant_id: string;
+  table_name: string;
+  total_records: number;
+  complete_records: number;
+  completeness_pct: number;
+  field_scores: Record<string, number>;
+  referential_issues: number;
+  duplicate_records: number;
+  orphan_records: number;
+  stale_records: number;
+  overall_quality_score: number;
+  issues: Array<{ field: string; issue: string; count: number; severity: string; financialImpact: number }>;
+  created_at: string;
+}
+
+export interface ProcessTimingRecord {
+  id: string;
+  assessment_id: string;
+  tenant_id: string;
+  process_name: string;
+  avg_cycle_time_days: number;
+  median_cycle_time_days: number;
+  p90_cycle_time_days: number;
+  benchmark_cycle_time_days: number;
+  bottleneck_step: string | null;
+  bottleneck_avg_days: number;
+  records_analysed: number;
+  records_exceeding_benchmark: number;
+  financial_impact_of_delay: number;
+  evidence: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ValueSummaryRecord {
+  id: string;
+  assessment_id: string;
+  tenant_id: string;
+  total_immediate_value: number;
+  total_ongoing_monthly_value: number;
+  total_ongoing_annual_value: number;
+  total_data_quality_issues: number;
+  total_process_delays: number;
+  total_findings: number;
+  total_critical_findings: number;
+  outcome_based_monthly_fee: number;
+  outcome_based_fee_pct: number;
+  payback_days: number;
+  value_by_domain: Record<string, { immediate: number; ongoing: number; findings: number }>;
+  value_by_category: Record<string, { immediate: number; ongoing: number; findings: number }>;
+  executive_narrative: string;
+  created_at: string;
 }
 
 // §11.8 Executive Summary
