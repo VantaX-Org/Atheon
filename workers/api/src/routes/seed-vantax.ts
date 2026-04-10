@@ -1858,9 +1858,9 @@ seed.post('/seed-vantax', async (c) => {
     ];
     for (const run of vaRunDomains) {
       await c.env.DB.prepare(
-        `INSERT INTO assessment_runs (id, assessment_id, tenant_id, domain, phase, status, findings_count, immediate_value, ongoing_monthly_value, started_at, completed_at)
-         VALUES (?, ?, ?, ?, 'complete', ?, ?, ?, ?, datetime('now', '-2 hours'), datetime('now', '-1 hour'))`
-      ).bind(run.id, vaAssessmentId, tenantId, run.domain, run.status, run.findingsCount, run.immediateValue, run.ongoingValue).run();
+        `INSERT INTO assessment_runs (id, assessment_id, tenant_id, cluster_name, sub_catalyst_name, domain, status, source_record_count, discrepancies, total_source_value, total_discrepancy_value, findings, started_at, completed_at)
+         VALUES (?, ?, ?, ?, 'value_assessment', ?, ?, ?, ?, ?, ?, ?, datetime('now', '-2 hours'), datetime('now', '-1 hour'))`
+      ).bind(run.id, vaAssessmentId, tenantId, run.domain, run.domain, run.status, run.findingsCount, run.findingsCount, run.immediateValue + run.ongoingValue, run.immediateValue, JSON.stringify({ immediateValue: run.immediateValue, ongoingMonthlyValue: run.ongoingValue })).run();
     }
 
     // Assessment findings (18 specific, evidence-backed findings)

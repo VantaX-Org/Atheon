@@ -637,6 +637,7 @@ export const api = {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     },
     evidence: (id: string, findingId: string) =>
       request<ValueAssessmentFinding>(`/api/assessments/${id}/evidence/${findingId}`),

@@ -249,8 +249,8 @@ assessments.post('/:id/run-value-assessment', async (c) => {
   const tenantId = assessment.tenant_id as string;
   const config: ValueAssessmentConfig = {
     ...DEFAULT_VALUE_ASSESSMENT_CONFIG,
-    mode: body.mode || 'full',
-    outcomeFeePercent: body.outcomeFeePercent || 20,
+    mode: body.mode ?? 'full',
+    outcomeFeePercent: body.outcomeFeePercent ?? 20,
   };
 
   // Run in background
