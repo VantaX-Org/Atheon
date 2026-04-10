@@ -140,6 +140,9 @@ const ALLOWED_TABLES = new Set([
   // §11 tables
   'atheon_score_history', 'baseline_snapshots', 'health_targets',
   'anonymised_benchmarks', 'resolution_patterns', 'trial_assessments',
+  // Value Assessment Engine tables
+  'assessment_runs', 'assessment_findings', 'assessment_data_quality',
+  'assessment_process_timing', 'assessment_value_summary', 'assessments',
   // SAP native tables
   'sap_bkpf', 'sap_bseg', 'sap_bsid', 'sap_bsik', 'sap_febep',
   'sap_ekko', 'sap_ekpo', 'sap_ekbe', 'sap_mard', 'sap_iseg',
@@ -1827,6 +1830,138 @@ seed.post('/seed-vantax', async (c) => {
       }
     }
     console.log('[VantaX Seeder] Seeded industry playbook seeds');
+
+    // ── Value Assessment Engine Seed Data ─────────────────────────────
+    // Create a completed value assessment with realistic findings
+    const vaAssessmentId = `va-demo-${tenantId.slice(0, 8)}`;
+
+    // Clean up any existing value assessment data
+    for (const vaTable of ['assessment_value_summary', 'assessment_process_timing', 'assessment_data_quality', 'assessment_findings', 'assessment_runs']) {
+      try { await c.env.DB.prepare(`DELETE FROM ${vaTable} WHERE tenant_id = ?`).bind(tenantId).run(); } catch { /* table may not exist */ }
+    }
+    try { await c.env.DB.prepare(`DELETE FROM assessments WHERE tenant_id = ? AND id LIKE 'va-demo-%'`).bind(tenantId).run(); } catch { /* ignore */ }
+
+    // Create the assessment record
+    try {
+      await c.env.DB.prepare(
+        `INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, erp_connection_id, status, config, created_by, completed_at)
+         VALUES (?, ?, 'VantaX (Pty) Ltd', 'technology', ?, 'complete', '{"mode":"full","outcomeFeePercent":20}', 'system', datetime('now'))`
+      ).bind(vaAssessmentId, tenantId, connectionId).run();
+    } catch { /* may exist */ }
+
+    // Assessment runs (4 domains)
+    const vaRunDomains = [
+      { id: `va-run-fin-${tenantId.slice(0,6)}`, domain: 'finance', status: 'complete', findingsCount: 6, immediateValue: 342000, ongoingValue: 28500 },
+      { id: `va-run-proc-${tenantId.slice(0,6)}`, domain: 'procurement', status: 'complete', findingsCount: 5, immediateValue: 215000, ongoingValue: 38000 },
+      { id: `va-run-wf-${tenantId.slice(0,6)}`, domain: 'workforce', status: 'complete', findingsCount: 3, immediateValue: 78000, ongoingValue: 15500 },
+      { id: `va-run-sc-${tenantId.slice(0,6)}`, domain: 'supply_chain', status: 'complete', findingsCount: 4, immediateValue: 145000, ongoingValue: 23000 },
+    ];
+    for (const run of vaRunDomains) {
+      await c.env.DB.prepare(
+        `INSERT INTO assessment_runs (id, assessment_id, tenant_id, cluster_name, sub_catalyst_name, domain, status, source_record_count, discrepancies, total_source_value, total_discrepancy_value, findings, started_at, completed_at)
+         VALUES (?, ?, ?, ?, 'value_assessment', ?, ?, ?, ?, ?, ?, ?, datetime('now', '-2 hours'), datetime('now', '-1 hour'))`
+      ).bind(run.id, vaAssessmentId, tenantId, run.domain, run.domain, run.status, run.findingsCount, run.findingsCount, run.immediateValue + run.ongoingValue, run.immediateValue, JSON.stringify({ immediateValue: run.immediateValue, ongoingMonthlyValue: run.ongoingValue })).run();
+    }
+
+    // Assessment findings (18 specific, evidence-backed findings)
+    const vaFindings = [
+      // Finance findings
+      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'critical', title: 'Invoice #INV-2024-1847 — R47,200 payment terms mismatch', desc: 'SAP payment terms show Net-30 but bank settlement occurred at Net-67. The 37-day overshoot on this single transaction cost R47,200 in working capital.', affected: 1, impact: 47200, category: 'payment_terms', immediate: 47200, ongoing: 3900, domain: 'finance', evidence: { sample_records: [{ ref: 'Invoice #INV-2024-1847', source_value: 'Net-30 (SAP)', target_value: 'Settled Day 67', difference: 47200 }], pattern: 'Late payment on high-value invoices', first_occurrence: '2024-08-15', frequency: 'Monthly' }, rootCause: 'Manual AP approval queue with no escalation for overdue items.', prescription: 'Implement automated payment terms enforcement with escalation rules.' },
+      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'critical', title: '23 overdue invoices worth R218,400 — no collection follow-up', desc: '23 invoices are past their due date with no systematic follow-up. Total outstanding: R218,400. Average days overdue: 42.', affected: 23, impact: 218400, category: 'data_issue', immediate: 65520, ongoing: 4368, domain: 'finance', evidence: { sample_records: [{ ref: 'INV-2024-0892', source_value: 'Due: 2024-06-15', target_value: 'Unpaid', difference: 34200 }, { ref: 'INV-2024-1103', source_value: 'Due: 2024-07-22', target_value: 'Unpaid', difference: 28700 }, { ref: 'INV-2024-1456', source_value: 'Due: 2024-08-01', target_value: 'Unpaid', difference: 19800 }], pattern: 'Overdue accounts receivable', first_occurrence: '2024-06-15', frequency: 'Ongoing' }, rootCause: 'No automated AR aging alerts. Manual collection process misses follow-ups.', prescription: 'Deploy automated AR collection catalyst with aging bucket escalation.' },
+      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'high', title: '8 potential duplicate payments totalling R89,600', desc: '8 instances of identical payment amounts processed on the same day to the same vendor. Potential duplicate payments worth R89,600.', affected: 8, impact: 89600, category: 'duplicate_payment', immediate: 89600, ongoing: 7467, domain: 'finance', evidence: { sample_records: [{ ref: 'PAY-2024-0445', source_value: 'R18,500 to Supplier A', target_value: 'R18,500 same day', difference: 18500 }, { ref: 'PAY-2024-0612', source_value: 'R15,200 to Supplier C', target_value: 'R15,200 same day', difference: 15200 }], pattern: 'Same amount, same vendor, same day', first_occurrence: '2024-05-20', frequency: 'Monthly' }, rootCause: 'No duplicate payment detection in AP workflow. Manual bank reconciliation misses these.', prescription: 'Enable real-time duplicate payment detection with vendor + amount + date matching.' },
+      { runId: vaRunDomains[0].id, type: 'exception', severity: 'high', title: '14 GL journal entries without proper authorization', desc: '14 journal entries posted without the required dual authorization. Total value: R156,000. These entries bypass the segregation of duties control.', affected: 14, impact: 156000, category: 'compliance', immediate: 0, ongoing: 5000, domain: 'finance', evidence: { sample_records: [{ ref: 'JE-2024-0234', source_value: 'Posted by: user_a', target_value: 'Approved by: user_a (same)', difference: 42000 }, { ref: 'JE-2024-0567', source_value: 'Posted by: user_b', target_value: 'No approval', difference: 28000 }], pattern: 'Missing dual authorization', first_occurrence: '2024-04-10', frequency: 'Weekly' }, rootCause: 'SAP workflow rules allow posting without second approval for amounts under R50k.', prescription: 'Enforce dual authorization for all JE amounts above R10k.' },
+      { runId: vaRunDomains[0].id, type: 'risk', severity: 'medium', title: '5 vendor master records with mismatched bank details', desc: '5 vendors have bank account details that differ between SAP master data and last payment instruction. Fraud risk indicator.', affected: 5, impact: 67000, category: 'fraud_risk', immediate: 0, ongoing: 2800, domain: 'finance', evidence: { sample_records: [{ ref: 'Vendor LFA1-V001', source_value: 'Bank: ABSA 1234', target_value: 'Payment to: FNB 5678', difference: 24500 }], pattern: 'Bank detail mismatch', first_occurrence: '2024-07-01', frequency: 'Quarterly' }, rootCause: 'Vendor bank detail changes not triggering verification workflow.', prescription: 'Implement vendor bank change verification with dual approval and confirmation letter.' },
+      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'medium', title: 'R12,300 in unmatched bank transactions (15 records)', desc: '15 bank transactions worth R12,300 cannot be matched to any GL posting. These need manual investigation and reconciliation.', affected: 15, impact: 12300, category: 'reconciliation', immediate: 12300, ongoing: 1025, domain: 'finance', evidence: { sample_records: [{ ref: 'BNK-2024-0891', source_value: 'R4,200 credit', target_value: 'No GL match', difference: 4200 }, { ref: 'BNK-2024-0923', source_value: 'R2,800 debit', target_value: 'No GL match', difference: 2800 }], pattern: 'Unmatched bank transactions', first_occurrence: '2024-03-01', frequency: 'Monthly' }, rootCause: 'Automated bank reconciliation only matches exact amounts. Partial payments and fees remain unmatched.', prescription: 'Implement fuzzy matching with tolerance rules for bank fees and partial payments.' },
+      // Procurement findings
+      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'critical', title: '12 stale POs locking R345,000 in committed budget', desc: '12 purchase orders have been open for more than 90 days without goods receipt. This locks R345,000 in committed budget that may never be utilized.', affected: 12, impact: 345000, category: 'process_issue', immediate: 51750, ongoing: 8625, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500001234', source_value: 'Opened: 2024-03-15', target_value: 'Still open (180+ days)', difference: 67000 }, { ref: 'PO #4500001456', source_value: 'Opened: 2024-04-02', target_value: 'Still open (165 days)', difference: 52000 }], pattern: 'Stale POs with no goods receipt', first_occurrence: '2024-03-15', frequency: 'Accumulated' }, rootCause: 'No automated stale PO review process. Buyers do not close POs after project completion.', prescription: 'Implement automated PO lifecycle management with 60-day alerts and 90-day auto-close.' },
+      { runId: vaRunDomains[1].id, type: 'discrepancy', severity: 'high', title: 'GR/IR price variances on 7 POs worth R28,400', desc: '7 purchase orders show goods receipt amounts that differ from invoice amounts. Total variance: R28,400. These indicate potential pricing errors or unauthorized changes.', affected: 7, impact: 28400, category: 'price_variance', immediate: 28400, ongoing: 4733, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500002345', source_value: 'GR: R45,200', target_value: 'IR: R49,800', difference: 4600 }, { ref: 'PO #4500002567', source_value: 'GR: R32,100', target_value: 'IR: R35,700', difference: 3600 }], pattern: 'GR/IR mismatch above 5% tolerance', first_occurrence: '2024-05-01', frequency: 'Monthly' }, rootCause: 'No automated 3-way match validation. Price changes between order and invoice not flagged.', prescription: 'Deploy automated 3-way match with configurable tolerance thresholds.' },
+      { runId: vaRunDomains[1].id, type: 'exception', severity: 'high', title: '6 POs with inactive supplier codes — R89,000 at risk', desc: '6 active purchase orders reference suppliers marked as inactive in SAP master data. Combined value: R89,000.', affected: 6, impact: 89000, category: 'supplier_risk', immediate: 0, ongoing: 7417, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500003456 → V-INACTIVE-01', source_value: 'Supplier status: Blocked', target_value: 'PO status: Open', difference: 34000 }, { ref: 'PO #4500003567 → V-INACTIVE-03', source_value: 'Supplier status: Marked for deletion', target_value: 'PO status: Open', difference: 22000 }], pattern: 'Active PO referencing inactive vendor', first_occurrence: '2024-06-01', frequency: 'Quarterly' }, rootCause: 'Supplier deactivation process does not check for open POs. No link between vendor master and procurement.', prescription: 'Implement supplier lifecycle checks — block new POs for inactive vendors, flag existing open POs.' },
+      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'medium', title: '4 duplicate PO numbers detected', desc: '4 PO numbers appear more than once in the system, indicating potential duplicate ordering or data entry errors.', affected: 4, impact: 18000, category: 'data_issue', immediate: 18000, ongoing: 1500, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500004567', source_value: '2 entries', target_value: 'Should be 1', difference: 8500 }], pattern: 'Duplicate PO numbers', first_occurrence: '2024-07-10', frequency: 'Occasional' }, rootCause: 'Manual PO creation allows duplicate numbers when SAP number range is exhausted.', prescription: 'Enforce unique PO number validation at creation time.' },
+      { runId: vaRunDomains[1].id, type: 'process_delay', severity: 'medium', title: 'Average Procure-to-Pay cycle 18.3 days vs 12-day benchmark', desc: 'The P2P cycle is 52% slower than the industry benchmark. R134,600 in open POs would benefit from faster processing.', affected: 80, impact: 134600, category: 'process_issue', immediate: 20190, ongoing: 6730, domain: 'procurement', evidence: { sample_records: [{ ref: 'P2P cycle analysis', source_value: '18.3 days avg', target_value: '12 days benchmark', difference: 6.3 }], pattern: 'Slow procurement cycle', first_occurrence: '2024-01-01', frequency: 'Ongoing' }, rootCause: 'Manual approval routing with no SLA enforcement. Average approval wait: 4.2 days.', prescription: 'Implement automated approval routing with SLA escalation and parallel approvals.' },
+      // Workforce findings
+      { runId: vaRunDomains[2].id, type: 'data_quality', severity: 'high', title: '8 employees with missing department or cost centre', desc: '8 employee records have blank department or cost centre fields, preventing accurate labour cost allocation.', affected: 8, impact: 42000, category: 'data_issue', immediate: 42000, ongoing: 3500, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1045', source_value: 'Dept: (blank)', target_value: 'Cost Centre: (blank)', difference: 8500 }, { ref: 'EMP-1078', source_value: 'Dept: (blank)', target_value: 'Cost Centre: CC-4400', difference: 6200 }], pattern: 'Missing HR master data', first_occurrence: '2024-01-15', frequency: 'Ongoing' }, rootCause: 'Onboarding process does not enforce mandatory department and cost centre assignment.', prescription: 'Add mandatory field validation to employee onboarding workflow.' },
+      { runId: vaRunDomains[2].id, type: 'exception', severity: 'medium', title: '3 salary outliers — payments 3x above department average', desc: '3 employees received payments more than 3 standard deviations above their department average. Could indicate overpayment or miscategorisation.', affected: 3, impact: 24000, category: 'payroll_anomaly', immediate: 24000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1023', source_value: 'Salary: R85,000', target_value: 'Dept avg: R28,000', difference: 57000 }], pattern: 'Salary outlier detection', first_occurrence: '2024-04-01', frequency: 'Monthly' }, rootCause: 'No automated salary band validation. New hires can be assigned to wrong pay grade.', prescription: 'Implement salary band validation against department and role benchmarks.' },
+      { runId: vaRunDomains[2].id, type: 'risk', severity: 'medium', title: 'Termination processing delay — avg 8.5 days', desc: 'Average time from termination date to system access revocation is 8.5 days. 2 terminated employees still have active SAP access.', affected: 2, impact: 12000, category: 'security_risk', immediate: 12000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-0987 (terminated)', source_value: 'Term date: 2024-08-15', target_value: 'SAP access: Active', difference: 0 }], pattern: 'Delayed access revocation', first_occurrence: '2024-08-15', frequency: 'Per termination' }, rootCause: 'IT access revocation is manual and disconnected from HR termination process.', prescription: 'Automate SAP access deprovisioning triggered by HR termination workflow.' },
+      // Supply Chain findings
+      { runId: vaRunDomains[3].id, type: 'discrepancy', severity: 'critical', title: 'Inventory variance: 4 items with shrinkage worth R67,800', desc: '4 products show system stock exceeding physical count. Total shrinkage value: R67,800. Indicates theft, damage, or counting errors.', affected: 4, impact: 67800, category: 'inventory_variance', immediate: 67800, ongoing: 5650, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-007 (Wireless Router)', source_value: 'System: 150', target_value: 'Physical: 122', difference: 23800 }, { ref: 'MAT-PRD-012 (UPS Battery)', source_value: 'System: 85', target_value: 'Physical: 68', difference: 18700 }], pattern: 'System > Physical (shrinkage)', first_occurrence: '2024-06-30', frequency: 'Quarterly count' }, rootCause: 'Warehouse goods issue not posted in real-time. Cycle counts only quarterly.', prescription: 'Implement barcode-based real-time goods movement posting and monthly cycle counts for high-value items.' },
+      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'high', title: '6 products with zero cost price in SAP', desc: '6 products have a cost price of R0.00 in SAP material master. This causes incorrect COGS calculations and margin reporting.', affected: 6, impact: 34000, category: 'data_issue', immediate: 34000, ongoing: 2833, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-003', source_value: 'Cost: R0.00', target_value: 'Selling: R2,450', difference: 2450 }, { ref: 'MAT-PRD-009', source_value: 'Cost: R0.00', target_value: 'Selling: R890', difference: 890 }], pattern: 'Zero cost price in material master', first_occurrence: '2024-02-01', frequency: 'Ongoing' }, rootCause: 'Material master creation allows saving without cost price. No validation on financial fields.', prescription: 'Enforce mandatory cost price entry in material master creation workflow.' },
+      { runId: vaRunDomains[3].id, type: 'process_delay', severity: 'high', title: 'Order-to-Cash cycle 28.5 days vs 21-day benchmark', desc: 'O2C cycle is 36% above industry benchmark. Delayed billing reduces cash flow by an estimated R45,000 per month.', affected: 72, impact: 45000, category: 'process_issue', immediate: 0, ongoing: 9000, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'O2C cycle analysis', source_value: '28.5 days avg', target_value: '21 days benchmark', difference: 7.5 }], pattern: 'Slow order-to-cash cycle', first_occurrence: '2024-01-01', frequency: 'Ongoing' }, rootCause: 'Manual delivery confirmation and invoice creation. Average 5-day gap between delivery and billing.', prescription: 'Automate billing document creation triggered by goods issue posting.' },
+      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'medium', title: '3 dead stock items worth R23,400 — no movement in 180+ days', desc: '3 inventory items have had zero movement for over 180 days. Carrying cost and potential write-off: R23,400.', affected: 3, impact: 23400, category: 'dead_stock', immediate: 23400, ongoing: 1950, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-015', source_value: 'Last movement: 2024-01-20', target_value: 'Value: R12,600', difference: 12600 }], pattern: 'No movement > 180 days', first_occurrence: '2024-01-20', frequency: 'Review quarterly' }, rootCause: 'No slow-moving stock report or automated write-down trigger.', prescription: 'Implement monthly slow-moving stock report with automated write-down proposals after 120 days.' },
+    ];
+
+    for (const f of vaFindings) {
+      await c.env.DB.prepare(
+        `INSERT INTO assessment_findings (id, assessment_id, run_id, tenant_id, finding_type, severity, title, description, affected_records, financial_impact, evidence, root_cause, prescription, category, immediate_value, ongoing_monthly_value, domain, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(crypto.randomUUID(), vaAssessmentId, f.runId, tenantId, f.type, f.severity, f.title, f.desc, f.affected, f.impact, JSON.stringify(f.evidence), f.rootCause, f.prescription, f.category, f.immediate, f.ongoing, f.domain).run();
+    }
+
+    // Data Quality records (5 ERP tables)
+    const vaDqRecords = [
+      { table: 'erp_invoices', total: 152, complete: 138, pct: 90.8, fieldScores: { invoice_number: 100, customer_id: 98, amount_due: 100, due_date: 95, payment_status: 92, total: 100 }, refIssues: 3, dups: 2, orphans: 5, stale: 8, quality: 82 },
+      { table: 'erp_purchase_orders', total: 80, complete: 68, pct: 85.0, fieldScores: { po_number: 100, supplier_id: 95, total: 100, order_date: 100, status: 88, delivery_date: 72 }, refIssues: 6, dups: 4, orphans: 2, stale: 12, quality: 74 },
+      { table: 'erp_bank_transactions', total: 80, complete: 72, pct: 90.0, fieldScores: { transaction_id: 100, amount: 100, transaction_date: 100, description: 85, transaction_type: 92, reference: 78 }, refIssues: 0, dups: 8, orphans: 0, stale: 0, quality: 79 },
+      { table: 'erp_employees', total: 45, complete: 37, pct: 82.2, fieldScores: { employee_id: 100, department: 82, cost_centre: 78, gross_salary: 100, status: 100, hire_date: 95 }, refIssues: 0, dups: 0, orphans: 0, stale: 3, quality: 76 },
+      { table: 'erp_products', total: 36, complete: 30, pct: 83.3, fieldScores: { product_code: 100, product_name: 100, cost_price: 83, selling_price: 100, stock_on_hand: 94, category: 89 }, refIssues: 0, dups: 0, orphans: 0, stale: 3, quality: 78 },
+    ];
+
+    for (const dq of vaDqRecords) {
+      await c.env.DB.prepare(
+        `INSERT INTO assessment_data_quality (id, assessment_id, tenant_id, table_name, total_records, complete_records, completeness_pct, field_scores, referential_issues, duplicate_records, orphan_records, stale_records, overall_quality_score, issues, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))`
+      ).bind(crypto.randomUUID(), vaAssessmentId, tenantId, dq.table, dq.total, dq.complete, dq.pct, JSON.stringify(dq.fieldScores), dq.refIssues, dq.dups, dq.orphans, dq.stale, dq.quality).run();
+    }
+
+    // Process Timing records (4 processes)
+    const vaTimingRecords = [
+      { process: 'Order-to-Cash', avg: 28.5, median: 26.0, p90: 42.0, benchmark: 21, bottleneck: 'Billing creation', bottleneckDays: 5.2, records: 72, exceeding: 28, impact: 45000 },
+      { process: 'Procure-to-Pay', avg: 18.3, median: 16.0, p90: 28.0, benchmark: 12, bottleneck: 'Approval routing', bottleneckDays: 4.2, records: 80, exceeding: 35, impact: 134600 },
+      { process: 'Invoice Approval', avg: 6.8, median: 5.0, p90: 14.0, benchmark: 3, bottleneck: 'Manager sign-off', bottleneckDays: 3.1, records: 152, exceeding: 67, impact: 28000 },
+      { process: 'Month-End Close', avg: 12.0, median: 11.0, p90: 16.0, benchmark: 5, bottleneck: 'Intercompany reconciliation', bottleneckDays: 4.5, records: 12, exceeding: 12, impact: 35000 },
+    ];
+
+    for (const t of vaTimingRecords) {
+      await c.env.DB.prepare(
+        `INSERT INTO assessment_process_timing (id, assessment_id, tenant_id, process_name, avg_cycle_time_days, median_cycle_time_days, p90_cycle_time_days, benchmark_cycle_time_days, bottleneck_step, bottleneck_avg_days, records_analysed, records_exceeding_benchmark, financial_impact_of_delay, evidence, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', datetime('now'))`
+      ).bind(crypto.randomUUID(), vaAssessmentId, tenantId, t.process, t.avg, t.median, t.p90, t.benchmark, t.bottleneck, t.bottleneckDays, t.records, t.exceeding, t.impact).run();
+    }
+
+    // Value Summary (1 aggregate record)
+    const totalImmediate = vaRunDomains.reduce((s, r) => s + r.immediateValue, 0); // 780,000
+    const totalOngoingMonthly = vaRunDomains.reduce((s, r) => s + r.ongoingValue, 0); // 105,000
+    const totalOngoingAnnual = totalOngoingMonthly * 12; // 1,260,000
+    const outcomeFee = totalOngoingMonthly * 0.20; // R21,000/mo
+    const paybackDays = Math.round((outcomeFee / ((totalImmediate / 365) + (totalOngoingMonthly / 30))) * 30); // ~42 days
+
+    await c.env.DB.prepare(
+      `INSERT INTO assessment_value_summary (id, assessment_id, tenant_id, total_immediate_value, total_ongoing_monthly_value, total_ongoing_annual_value, total_data_quality_issues, total_process_delays, total_findings, total_critical_findings, outcome_based_monthly_fee, outcome_based_fee_pct, payback_days, value_by_domain, value_by_category, executive_narrative, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 20, ?, ?, ?, ?, datetime('now'))`
+    ).bind(
+      crypto.randomUUID(), vaAssessmentId, tenantId,
+      totalImmediate, totalOngoingMonthly, totalOngoingAnnual,
+      42, 4, vaFindings.length, vaFindings.filter(f => f.severity === 'critical').length,
+      outcomeFee, paybackDays,
+      JSON.stringify({
+        finance: { immediate: 342000, ongoing: 28500, findings: 6 },
+        procurement: { immediate: 215000, ongoing: 38000, findings: 5 },
+        workforce: { immediate: 78000, ongoing: 15500, findings: 3 },
+        supply_chain: { immediate: 145000, ongoing: 23000, findings: 4 },
+      }),
+      JSON.stringify({
+        data_issue: { immediate: 245720, ongoing: 26401, findings: 7 },
+        payment_terms: { immediate: 47200, ongoing: 3900, findings: 1 },
+        duplicate_payment: { immediate: 89600, ongoing: 7467, findings: 1 },
+        compliance: { immediate: 0, ongoing: 5000, findings: 1 },
+        process_issue: { immediate: 71940, ongoing: 15355, findings: 3 },
+        price_variance: { immediate: 28400, ongoing: 4733, findings: 1 },
+        inventory_variance: { immediate: 67800, ongoing: 5650, findings: 1 },
+        other: { immediate: 129340, ongoing: 36494, findings: 3 },
+      }),
+      `VantaX (Pty) Ltd's SAP S/4HANA environment contains 18 findings across 4 operational domains. The assessment identified R${(totalImmediate/1000).toFixed(0)}k in immediate recoverable value from data cleanup and process fixes, plus R${(totalOngoingMonthly/1000).toFixed(0)}k per month (R${(totalOngoingAnnual/1000).toFixed(0)}k annually) in ongoing value through continuous monitoring and prevention. Critical findings include R218k in uncollected overdue invoices, R89.6k in potential duplicate payments, and R67.8k in inventory shrinkage. At a 20% outcome-based fee, VantaX would pay R${(outcomeFee/1000).toFixed(0)}k/month — achieving full payback in approximately ${paybackDays} days. The 3-year projected value exceeds R4.5M.`,
+    ).run();
+
+    console.log('[VantaX Seeder] Seeded value assessment engine demo data');
 
     // Summary
     // Products: SAP (18) + PHYSICAL_COUNT (18) = 36; Invoices: SAP (80) + SAP-AR (72) = 152

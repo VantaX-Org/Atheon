@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v38';
+export const MIGRATION_VERSION = 'v39';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -113,6 +113,11 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS resolution_patterns (id TEXT PRIMARY KEY, pattern_signature TEXT NOT NULL, industry TEXT NOT NULL, resolution_count INTEGER NOT NULL DEFAULT 0, avg_resolution_days REAL NOT NULL DEFAULT 0, avg_value_recovered REAL NOT NULL DEFAULT 0, common_fix_types TEXT NOT NULL DEFAULT '[]', last_updated TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(pattern_signature, industry));
     CREATE TABLE IF NOT EXISTS atheon_score_history (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), score INTEGER NOT NULL, components TEXT NOT NULL DEFAULT '{}', recorded_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS trial_assessments (id TEXT PRIMARY KEY, tenant_id TEXT, company_name TEXT NOT NULL, industry TEXT NOT NULL, contact_name TEXT NOT NULL, contact_email TEXT NOT NULL, data_source TEXT NOT NULL DEFAULT 'csv_upload', status TEXT NOT NULL DEFAULT 'pending', progress INTEGER NOT NULL DEFAULT 0, current_step TEXT, health_score REAL, issues_found INTEGER, estimated_exposure REAL, top_risks TEXT NOT NULL DEFAULT '[]', top_opportunities TEXT NOT NULL DEFAULT '[]', projected_roi REAL, report_r2_key TEXT, ip_address TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, expires_at TEXT);
+    CREATE TABLE IF NOT EXISTS assessment_runs (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, cluster_name TEXT NOT NULL, sub_catalyst_name TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', source_record_count INTEGER NOT NULL DEFAULT 0, target_record_count INTEGER NOT NULL DEFAULT 0, matched INTEGER NOT NULL DEFAULT 0, discrepancies INTEGER NOT NULL DEFAULT 0, exceptions INTEGER NOT NULL DEFAULT 0, total_source_value REAL NOT NULL DEFAULT 0, total_discrepancy_value REAL NOT NULL DEFAULT 0, total_unmatched_value REAL NOT NULL DEFAULT 0, match_rate REAL NOT NULL DEFAULT 0, discrepancy_rate REAL NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, findings TEXT NOT NULL DEFAULT '[]', root_causes TEXT NOT NULL DEFAULT '[]', prescriptions TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS assessment_findings (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, run_id TEXT NOT NULL, tenant_id TEXT NOT NULL, finding_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', title TEXT NOT NULL, description TEXT NOT NULL, affected_records INTEGER NOT NULL DEFAULT 0, financial_impact REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', root_cause TEXT, prescription TEXT, category TEXT NOT NULL, immediate_value REAL NOT NULL DEFAULT 0, ongoing_monthly_value REAL NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT 'general', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS assessment_data_quality (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, table_name TEXT NOT NULL, total_records INTEGER NOT NULL DEFAULT 0, complete_records INTEGER NOT NULL DEFAULT 0, completeness_pct REAL NOT NULL DEFAULT 0, field_scores TEXT NOT NULL DEFAULT '{}', referential_issues INTEGER NOT NULL DEFAULT 0, duplicate_records INTEGER NOT NULL DEFAULT 0, orphan_records INTEGER NOT NULL DEFAULT 0, stale_records INTEGER NOT NULL DEFAULT 0, overall_quality_score REAL NOT NULL DEFAULT 0, issues TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS assessment_process_timing (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, process_name TEXT NOT NULL, avg_cycle_time_days REAL NOT NULL DEFAULT 0, median_cycle_time_days REAL NOT NULL DEFAULT 0, p90_cycle_time_days REAL NOT NULL DEFAULT 0, benchmark_cycle_time_days REAL NOT NULL DEFAULT 0, bottleneck_step TEXT, bottleneck_avg_days REAL NOT NULL DEFAULT 0, records_analysed INTEGER NOT NULL DEFAULT 0, records_exceeding_benchmark INTEGER NOT NULL DEFAULT 0, financial_impact_of_delay REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS assessment_value_summary (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, total_immediate_value REAL NOT NULL DEFAULT 0, total_ongoing_monthly_value REAL NOT NULL DEFAULT 0, total_ongoing_annual_value REAL NOT NULL DEFAULT 0, total_data_quality_issues INTEGER NOT NULL DEFAULT 0, total_process_delays INTEGER NOT NULL DEFAULT 0, total_findings INTEGER NOT NULL DEFAULT 0, total_critical_findings INTEGER NOT NULL DEFAULT 0, outcome_based_monthly_fee REAL NOT NULL DEFAULT 0, outcome_based_fee_pct REAL NOT NULL DEFAULT 0, payback_days INTEGER NOT NULL DEFAULT 0, value_by_domain TEXT NOT NULL DEFAULT '{}', value_by_category TEXT NOT NULL DEFAULT '{}', executive_narrative TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -260,6 +265,18 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_trial_assessments_ip ON trial_assessments(ip_address)',
     'CREATE INDEX IF NOT EXISTS idx_resolution_patterns_sig ON resolution_patterns(pattern_signature, industry)',
     'CREATE INDEX IF NOT EXISTS idx_anonymised_benchmarks_ind ON anonymised_benchmarks(industry, dimension)',
+    // Value Assessment Engine indexes
+    'CREATE INDEX IF NOT EXISTS idx_assessment_runs ON assessment_runs(assessment_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_runs_tenant ON assessment_runs(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_findings ON assessment_findings(assessment_id, category)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_findings_tenant ON assessment_findings(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_findings_severity ON assessment_findings(assessment_id, severity)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_dq ON assessment_data_quality(assessment_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_dq_tenant ON assessment_data_quality(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_timing ON assessment_process_timing(assessment_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_timing_tenant ON assessment_process_timing(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_value_summary ON assessment_value_summary(assessment_id)',
+    'CREATE INDEX IF NOT EXISTS idx_assessment_value_summary_tenant ON assessment_value_summary(tenant_id)',
   ];
 
   for (const idx of indexes) {
