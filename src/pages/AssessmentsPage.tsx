@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
-import type { Assessment, AssessmentResults, CatalystScore, SubCatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
+import type { Assessment, AssessmentResults, CatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
