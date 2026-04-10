@@ -239,7 +239,7 @@ assessments.post('/:id/run-value-assessment', async (c) => {
   if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
 
   const assessmentId = c.req.param('id');
-  const body = await c.req.json<{ mode?: 'full' | 'quick'; outcomeFeePercent?: number }>().catch(() => ({}));
+  const body = await c.req.json<{ mode?: 'full' | 'quick'; outcomeFeePercent?: number }>().catch(() => ({ mode: undefined as 'full' | 'quick' | undefined, outcomeFeePercent: undefined as number | undefined }));
 
   const assessment = await c.env.DB.prepare(
     'SELECT * FROM assessments WHERE id = ?'
