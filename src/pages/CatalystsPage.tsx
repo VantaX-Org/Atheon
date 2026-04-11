@@ -20,6 +20,9 @@ import { useAppStore } from "@/stores/appStore";
 import { SubCatalystOpsPanel } from "@/components/SubCatalystOpsPanel";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
+import { ClusterList } from "./catalysts/ClusterList";
+import { SubCatalystPanel } from "./catalysts/SubCatalystPanel";
+import { ExecutionHistory } from "./catalysts/ExecutionHistory";
 
 const tierConfig: Record<AutonomyTier, { label: string; icon: typeof Eye; color: string }> = {
  'read-only': { label: 'Read-Only', icon: Eye, color: 'text-accent' },
@@ -1038,6 +1041,40 @@ export function CatalystsPage() {
 
  {activeTab === 'clusters' && (
  <TabPanel>
+ {/* TASK-002: Decomposed sub-components for cluster overview */}
+ <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+ <ClusterList
+ clusters={clusters}
+ selectedCluster={null}
+ onSelect={(id) => {
+ const cluster = clusters.find(c => c.id === id);
+ if (cluster?.subCatalysts?.[0]) {
+ setOpsPanel({ clusterId: id, clusterName: cluster.name, subName: cluster.subCatalysts[0].name });
+ }
+ }}
+ onCreate={() => setShowManualExec(true)}
+ />
+ {clusters.length > 0 && clusters[0].subCatalysts && (
+ <SubCatalystPanel
+ subCatalysts={clusters.flatMap(c => (c.subCatalysts || []).map(sc => ({ name: sc.name, status: sc.enabled ? 'active' : 'inactive', autonomy_tier: c.autonomyTier || 'read-only' })))}
+ onRun={(name) => {
+ const cluster = clusters.find(c => c.subCatalysts?.some(sc => sc.name === name));
+ if (cluster) setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: name });
+ }}
+ onConfigure={(name) => {
+ const cluster = clusters.find(c => c.subCatalysts?.some(sc => sc.name === name));
+ const sub = cluster?.subCatalysts?.find(sc => sc.name === name);
+ if (cluster && sub) openDataSourceConfig(cluster.id, sub);
+ }}
+ onViewAnalytics={() => setActiveTab('run-analytics')}
+ />
+ )}
+ <ExecutionHistory
+ runs={executionLogs.slice(0, 10).map(log => ({ id: log.id, sub_catalyst_name: log.stepName || 'Unknown', status: log.status, started_at: log.createdAt }))}
+ onViewDetail={() => setActiveTab('execution-logs')}
+ />
+ </div>
+
  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
  {clusters.map((cluster) => {
  const tier = tierConfig[cluster.autonomyTier as AutonomyTier] || tierConfig['read-only'];

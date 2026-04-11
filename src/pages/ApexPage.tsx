@@ -6,13 +6,14 @@ import { ScoreRing } from "@/components/ui/score-ring";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
+
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse } from "@/lib/api";
 import { PeerComparisonBar } from "@/components/ui/peer-comparison-bar";
 import { Portal } from "@/components/ui/portal";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
-import { SkeletonCard } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FlipCard } from "@/components/ui/flip-card";
 import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
+import { RiskMatrix } from "./apex/RiskMatrix";
 
 
 const trendIcon = (trend: string, size = 14) => {
@@ -258,7 +260,7 @@ export function ApexPage() {
   <div className="space-y-6 animate-fadeIn">
   {pageHeader}
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-  {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+  {[1,2,3,4].map(i => <Skeleton key={i} variant="card" height={120} />)}
   </div>
   <div className="flex items-center justify-center h-48">
   <Loader2 className="w-8 h-8 text-accent animate-spin" />
@@ -705,6 +707,8 @@ export function ApexPage() {
  {/* Risk Alerts Tab */}
  {activeTab === 'risks' && (
  <TabPanel><div className="space-y-4">
+ {/* TASK-002: Decomposed RiskMatrix sub-component for grouped severity view */}
+ <RiskMatrix risks={risks} />
  {risks.length === 0 && (
   <div className="flex items-center gap-3 py-6 px-4">
  <Shield className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />

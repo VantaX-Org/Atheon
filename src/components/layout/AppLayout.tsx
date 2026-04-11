@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { OnboardingModal } from "@/components/common/OnboardingModal";
+import { OnboardingWizard } from "@/components/common/OnboardingWizard";
 import { HelpButton } from "@/components/common/HelpButton";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
@@ -45,6 +45,18 @@ export function AppLayout() {
       .finally(() => setChecking(false));
   }, [user, navigate, setUser]);
 
+  // TASK-006: Global keyboard handlers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") document.dispatchEvent(new CustomEvent("atheon:escape"));
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        document.dispatchEvent(new CustomEvent("atheon:help"));
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
@@ -57,6 +69,10 @@ export function AppLayout() {
 
   return (
     <div className={cn('min-h-screen transition-colors duration-200', theme === 'dark' ? 'atheon-dark' : '')} style={{ background: 'var(--bg-primary)', backgroundImage: 'var(--bg-pattern)', backgroundAttachment: 'fixed' }}>
+      {/* TASK-006: Skip to content link */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-md focus:bg-[var(--accent)] focus:text-white focus:text-sm">
+        Skip to main content
+      </a>
       <Sidebar />
       <Header />
       <main
@@ -65,13 +81,13 @@ export function AppLayout() {
           'pl-0 md:pl-14'
         )}
       >
-        <div className="p-4 sm:p-5 lg:p-6">
+        <div id="main-content" className="p-4 sm:p-5 lg:p-6">
           <Breadcrumbs />
           <Outlet />
         </div>
       </main>
 
-      {!onboardingDismissed && <OnboardingModal />}
+      {!onboardingDismissed && <OnboardingWizard onDismiss={() => useAppStore.getState().dismissOnboarding()} />}
       <HelpButton />
     </div>
   );

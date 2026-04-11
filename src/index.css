@@ -61,6 +61,22 @@
     --bg-pattern: radial-gradient(ellipse at 20% 20%, rgba(78, 124, 246, 0.06) 0%, transparent 50%),
                   radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
                   radial-gradient(ellipse at 50% 50%, rgba(78, 124, 246, 0.02) 0%, transparent 70%);
+    /* Chart theme tokens (TASK-003) */
+    --chart-primary: var(--sage);
+    --chart-secondary: var(--bronze);
+    --chart-tertiary: var(--sky);
+    --chart-success: #10b981;
+    --chart-warning: #f59e0b;
+    --chart-danger: #ef4444;
+    --chart-grid: rgba(200, 210, 230, 0.15);
+    --chart-text: var(--text-secondary);
+    --chart-tooltip-bg: var(--bg-card-solid);
+    --chart-tooltip-border: var(--border-card);
+    /* TASK-014: Light mode polish */
+    --shadow-card-light: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --bg-page-light: #fafbfc;
+    --text-primary-light: #1a1d23;
+    --text-secondary-light: #4a5568;
   }
 
   .atheon-dark {
@@ -75,6 +91,9 @@
     --bg-input-focus: rgba(18, 26, 34, 0.90);
     --bg-modal: rgba(10, 15, 20, 0.95);
     --bg-elevated: rgba(14, 21, 28, 0.90);
+    /* Chart theme - dark mode overrides */
+    --chart-grid: rgba(74, 107, 90, 0.12);
+    --chart-text: var(--text-secondary);
     --border-primary: rgba(74, 107, 90, 0.20);
     --border-subtle: rgba(74, 107, 90, 0.10);
     --border-card: rgba(74, 107, 90, 0.12);
@@ -296,3 +315,10 @@
 .atheon-dark .text-gray-400 { color: var(--text-secondary) !important; }
 .atheon-dark .text-gray-500 { color: var(--text-muted) !important; }
 .atheon-dark .text-gray-600 { color: #475569 !important; }
+
+/* TASK-006: Focus visible styles for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}

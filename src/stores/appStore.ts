@@ -67,7 +67,9 @@ interface AppState {
   setActiveTenant: (tenantId: string | null, tenantName: string | null, tenantIndustry: IndustryVertical | null) => void;
 }
 
+const systemPrefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 const savedTheme = (typeof window !== 'undefined' ? localStorage.getItem('atheon-theme') : null) as Theme | null;
+const initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
 // Migrate legacy accent values
 const rawAccent = typeof window !== 'undefined' ? localStorage.getItem('atheon-accent') : null;
 const legacyMap: Record<string, AccentColor> = { amber: 'indigo', teal: 'indigo', sky: 'blue', cyan: 'blue' };
@@ -78,11 +80,11 @@ const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('at
 
 // Apply saved theme to body on initial load
 if (typeof document !== 'undefined') {
-  if (savedTheme === 'dark') {
+  if (initialTheme === 'dark') {
     document.body.classList.add('atheon-dark');
   }
   if (savedAccent && ACCENT_LIGHT[savedAccent]) {
-    applyAccentColor(savedAccent, savedTheme || 'light');
+    applyAccentColor(savedAccent, initialTheme);
   }
 }
 
@@ -91,7 +93,7 @@ export const useAppStore = create<AppState>((set) => ({
   currentLayer: 'apex',
   sidebarOpen: true,
   industry: ((typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-industry') : null) || 'general') as IndustryVertical,
-  theme: savedTheme || 'light',
+  theme: initialTheme,
   accentColor: savedAccent || 'indigo',
   onboardingDismissed: savedOnboarding,
   activeTenantId: typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-id') : null,

@@ -6,29 +6,45 @@ import { ScoreRing } from "@/components/ui/score-ring";
 // FlipCard removed per UI cleanup spec
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
-import { cleanLlmText } from "@/lib/utils";
+// cleanLlmText now used by IntelligencePanel sub-component
 import { useAppStore } from "@/stores/appStore";
 import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse, BaselineComparisonResponse } from "@/lib/api";
 import { AtheonScoreRing } from "@/components/ui/atheon-score-ring";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
-  ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight, X,
+  ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, X,
   CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
+import { chartPalette } from "@/lib/chart-theme";
 import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { Link } from "react-router-dom";
+import { KpiGrid } from "./dashboard/KpiCards";
+import { HealthDimensions } from "./dashboard/HealthDimensions";
+import { IntelligencePanel } from "./dashboard/IntelligencePanel";
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 
-const ACCENT = "#4A6B5A";
+// TASK-010/013: Use chart theme palette instead of hardcoded colors
+const ACCENT = chartPalette[0];
 const ACCENT_B = "#5d8a6f";
-const BRONZE = "#c9a059";
-const SKY = "#7AACB5";
+const BRONZE = chartPalette[1];
+const SKY = chartPalette[2];
 const CHART_LIGHT = "#b8d4c4";
+
+// TASK-010: Personalized greeting
+function getGreeting(name?: string): string {
+  const hour = new Date().getHours();
+  let g = "Good morning";
+  if (hour >= 12 && hour < 17) g = "Good afternoon";
+  if (hour >= 17) g = "Good evening";
+  return name ? `${g}, ${name}` : g;
+}
+
+type TimeRange = "today" | "7d" | "30d" | "90d";
 
 const trendIcon = (trend: string) => {
   if (trend === "up" || trend === "improving") return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
@@ -69,6 +85,7 @@ function TintedCard({ children, className = "" }: { children: React.ReactNode; c
 
 export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
+  const user = useAppStore((s) => s.user);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -76,6 +93,7 @@ export function Dashboard() {
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [cpHealth, setCpHealth] = useState<ControlPlaneHealth | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [loading, setLoading] = useState(true);
   // Tabs removed per UI cleanup spec — overview is now the entire page
   // UX-05: Silent auto-refresh every 60s (no user-facing toggle)
@@ -238,10 +256,22 @@ export function Dashboard() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Dashboard</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold t-primary">{getGreeting(user?.name)}</h1>
             <SectionFreshness section="Health" />
           </div>
           <div className="flex items-center gap-2">
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+              className="px-2 py-1 rounded-lg text-xs t-secondary"
+              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              aria-label="Time range"
+            >
+              <option value="today">Today</option>
+              <option value="7d">7 Days</option>
+              <option value="30d">30 Days</option>
+              <option value="90d">90 Days</option>
+            </select>
             <span className={`text-[10px] t-muted transition-colors duration-500 ${refreshFlash ? 'text-emerald-500' : ''}`}>
               Updated: {lastRefreshed.toLocaleTimeString()}
             </span>
@@ -278,63 +308,8 @@ export function Dashboard() {
         </button>
       </div>
 
-      {/* Dashboard Intelligence Panel */}
-      {dashIntel && (
-        <DashCard className="!border-purple-500/20 !bg-purple-500/5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Lightbulb size={16} className="text-purple-400" />
-              <h3 className="text-sm font-semibold t-primary">Atheon Intelligence — Dashboard Summary</h3>
-            </div>
-            <span className="text-[10px] t-muted">{dashIntel.poweredBy}</span>
-          </div>
-          <p className="text-sm t-secondary mb-3 whitespace-pre-line">{cleanLlmText(dashIntel.summary)}</p>
-          {dashIntel.keyMetrics.length > 0 && (
-            <div className="mb-3">
-              <p className="text-xs font-medium t-primary mb-1.5">Key Metrics</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {dashIntel.keyMetrics.map((m, i) => (
-                  <div key={i} className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <p className="text-[10px] t-muted">{m.name}</p>
-                    <p className="text-sm font-bold t-primary">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</p>
-                    <div className="flex items-center gap-1">
-                      {trendIcon(m.trend)}
-                      <span className="text-[10px] t-muted">{m.status === 'red' ? 'Critical' : m.status === 'amber' ? 'Warning' : 'Healthy'}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {dashIntel.topRisks.length > 0 && (
-            <div className="mb-3">
-              <p className="text-xs font-medium t-primary mb-1.5">Top Risks</p>
-              <div className="space-y-1">
-                {dashIntel.topRisks.map((r, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <AlertTriangle size={10} className={r.severity === 'critical' ? 'text-red-400' : r.severity === 'high' ? 'text-amber-400' : 'text-gray-400'} />
-                    <span className="t-primary font-medium">{r.title}</span>
-                    <Badge variant={r.severity === 'critical' ? 'danger' : r.severity === 'high' ? 'warning' : 'default'} size="sm">{r.severity}</Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {dashIntel.recommendedActions.length > 0 && (
-            <div>
-              <p className="text-xs font-medium t-primary mb-1.5">Recommended Actions</p>
-              <ul className="space-y-1">
-                {dashIntel.recommendedActions.map((a, i) => (
-                  <li key={i} className="text-xs t-secondary flex items-start gap-1.5">
-                    <ArrowRight size={10} className="text-purple-400 mt-0.5 flex-shrink-0" />
-                    {a}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </DashCard>
-      )}
+      {/* Dashboard Intelligence Panel — uses decomposed sub-component (TASK-002) */}
+      {dashIntel && <IntelligencePanel data={dashIntel} />}
 
       {/* §11.7 Atheon Score + §11.2 Journey Card */}
       <>
@@ -450,6 +425,20 @@ export function Dashboard() {
           )}
         </DashCard>
       </div>
+
+      {/* TASK-002: Decomposed KPI Grid sub-component */}
+      <KpiGrid
+        overallScore={overallScore}
+        healthTrend={healthTrend}
+        avgDelta={avgDelta}
+        activeCatalysts={activeCatalysts}
+        totalTasks={totalTasks}
+        risksCount={risks.length}
+        anomaliesCount={anomalies.length}
+      />
+
+      {/* TASK-002: Decomposed Health Dimensions sub-component */}
+      <HealthDimensions dimensions={dimensions} onOpenTrace={handleOpenDimensionTrace} />
 
       {/* Status Breakdown Cards (Static — FlipCards removed per UI cleanup) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

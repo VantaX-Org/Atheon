@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
+
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
@@ -20,7 +21,9 @@ import {
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
-import { SkeletonCard } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MetricsGrid } from "./pulse/MetricsGrid";
+import { AnomalyList } from "./pulse/AnomalyList";
 // FlipCard removed per UI cleanup spec
 
 /* ── helpers ──────────────────────────────────────────────── */
@@ -542,7 +545,7 @@ export function PulsePage() {
       <div className="space-y-6 animate-fadeIn">
         {pageHeader}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} variant="card" height={120} />)}
         </div>
         <div className="flex items-center justify-center h-48">
           <Loader2 className="w-8 h-8 text-accent animate-spin" />
@@ -657,6 +660,9 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'dashboard' && (
         <TabPanel>
+          {/* TASK-002: Decomposed MetricsGrid sub-component for compact overview */}
+          <MetricsGrid metrics={filteredMetrics} />
+
           {/* Top Row: Status Strip + Dimensions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
@@ -1062,7 +1068,9 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'anomalies' && (
         <TabPanel>
-          <div className="flex items-center justify-between mb-4">
+          {/* TASK-002: Decomposed AnomalyList sub-component for compact view */}
+          <AnomalyList anomalies={filteredAnomalies} />
+          <div className="flex items-center justify-between mb-4 mt-6">
             <h3 className="text-lg font-semibold t-primary">Anomaly Detection</h3>
             <Button
               variant="primary"

@@ -3,7 +3,7 @@
  * Tests for rate limiting, bounce detection, template validation, HTML sanitization.
  */
 import { describe, it, expect } from 'vitest';
-import { validateEmailTemplate, sanitizeEmailHtml } from '../services/email-hardened';
+import { validateEmailTemplate, sanitizeEmailHtml } from '../services/email';
 
 describe('Email Service - Template Validation', () => {
   it('should accept a valid email template', () => {

@@ -26,7 +26,7 @@ const marketingCSS = `
   color: var(--cream);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
-  cursor: none;
+  cursor: auto;
 }
 .mk5-body ::selection { background: var(--sage); color: var(--void); }
 .mk5-body a { color: inherit; text-decoration: none; }
@@ -39,17 +39,9 @@ const marketingCSS = `
 }
 
 /* CURSOR */
-.mk5-cur {
-  width: 20px; height: 20px; border: 1.5px solid var(--sage); border-radius: 50%;
-  position: fixed; pointer-events: none; z-index: 99999;
-  transition: width .3s, height .3s, border-color .3s;
-  transform: translate(-50%, -50%); mix-blend-mode: difference;
-}
-.mk5-cur.active { width: 50px; height: 50px; border-color: var(--bronze); }
-.mk5-cur-dot {
-  width: 4px; height: 4px; background: var(--cream); border-radius: 50%;
-  position: fixed; pointer-events: none; z-index: 99999; transform: translate(-50%, -50%);
-}
+
+
+
 
 /* NAV */
 .mk5-nav {
@@ -73,7 +65,7 @@ const marketingCSS = `
   padding: .7rem 2rem; border: 1px solid var(--sage); color: var(--sage) !important;
   opacity: 1 !important; position: relative; overflow: hidden;
   transition: all .4s cubic-bezier(.16,1,.3,1) !important;
-  background: transparent; cursor: none; text-transform: uppercase;
+  background: transparent; cursor: auto; text-transform: uppercase;
 }
 .mk5-nav-cta::before {
   content: ''; position: absolute; inset: 0; background: var(--sage);
@@ -168,7 +160,7 @@ const marketingCSS = `
   padding: 1.1rem 2.8rem; background: var(--sage); color: var(--void);
   font-weight: 600; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase;
   overflow: hidden; transition: all .5s cubic-bezier(.16,1,.3,1);
-  border: none; cursor: none;
+  border: none; cursor: auto;
 }
 .mk5-btn-main::after {
   content: '\\2192'; font-size: 1.2rem;
@@ -179,7 +171,7 @@ const marketingCSS = `
 .mk5-btn-line {
   font-size: .75rem; font-weight: 400; letter-spacing: .15em; text-transform: uppercase;
   color: var(--chalk); padding-bottom: .3rem; border: none; background: transparent;
-  border-bottom: 1px solid var(--line-b); transition: all .3s; cursor: none;
+  border-bottom: 1px solid var(--line-b); transition: all .3s; cursor: auto;
 }
 .mk5-btn-line:hover { color: var(--cream); border-bottom-color: var(--cream); }
 .mk5-hero-scroll {
@@ -673,7 +665,7 @@ const marketingCSS = `
   .mk5-comp { overflow-x: auto; }
   .mk5-ethos-grid { grid-template-columns: 1fr; }
   .mk5-body { cursor: auto; }
-  .mk5-cur, .mk5-cur-dot { display: none; }
+  
 }
 `;
 
