@@ -28,7 +28,7 @@ const af = {
     date: 'Datum',
     type: 'Tipe',
     noData: 'Geen data beskikbaar nie',
-    error: "n Fout het voorgekom',
+    error: "'n Fout het voorgekom",
     retry: 'Probeer weer',
     success: 'Sukses',
   },
