@@ -6,7 +6,7 @@ import {
   IconDashboard, IconApex, IconPulse, IconCatalysts, IconMind, IconMemory,
   IconChat, IconClients, IconIAM, IconControlPlane,
   IconERPAdapters, IconConnectivity, IconAudit, IconSettings,
-  IconNetwork, IconBarChart,
+  IconNetwork, IconBarChart, IconBolt, IconShield,
 } from "@/components/icons/AtheonIcons";
 import type { UserRole } from "@/types";
 
@@ -30,8 +30,7 @@ type NavItem = {
 // viewer (10)         — Dashboard + Settings only
 
 const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
-// SUPPORT_ROLES kept as reference but IAM/ERP/etc now use PLATFORM_ADMIN_ROLES so admin can manage their tenant
-// const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
+const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
@@ -59,6 +58,18 @@ const navItems: NavItem[] = [
   { path: '/assessments', label: 'Assessments', icon: IconBarChart, section: 'platform-ops', sublabel: 'Pre-Sale Analysis', roles: SUPERADMIN_ROLES },
   { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'Protocols', roles: SUPERADMIN_ROLES },
   { path: '/executive', label: 'Executive', icon: IconBarChart, section: 'intelligence', sublabel: 'Mobile Summary', roles: EXECUTIVE_ROLES },
+  // Admin Tooling (ADMIN-001 to ADMIN-012)
+  { path: '/platform-health', label: 'Platform Health', icon: IconPulse, section: 'admin-tooling', sublabel: 'Infrastructure Status', roles: SUPERADMIN_ROLES },
+  { path: '/support', label: 'Support Console', icon: IconChat, section: 'admin-tooling', sublabel: 'Tenant Support', roles: SUPPORT_ROLES },
+  { path: '/company-health', label: 'Company Health', icon: IconBarChart, section: 'admin-tooling', sublabel: 'Org Utilization', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/impersonate', label: 'Impersonate', icon: IconClients, section: 'admin-tooling', sublabel: 'View as User', roles: SUPPORT_ROLES },
+  { path: '/bulk-users', label: 'Bulk Users', icon: IconClients, section: 'admin-tooling', sublabel: 'Import & Manage', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/custom-roles', label: 'Custom Roles', icon: IconIAM, section: 'admin-tooling', sublabel: 'Role Builder', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/revenue', label: 'Revenue', icon: IconBarChart, section: 'admin-tooling', sublabel: 'MRR & Usage', roles: SUPERADMIN_ROLES },
+  { path: '/feature-flags', label: 'Feature Flags', icon: IconBolt, section: 'admin-tooling', sublabel: 'Flag Management', roles: SUPERADMIN_ROLES },
+  { path: '/data-governance', label: 'Data Governance', icon: IconShield, section: 'admin-tooling', sublabel: 'Retention & DSAR', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/integration-health', label: 'Integration Health', icon: IconConnectivity, section: 'admin-tooling', sublabel: 'Sync Monitoring', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/system-alerts', label: 'System Alerts', icon: IconApex, section: 'admin-tooling', sublabel: 'Alert Rules', roles: PLATFORM_ADMIN_ROLES },
 ];
 
 /** Atheon logo mark — geometric triangle with sage/sky/bronze palette */
@@ -200,7 +211,7 @@ export function Sidebar() {
               const Icon = item.icon;
               const showSectionHeader = prevSection !== item.section;
               prevSection = item.section;
-              const sectionLabels: Record<string, string> = { intelligence: 'Intelligence', data: 'Data', administration: 'Administration', 'platform-ops': 'Platform Ops' };
+              const sectionLabels: Record<string, string> = { intelligence: 'Intelligence', data: 'Data', administration: 'Administration', 'platform-ops': 'Platform Ops', 'admin-tooling': 'Admin Tooling' };
 
               return (
                 <div key={item.path}>

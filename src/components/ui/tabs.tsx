@@ -48,9 +48,13 @@ export function Tabs({ tabs, activeTab, onTabChange, className }: TabsProps) {
 interface TabPanelProps {
   children: ReactNode;
   className?: string;
+  /** When provided with activeTab, only renders when id === activeTab */
+  id?: string;
+  activeTab?: string;
 }
 
-export function TabPanel({ children, className }: TabPanelProps) {
+export function TabPanel({ children, className, id, activeTab }: TabPanelProps) {
+  if (id !== undefined && activeTab !== undefined && id !== activeTab) return null;
   return <div className={cn('mt-4', className)}>{children}</div>;
 }
 

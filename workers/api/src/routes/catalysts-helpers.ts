@@ -183,6 +183,7 @@ export function calculateNextRun(
     const daysInMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
     next.setUTCDate(Math.min(dayOfMonth, daysInMonth));
     if (next <= now) {
+      next.setUTCDate(1); // Reset to 1st to prevent month overflow
       next.setUTCMonth(next.getUTCMonth() + 1);
       const daysInNextMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
       next.setUTCDate(Math.min(dayOfMonth, daysInNextMonth));
