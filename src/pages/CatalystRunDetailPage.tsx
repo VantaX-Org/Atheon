@@ -178,7 +178,7 @@ export function CatalystRunDetailPage() {
             </div>
             {run.kpis && run.kpis.length > 0 ? (
               <div className="space-y-3">
-                {run.kpis.map((kpi: any, i: any) => (
+                {run.kpis.map((kpi: Record<string, unknown>, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium t-primary">{kpi.name}</span>
@@ -208,7 +208,7 @@ export function CatalystRunDetailPage() {
             </div>
             {run.metrics && run.metrics.length > 0 ? (
               <div className="space-y-3">
-                {run.metrics.map((metric: any, i: any) => (
+                {run.metrics.map((metric: Record<string, unknown>, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium t-primary">{metric.name}</span>
@@ -254,7 +254,7 @@ export function CatalystRunDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {run.sourceData.slice(0, 50).map((record: any, i: any) => (
+                    {run.sourceData.slice(0, 50).map((record: Record<string, unknown>, i: number) => (
                       <tr key={i} className="border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)]">
                         <td className="py-2 px-3 t-primary font-mono text-xs">{record.id}</td>
                         <td className="py-2 px-3 t-muted">{record.sourceSystem}</td>

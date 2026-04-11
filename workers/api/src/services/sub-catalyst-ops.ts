@@ -268,7 +268,7 @@ export async function recordRun(
       previousRunId = prevRunRow?.id || null;
     }
 
-    let prevKpiMap: Record<string, number> = {};
+    const prevKpiMap: Record<string, number> = {};
     if (previousRunId) {
       const prevKpis = await db.prepare(
         `SELECT kd.kpi_name, kv.value FROM sub_catalyst_kpi_values kv

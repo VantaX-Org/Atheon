@@ -18,7 +18,7 @@
  */
 
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
-import type { LlmMessage } from './llm-provider';
+// LlmMessage type not directly used — messages are inline objects
 // V2 engines are invoked via scheduled.ts cron jobs (they need env.AI binding not available in collectRunInsights)
 
 // ── Types ──
@@ -910,9 +910,10 @@ export async function generateApexInsights(
   ).bind(tenantId).all<Record<string, unknown>>();
 
   // Get department-level summaries
-  const departmentMetrics = await db.prepare(
+  // departmentMetrics reserved for future cross-department correlation
+  void (await db.prepare(
     "SELECT domain, status, COUNT(*) as count FROM process_metrics WHERE tenant_id = ? AND domain IS NOT NULL GROUP BY domain, status"
-  ).bind(tenantId).all<Record<string, unknown>>();
+  ).bind(tenantId).all<Record<string, unknown>>());
 
   // Build deterministic performance drivers
   const dims = health?.dimensions ? JSON.parse(health.dimensions) : {};
@@ -1051,7 +1052,8 @@ export async function generateDashboardIntelligence(
   ).bind(tenantId).all<Record<string, unknown>>();
 
   const overallScore = health?.overall_score || 0;
-  const dims = health?.dimensions ? JSON.parse(health.dimensions) : {};
+  // dims used for future dimension breakdown
+  void (health?.dimensions ? JSON.parse(health.dimensions) : {});
   const criticalCount = (insightCounts.results || []).find(i => i.severity === 'critical');
   const warningCount = (insightCounts.results || []).find(i => i.severity === 'warning');
 

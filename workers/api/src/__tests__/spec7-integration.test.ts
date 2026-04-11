@@ -12,7 +12,7 @@
  * TEST-5: POPIA data export + erasure
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // ── Helpers: mock D1, KV, R2 ──
 
@@ -39,12 +39,13 @@ function mockKV(store: Record<string, string> = {}) {
   };
 }
 
-function mockR2() {
+function _mockR2() {
   return {
     put: vi.fn().mockResolvedValue({}),
     get: vi.fn().mockResolvedValue(null),
   };
 }
+void _mockR2;
 
 // ── TEST-1: Core Pipeline ──
 
@@ -56,12 +57,13 @@ describe('TEST-1: Core pipeline (execute -> run -> KPI -> Pulse -> Apex)', () =>
     // 3. Pulse reads KPI values for process mining metrics
     // 4. Apex reads aggregated health scores
 
-    const db = mockDB({
+    const _db = mockDB({
       default: [
         { id: 'run-1', status: 'completed', run_number: 1, started_at: new Date().toISOString() },
       ],
       first: { id: 'run-1', health_score: 72, total_runs: 5 },
     });
+    void _db;
 
     // Simulate: execute creates a run
     const runId = 'run-1';
@@ -253,7 +255,8 @@ describe('TEST-5: POPIA data export + erasure', () => {
 describe('Circuit Breaker', () => {
   it('should open after 3 consecutive failures', async () => {
     const store: Record<string, string> = {};
-    const cache = mockKV(store);
+    const _cache = mockKV(store);
+    void _cache;
 
     // Simulate the circuit breaker state transitions
     const initialState = { state: 'CLOSED', failures: 0, openedAt: null, lastAttempt: null };

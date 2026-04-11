@@ -16,7 +16,7 @@ import type { AuthContext, AppBindings } from '../types';
 const seed = new Hono<AppBindings>();
 seed.use('/*', cors());
 
-async function getVantaXTenantId(c: any): Promise<string | null> {
+async function getVantaXTenantId(c: { get: (key: string) => unknown; env: { DB: D1Database } }): Promise<string | null> {
   const auth = c.get('auth') as AuthContext | undefined;
   const allowedRoles = ['superadmin', 'support_admin', 'admin', 'executive'];
   if (!auth || !allowedRoles.includes(auth.role)) {
@@ -176,7 +176,7 @@ seed.post('/seed-vantax', async (c) => {
         const result = await c.env.DB.prepare(
           `DELETE FROM ${table} WHERE tenant_id = ?`
         ).bind(tenantId).run();
-        cleanupCount += (result.meta as any)?.changes || 0;
+        cleanupCount += (result.meta as Record<string, unknown>)?.changes || 0;
       } catch {
         // Table may not exist yet
       }
@@ -1821,12 +1821,12 @@ seed.post('/seed-vantax', async (c) => {
         await c.env.DB.prepare(
           `INSERT INTO industry_benchmark_seeds (id, industry, metric_name, benchmark_value, benchmark_unit, source, region)
            VALUES (?, ?, ?, ?, ?, ?, 'ZA')`
-        ).bind(crypto.randomUUID(), seed.industry, (seed as any).name, (seed as any).value, (seed as any).unit, (seed as any).source).run();
+        ).bind(crypto.randomUUID(), seed.industry, (seed as Record<string, unknown>).name, (seed as Record<string, unknown>).value, (seed as Record<string, unknown>).unit, (seed as Record<string, unknown>).source).run();
       } else if (seed.type === 'regulatory') {
         await c.env.DB.prepare(
           `INSERT INTO industry_regulatory_seeds (id, industry, title, description, jurisdiction)
            VALUES (?, ?, ?, ?, 'ZA')`
-        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as any).body || '').run();
+        ).bind(crypto.randomUUID(), seed.industry, seed.title, (seed as Record<string, unknown>).body || '').run();
       }
     }
     console.log('[VantaX Seeder] Seeded industry playbook seeds');
@@ -2119,7 +2119,7 @@ seed.get('/vantax-status', async (c) => {
       if (!ALLOWED_TABLES.has(table)) continue;
       try {
         const row = await c.env.DB.prepare(`SELECT COUNT(*) as count FROM ${table} WHERE tenant_id = ?`).bind(tenantId).first();
-        counts[key] = (row as any)?.count || 0;
+        counts[key] = (row as Record<string, unknown>)?.count || 0;
       } catch {
         counts[key] = 0;
       }

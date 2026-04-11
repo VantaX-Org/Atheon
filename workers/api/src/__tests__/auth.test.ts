@@ -5,8 +5,8 @@
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
-import { runMigrations, MIGRATION_VERSION } from '../services/migrate';
-import { hashPassword, generateToken } from '../middleware/auth';
+// MIGRATION_VERSION removed — unused in tests
+import { hashPassword } from '../middleware/auth';
 
 /** Helper to POST JSON to the worker */
 async function postJSON(path: string, body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<Response> {

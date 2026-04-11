@@ -90,7 +90,8 @@ interface Insight {
   action?: string;
 }
 
-function generateInsights(metrics: Metric[], anomalies: AnomalyItem[], processes: ProcessItem[], _summary: PulseSummary | null): Insight[] {
+function generateInsights(metrics: Metric[], anomalies: AnomalyItem[], processes: ProcessItem[], _summary?: PulseSummary | null): Insight[] {
+  void _summary;
   const insights: Insight[] = [];
 
   // Critical metrics requiring immediate action

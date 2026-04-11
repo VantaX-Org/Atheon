@@ -876,6 +876,7 @@ export function Dashboard() {
       </>
 
       {/* HEALTH TREND — inline below overview (tabs removed) */}
+      {/* eslint-disable-next-line no-constant-binary-expression */}
       {false && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -979,6 +980,7 @@ export function Dashboard() {
       )}
 
       {/* RISKS — hidden (tabs removed) */}
+      {/* eslint-disable-next-line no-constant-binary-expression */}
       {false && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">

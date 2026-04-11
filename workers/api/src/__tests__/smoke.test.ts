@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
-import { runMigrations, MIGRATION_VERSION } from '../services/migrate';
+import { MIGRATION_VERSION } from '../services/migrate';
 
 /**
  * Helper: call POST /api/v1/admin/migrate with the test SETUP_SECRET

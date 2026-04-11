@@ -121,7 +121,8 @@ async function runLoadTest(): Promise<void> {
   const endTime = Date.now() + DURATION_SECONDS * 1000;
 
   // Step 2: Run concurrent workers
-  const workers = Array.from({ length: CONCURRENCY }, async (_, workerId) => {
+  const workers = Array.from({ length: CONCURRENCY }, async (_elem, _idx) => {
+    void _idx;
     while (Date.now() < endTime) {
       const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
       const result = await makeRequest(ep, token);
