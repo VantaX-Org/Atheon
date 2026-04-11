@@ -68,7 +68,7 @@ export function FeatureFlagsPage() {
   };
 
   const filteredFlags = searchQuery
-    ? flags.filter(f => f.key.includes(searchQuery.toLowerCase()) || f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? flags.filter(f => f.key.toLowerCase().includes(searchQuery.toLowerCase()) || f.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : flags;
 
   const typeIcon = (t: FlagType) => {

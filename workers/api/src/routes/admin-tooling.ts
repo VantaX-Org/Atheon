@@ -7,11 +7,10 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { cors } from 'hono/cors';
 import type { AuthContext, AppBindings } from '../types';
 
 const adminTooling = new Hono<AppBindings>();
-adminTooling.use('/*', cors());
+// CORS is handled by the parent app's middleware — no sub-router override needed
 
 // ── Role hierarchy (mirrored from iam.ts) ───────────────
 
@@ -199,14 +198,16 @@ adminTooling.post('/impersonate/start', async (c) => {
 
     // Log impersonation start
     await c.env.DB.prepare(
-      'INSERT INTO audit_logs (id, tenant_id, action, actor_id, actor_role, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       crypto.randomUUID(),
       (user as Record<string, unknown>).tenant_id as string,
-      'impersonation_start',
       auth?.userId || 'system',
-      auth?.role || 'unknown',
-      JSON.stringify({ targetUserId: userId, targetEmail: (user as Record<string, unknown>).email }),
+      'impersonation_start',
+      'admin-tooling',
+      `user:${userId}`,
+      JSON.stringify({ targetUserId: userId, targetEmail: (user as Record<string, unknown>).email, actorRole: auth?.role }),
+      'success',
       new Date().toISOString()
     ).run();
 
@@ -231,12 +232,13 @@ adminTooling.post('/impersonate/end', async (c) => {
   const auth = getAuth(c);
   try {
     await c.env.DB.prepare(
-      'INSERT INTO audit_logs (id, tenant_id, action, actor_id, actor_role, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
-      crypto.randomUUID(), auth?.tenantId || '', 'impersonation_end',
-      auth?.userId || 'system', auth?.role || 'unknown',
-      JSON.stringify({ action: 'impersonation_ended' }),
-      new Date().toISOString()
+      crypto.randomUUID(), auth?.tenantId || '',
+      auth?.userId || 'system', 'impersonation_end',
+      'admin-tooling', 'impersonation',
+      JSON.stringify({ action: 'impersonation_ended', actorRole: auth?.role }),
+      'success', new Date().toISOString()
     ).run();
     return c.json({ success: true, message: 'Impersonation ended' });
   } catch (err) {
@@ -256,7 +258,7 @@ adminTooling.get('/bulk-users/export', async (c) => {
     // Admin scoped to own tenant, support/superadmin can specify tenant
     const tenantId = isSupportOrAbove(c) ? (c.req.query('tenantId') || auth?.tenantId) : auth?.tenantId;
     const result = await c.env.DB.prepare(
-      'SELECT name, email, role, department, status, created_at FROM users WHERE tenant_id = ? ORDER BY name'
+      'SELECT name, email, role, status, created_at FROM users WHERE tenant_id = ? ORDER BY name'
     ).bind(tenantId).all();
 
     return c.json({ success: true, users: result.results || [], count: result.results?.length || 0 });
@@ -292,8 +294,8 @@ adminTooling.post('/bulk-users/import', async (c) => {
       if (existing) { skipped++; continue; }
 
       await c.env.DB.prepare(
-        'INSERT INTO users (id, tenant_id, name, email, role, department, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, role, u.department || '', 'active', new Date().toISOString()).run();
+        'INSERT INTO users (id, tenant_id, name, email, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, role, 'active', new Date().toISOString()).run();
       imported++;
     }
 
@@ -565,9 +567,11 @@ adminTooling.post('/data-governance/dsar', async (c) => {
 
     const id = crypto.randomUUID();
     await c.env.DB.prepare(
-      'INSERT INTO audit_logs (id, tenant_id, action, actor_id, actor_role, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(id, auth?.tenantId || '', `dsar_${type}`, auth?.userId || 'system', auth?.role || 'unknown',
-      JSON.stringify({ subjectEmail, notes, dsarType: type }), new Date().toISOString()
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, auth?.tenantId || '', auth?.userId || 'system', `dsar_${type}`,
+      'admin-tooling', `dsar:${subjectEmail}`,
+      JSON.stringify({ subjectEmail, notes, dsarType: type, actorRole: auth?.role }),
+      'success', new Date().toISOString()
     ).run();
 
     return c.json({ success: true, dsarId: id, type, subjectEmail, status: 'pending' });
