@@ -55,8 +55,12 @@ export class CircuitBreaker {
       }
       return false;
     }
-    // half_open
-    return this.halfOpenCalls < this.config.halfOpenMaxCalls;
+    // half_open — allow limited probe calls
+    if (this.halfOpenCalls < this.config.halfOpenMaxCalls) {
+      this.halfOpenCalls++;
+      return true;
+    }
+    return false;
   }
 
   recordSuccess(): void {

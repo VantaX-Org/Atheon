@@ -55,11 +55,20 @@ export async function fetchWithRetry(
         return response;
       }
 
-      // Respect Retry-After header if present
+      // Respect Retry-After header if present (supports both seconds and HTTP-date formats)
       const retryAfter = response.headers.get('Retry-After');
-      const delayMs = retryAfter
-        ? parseInt(retryAfter, 10) * 1000
-        : calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
+      let delayMs: number;
+      if (retryAfter) {
+        const parsed = parseInt(retryAfter, 10);
+        if (!isNaN(parsed)) {
+          delayMs = parsed * 1000;
+        } else {
+          const retryDate = new Date(retryAfter).getTime();
+          delayMs = isNaN(retryDate) ? calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs) : Math.max(0, retryDate - Date.now());
+        }
+      } else {
+        delayMs = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
+      }
 
       opts.onRetry(attempt + 1, new Error(`HTTP ${response.status}`));
       await sleep(delayMs);

@@ -224,11 +224,24 @@ billing.post('/webhook', async (c) => {
       const tenantId = session.client_reference_id as string;
       const subscriptionId = session.subscription as string;
       const customerId = session.customer as string;
+      // Resolve plan from session metadata or fall back to checkout record
+      const metadata = (session.metadata || {}) as Record<string, string>;
+      let planId = metadata.plan_id || 'starter';
+      if (!metadata.plan_id && tenantId) {
+        const checkout = await c.env.DB.prepare(
+          'SELECT plan_id FROM billing_checkouts WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1'
+        ).bind(tenantId, 'pending').first<{ plan_id: string }>().catch(() => null);
+        if (checkout?.plan_id) planId = checkout.plan_id;
+      }
 
       if (tenantId && subscriptionId) {
         await c.env.DB.prepare(
           'INSERT OR REPLACE INTO subscriptions (id, tenant_id, stripe_subscription_id, stripe_customer_id, plan_id, status, current_period_start, current_period_end, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\', \'+30 days\'), datetime(\'now\'))'
-        ).bind(crypto.randomUUID(), tenantId, subscriptionId, customerId, 'professional', 'active').run();
+        ).bind(crypto.randomUUID(), tenantId, subscriptionId, customerId, planId, 'active').run();
+        // Mark checkout as completed
+        await c.env.DB.prepare(
+          'UPDATE billing_checkouts SET status = ? WHERE tenant_id = ? AND status = ?'
+        ).bind('completed', tenantId, 'pending').run().catch(() => {});
       }
       break;
     }

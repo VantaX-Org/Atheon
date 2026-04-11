@@ -96,6 +96,11 @@ export function DashboardSkeleton() {
   );
 }
 
+/** Deterministic heights/widths for skeleton placeholders (avoids Math.random() flicker) */
+const SKELETON_BAR_HEIGHTS = [60, 45, 80, 35, 70, 50, 65, 55];
+const SKELETON_LIST_TITLE_WIDTHS = [65, 55, 75, 50, 60];
+const SKELETON_LIST_DESC_WIDTHS = [45, 55, 40, 60, 50];
+
 /** SPEC-021: Chart skeleton with axes placeholder */
 export function SkeletonChart({ height = 200, className = '' }: { height?: number; className?: string }) {
   return (
@@ -109,7 +114,7 @@ export function SkeletonChart({ height = 200, className = '' }: { height?: numbe
           <Skeleton
             key={i}
             className="flex-1"
-            height={`${30 + Math.random() * 70}%`}
+            height={`${SKELETON_BAR_HEIGHTS[i % SKELETON_BAR_HEIGHTS.length]}%`}
             rounded="sm"
           />
         ))}
@@ -152,8 +157,8 @@ export function SkeletonList({ items = 5, className = '' }: { items?: number; cl
         >
           <Skeleton width={36} height={36} rounded="full" />
           <div className="flex-1 space-y-2">
-            <Skeleton height={12} width={`${50 + Math.random() * 30}%`} />
-            <Skeleton height={8} width={`${30 + Math.random() * 40}%`} />
+            <Skeleton height={12} width={`${SKELETON_LIST_TITLE_WIDTHS[i % SKELETON_LIST_TITLE_WIDTHS.length]}%`} />
+            <Skeleton height={8} width={`${SKELETON_LIST_DESC_WIDTHS[i % SKELETON_LIST_DESC_WIDTHS.length]}%`} />
           </div>
           <Skeleton width={60} height={24} rounded="lg" />
         </div>
