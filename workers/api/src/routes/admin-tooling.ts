@@ -196,6 +196,13 @@ adminTooling.post('/impersonate/start', async (c) => {
     const user = await c.env.DB.prepare('SELECT id, name, email, role, tenant_id FROM users WHERE id = ?').bind(userId).first();
     if (!user) return c.json({ error: 'User not found' }, 404);
 
+    // Prevent impersonating users with equal or higher privilege than caller
+    const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+    const targetLevel = ROLE_LEVELS[(user as Record<string, unknown>).role as string] ?? 0;
+    if (targetLevel >= callerLevel) {
+      return c.json({ error: 'Forbidden', message: 'Cannot impersonate a user with equal or higher privilege than your own' }, 403);
+    }
+
     // Log impersonation start
     await c.env.DB.prepare(
       'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -321,7 +328,21 @@ adminTooling.post('/bulk-users/action', async (c) => {
     }
 
     let affected = 0;
+    const skipped: string[] = [];
     for (const id of userIds) {
+      // Prevent self-modification
+      if (id === auth?.userId) { skipped.push(`${id}: cannot modify yourself`); continue; }
+
+      // Fetch target user's current role for privilege checks
+      const target = await c.env.DB.prepare('SELECT id, role FROM users WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
+      if (!target) { skipped.push(`${id}: user not found`); continue; }
+      const targetLevel = ROLE_LEVELS[(target as Record<string, unknown>).role as string] ?? 0;
+
+      // Block operations on users with higher privilege than caller
+      if (targetLevel > callerLevel) { skipped.push(`${id}: target has higher privilege`); continue; }
+      // For admin callers, also block operations on same-level peers (mirrors iam.ts pattern)
+      if (auth?.role === 'admin' && targetLevel >= callerLevel) { skipped.push(`${id}: cannot modify peer admin`); continue; }
+
       if (action === 'change_role' && value) {
         await c.env.DB.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND tenant_id = ?').bind(value, new Date().toISOString(), id, tenantId).run();
         affected++;
@@ -334,7 +355,7 @@ adminTooling.post('/bulk-users/action', async (c) => {
       }
     }
 
-    return c.json({ success: true, action, affected, total: userIds.length });
+    return c.json({ success: true, action, affected, total: userIds.length, skipped: skipped.length > 0 ? skipped : undefined });
   } catch (err) {
     return c.json({ error: 'Bulk action failed', details: (err as Error).message }, 500);
   }
