@@ -586,15 +586,25 @@ export const api = {
       request<Record<string, unknown>>('/api/assessments/config/defaults'),
     saveDefaultConfig: (config: Record<string, unknown>) =>
       request<{ success: boolean }>('/api/assessments/config/defaults', { method: 'PUT', body: JSON.stringify(config) }),
-    downloadBusiness: async (id: string) => {
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/assessments/${id}/report/business`, { headers });
-      if (!res.ok) throw new Error('Failed to download business report');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `business-case-${id}.pdf`; a.click();
-      URL.revokeObjectURL(url);
+    downloadBusiness: async (id: string, assessment?: Assessment) => {
+      // Try backend first; fall back to client-side generation
+      try {
+        const headers: Record<string, string> = {};
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const res = await fetch(`${API_URL}/api/assessments/${id}/report/business`, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `business-case-${id}.pdf`; a.click();
+          URL.revokeObjectURL(url);
+          return;
+        }
+      } catch { /* backend unavailable, fall through */ }
+      // Client-side PDF generation
+      if (assessment) {
+        const { generateBusinessPDF } = await import('./report-generators');
+        await generateBusinessPDF(assessment);
+      }
     },
     downloadTechnical: async (id: string) => {
       const headers: Record<string, string> = {};
@@ -606,15 +616,25 @@ export const api = {
       const a = document.createElement('a'); a.href = url; a.download = `technical-sizing-${id}.pdf`; a.click();
       URL.revokeObjectURL(url);
     },
-    downloadExcel: async (id: string) => {
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/assessments/${id}/report/excel`, { headers });
-      if (!res.ok) throw new Error('Failed to download Excel model');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `financial-model-${id}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
+    downloadExcel: async (id: string, assessment?: Assessment) => {
+      // Try backend first; fall back to client-side generation
+      try {
+        const headers: Record<string, string> = {};
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const res = await fetch(`${API_URL}/api/assessments/${id}/report/excel`, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `financial-model-${id}.xlsx`; a.click();
+          URL.revokeObjectURL(url);
+          return;
+        }
+      } catch { /* backend unavailable, fall through */ }
+      // Client-side Excel generation
+      if (assessment) {
+        const { generateExcelReport } = await import('./report-generators');
+        await generateExcelReport(assessment);
+      }
     },
     // ── Value Assessment Engine endpoints ──
     runValueAssessment: (id: string, mode: 'full' | 'quick' = 'full', outcomeFeePercent?: number) =>

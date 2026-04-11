@@ -193,14 +193,14 @@ function ListView({ assessments, loading, onView, onDelete }: {
                     {a.status === 'complete' && (
                       <>
                         <button
-                          onClick={() => api.assessments.downloadBusiness(a.id)}
+                          onClick={() => api.assessments.downloadBusiness(a.id, a)}
                           className="text-xs px-2 py-1 rounded"
                           style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
                         >
                           PDF
                         </button>
                         <button
-                          onClick={() => api.assessments.downloadExcel(a.id)}
+                          onClick={() => api.assessments.downloadExcel(a.id, a)}
                           className="text-xs px-2 py-1 rounded"
                           style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
                         >
@@ -1010,16 +1010,12 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
                 <button onClick={() => api.assessments.downloadValueReport(assessment.id)}
                   className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}
                 >Download Value Assessment Report</button>
-                {assessment.businessReportKey && (
-                  <button onClick={() => api.assessments.downloadBusiness(assessment.id)}
-                    className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
-                  >Business Case PDF</button>
-                )}
-                {assessment.excelModelKey && (
-                  <button onClick={() => api.assessments.downloadExcel(assessment.id)}
-                    className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
-                  >Excel Model</button>
-                )}
+                <button onClick={() => api.assessments.downloadBusiness(assessment.id, assessment)}
+                  className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                >Business Case PDF</button>
+                <button onClick={() => api.assessments.downloadExcel(assessment.id, assessment)}
+                  className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                >Excel Model</button>
               </div>
             </>
           )}
@@ -1079,18 +1075,14 @@ function LegacySizingView({ assessment }: { assessment: Assessment }) {
         </table>
       </div>
       <div className="flex gap-2">
-        {assessment.businessReportKey && (
-          <button onClick={() => api.assessments.downloadBusiness(assessment.id)}
-            className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}>Business Case PDF</button>
-        )}
+        <button onClick={() => api.assessments.downloadBusiness(assessment.id, assessment)}
+          className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}>Business Case PDF</button>
         {assessment.technicalReportKey && (
           <button onClick={() => api.assessments.downloadTechnical(assessment.id)}
             className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>Technical PDF</button>
         )}
-        {assessment.excelModelKey && (
-          <button onClick={() => api.assessments.downloadExcel(assessment.id)}
-            className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>Excel Model</button>
-        )}
+        <button onClick={() => api.assessments.downloadExcel(assessment.id, assessment)}
+          className="px-4 py-2 text-sm font-medium rounded-lg" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>Excel Model</button>
       </div>
     </div>
   );
