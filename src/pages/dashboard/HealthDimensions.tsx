@@ -29,7 +29,7 @@ export function HealthDimensions({ dimensions, onOpenTrace }: HealthDimensionsPr
             className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-[var(--bg-secondary)] transition-all group"
             aria-label={`View ${dim.name} traceability`}
           >
-            <ScoreRing score={dim.score} size={48} strokeWidth={4} />
+            <ScoreRing score={dim.score} size="sm" />
             <span className="text-xs font-medium t-primary">{dim.name}</span>
             <span className={`text-[10px] ${dim.change > 0 ? 'text-emerald-500' : dim.change < 0 ? 'text-red-500' : 't-muted'}`}>
               {dim.change > 0 ? '+' : ''}{dim.change.toFixed(1)}%

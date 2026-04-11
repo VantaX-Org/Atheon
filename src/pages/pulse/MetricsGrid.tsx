@@ -2,10 +2,16 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import type { Metric } from "@/lib/api";
 
-const trendIcon = (trend: string) => {
-  if (trend === "up" || trend === "improving") return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
-  if (trend === "down" || trend === "declining") return <TrendingDown className="w-3.5 h-3.5 text-red-500" />;
+const trendIcon = (trend: number[]) => {
+  if (trend.length >= 2 && trend[trend.length - 1] > trend[0]) return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
+  if (trend.length >= 2 && trend[trend.length - 1] < trend[0]) return <TrendingDown className="w-3.5 h-3.5 text-red-500" />;
   return <Minus className="w-3.5 h-3.5 text-gray-400" />;
+};
+
+const trendLabel = (trend: number[]) => {
+  if (trend.length >= 2 && trend[trend.length - 1] > trend[0]) return 'improving';
+  if (trend.length >= 2 && trend[trend.length - 1] < trend[0]) return 'declining';
+  return 'stable';
 };
 
 interface MetricsGridProps {
@@ -32,7 +38,7 @@ export function MetricsGrid({ metrics }: MetricsGridProps) {
           <p className="text-xl font-bold t-primary">{typeof m.value === 'number' ? m.value.toFixed(1) : m.value}</p>
           <div className="flex items-center gap-1.5 mt-1">
             {trendIcon(m.trend)}
-            <span className="text-xs t-muted">{m.trend}</span>
+            <span className="text-xs t-muted">{trendLabel(m.trend)}</span>
           </div>
         </div>
       ))}

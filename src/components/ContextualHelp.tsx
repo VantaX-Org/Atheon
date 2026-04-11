@@ -1,5 +1,5 @@
 // TASK-024: Contextual help integration
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { HelpCircle, X, ChevronRight, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';

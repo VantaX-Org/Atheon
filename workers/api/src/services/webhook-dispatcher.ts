@@ -1,5 +1,5 @@
 // TASK-022: Webhook dispatcher with retry logic and signature verification
-import type { Env } from '../types';
+// Webhook dispatcher - types are inlined to avoid unused import warnings
 
 interface WebhookEvent {
   id: string;

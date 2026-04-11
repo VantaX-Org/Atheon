@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { chartPalette, tooltipStyle } from "@/lib/chart-theme";
+
 import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
-import { SkeletonCard } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 // FlipCard removed per UI cleanup spec
 
 /* ── helpers ──────────────────────────────────────────────── */
@@ -543,7 +543,7 @@ export function PulsePage() {
       <div className="space-y-6 animate-fadeIn">
         {pageHeader}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} variant="card" height={120} />)}
         </div>
         <div className="flex items-center justify-center h-48">
           <Loader2 className="w-8 h-8 text-accent animate-spin" />

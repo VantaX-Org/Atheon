@@ -17,8 +17,8 @@ export function AnomalyList({ anomalies }: AnomalyListProps) {
         <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border-card)]">
           <AlertTriangle size={16} className={a.severity === 'high' ? 'text-red-400' : a.severity === 'medium' ? 'text-amber-400' : 'text-gray-400'} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium t-primary">{a.title || a.metric}</p>
-            <p className="text-xs t-secondary mt-0.5">{a.description || `Anomaly detected in ${a.metric}`}</p>
+            <p className="text-sm font-medium t-primary">{a.metric}</p>
+            <p className="text-xs t-secondary mt-0.5">{a.hypothesis || `Anomaly detected in ${a.metric}`}</p>
           </div>
           <Badge variant={a.severity === 'high' ? 'danger' : a.severity === 'medium' ? 'warning' : 'default'} size="sm">
             {a.severity}

@@ -55,7 +55,7 @@ export function MfaSetup({ isEnabled, onComplete }: MfaSetupProps) {
     setLoading(true);
     setError(null);
     try {
-      await api.auth.mfaDisable();
+      await api.auth.mfaVerify('disable');
       setStep('idle');
       onComplete();
     } catch (err) {

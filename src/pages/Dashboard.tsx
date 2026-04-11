@@ -16,7 +16,7 @@ import {
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight, X,
   CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
-import { chartPalette, tooltipStyle } from "@/lib/chart-theme";
+import { chartPalette } from "@/lib/chart-theme";
 import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { Link } from "react-router-dom";

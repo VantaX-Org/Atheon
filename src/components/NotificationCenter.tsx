@@ -1,29 +1,20 @@
 // TASK-017: Notification Center Integration
 import { useState, useEffect, useCallback } from "react";
-import { Bell, X, Check, CheckCheck, Trash2, Settings } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Bell, X, Check, CheckCheck, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { NotificationItem } from "@/lib/api";
 
-interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  read: boolean;
-  created_at: string;
-  action_url?: string;
-}
 
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await api.notifications.list() as { notifications?: Notification[]; items?: Notification[] };
-      setNotifications(result.notifications || result.items || []);
+      const result = await api.notifications.list();
+      setNotifications(result.notifications || []);
     } catch (err) {
       console.error("Failed to load notifications:", err);
     }
@@ -41,7 +32,7 @@ export function NotificationCenter() {
 
   const markRead = async (id: string) => {
     try {
-      await api.notifications.markRead(id);
+      await api.notifications.markRead([id]);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
@@ -50,7 +41,8 @@ export function NotificationCenter() {
 
   const markAllRead = async () => {
     try {
-      await api.notifications.markAllRead();
+      const allIds = notifications.filter(n => !n.read).map(n => n.id);
+      if (allIds.length > 0) await api.notifications.markRead(allIds);
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     } catch (err) {
       console.error("Failed to mark all as read:", err);
@@ -59,7 +51,7 @@ export function NotificationCenter() {
 
   const dismiss = async (id: string) => {
     try {
-      await api.notifications.dismiss(id);
+      await api.notifications.markRead([id]);
       setNotifications(prev => prev.filter(n => n.id !== id));
     } catch (err) {
       console.error("Failed to dismiss notification:", err);
@@ -118,8 +110,8 @@ export function NotificationCenter() {
                     <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.read ? 'bg-accent' : 'bg-transparent'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium t-primary">{n.title}</p>
-                      <p className="text-[10px] t-secondary mt-0.5 line-clamp-2">{n.message}</p>
-                      <p className="text-[9px] t-muted mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                                  <p className="text-[10px] t-secondary mt-0.5 line-clamp-2">{n.message}</p>
+                                  <p className="text-[9px] t-muted mt-1">{new Date(n.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="flex items-center gap-1">
                       {!n.read && (
