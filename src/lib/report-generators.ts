@@ -3,7 +3,7 @@
  * These run in the browser using jsPDF and SheetJS (xlsx), avoiding
  * Cloudflare Workers runtime compatibility issues with these libraries.
  */
-import type { Assessment, AssessmentResults, CatalystScore, TechnicalSizing } from './api';
+import type { Assessment, AssessmentResults } from './api';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
