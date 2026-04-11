@@ -1158,3 +1158,34 @@ export async function handleQueueMessage(
     }
   }
 }
+
+
+// TASK-019: Fan-out via queue instead of sequential processing
+// Each scheduled task is dispatched as a separate queue message for parallel processing
+export async function fanOutViaBatch(
+  queue: { send: (msg: unknown) => Promise<void> },
+  tasks: Array<{ tenantId: string; clusterId: string; subCatalystName: string }>,
+): Promise<{ dispatched: number; failed: number }> {
+  let dispatched = 0;
+  let failed = 0;
+  
+  for (const task of tasks) {
+    try {
+      await queue.send({
+        type: 'catalyst-run',
+        tenant_id: task.tenantId,
+        cluster_id: task.clusterId,
+        sub_catalyst_name: task.subCatalystName,
+        triggered_by: 'scheduler',
+        timestamp: new Date().toISOString(),
+      });
+      dispatched++;
+    } catch (err) {
+      console.error(`[SCHEDULER] Failed to enqueue task for ${task.tenantId}/${task.clusterId}:`, err);
+      failed++;
+    }
+  }
+  
+  console.log(`[SCHEDULER] Fan-out complete: ${dispatched} dispatched, ${failed} failed`);
+  return { dispatched, failed };
+}

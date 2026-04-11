@@ -26,7 +26,7 @@ const marketingCSS = `
   color: var(--cream);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
-  cursor: none;
+  cursor: auto;
 }
 .mk5-body ::selection { background: var(--sage); color: var(--void); }
 .mk5-body a { color: inherit; text-decoration: none; }
@@ -73,7 +73,7 @@ const marketingCSS = `
   padding: .7rem 2rem; border: 1px solid var(--sage); color: var(--sage) !important;
   opacity: 1 !important; position: relative; overflow: hidden;
   transition: all .4s cubic-bezier(.16,1,.3,1) !important;
-  background: transparent; cursor: none; text-transform: uppercase;
+  background: transparent; cursor: auto; text-transform: uppercase;
 }
 .mk5-nav-cta::before {
   content: ''; position: absolute; inset: 0; background: var(--sage);
@@ -168,7 +168,7 @@ const marketingCSS = `
   padding: 1.1rem 2.8rem; background: var(--sage); color: var(--void);
   font-weight: 600; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase;
   overflow: hidden; transition: all .5s cubic-bezier(.16,1,.3,1);
-  border: none; cursor: none;
+  border: none; cursor: auto;
 }
 .mk5-btn-main::after {
   content: '\\2192'; font-size: 1.2rem;
@@ -179,7 +179,7 @@ const marketingCSS = `
 .mk5-btn-line {
   font-size: .75rem; font-weight: 400; letter-spacing: .15em; text-transform: uppercase;
   color: var(--chalk); padding-bottom: .3rem; border: none; background: transparent;
-  border-bottom: 1px solid var(--line-b); transition: all .3s; cursor: none;
+  border-bottom: 1px solid var(--line-b); transition: all .3s; cursor: auto;
 }
 .mk5-btn-line:hover { color: var(--cream); border-bottom-color: var(--cream); }
 .mk5-hero-scroll {

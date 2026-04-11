@@ -399,3 +399,49 @@ export async function sendOrQueueEmail(db: D1Database, payload: EmailPayload, en
 
   return result;
 }
+
+
+// TASK-018: Email Service Hardening - Circuit breaker + retry
+interface CircuitBreakerState {
+  failures: number;
+  lastFailure: number;
+  isOpen: boolean;
+}
+
+const emailCircuitBreaker: CircuitBreakerState = {
+  failures: 0,
+  lastFailure: 0,
+  isOpen: false,
+};
+
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
+
+function checkCircuitBreaker(): boolean {
+  if (!emailCircuitBreaker.isOpen) return true;
+  
+  // Check if timeout has elapsed (half-open state)
+  if (Date.now() - emailCircuitBreaker.lastFailure > CIRCUIT_BREAKER_TIMEOUT) {
+    emailCircuitBreaker.isOpen = false;
+    emailCircuitBreaker.failures = 0;
+    return true;
+  }
+  
+  return false;
+}
+
+function recordEmailFailure(): void {
+  emailCircuitBreaker.failures++;
+  emailCircuitBreaker.lastFailure = Date.now();
+  if (emailCircuitBreaker.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+    emailCircuitBreaker.isOpen = true;
+    console.error('[EMAIL] Circuit breaker OPEN - too many failures');
+  }
+}
+
+function recordEmailSuccess(): void {
+  emailCircuitBreaker.failures = 0;
+  emailCircuitBreaker.isOpen = false;
+}
+
+export { checkCircuitBreaker, recordEmailFailure, recordEmailSuccess };

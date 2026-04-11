@@ -61,6 +61,17 @@
     --bg-pattern: radial-gradient(ellipse at 20% 20%, rgba(78, 124, 246, 0.06) 0%, transparent 50%),
                   radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
                   radial-gradient(ellipse at 50% 50%, rgba(78, 124, 246, 0.02) 0%, transparent 70%);
+    /* Chart theme tokens (TASK-003) */
+    --chart-primary: var(--sage);
+    --chart-secondary: var(--bronze);
+    --chart-tertiary: var(--sky);
+    --chart-success: #10b981;
+    --chart-warning: #f59e0b;
+    --chart-danger: #ef4444;
+    --chart-grid: rgba(200, 210, 230, 0.15);
+    --chart-text: var(--text-secondary);
+    --chart-tooltip-bg: var(--bg-card-solid);
+    --chart-tooltip-border: var(--border-card);
   }
 
   .atheon-dark {
@@ -75,6 +86,9 @@
     --bg-input-focus: rgba(18, 26, 34, 0.90);
     --bg-modal: rgba(10, 15, 20, 0.95);
     --bg-elevated: rgba(14, 21, 28, 0.90);
+    /* Chart theme - dark mode overrides */
+    --chart-grid: rgba(74, 107, 90, 0.12);
+    --chart-text: var(--text-secondary);
     --border-primary: rgba(74, 107, 90, 0.20);
     --border-subtle: rgba(74, 107, 90, 0.10);
     --border-card: rgba(74, 107, 90, 0.12);
