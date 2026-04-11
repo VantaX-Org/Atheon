@@ -362,6 +362,7 @@ app.route('/api/v1/admin', tenantsAdmin);
 
 // Admin Tooling routes (ADMIN-001 to ADMIN-012)
 app.use('/api/v1/admin-tooling/*', tenantIsolation());
+app.use('/api/admin-tooling/*', tenantIsolation());
 app.route('/api/v1/admin-tooling', adminTooling);
 app.route('/api/admin-tooling', adminTooling);
 

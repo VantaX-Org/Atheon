@@ -13,6 +13,14 @@ import type { AuthContext, AppBindings } from '../types';
 const adminTooling = new Hono<AppBindings>();
 adminTooling.use('/*', cors());
 
+// ── Role hierarchy (mirrored from iam.ts) ───────────────
+
+const ROLE_LEVELS: Record<string, number> = {
+  superadmin: 120, support_admin: 110, admin: 100, executive: 90,
+  manager: 70, analyst: 50, operator: 40, viewer: 10,
+};
+const VALID_ROLES = new Set(Object.keys(ROLE_LEVELS));
+
 // ── Helpers ──────────────────────────────────────────────
 
 function getAuth(c: Context<AppBindings>): AuthContext | undefined {
@@ -267,21 +275,29 @@ adminTooling.post('/bulk-users/import', async (c) => {
     }
 
     const tenantId = auth?.tenantId;
+    const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
     let imported = 0;
     let skipped = 0;
+    const errors: string[] = [];
 
     for (const u of users) {
+      const role = u.role || 'viewer';
+      // Validate role
+      if (!VALID_ROLES.has(role)) { errors.push(`Invalid role "${role}" for ${u.email}`); skipped++; continue; }
+      // Prevent privilege escalation
+      if ((ROLE_LEVELS[role] ?? 0) > callerLevel) { errors.push(`Cannot assign role "${role}" to ${u.email} — exceeds your privilege level`); skipped++; continue; }
+
       // Check if user already exists
-      const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(u.email).first();
+      const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ? AND tenant_id = ?').bind(u.email, tenantId).first();
       if (existing) { skipped++; continue; }
 
       await c.env.DB.prepare(
         'INSERT INTO users (id, tenant_id, name, email, role, department, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, u.role || 'viewer', u.department || '', 'active', new Date().toISOString()).run();
+      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, role, u.department || '', 'active', new Date().toISOString()).run();
       imported++;
     }
 
-    return c.json({ success: true, imported, skipped, total: users.length });
+    return c.json({ success: true, imported, skipped, total: users.length, errors: errors.length > 0 ? errors : undefined });
   } catch (err) {
     return c.json({ error: 'Import failed', details: (err as Error).message }, 500);
   }
@@ -289,20 +305,29 @@ adminTooling.post('/bulk-users/import', async (c) => {
 
 adminTooling.post('/bulk-users/action', async (c) => {
   if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden' }, 403);
+  const auth = getAuth(c);
+  const tenantId = isSupportOrAbove(c) ? (c.req.query('tenantId') || auth?.tenantId) : auth?.tenantId;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
   try {
     const { userIds, action, value } = await c.req.json<{ userIds: string[]; action: string; value?: string }>();
     if (!Array.isArray(userIds) || userIds.length === 0) return c.json({ error: 'No user IDs provided' }, 400);
 
+    // Validate role for change_role action
+    if (action === 'change_role' && value) {
+      if (!VALID_ROLES.has(value)) return c.json({ error: 'Invalid role', message: `Role "${value}" is not valid. Valid roles: ${[...VALID_ROLES].join(', ')}` }, 400);
+      if ((ROLE_LEVELS[value] ?? 0) > callerLevel) return c.json({ error: 'Forbidden', message: `Cannot assign role "${value}" — exceeds your own privilege level` }, 403);
+    }
+
     let affected = 0;
     for (const id of userIds) {
       if (action === 'change_role' && value) {
-        await c.env.DB.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').bind(value, new Date().toISOString(), id).run();
+        await c.env.DB.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ? AND tenant_id = ?').bind(value, new Date().toISOString(), id, tenantId).run();
         affected++;
       } else if (action === 'suspend') {
-        await c.env.DB.prepare("UPDATE users SET status = 'inactive', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), id).run();
+        await c.env.DB.prepare("UPDATE users SET status = 'inactive', updated_at = ? WHERE id = ? AND tenant_id = ?").bind(new Date().toISOString(), id, tenantId).run();
         affected++;
       } else if (action === 'activate') {
-        await c.env.DB.prepare("UPDATE users SET status = 'active', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), id).run();
+        await c.env.DB.prepare("UPDATE users SET status = 'active', updated_at = ? WHERE id = ? AND tenant_id = ?").bind(new Date().toISOString(), id, tenantId).run();
         affected++;
       }
     }
@@ -362,16 +387,24 @@ adminTooling.post('/custom-roles', async (c) => {
 
 adminTooling.delete('/custom-roles/:id', async (c) => {
   if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden' }, 403);
+  const auth = getAuth(c);
+  const tenantId = auth?.tenantId;
   const roleId = c.req.param('id');
   try {
-    // Check no users assigned
+    // Look up role name first (users.role stores role names, not UUIDs)
+    const role = await c.env.DB.prepare(
+      'SELECT name FROM iam_roles WHERE id = ? AND tenant_id = ? AND is_custom = 1'
+    ).bind(roleId, tenantId).first();
+    if (!role) return c.json({ error: 'Role not found' }, 404);
+
+    // Check no users assigned by role name within same tenant
     const usersAssigned = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM users WHERE role = ?'
-    ).bind(roleId).first();
+      'SELECT COUNT(*) as count FROM users WHERE role = ? AND tenant_id = ?'
+    ).bind((role as Record<string, unknown>).name, tenantId).first();
     if (((usersAssigned as Record<string, unknown>)?.count as number || 0) > 0) {
       return c.json({ error: 'Cannot delete role with assigned users' }, 400);
     }
-    await c.env.DB.prepare('DELETE FROM iam_roles WHERE id = ? AND is_custom = 1').bind(roleId).run();
+    await c.env.DB.prepare('DELETE FROM iam_roles WHERE id = ? AND tenant_id = ? AND is_custom = 1').bind(roleId, tenantId).run();
     return c.json({ success: true, message: 'Role deleted' });
   } catch (err) {
     return c.json({ error: 'Failed', details: (err as Error).message }, 500);
