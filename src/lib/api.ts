@@ -988,6 +988,14 @@ export const api = {
     alertRuleUpdate: (id: string, update: Record<string, unknown>) =>
       request<Record<string, unknown>>(`/api/v1/admin-tooling/system-alerts/rules/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
   },
+
+  // Generic HTTP helpers for pages that call arbitrary endpoints
+  get: <T = Record<string, unknown>>(path: string) => request<T>(path),
+  post: <T = Record<string, unknown>>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }),
+  put: <T = Record<string, unknown>>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }),
+  delete: <T = Record<string, unknown>>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
 // Types for API responses

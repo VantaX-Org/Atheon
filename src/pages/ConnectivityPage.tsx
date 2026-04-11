@@ -39,7 +39,7 @@ export function ConnectivityPage() {
       setConnections((prev) =>
         prev.map((c) => c.id === id ? { ...c, status: result.success ? "connected" : "error", errorMessage: result.success ? undefined : result.message } : c)
       );
-    } catch (err) {
+    } catch {
       setConnections((prev) =>
         prev.map((c) => c.id === id ? { ...c, status: "error", errorMessage: "Connection test failed" } : c)
       );

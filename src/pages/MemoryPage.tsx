@@ -127,7 +127,7 @@ export function MemoryPage() {
       await api.post("/api/v1/memory/import", { entities: imported });
       setImportResult(`Successfully imported ${imported.length} entities.`);
       await fetchData();
-    } catch (err) {
+    } catch {
       setImportResult("Import failed. Please check your CSV format.");
     } finally {
       setImporting(false);

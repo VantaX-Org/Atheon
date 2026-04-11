@@ -7,8 +7,8 @@ const LOCALES = [
 ];
 
 export function LocaleSelector() {
-  const locale = useAppStore((s) => (s as Record<string, unknown>).locale as string) || 'en';
-  const setLocale = useAppStore((s) => (s as Record<string, unknown>).setLocale as ((l: string) => void) | undefined);
+  const locale = (useAppStore((s) => s) as unknown as Record<string, unknown>).locale as string || 'en';
+  const setLocale = (useAppStore((s) => s) as unknown as Record<string, unknown>).setLocale as ((l: string) => void) | undefined;
 
   return (
     <div className="flex items-center gap-2">

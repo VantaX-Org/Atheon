@@ -82,6 +82,7 @@ function TintedCard({ children, className = "" }: { children: React.ReactNode; c
 
 export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
+  const user = useAppStore((s) => s.user);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -252,10 +253,22 @@ export function Dashboard() {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <h1 className="text-3xl sm:text-4xl font-bold t-primary">Dashboard</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold t-primary">{getGreeting(user?.name)}</h1>
             <SectionFreshness section="Health" />
           </div>
           <div className="flex items-center gap-2">
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+              className="px-2 py-1 rounded-lg text-xs t-secondary"
+              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              aria-label="Time range"
+            >
+              <option value="today">Today</option>
+              <option value="7d">7 Days</option>
+              <option value="30d">30 Days</option>
+              <option value="90d">90 Days</option>
+            </select>
             <span className={`text-[10px] t-muted transition-colors duration-500 ${refreshFlash ? 'text-emerald-500' : ''}`}>
               Updated: {lastRefreshed.toLocaleTimeString()}
             </span>

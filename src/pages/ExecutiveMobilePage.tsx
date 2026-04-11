@@ -19,14 +19,18 @@ export function ExecutiveMobilePage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [h, r, a] = await Promise.all([
-        api.apex.healthScore(),
+      const [h, r] = await Promise.all([
+        api.apex.health(),
         api.apex.risks(),
-        api.apex.actions(),
       ]);
       setHealth(h);
       setRisks(r.risks || []);
-      setActions(a.actions || []);
+      // Actions fetched via catalysts governance
+      try {
+        const actData = await api.catalysts.governance();
+        const pending = (actData as { actions?: ActionItem[] }).actions || [];
+        setActions(pending);
+      } catch { /* actions optional */ }
     } catch (err) {
       console.error("Executive mobile data fetch failed", err);
     } finally {
@@ -93,9 +97,9 @@ export function ExecutiveMobilePage() {
 
         {/* KPI Cards - horizontal scroll-snap */}
         <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4" style={{ scrollbarWidth: "none" }}>
-          {(health?.dimensions || []).map((dim, i) => (
+          {Object.entries(health?.dimensions || {}).map(([key, dim], i) => (
             <div key={i} className="snap-center flex-shrink-0 w-[140px] rounded-xl p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)", minHeight: 44 }}>
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{dim.label}</p>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{key.replace(/[-_]/g, ' ')}</p>
               <p className="text-xl font-bold t-primary">{dim.score}</p>
               <div className="flex items-center gap-1 mt-1">{trendIcon(dim.trend)}<span className="text-xs t-muted">{dim.trend || "stable"}</span></div>
             </div>
@@ -112,7 +116,7 @@ export function ExecutiveMobilePage() {
               <div className="mt-3 space-y-2">
                 {actions.slice(0, 5).map((action, i) => (
                   <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
-                    <div className="flex-1 min-w-0 mr-3"><p className="text-xs t-primary truncate">{action.title || action.description}</p></div>
+                    <div className="flex-1 min-w-0 mr-3"><p className="text-xs t-primary truncate">{action.action || action.catalystName}</p></div>
                     <button className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500" aria-label="Approve"><CheckCircle2 size={18} /></button>
                   </div>
                 ))}

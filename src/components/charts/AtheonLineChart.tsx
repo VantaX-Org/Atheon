@@ -1,5 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { CHART_COLORS, CHART_THEME } from "@/lib/chart-theme";
+import { chartTheme, chartPalette, tooltipStyle } from "@/lib/chart-theme";
 
 interface Props {
   data: Record<string, unknown>[];
@@ -12,12 +12,12 @@ export function AtheonLineChart({ data, dataKeys, height = 300, xAxisKey = "name
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data}>
-        <CartesianGrid stroke={CHART_THEME.grid.stroke} strokeDasharray={CHART_THEME.grid.strokeDasharray} />
-        <XAxis dataKey={xAxisKey} tick={{ fill: CHART_THEME.axis.color, fontSize: CHART_THEME.axis.fontSize }} />
-        <YAxis tick={{ fill: CHART_THEME.axis.color, fontSize: CHART_THEME.axis.fontSize }} />
-        <Tooltip contentStyle={{ background: CHART_THEME.tooltip.background, border: CHART_THEME.tooltip.border, borderRadius: CHART_THEME.tooltip.borderRadius, color: CHART_THEME.tooltip.color }} />
+        <CartesianGrid stroke={chartTheme.grid.stroke} strokeWidth={chartTheme.grid.strokeWidth} />
+        <XAxis dataKey={xAxisKey} tick={{ fill: chartTheme.text.fill, fontSize: chartTheme.text.fontSize }} />
+        <YAxis tick={{ fill: chartTheme.text.fill, fontSize: chartTheme.text.fontSize }} />
+        <Tooltip contentStyle={tooltipStyle.contentStyle} />
         {dataKeys.map((key, i) => (
-          <Line key={key} type="monotone" dataKey={key} stroke={CHART_COLORS.series[i % CHART_COLORS.series.length]} strokeWidth={2} dot={false} />
+          <Line key={key} type="monotone" dataKey={key} stroke={chartPalette[i % chartPalette.length]} strokeWidth={2} dot={false} />
         ))}
       </LineChart>
     </ResponsiveContainer>

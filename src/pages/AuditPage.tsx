@@ -1,4 +1,3 @@
-import { AuditDetailModal } from "./audit/AuditDetailModal";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { LayerBadge } from "@/components/ui/layer-badge";

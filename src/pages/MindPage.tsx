@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { useAppStore } from "@/stores/appStore";
-import { Brain, Settings2, Play, DollarSign, Loader2, ChevronDown, Thermometer, Hash, Zap } from "lucide-react";
+import { Brain, Settings2, Play, DollarSign, Loader2, Thermometer, Hash, Zap } from "lucide-react";
 
 interface ModelConfig {
   provider: string;
@@ -27,7 +26,6 @@ const MODELS: Record<string, string[]> = {
 };
 
 export function MindPage() {
-  const user = useAppStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<"config" | "playground" | "costs">("config");
 
   // Model configuration
@@ -84,7 +82,7 @@ export function MindPage() {
     try {
       const result = await api.post("/api/v1/mind/test", { prompt, config }) as { response: string };
       setResponse(result.response || "No response received.");
-    } catch (err) {
+    } catch {
       setResponse("Error: Failed to get response. Check your model configuration.");
     } finally {
       setTesting(false);
