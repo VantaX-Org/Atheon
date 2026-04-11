@@ -300,9 +300,10 @@ adminTooling.post('/bulk-users/import', async (c) => {
       const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ? AND tenant_id = ?').bind(u.email, tenantId).first();
       if (existing) { skipped++; continue; }
 
+      const permissions = (role === 'superadmin' || role === 'support_admin' || role === 'admin') ? '["*"]' : '["read"]';
       await c.env.DB.prepare(
-        'INSERT INTO users (id, tenant_id, name, email, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, role, 'active', new Date().toISOString()).run();
+        'INSERT INTO users (id, tenant_id, name, email, role, permissions, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(crypto.randomUUID(), tenantId, u.name, u.email, role, permissions, 'active', new Date().toISOString()).run();
       imported++;
     }
 
@@ -741,7 +742,11 @@ adminTooling.put('/system-alerts/rules/:id', async (c) => {
     const idx = rules.findIndex((r: Record<string, unknown>) => r.id === ruleId);
     if (idx === -1) return c.json({ error: 'Rule not found' }, 404);
 
-    Object.assign(rules[idx], update, { updatedAt: new Date().toISOString() });
+    if (update.enabled !== undefined) rules[idx].enabled = update.enabled;
+    if (update.name !== undefined) rules[idx].name = update.name;
+    if (update.condition !== undefined) rules[idx].condition = update.condition;
+    if (update.severity !== undefined) rules[idx].severity = update.severity;
+    rules[idx].updatedAt = new Date().toISOString();
     await c.env.CACHE.put(`alert_rules:${tenantId}`, JSON.stringify(rules));
 
     return c.json({ success: true, rule: rules[idx] });
