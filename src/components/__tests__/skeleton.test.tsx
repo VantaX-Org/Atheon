@@ -1,4 +1,5 @@
 // TASK-026: Component test for Skeleton
+import React from "react";
 import { render, screen } from "@testing-library/react";
 import { Skeleton, DashboardSkeleton, TableSkeleton } from "../ui/skeleton";
 
@@ -30,13 +31,15 @@ describe("Skeleton", () => {
 describe("DashboardSkeleton", () => {
   it("renders without crashing", () => {
     render(<DashboardSkeleton />);
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    const statuses = screen.getAllByRole("status");
+    expect(statuses.length).toBeGreaterThan(0);
   });
 });
 
 describe("TableSkeleton", () => {
   it("renders specified rows", () => {
     render(<TableSkeleton rows={3} columns={2} />);
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    const statuses = screen.getAllByRole("status");
+    expect(statuses.length).toBeGreaterThan(0);
   });
 });

@@ -22,6 +22,8 @@ import {
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetricsGrid } from "./pulse/MetricsGrid";
+import { AnomalyList } from "./pulse/AnomalyList";
 // FlipCard removed per UI cleanup spec
 
 /* ── helpers ──────────────────────────────────────────────── */
@@ -658,6 +660,9 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'dashboard' && (
         <TabPanel>
+          {/* TASK-002: Decomposed MetricsGrid sub-component for compact overview */}
+          <MetricsGrid metrics={filteredMetrics} />
+
           {/* Top Row: Status Strip + Dimensions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <Card variant="black" className="lg:col-span-1 flex flex-col items-center justify-center">
@@ -1063,7 +1068,9 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'anomalies' && (
         <TabPanel>
-          <div className="flex items-center justify-between mb-4">
+          {/* TASK-002: Decomposed AnomalyList sub-component for compact view */}
+          <AnomalyList anomalies={filteredAnomalies} />
+          <div className="flex items-center justify-between mb-4 mt-6">
             <h3 className="text-lg font-semibold t-primary">Anomaly Detection</h3>
             <Button
               variant="primary"

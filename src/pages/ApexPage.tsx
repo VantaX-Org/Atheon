@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
+import { RiskMatrix } from "./apex/RiskMatrix";
 
 
 const trendIcon = (trend: string, size = 14) => {
@@ -706,6 +707,8 @@ export function ApexPage() {
  {/* Risk Alerts Tab */}
  {activeTab === 'risks' && (
  <TabPanel><div className="space-y-4">
+ {/* TASK-002: Decomposed RiskMatrix sub-component for grouped severity view */}
+ <RiskMatrix risks={risks} />
  {risks.length === 0 && (
   <div className="flex items-center gap-3 py-6 px-4">
  <Shield className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
