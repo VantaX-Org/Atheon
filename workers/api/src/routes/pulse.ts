@@ -720,8 +720,9 @@ pulse.post('/anomalies/detect', async (c) => {
 
   // Detect anomalies using Z-score
   const anomalies = (currentMetrics.results || []).map((m: Record<string, unknown>) => {
-    const zScore = Math.abs((m.value - mean) / stdDev);
-    const deviation = ((m.value - mean) / mean) * 100;
+    const val = Number(m.value);
+    const zScore = Math.abs((val - mean) / stdDev);
+    const deviation = ((val - mean) / mean) * 100;
     
     if (zScore > zThreshold) {
       return {

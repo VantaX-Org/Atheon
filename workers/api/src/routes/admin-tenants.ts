@@ -428,7 +428,7 @@ tenants.delete('/:id/permanent-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ? OR id = ?`
       ).bind(tenantId, tenantId).run();
-      deletedCount += (result.meta as Record<string, unknown>)?.changes || 0;
+      deletedCount += Number((result.meta as Record<string, unknown>)?.changes) || 0;
     }
 
     // Log deletion for audit

@@ -176,7 +176,7 @@ seed.post('/seed-vantax', async (c) => {
         const result = await c.env.DB.prepare(
           `DELETE FROM ${table} WHERE tenant_id = ?`
         ).bind(tenantId).run();
-        cleanupCount += (result.meta as Record<string, unknown>)?.changes || 0;
+        cleanupCount += Number((result.meta as Record<string, unknown>)?.changes) || 0;
       } catch {
         // Table may not exist yet
       }
@@ -2119,7 +2119,7 @@ seed.get('/vantax-status', async (c) => {
       if (!ALLOWED_TABLES.has(table)) continue;
       try {
         const row = await c.env.DB.prepare(`SELECT COUNT(*) as count FROM ${table} WHERE tenant_id = ?`).bind(tenantId).first();
-        counts[key] = (row as Record<string, unknown>)?.count || 0;
+        counts[key] = Number((row as Record<string, unknown>)?.count) || 0;
       } catch {
         counts[key] = 0;
       }

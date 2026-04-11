@@ -410,7 +410,7 @@ tenants.delete('/tenants/:id/hard-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ?`
       ).bind(tenantId).run();
-      deletedCount += (result.meta as Record<string, unknown>)?.changes || 0;
+      deletedCount += Number((result.meta as Record<string, unknown>)?.changes) || 0;
     }
 
     // Log the deletion

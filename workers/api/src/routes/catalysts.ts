@@ -282,7 +282,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     score: number; 
     trend: string; 
     delta: number;
-    contributors?: Record<string, unknown>;
+    contributors?: string[] | Record<string, unknown>;
     sourceRunId?: string | null;
     catalystName?: string;
     kpiContributors?: Array<{ name: string; value: number; status: string }>;
@@ -5080,7 +5080,7 @@ catalysts.post('/runs/:runId/llm-insights', async (c) => {
 - Cluster: ${run.cluster_name} (${run.cluster_domain})
 - Status: ${run.status}
 - Records Processed: ${run.matched} matched, ${run.discrepancies} discrepancies, ${run.exceptions_raised} exceptions
-- Total Value: R ${(run.total_source_value / 1000000).toFixed(2)}M
+- Total Value: R ${(Number(run.total_source_value) / 1000000).toFixed(2)}M
 
 **KPIs Generated:**
 ${kpiSummary || 'No KPIs generated'}
