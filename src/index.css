@@ -72,6 +72,11 @@
     --chart-text: var(--text-secondary);
     --chart-tooltip-bg: var(--bg-card-solid);
     --chart-tooltip-border: var(--border-card);
+    /* TASK-014: Light mode polish */
+    --shadow-card-light: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --bg-page-light: #fafbfc;
+    --text-primary-light: #1a1d23;
+    --text-secondary-light: #4a5568;
   }
 
   .atheon-dark {

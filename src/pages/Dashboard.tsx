@@ -16,6 +16,7 @@ import {
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, ArrowRight, X,
   CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
 } from "lucide-react";
+import { chartPalette, tooltipStyle } from "@/lib/chart-theme";
 import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { Link } from "react-router-dom";
@@ -24,10 +25,11 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 
-const ACCENT = "#4A6B5A";
-const ACCENT_B = "#5d8a6f";
-const BRONZE = "#c9a059";
-const SKY = "#7AACB5";
+// TASK-010/013: Use chart theme palette instead of hardcoded colors
+const ACCENT = chartPalette[0];
+const ACCENT_B = chartPalette[1] || "#5d8a6f";
+const BRONZE = chartPalette[1];
+const SKY = chartPalette[2];
 const CHART_LIGHT = "#b8d4c4";
 
 const trendIcon = (trend: string) => {
