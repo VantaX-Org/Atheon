@@ -23,6 +23,7 @@ import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { TenantManagementPage } from "@/pages/TenantManagementPage";
 import { TrialPage } from "@/pages/TrialPage";
 import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
+import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<LoginPage />} />
         <Route path="/trial" element={<TrialPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/erp/oauth/callback" element={<ERPOAuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />

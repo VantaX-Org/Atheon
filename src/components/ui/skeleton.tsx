@@ -95,3 +95,94 @@ export function DashboardSkeleton() {
     </div>
   );
 }
+
+/** SPEC-021: Chart skeleton with axes placeholder */
+export function SkeletonChart({ height = 200, className = '' }: { height?: number; className?: string }) {
+  return (
+    <div
+      className={`rounded-xl p-5 ${className}`}
+      style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+    >
+      <Skeleton height={12} width="30%" className="mb-4" />
+      <div className="flex items-end gap-2" style={{ height }}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton
+            key={i}
+            className="flex-1"
+            height={`${30 + Math.random() * 70}%`}
+            rounded="sm"
+          />
+        ))}
+      </div>
+      <div className="flex justify-between mt-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} height={8} width={24} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** SPEC-021: Metric card skeleton */
+export function SkeletonMetric({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`rounded-xl p-4 space-y-3 ${className}`}
+      style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+    >
+      <Skeleton height={10} width="50%" />
+      <Skeleton height={32} width="40%" />
+      <div className="flex items-center gap-2">
+        <Skeleton height={8} width={40} rounded="full" />
+        <Skeleton height={8} width="30%" />
+      </div>
+    </div>
+  );
+}
+
+/** SPEC-021: List skeleton for notifications, audit logs, etc. */
+export function SkeletonList({ items = 5, className = '' }: { items?: number; className?: string }) {
+  return (
+    <div className={`space-y-3 ${className}`}>
+      {Array.from({ length: items }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 p-3 rounded-lg"
+          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+        >
+          <Skeleton width={36} height={36} rounded="full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton height={12} width={`${50 + Math.random() * 30}%`} />
+            <Skeleton height={8} width={`${30 + Math.random() * 40}%`} />
+          </div>
+          <Skeleton width={60} height={24} rounded="lg" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** SPEC-021: Page-level skeleton with header + content area */
+export function PageSkeleton({ title = true }: { title?: boolean }) {
+  return (
+    <div className="space-y-6 animate-fadeIn">
+      {title && (
+        <div className="flex items-center justify-between">
+          <Skeleton width={200} height={24} />
+          <div className="flex gap-2">
+            <Skeleton width={100} height={36} rounded="lg" />
+            <Skeleton width={36} height={36} rounded="lg" />
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SkeletonMetric />
+        <SkeletonMetric />
+        <SkeletonMetric />
+        <SkeletonMetric />
+      </div>
+      <SkeletonChart />
+      <SkeletonTable />
+    </div>
+  );
+}
