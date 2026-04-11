@@ -39,17 +39,9 @@ const marketingCSS = `
 }
 
 /* CURSOR */
-.mk5-cur {
-  width: 20px; height: 20px; border: 1.5px solid var(--sage); border-radius: 50%;
-  position: fixed; pointer-events: none; z-index: 99999;
-  transition: width .3s, height .3s, border-color .3s;
-  transform: translate(-50%, -50%); mix-blend-mode: difference;
-}
-.mk5-cur.active { width: 50px; height: 50px; border-color: var(--bronze); }
-.mk5-cur-dot {
-  width: 4px; height: 4px; background: var(--cream); border-radius: 50%;
-  position: fixed; pointer-events: none; z-index: 99999; transform: translate(-50%, -50%);
-}
+
+
+
 
 /* NAV */
 .mk5-nav {
@@ -673,7 +665,7 @@ const marketingCSS = `
   .mk5-comp { overflow-x: auto; }
   .mk5-ethos-grid { grid-template-columns: 1fr; }
   .mk5-body { cursor: auto; }
-  .mk5-cur, .mk5-cur-dot { display: none; }
+  
 }
 `;
 

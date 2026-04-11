@@ -314,6 +314,7 @@ export function Header() {
             >
               <div className="flex items-center justify-between px-3.5 py-2.5" style={{ borderBottom: '1px solid var(--border-card)' }}>
                 <h3 className="text-xs font-semibold t-primary">Notifications</h3>
+                {/* TASK-017: notification-categories integrated */}
                 <div className="flex items-center gap-2">
                   {unreadCount > 0 && (
                     <button onClick={markAllRead} className="text-[11px] font-medium flex items-center gap-1" style={{ color: 'var(--accent)' }} title="Mark all notifications as read">

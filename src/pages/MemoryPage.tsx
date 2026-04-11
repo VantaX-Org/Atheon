@@ -1,334 +1,316 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { GraphStats, GraphEntity, GraphRelationship } from "@/lib/api";
-import { useAppStore } from "@/stores/appStore";
-import { Database, Network, Search, BookOpen, ArrowRight, Loader2, Maximize2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Database, Plus, Search, Upload, Link2, Edit2, Trash2, X, Loader2 } from "lucide-react";
 
-const entityColors: Record<string, string> = {
- Organisation: 'bg-accent',
- Department: 'bg-accent',
- Person: 'bg-accent',
- Process: 'bg-emerald-500',
- System: 'bg-accent',
- KPI: 'bg-sky-500',
- Document: 'bg-accent',
- Risk: 'bg-red-500',
- Asset: 'bg-orange-500',
-};
+interface Entity {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  properties: Record<string, string>;
+}
 
-const industryTemplates = [
- { name: 'FMCG Graph Template', entities: 'SKU, Retailer, Distributor, Promotion, Route, Shelf', status: 'active' },
- { name: 'Healthcare Graph Template', entities: 'Patient, Ward, Clinician, Procedure, Equipment, Drug', status: 'active' },
- { name: 'Mining Graph Template', entities: 'Mine Site, Equipment, Ore Body, Safety Event, Environmental Metric', status: 'active' },
-];
+interface Relationship {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+  sourceName?: string;
+  targetName?: string;
+}
 
-/** Phase 4.2: Simple SVG force-directed graph visualization */
-interface GraphNode { id: string; label: string; type: string; x: number; y: number; vx: number; vy: number; }
-interface GraphEdge { source: string; target: string; label: string; }
+const ENTITY_TYPES = ["Organization", "Process", "System", "Person", "Product", "Department", "Location"];
 
-function ForceGraph({ entities, relationships }: { entities: GraphEntity[]; relationships: GraphRelationship[] }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [edges, setEdges] = useState<GraphEdge[]>([]);
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const animRef = useRef<number>(0);
+export function MemoryPage() {
+  const [activeTab, setActiveTab] = useState<"entities" | "relationships" | "import">("entities");
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
-  useEffect(() => {
-    const nodeMap = new Map<string, GraphNode>();
-    const w = 600, h = 400;
-    entities.slice(0, 40).forEach((e, i) => {
-      const angle = (2 * Math.PI * i) / Math.min(entities.length, 40);
-      const r = 120 + Math.random() * 60;
-      nodeMap.set(e.id, { id: e.id, label: e.name, type: e.type, x: w / 2 + r * Math.cos(angle), y: h / 2 + r * Math.sin(angle), vx: 0, vy: 0 });
-    });
-    setNodes(Array.from(nodeMap.values()));
-    const edgeList: GraphEdge[] = [];
-    relationships.slice(0, 60).forEach(r => {
-      if (nodeMap.has(r.sourceId) && nodeMap.has(r.targetId)) {
-        edgeList.push({ source: r.sourceId, target: r.targetId, label: r.type });
-      }
-    });
-    setEdges(edgeList);
-  }, [entities, relationships]);
+  // Entity form state
+  const [showForm, setShowForm] = useState(false);
+  const [editEntity, setEditEntity] = useState<Entity | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formType, setFormType] = useState("Organization");
+  const [formDesc, setFormDesc] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Simple force simulation
-  const simulate = useCallback(() => {
-    setNodes(prev => {
-      const next = prev.map(n => ({ ...n }));
-      const w = 600, h = 400;
-      // Repulsion between all nodes
-      for (let i = 0; i < next.length; i++) {
-        for (let j = i + 1; j < next.length; j++) {
-          const dx = next[j].x - next[i].x;
-          const dy = next[j].y - next[i].y;
-          const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-          const force = 800 / (dist * dist);
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          next[i].vx -= fx; next[i].vy -= fy;
-          next[j].vx += fx; next[j].vy += fy;
-        }
-      }
-      // Attraction along edges
-      edges.forEach(e => {
-        const s = next.find(n => n.id === e.source);
-        const t = next.find(n => n.id === e.target);
-        if (s && t) {
-          const dx = t.x - s.x;
-          const dy = t.y - s.y;
-          const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-          const force = (dist - 100) * 0.01;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          s.vx += fx; s.vy += fy;
-          t.vx -= fx; t.vy -= fy;
-        }
-      });
-      // Center gravity
-      next.forEach(n => {
-        n.vx += (w / 2 - n.x) * 0.001;
-        n.vy += (h / 2 - n.y) * 0.001;
-        n.vx *= 0.9; n.vy *= 0.9;
-        n.x = Math.max(20, Math.min(w - 20, n.x + n.vx));
-        n.y = Math.max(20, Math.min(h - 20, n.y + n.vy));
-      });
-      // Convergence check: stop animation when kinetic energy is low
-      const totalEnergy = next.reduce((sum, n) => sum + n.vx * n.vx + n.vy * n.vy, 0);
-      if (totalEnergy > 0.01) {
-        animRef.current = requestAnimationFrame(simulate);
-      }
-      return next;
-    });
-  }, [edges]);
+  // Relationship form state
+  const [showRelForm, setShowRelForm] = useState(false);
+  const [relSource, setRelSource] = useState("");
+  const [relTarget, setRelTarget] = useState("");
+  const [relType, setRelType] = useState("depends_on");
 
-  useEffect(() => {
-    if (nodes.length > 0) {
-      cancelAnimationFrame(animRef.current);
-      animRef.current = requestAnimationFrame(simulate);
+  // Import state
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState("");
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [ents, rels] = await Promise.all([
+        api.get("/api/v1/memory/entities") as Promise<{ entities: Entity[] }>,
+        api.get("/api/v1/memory/relationships") as Promise<{ relationships: Relationship[] }>,
+      ]);
+      setEntities(ents.entities || []);
+      setRelationships(rels.relationships || []);
+    } catch (err) {
+      console.error("Failed to load memory data", err);
+    } finally {
+      setLoading(false);
     }
-    return () => cancelAnimationFrame(animRef.current);
-  }, [simulate]);
+  }, []);
 
-  const typeColors: Record<string, string> = {
-    Organisation: '#4f46e5', Department: '#6366f1', Person: '#8b5cf6',
-    Process: '#10b981', System: '#3b82f6', KPI: '#0ea5e9',
-    Document: '#6366f1', Risk: '#ef4444', Asset: '#f97316',
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const filteredEntities = entities.filter((e) => {
+    if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (typeFilter && e.type !== typeFilter) return false;
+    return true;
+  });
+
+  const handleSaveEntity = async () => {
+    setSaving(true);
+    try {
+      const payload = { name: formName, type: formType, description: formDesc };
+      if (editEntity) {
+        await api.put(`/api/v1/memory/entities/${editEntity.id}`, payload);
+      } else {
+        await api.post("/api/v1/memory/entities", payload);
+      }
+      await fetchData();
+      setShowForm(false);
+      setEditEntity(null);
+      setFormName(""); setFormType("Organization"); setFormDesc("");
+    } catch (err) {
+      console.error("Failed to save entity", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (nodes.length === 0) {
-    return <div className="flex items-center justify-center h-48 text-gray-400 text-sm">No graph data available</div>;
+  const handleDeleteEntity = async (id: string) => {
+    try {
+      await api.delete(`/api/v1/memory/entities/${id}`);
+      await fetchData();
+    } catch (err) {
+      console.error("Failed to delete entity", err);
+    }
+  };
+
+  const handleSaveRelationship = async () => {
+    try {
+      await api.post("/api/v1/memory/relationships", { sourceId: relSource, targetId: relTarget, type: relType });
+      await fetchData();
+      setShowRelForm(false);
+    } catch (err) {
+      console.error("Failed to save relationship", err);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    try {
+      const text = await importFile.text();
+      const rows = text.split("\n").filter(Boolean);
+      const headers = rows[0].split(",").map(h => h.trim());
+      const imported: Array<Record<string, string>> = [];
+      for (let i = 1; i < rows.length; i++) {
+        const vals = rows[i].split(",").map(v => v.trim());
+        const obj: Record<string, string> = {};
+        headers.forEach((h, j) => { obj[h] = vals[j] || ""; });
+        imported.push(obj);
+      }
+      await api.post("/api/v1/memory/import", { entities: imported });
+      setImportResult(`Successfully imported ${imported.length} entities.`);
+      await fetchData();
+    } catch (err) {
+      setImportResult("Import failed. Please check your CSV format.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
   }
 
   return (
-    <svg ref={svgRef} viewBox="0 0 600 400" className="w-full h-full" style={{ minHeight: 300 }}>
-      <defs>
-        <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><polygon points="0 0, 6 2, 0 4" fill="var(--text-muted)" opacity="0.4" /></marker>
-      </defs>
-      {edges.map((e, i) => {
-        const s = nodes.find(n => n.id === e.source);
-        const t = nodes.find(n => n.id === e.target);
-        if (!s || !t) return null;
-        return <line key={i} x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke="var(--text-muted)" strokeOpacity={0.2} strokeWidth={1} markerEnd="url(#arrowhead)" />;
-      })}
-      {nodes.map(n => (
-        <g key={n.id} onMouseEnter={() => setHoveredNode(n.id)} onMouseLeave={() => setHoveredNode(null)}>
-          <circle cx={n.x} cy={n.y} r={hoveredNode === n.id ? 10 : 7} fill={typeColors[n.type] || '#6366f1'} opacity={hoveredNode === n.id ? 1 : 0.8} style={{ cursor: 'pointer', transition: 'r 0.2s' }} />
-          {hoveredNode === n.id && (
-            <text x={n.x} y={n.y - 14} textAnchor="middle" className="text-[10px]" fill="var(--text-primary)" fontWeight="600">{n.label}</text>
-          )}
-        </g>
-      ))}
-    </svg>
-  );
-}
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <Database size={20} style={{ color: "var(--accent)" }} />
+        <h1 className="text-lg font-semibold t-primary">Memory - Knowledge Graph</h1>
+      </div>
 
-export function MemoryPage() {
- const industry = useAppStore((s) => s.industry);
- const user = useAppStore((s) => s.user);
- const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin';
- const [stats, setStats] = useState<GraphStats | null>(null);
- const [entities, setEntities] = useState<GraphEntity[]>([]);
- const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
- const [loading, setLoading] = useState(true);
- const [showGraph, setShowGraph] = useState(false);
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
+        {[
+          { id: "entities" as const, label: "Entities" },
+          { id: "relationships" as const, label: "Relationships" },
+          { id: "import" as const, label: "Import" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-md text-xs font-medium transition-all ${activeTab === tab.id ? "t-primary" : "t-muted hover:t-secondary"}`}
+            style={activeTab === tab.id ? { background: "var(--bg-card)", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } : undefined}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
- useEffect(() => {
- async function load() {
- setLoading(true);
- const ind = industry !== 'general' ? industry : undefined;
- const [s, e, r] = await Promise.allSettled([
- api.memory.stats(undefined, ind), api.memory.entities(undefined, undefined, ind), api.memory.relationships(undefined, ind),
- ]);
- if (s.status === 'fulfilled') setStats(s.value);
- if (e.status === 'fulfilled') setEntities(e.value.entities);
- if (r.status === 'fulfilled') setRelationships(r.value.relationships);
- setLoading(false);
- }
- load();
- }, [industry]);
-
- if (loading) {
- return (
- <div className="flex items-center justify-center h-96">
- <Loader2 className="w-8 h-8 text-accent animate-spin" />
- </div>
- );
- }
-
- const entityTypes = stats?.entityTypes || [];
- const maxCount = entityTypes.length > 0 ? Math.max(...entityTypes.map(e => e.count)) : 1;
- const graphStats = [
- { label: 'Total Entities', value: stats?.entities?.toLocaleString() || '0', change: `${entityTypes.length} types` },
- { label: 'Relationships', value: stats?.relationships?.toLocaleString() || '0', change: `${stats?.relationshipTypes?.length || 0} types` },
- { label: 'Entity Types', value: String(entityTypes.length), change: 'Indexed' },
- { label: 'Recent Entities', value: String(entities.length), change: 'loaded' },
- ];
-
- return (
- <div className="space-y-6 animate-fadeIn">
- <div className="flex items-center gap-3">
- <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
- <Database className="w-5 h-5 text-accent"/>
- </div>
- <div>
- <h1 className="text-2xl font-bold t-primary">Atheon Memory</h1>
- <p className="text-sm t-muted">GraphRAG Knowledge Foundation - Organisational Intelligence</p>
- </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-4">
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-              <p className="text-sm t-primary font-medium">Context / Memory Layer</p>
+      {/* Entities Tab */}
+      {activeTab === "entities" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search entities..."
+                className="w-full pl-9 pr-3 py-2 rounded-md text-sm t-primary"
+                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              />
             </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-              <p className="text-sm t-primary font-medium">GraphRAG & Knowledge Storage</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Serves</p>
-              <p className="text-sm t-primary font-medium">Mind (AI) & Chat (Interaction)</p>
-            </div>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="px-3 py-2 rounded-md text-sm t-secondary"
+              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+            >
+              <option value="">All Types</option>
+              {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button
+              onClick={() => { setShowForm(true); setEditEntity(null); setFormName(""); setFormType("Organization"); setFormDesc(""); }}
+              className="px-3 py-2 rounded-md text-sm font-medium text-white flex items-center gap-1.5"
+              style={{ background: "var(--accent)" }}
+            >
+              <Plus size={14} /> Add Entity
+            </button>
           </div>
- </div>
 
- {/* Stats */}
- <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
- {graphStats.map((stat) => (
- <Card key={stat.label}>
- <span className="text-xs t-secondary">{stat.label}</span>
- <p className="text-2xl font-bold t-primary mt-1">{stat.value}</p>
- <span className="text-xs text-emerald-400">{stat.change}</span>
- </Card>
- ))}
- </div>
+          <div className="space-y-2">
+            {filteredEntities.map((ent) => (
+              <div key={ent.id} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+                <div>
+                  <p className="text-sm font-medium t-primary">{ent.name}</p>
+                  <p className="text-xs t-muted">{ent.type} {ent.description ? `- ${ent.description}` : ""}</p>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => { setEditEntity(ent); setFormName(ent.name); setFormType(ent.type); setFormDesc(ent.description); setShowForm(true); }} className="p-1.5 rounded t-muted hover:t-primary"><Edit2 size={14} /></button>
+                  <button onClick={() => handleDeleteEntity(ent.id)} className="p-1.5 rounded t-muted hover:text-red-500"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+            {filteredEntities.length === 0 && (
+              <p className="text-sm t-muted text-center py-8">No entities found. Add your first entity to get started.</p>
+            )}
+          </div>
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
- {/* Entity Types */}
- <Card>
- <h3 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
- <Network className="w-4 h-4 text-accent" /> Entity Distribution
- </h3>
- <div className="space-y-3">
- {entityTypes.map((entity) => (
- <div key={entity.type} className="flex items-center gap-3">
- <div className={`w-3 h-3 rounded-full ${entityColors[entity.type] || 'bg-gray-400'} flex-shrink-0`} />
- <span className="text-sm t-secondary w-28">{entity.type}</span>
- <div className="flex-1">
- <Progress
- value={entity.count}
- max={maxCount}
- color="blue"
- size="sm"
- />
- </div>
- <span className="text-xs t-muted w-16 text-right">{entity.count.toLocaleString()}</span>
- </div>
- ))}
- </div>
- </Card>
+          {/* Entity Form Modal */}
+          {showForm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <div className="w-full max-w-md rounded-xl p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold t-primary">{editEntity ? "Edit Entity" : "Add Entity"}</h3>
+                  <button onClick={() => setShowForm(false)} className="t-muted hover:t-primary"><X size={16} /></button>
+                </div>
+                <input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Entity name" className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }} />
+                <select value={formType} onChange={(e) => setFormType(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+                  {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Description" rows={3} className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }} />
+                <button onClick={handleSaveEntity} disabled={saving || !formName} className="w-full px-4 py-2 rounded-md text-sm font-medium text-white" style={{ background: "var(--accent)", opacity: saving || !formName ? 0.6 : 1 }}>
+                  {saving ? "Saving..." : editEntity ? "Update Entity" : "Create Entity"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
- {/* Phase 4.2: Knowledge Graph Visualization */}
- <Card>
- <div className="flex items-center justify-between mb-4">
-   <h3 className="text-lg font-semibold t-primary flex items-center gap-2">
-     <Network className="w-4 h-4 text-accent" /> {showGraph ? 'Knowledge Graph' : 'Recent Entities'}
-   </h3>
-   <Button variant="secondary" size="sm" onClick={() => setShowGraph(!showGraph)} title={showGraph ? 'Show entity list' : 'Show graph visualization'}>
-     {showGraph ? <Search size={14} /> : <Maximize2 size={14} />}
-     {showGraph ? 'List View' : 'Graph View'}
-   </Button>
- </div>
- {showGraph ? (
-   <ForceGraph entities={entities} relationships={relationships} />
- ) : (
- <div className="space-y-3">
- {entities.slice(0, 6).map((entity) => (
- <div key={entity.id} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <div className="flex items-start justify-between">
- <p className="text-sm t-primary font-medium">{entity.name}</p>
- <Badge variant="info" size="sm">{Math.round(entity.confidence * 100)}%</Badge>
- </div>
- <div className="flex items-center gap-4 mt-2 text-[10px] text-gray-400">
- <span>Type: {entity.type}</span>
- <span>Source: {entity.source}</span>
- </div>
- </div>
- ))}
- {entities.length === 0 && <div className="text-center text-gray-400 text-sm py-8">No entities found. Deploy catalysts to build the knowledge graph.</div>}
- </div>
- )}
- </Card>
- </div>
+      {/* Relationships Tab */}
+      {activeTab === "relationships" && (
+        <div className="space-y-4">
+          <button onClick={() => setShowRelForm(true)} className="px-3 py-2 rounded-md text-sm font-medium text-white flex items-center gap-1.5" style={{ background: "var(--accent)" }}>
+            <Link2 size={14} /> Add Relationship
+          </button>
+          <div className="space-y-2">
+            {relationships.map((rel) => (
+              <div key={rel.id} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+                <span className="text-sm t-primary">{rel.sourceName || rel.sourceId}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full t-muted" style={{ background: "var(--bg-secondary)" }}>{rel.type}</span>
+                <span className="text-sm t-primary">{rel.targetName || rel.targetId}</span>
+              </div>
+            ))}
+            {relationships.length === 0 && (
+              <p className="text-sm t-muted text-center py-8">No relationships defined yet.</p>
+            )}
+          </div>
+          {showRelForm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <div className="w-full max-w-md rounded-xl p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold t-primary">Add Relationship</h3>
+                  <button onClick={() => setShowRelForm(false)} className="t-muted hover:t-primary"><X size={16} /></button>
+                </div>
+                <select value={relSource} onChange={(e) => setRelSource(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+                  <option value="">Source Entity</option>
+                  {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <select value={relType} onChange={(e) => setRelType(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+                  <option value="depends_on">depends_on</option>
+                  <option value="owns">owns</option>
+                  <option value="manages">manages</option>
+                  <option value="feeds_into">feeds_into</option>
+                  <option value="reports_to">reports_to</option>
+                </select>
+                <select value={relTarget} onChange={(e) => setRelTarget(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm t-primary" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+                  <option value="">Target Entity</option>
+                  {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <button onClick={handleSaveRelationship} disabled={!relSource || !relTarget} className="w-full px-4 py-2 rounded-md text-sm font-medium text-white" style={{ background: "var(--accent)", opacity: !relSource || !relTarget ? 0.6 : 1 }}>
+                  Create Relationship
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
- {/* UX-08: Industry Templates — admin only */}
- {isAdmin && (
- <Card>
- <h3 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
- <BookOpen className="w-4 h-4 text-accent" /> Industry Graph Templates
- </h3>
- <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
- {industryTemplates.map((template) => (
- <div key={template.name} className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
- <div className="flex items-center justify-between mb-2">
- <h4 className="text-sm font-semibold t-primary">{template.name}</h4>
- <Badge variant="success" size="sm">{template.status}</Badge>
- </div>
- <p className="text-xs t-secondary">{template.entities}</p>
- </div>
- ))}
- </div>
- </Card>
- )}
-
- {/* UX-08: Architecture — admin only */}
- {isAdmin && (
- <Card className="border-accent/20">
- <div className="flex items-start gap-3">
- <Database className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
- <div>
- <h3 className="text-sm font-semibold t-primary">GraphRAG Architecture</h3>
- <p className="text-xs t-muted mt-1">
- Atheon Memory uses Cloudflare D1 (SQLite at edge) for the graph adjacency model and Cloudflare Vectorize
- for semantic search with BGE-large-en-v1.5 embeddings (1024 dimensions). Hybrid retrieval combines vector
- similarity with structured graph traversal. Every fact carries a confidence score and source citation,
- ensuring full provenance from query to response.
- </p>
- <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-gray-400">
- <span className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">D1 Graph</span>
- <ArrowRight className="w-3 h-3 flex-shrink-0" />
- <span className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">Vectorize</span>
- <ArrowRight className="w-3 h-3 flex-shrink-0" />
- <span className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">Hybrid RAG</span>
- <ArrowRight className="w-3 h-3 flex-shrink-0" />
- <span className="px-2 py-1 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">Citation Injection</span>
- </div>
- </div>
- </div>
- </Card>
- )}
- </div>
- );
+      {/* Import Tab */}
+      {activeTab === "import" && (
+        <div className="rounded-xl p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+          <h2 className="text-sm font-semibold t-primary">Import Entities from CSV</h2>
+          <p className="text-xs t-muted">Upload a CSV file with columns: name, type, description</p>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+            className="text-sm t-secondary"
+          />
+          <button
+            onClick={handleImport}
+            disabled={!importFile || importing}
+            className="px-4 py-2 rounded-md text-sm font-medium text-white flex items-center gap-2"
+            style={{ background: "var(--accent)", opacity: !importFile || importing ? 0.6 : 1 }}
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {importing ? "Importing..." : "Import CSV"}
+          </button>
+          {importResult && <p className="text-xs t-secondary">{importResult}</p>}
+        </div>
+      )}
+    </div>
+  );
 }

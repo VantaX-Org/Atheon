@@ -1,3 +1,4 @@
+import { QRCode } from "@/components/common/QRCode";
 import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

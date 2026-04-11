@@ -1,223 +1,247 @@
-import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { MindModels, MindStats } from "@/lib/api";
-import { Cpu, Layers, Gauge, Zap, Database, BarChart3, Loader2, Radio } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { Brain, Settings2, Play, DollarSign, Loader2, ChevronDown, Thermometer, Hash, Zap } from "lucide-react";
+
+interface ModelConfig {
+  provider: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  topP: number;
+}
+
+interface CostBreakdown {
+  tier: string;
+  calls: number;
+  tokens: number;
+  cost: number;
+}
+
+const PROVIDERS = ["OpenAI", "Anthropic", "Google", "Azure OpenAI"];
+const MODELS: Record<string, string[]> = {
+  "OpenAI": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+  "Anthropic": ["claude-3.5-sonnet", "claude-3-opus", "claude-3-haiku"],
+  "Google": ["gemini-1.5-pro", "gemini-1.5-flash"],
+  "Azure OpenAI": ["gpt-4o", "gpt-4-turbo"],
+};
 
 export function MindPage() {
- const user = useAppStore((s) => s.user);
- const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin';
- const [models, setModels] = useState<MindModels | null>(null);
- const [stats, setStats] = useState<MindStats | null>(null);
- const [loading, setLoading] = useState(true);
+  const user = useAppStore((s) => s.user);
+  const [activeTab, setActiveTab] = useState<"config" | "playground" | "costs">("config");
 
- useEffect(() => {
- async function load() {
- setLoading(true);
- const [m, s] = await Promise.allSettled([
- api.mind.models(), api.mind.stats(),
- ]);
- if (m.status === 'fulfilled') setModels(m.value);
- if (s.status === 'fulfilled') setStats(s.value);
- setLoading(false);
- }
- load();
- }, []);
+  // Model configuration
+  const [config, setConfig] = useState<ModelConfig>({
+    provider: "OpenAI",
+    model: "gpt-4o",
+    temperature: 0.7,
+    maxTokens: 4096,
+    topP: 1.0,
+  });
+  const [saving, setSaving] = useState(false);
 
- if (loading) {
- return (
- <div className="flex items-center justify-center h-96">
- <Loader2 className="w-8 h-8 text-accent animate-spin" />
- </div>
- );
- }
+  // Prompt playground
+  const [prompt, setPrompt] = useState("");
+  const [response, setResponse] = useState("");
+  const [testing, setTesting] = useState(false);
 
- const modelTiers = (models?.tiers || []).map(t => ({
- name: t.name, model: t.model, context: `${t.maxTokens} tokens`,
- latency: t.avgLatency != null ? `${t.avgLatency}ms` : (t.id === 'tier-1' ? '<50ms' : t.id === 'tier-2' ? '<500ms' : '<2000ms'), cost: (t.avgLatency ?? (t.id === 'tier-1' ? 50 : t.id === 'tier-2' ? 200 : 500)) < 100 ? 'Low' : (t.avgLatency ?? (t.id === 'tier-1' ? 50 : t.id === 'tier-2' ? 200 : 500)) < 500 ? 'Medium' : 'High',
- usage: stats?.tierBreakdown?.find(b => b.tier === t.id)?.count || 0,
- description: t.description}));
- const totalUsage = modelTiers.reduce((s, t) => s + t.usage, 0) || 1;
+  // Cost breakdown
+  const [costs, setCosts] = useState<CostBreakdown[]>([]);
+  const [totalCost, setTotalCost] = useState(0);
 
- const pipeline = models?.trainingPipeline;
- const trainingPhases = [
- { name: 'Domain Pre-Training', status: pipeline?.preTraining?.status || 'pending', progress: pipeline?.preTraining?.progress || 0, duration: pipeline?.preTraining?.dataset || '', tokens: '' },
- { name: 'Domain Fine-Tuning', status: pipeline?.domainFineTuning?.status || 'pending', progress: pipeline?.domainFineTuning?.progress || 0, duration: `Epoch ${pipeline?.domainFineTuning?.currentEpoch || 0}/${pipeline?.domainFineTuning?.totalEpochs || 0}`, tokens: '' },
- { name: 'RLHF Alignment', status: pipeline?.rlhf?.status || 'pending', progress: pipeline?.rlhf?.progress || 0, duration: '', tokens: '' },
- ];
+  useEffect(() => {
+    // Load existing config
+    api.get("/api/v1/mind/config").then((data: Record<string, unknown>) => {
+      if (data && typeof data === "object" && "provider" in data) {
+        setConfig(data as unknown as ModelConfig);
+      }
+    }).catch(() => {});
 
- // Phase 4.3: Streaming status indicator
- const streamingStatus = stats?.totalQueries != null && stats.totalQueries > 0 ? 'active' : 'idle';
+    // Load cost data
+    api.get("/api/v1/mind/costs").then((data: Record<string, unknown>) => {
+      if (data && "breakdown" in data) {
+        setCosts((data as { breakdown: CostBreakdown[] }).breakdown || []);
+        setTotalCost((data as { total: number }).total || 0);
+      }
+    }).catch(() => {});
+  }, []);
 
- const evaluationMetrics = [
- { name: 'Avg Latency', value: stats?.avgLatencyMs || 0, target: 500, unit: 'ms', inverse: true },
- { name: 'Total Queries', value: stats?.totalQueries || 0, target: 100, unit: ' queries' },
- { name: 'Total Tokens', value: stats?.totalTokens || 0, target: 10000, unit: ' tokens' },
- ];
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      await api.post("/api/v1/mind/config", config);
+    } catch (err) {
+      console.error("Failed to save config", err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
- return (
- <div className="space-y-6 animate-fadeIn">
- <div>
- <h1 className="text-3xl sm:text-4xl font-bold t-primary" >Atheon Mind</h1>
- <p className="text-sm t-muted mt-1">Enterprise Intelligence Engine</p>
- </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-4">
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Organizational Level</p>
-              <p className="text-sm t-primary font-medium">Knowledge / Strategic</p>
+  const testPrompt = async () => {
+    if (!prompt.trim()) return;
+    setTesting(true);
+    setResponse("");
+    try {
+      const result = await api.post("/api/v1/mind/test", { prompt, config }) as { response: string };
+      setResponse(result.response || "No response received.");
+    } catch (err) {
+      setResponse("Error: Failed to get response. Check your model configuration.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const tabs = [
+    { id: "config" as const, label: "Model Config", icon: Settings2 },
+    { id: "playground" as const, label: "Prompt Playground", icon: Play },
+    { id: "costs" as const, label: "Cost Breakdown", icon: DollarSign },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <Brain size={20} style={{ color: "var(--accent)" }} />
+        <h1 className="text-lg font-semibold t-primary">Mind - AI Configuration</h1>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-medium transition-all ${activeTab === tab.id ? "t-primary" : "t-muted hover:t-secondary"}`}
+            style={activeTab === tab.id ? { background: "var(--bg-card)", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" } : undefined}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Model Configuration */}
+      {activeTab === "config" && (
+        <div className="rounded-xl p-6 space-y-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+          <h2 className="text-sm font-semibold t-primary">LLM Provider & Model</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs t-muted mb-1.5 block">Provider</label>
+              <select
+                value={config.provider}
+                onChange={(e) => {
+                  const p = e.target.value;
+                  setConfig({ ...config, provider: p, model: MODELS[p]?.[0] || "" });
+                }}
+                className="w-full px-3 py-2 rounded-md text-sm t-primary"
+                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              >
+                {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
             </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Focus</p>
-              <p className="text-sm t-primary font-medium">AI Models & Inference</p>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Serves</p>
-              <p className="text-sm t-primary font-medium">All Layers (Apex/Pulse/Catalyst)</p>
+            <div>
+              <label className="text-xs t-muted mb-1.5 block">Model</label>
+              <select
+                value={config.model}
+                onChange={(e) => setConfig({ ...config, model: e.target.value })}
+                className="w-full px-3 py-2 rounded-md text-sm t-primary"
+                style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              >
+                {(MODELS[config.provider] || []).map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
           </div>
 
- {/* Model Tiers — admin sees full detail, users see summary */}
- <div>
- <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
- <Layers className="w-4 h-4 text-accent" /> {isAdmin ? 'Inference Tiers' : 'AI Models'}
- </h2>
- <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
- {modelTiers.map((tier) => (
- <Card key={tier.name} hover>
- <div className="flex items-start justify-between mb-3">
- <h3 className="text-sm font-semibold t-primary">{tier.name}</h3>
- <Badge variant="outline">{Math.round((tier.usage / totalUsage) * 100)}% traffic</Badge>
- </div>
- <div className="space-y-2 mb-3">
- {isAdmin && (
- <div className="flex items-center justify-between">
- <span className="text-xs t-secondary">Model</span>
- <span className="text-xs t-secondary font-mono">{tier.model}</span>
- </div>
- )}
- {isAdmin && (
- <div className="flex items-center justify-between">
- <span className="text-xs t-secondary">Context</span>
- <span className="text-xs t-secondary">{tier.context}</span>
- </div>
- )}
- <div className="flex items-center justify-between">
- <span className="text-xs t-secondary">Latency</span>
- <span className="text-xs t-secondary">{tier.latency}</span>
- </div>
- <div className="flex items-center justify-between">
- <span className="text-xs t-secondary">Cost</span>
- <Badge variant={tier.cost === 'Low' ? 'success' : tier.cost === 'Medium' ? 'warning' : 'danger'} size="sm">{tier.cost}</Badge>
- </div>
- </div>
- <p className="text-xs t-secondary">{tier.description}</p>
- <Progress value={Math.round((tier.usage / totalUsage) * 100)} color="blue" size="sm" className="mt-3" />
- </Card>
- ))}
- </div>
- </div>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs t-muted flex items-center gap-1"><Thermometer size={12} /> Temperature</label>
+                <span className="text-xs font-mono t-secondary">{config.temperature}</span>
+              </div>
+              <input
+                type="range" min="0" max="2" step="0.1"
+                value={config.temperature}
+                onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs t-muted flex items-center gap-1"><Hash size={12} /> Max Tokens</label>
+                <span className="text-xs font-mono t-secondary">{config.maxTokens}</span>
+              </div>
+              <input
+                type="range" min="256" max="32768" step="256"
+                value={config.maxTokens}
+                onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) })}
+                className="w-full"
+              />
+            </div>
+          </div>
 
- {/* Training Pipeline — admin only, hidden when no pipeline data */}
- {isAdmin && pipeline && <div>
- <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
- <Cpu className="w-4 h-4 text-accent" /> Training Pipeline
- </h2>
- <Card>
- <div className="space-y-4">
- {trainingPhases.map((phase) => (
- <div key={phase.name} className="flex items-center gap-4">
- <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
- phase.status === 'completed' ? 'bg-emerald-500/10' : 'bg-accent/10'
- }`}>
- {phase.status === 'completed' ? (
- <Zap className="w-4 h-4 text-emerald-400" />
- ) : (
- <Gauge className="w-4 h-4 text-accent" />
- )}
- </div>
- <div className="flex-1 min-w-0">
- <div className="flex items-center justify-between">
- <span className="text-sm font-medium t-primary">{phase.name}</span>
- <Badge variant={phase.status === 'completed' ? 'success' : 'warning'}>{phase.status}</Badge>
- </div>
- <div className="flex items-center gap-4 mt-1 text-[10px] text-gray-400">
- <span>{phase.duration}</span>
- <span>{phase.tokens}</span>
- </div>
- <Progress value={phase.progress} color={phase.status === 'completed' ? 'emerald' : 'amber'} size="sm" className="mt-1" />
- </div>
- </div>
- ))}
- </div>
- </Card>
- </div>}
+          <button
+            onClick={saveConfig}
+            disabled={saving}
+            className="px-4 py-2 rounded-md text-sm font-medium text-white flex items-center gap-2"
+            style={{ background: "var(--accent)" }}
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+            {saving ? "Saving..." : "Save Configuration"}
+          </button>
+        </div>
+      )}
 
- {/* Evaluation Metrics */}
- <div>
- <h2 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
- <BarChart3 className="w-4 h-4 text-accent" /> Evaluation Metrics
- </h2>
- <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
- {evaluationMetrics.map((metric) => {
- const passing = metric.inverse ? metric.value <= metric.target : metric.value >= metric.target;
- return (
- <Card key={metric.name}>
- <div className="flex items-center justify-between mb-2">
- <span className="text-xs t-secondary">{metric.name}</span>
- <Badge variant={passing ? 'success' : 'warning'} size="sm">{passing ? 'Pass' : 'Below Target'}</Badge>
- </div>
- <div className="flex items-end gap-1">
- <span className="text-2xl font-bold t-primary">{metric.value}</span>
- <span className="text-sm t-secondary mb-0.5">{metric.unit || '%'}</span>
- </div>
- <div className="text-[10px] text-gray-400 mt-1">Target: {metric.target}{metric.unit || '%'}</div>
- <Progress
- value={metric.inverse ? metric.target - metric.value + metric.target : metric.value}
- max={metric.inverse ? metric.target * 2 : metric.target || 100}
- color={passing ? 'emerald' : 'amber'}
- size="sm"
- className="mt-2"
- />
- </Card>
- );
- })}
- </div>
- </div>
+      {/* Prompt Playground */}
+      {activeTab === "playground" && (
+        <div className="rounded-xl p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+          <h2 className="text-sm font-semibold t-primary">Test Prompts</h2>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Enter a prompt to test against the current model configuration..."
+            rows={4}
+            className="w-full px-3 py-2 rounded-md text-sm t-primary resize-y"
+            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+          />
+          <button
+            onClick={testPrompt}
+            disabled={testing || !prompt.trim()}
+            className="px-4 py-2 rounded-md text-sm font-medium text-white flex items-center gap-2"
+            style={{ background: "var(--accent)", opacity: testing || !prompt.trim() ? 0.6 : 1 }}
+          >
+            {testing ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {testing ? "Running..." : "Test Prompt"}
+          </button>
+          {response && (
+            <div className="p-4 rounded-md text-sm t-secondary whitespace-pre-wrap" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+              {response}
+            </div>
+          )}
+        </div>
+      )}
 
- {/* Phase 4.3: Streaming Status */}
- <Card>
- <div className="flex items-center justify-between">
-   <div className="flex items-center gap-3">
-     <div className={`w-3 h-3 rounded-full ${streamingStatus === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
-     <div>
-       <span className="text-sm font-medium t-primary">Inference Engine</span>
-       <p className="text-xs t-muted">{streamingStatus === 'active' ? 'Active — processing queries via SSE stream' : 'Idle — awaiting queries'}</p>
-     </div>
-   </div>
-   <div className="flex items-center gap-2">
-     <Radio size={14} className={streamingStatus === 'active' ? 'text-emerald-400' : 'text-gray-400'} />
-     <Badge variant={streamingStatus === 'active' ? 'success' : 'default'} size="sm">{streamingStatus === 'active' ? 'Streaming' : 'Standby'}</Badge>
-   </div>
- </div>
- </Card>
-
- {/* Architecture Note — admin only */}
- {isAdmin && <Card variant="black">
- <div className="flex items-start gap-3">
- <Database className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
- <div>
- <h3 className="text-sm font-semibold t-primary">Architecture Note</h3>
- <p className="text-xs t-muted mt-1">
-  Atheon Mind uses a multi-tier inference architecture with proprietary AI engines.
-  All three tiers route through domain-tuned models for enterprise intelligence.
- Client-specific adapters are selected based on tenant context and industry vertical.
- </p>
- </div>
- </div>
- </Card>}
- </div>
- );
+      {/* Cost Breakdown */}
+      {activeTab === "costs" && (
+        <div className="rounded-xl p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold t-primary">Cost Breakdown by Autonomy Tier</h2>
+            <span className="text-lg font-bold" style={{ color: "var(--accent)" }}>${totalCost.toFixed(2)}</span>
+          </div>
+          <div className="space-y-2">
+            {costs.length > 0 ? costs.map((c, i) => (
+              <div key={i} className="flex items-center justify-between py-2 px-3 rounded-md" style={{ background: "var(--bg-secondary)" }}>
+                <div>
+                  <p className="text-xs font-medium t-primary">{c.tier}</p>
+                  <p className="text-[11px] t-muted">{c.calls} calls | {c.tokens.toLocaleString()} tokens</p>
+                </div>
+                <span className="text-sm font-medium t-primary">${c.cost.toFixed(2)}</span>
+              </div>
+            )) : (
+              <p className="text-xs t-muted text-center py-8">No cost data available yet. AI usage will be tracked here.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -40,6 +40,18 @@ async function stripeRequest<T>(
 /**
  * Create a Stripe customer for a tenant
  */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  let result = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i];
+  }
+  return result === 0;
+}
+
 export async function createCustomer(
   config: StripeConfig,
   tenantName: string,
@@ -181,5 +193,5 @@ export async function verifyWebhookSignature(
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 
-  return computedSig === expectedSig;
+  return timingSafeEqual(computedSig, expectedSig);
 }

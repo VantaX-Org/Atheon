@@ -27,10 +27,21 @@ import {
 
 // TASK-010/013: Use chart theme palette instead of hardcoded colors
 const ACCENT = chartPalette[0];
-const ACCENT_B = chartPalette[1] || "#5d8a6f";
+const ACCENT_B = "#5d8a6f";
 const BRONZE = chartPalette[1];
 const SKY = chartPalette[2];
 const CHART_LIGHT = "#b8d4c4";
+
+// TASK-010: Personalized greeting
+function getGreeting(name?: string): string {
+  const hour = new Date().getHours();
+  let g = "Good morning";
+  if (hour >= 12 && hour < 17) g = "Good afternoon";
+  if (hour >= 17) g = "Good evening";
+  return name ? `${g}, ${name}` : g;
+}
+
+type TimeRange = "today" | "7d" | "30d" | "90d";
 
 const trendIcon = (trend: string) => {
   if (trend === "up" || trend === "improving") return <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />;
@@ -78,6 +89,7 @@ export function Dashboard() {
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [cpHealth, setCpHealth] = useState<ControlPlaneHealth | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [loading, setLoading] = useState(true);
   // Tabs removed per UI cleanup spec — overview is now the entire page
   // UX-05: Silent auto-refresh every 60s (no user-facing toggle)
