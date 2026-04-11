@@ -179,10 +179,13 @@ export function calculateNextRun(
   if (frequency === 'monthly' && dayOfMonth !== undefined) {
     const next = new Date(now);
     next.setUTCHours(hours, minutes, 0, 0);
-    next.setUTCDate(dayOfMonth);
+    // Clamp dayOfMonth to the last day of the current month to avoid overflow
+    const daysInMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+    next.setUTCDate(Math.min(dayOfMonth, daysInMonth));
     if (next <= now) {
       next.setUTCMonth(next.getUTCMonth() + 1);
-      next.setUTCDate(dayOfMonth);
+      const daysInNextMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+      next.setUTCDate(Math.min(dayOfMonth, daysInNextMonth));
     }
     return next.toISOString();
   }
