@@ -34,7 +34,7 @@ describe('Email Service - Template Validation', () => {
       htmlBody: '<p>Hello</p>',
     });
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('subject'))).toBe(true);
+    expect(result.errors.some(e => e.toLowerCase().includes('subject'))).toBe(true);
   });
 
   it('should reject template with no body', () => {
@@ -53,7 +53,7 @@ describe('Email Service - Template Validation', () => {
       htmlBody: '<p>Hello</p>',
     });
     expect(result.valid).toBe(false);
-    expect(result.errors.some(e => e.includes('invalid'))).toBe(true);
+    expect(result.errors.some(e => e.toLowerCase().includes('invalid'))).toBe(true);
   });
 });
 

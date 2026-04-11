@@ -62,6 +62,7 @@ export function FileUpload({
       setError(e instanceof Error ? e.message : 'Upload failed');
       setState('error');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onUpload, maxSizeMB, accept]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

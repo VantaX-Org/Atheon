@@ -94,12 +94,11 @@ export function validateEmailTemplate(template: {
 
   if (!template.to || template.to.length === 0) {
     errors.push('At least one recipient is required');
-  }
-  if (template.to?.some(email => !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))) {
-    errors.push('Invalid email address format');
+  } else if (template.to.some(email => !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))) {
+    errors.push('One or more recipient email addresses are invalid');
   }
   if (!template.subject || template.subject.trim().length === 0) {
-    errors.push('Subject is required');
+    errors.push('Email subject is required');
   }
   if (template.subject && template.subject.length > 200) {
     errors.push('Subject must be under 200 characters');

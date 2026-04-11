@@ -3,7 +3,7 @@
  * Step-by-step onboarding flow for new users with progress tracking.
  */
 import { useState, useEffect } from 'react';
-import { CheckCircle, Circle, ChevronRight, ChevronLeft, X, Rocket, Building2, Database, Shield, BarChart3 } from 'lucide-react';
+import { CheckCircle, ChevronRight, ChevronLeft, X, Rocket, Building2, Database, Shield, BarChart3 } from 'lucide-react';
 
 interface OnboardingStep {
   id: string;

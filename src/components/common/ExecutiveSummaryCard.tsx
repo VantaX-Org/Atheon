@@ -4,7 +4,21 @@
  */
 import { useState } from 'react';
 import { TrendingUp, TrendingDown, Minus, ChevronRight, ChevronDown } from 'lucide-react';
-import { Sparkline } from '@/components/ui/sparkline';
+/** Simple inline sparkline using SVG polyline */
+function MiniSparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const w = 80;
+  const h = 24;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export interface ExecutiveKPI {
   label: string;
@@ -94,7 +108,7 @@ export function ExecutiveSummaryCard({ title, subtitle, kpis, onDrillDown }: Pro
             </div>
             {kpi.sparkData && kpi.sparkData.length > 0 && (
               <div className="mt-2 h-6">
-                <Sparkline data={kpi.sparkData} color={kpi.status === 'healthy' ? '#10b981' : kpi.status === 'warning' ? '#f59e0b' : '#ef4444'} />
+                <MiniSparkline data={kpi.sparkData} color={kpi.status === 'healthy' ? '#10b981' : kpi.status === 'warning' ? '#f59e0b' : '#ef4444'} />
               </div>
             )}
           </button>

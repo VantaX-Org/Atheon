@@ -4,21 +4,9 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check, CheckCheck, Settings, X, AlertTriangle, Info, CheckCircle2, Zap } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, NotificationItem } from '@/lib/api';
 
-export interface Notification {
-  id: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'action';
-  title: string;
-  message: string;
-  read: boolean;
-  actionUrl?: string;
-  actionLabel?: string;
-  createdAt: string;
-  category: string;
-}
-
-const ICON_MAP = {
+const ICON_MAP: Record<string, typeof Info> = {
   info: Info,
   success: CheckCircle2,
   warning: AlertTriangle,
@@ -26,7 +14,7 @@ const ICON_MAP = {
   action: Zap,
 };
 
-const COLOR_MAP = {
+const COLOR_MAP: Record<string, string> = {
   info: 'text-sky-500',
   success: 'text-emerald-500',
   warning: 'text-amber-500',
@@ -47,7 +35,7 @@ function timeAgo(dateStr: string): string {
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const ref = useRef<HTMLDivElement>(null);
@@ -85,12 +73,13 @@ export function NotificationCenter() {
 
   const markAsRead = async (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    try { await api.notifications.markRead(id); } catch { /* silent */ }
+    try { await api.notifications.markRead([id]); } catch { /* silent */ }
   };
 
   const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    try { await api.notifications.markAllRead(); } catch { /* silent */ }
+    const ids = notifications.filter(n => !n.read).map(n => n.id);
+    if (ids.length > 0) { try { await api.notifications.markRead(ids); } catch { /* silent */ } }
   };
 
   const filtered = filter === 'unread' ? notifications.filter(n => !n.read) : notifications;
@@ -202,8 +191,8 @@ export function NotificationCenter() {
                       <p className="text-[11px] t-muted mt-0.5 line-clamp-2">{n.message}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] t-muted">{timeAgo(n.createdAt)}</span>
-                        {n.actionLabel && (
-                          <span className="text-[10px] text-accent">{n.actionLabel}</span>
+                        {n.actionUrl && (
+                          <span className="text-[10px] text-accent">View</span>
                         )}
                       </div>
                     </div>
