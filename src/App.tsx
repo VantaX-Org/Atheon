@@ -24,6 +24,17 @@ import { TenantManagementPage } from "@/pages/TenantManagementPage";
 import { TrialPage } from "@/pages/TrialPage";
 import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
 import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
+import { PlatformHealthPage } from "@/pages/PlatformHealthPage";
+import { SupportConsolePage } from "@/pages/SupportConsolePage";
+import { CompanyHealthPage } from "@/pages/CompanyHealthPage";
+import { ImpersonationPage } from "@/pages/ImpersonationPage";
+import { BulkUserManagementPage } from "@/pages/BulkUserManagementPage";
+import { CustomRoleBuilderPage } from "@/pages/CustomRoleBuilderPage";
+import { RevenueUsagePage } from "@/pages/RevenueUsagePage";
+import { FeatureFlagsPage } from "@/pages/FeatureFlagsPage";
+import { DataGovernancePage } from "@/pages/DataGovernancePage";
+import { IntegrationHealthPage } from "@/pages/IntegrationHealthPage";
+import { SystemAlertsPage } from "@/pages/SystemAlertsPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -49,7 +60,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 }
 
 const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
-// SUPPORT_ROLES removed — IAM/ERP use PLATFORM_ADMIN_ROLES; Control Plane/Connectivity/Deployments/Assessments use SUPERADMIN_ROLES
+const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
@@ -88,6 +99,18 @@ export default function App() {
           <Route path="/deployments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><DeploymentsPage /></ProtectedRoute>} />
           <Route path="/assessments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><AssessmentsPage /></ProtectedRoute>} />
           <Route path="/executive" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveMobilePage /></ProtectedRoute>} />
+          {/* Admin Tooling Routes (ADMIN-001 to ADMIN-012) */}
+          <Route path="/platform-health" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><PlatformHealthPage /></ProtectedRoute>} />
+          <Route path="/support" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><SupportConsolePage /></ProtectedRoute>} />
+          <Route path="/company-health" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><CompanyHealthPage /></ProtectedRoute>} />
+          <Route path="/impersonate" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><ImpersonationPage /></ProtectedRoute>} />
+          <Route path="/bulk-users" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><BulkUserManagementPage /></ProtectedRoute>} />
+          <Route path="/custom-roles" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><CustomRoleBuilderPage /></ProtectedRoute>} />
+          <Route path="/revenue" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><RevenueUsagePage /></ProtectedRoute>} />
+          <Route path="/feature-flags" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><FeatureFlagsPage /></ProtectedRoute>} />
+          <Route path="/data-governance" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><DataGovernancePage /></ProtectedRoute>} />
+          <Route path="/integration-health" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IntegrationHealthPage /></ProtectedRoute>} />
+          <Route path="/system-alerts" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SystemAlertsPage /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>

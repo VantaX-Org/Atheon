@@ -59,8 +59,10 @@ function matchesCron(date: Date, min: string, hr: string, dom: string, mon: stri
 function matchField(value: number, pattern: string): boolean {
   if (pattern === '*') return true;
   if (pattern.includes('/')) {
-    const [, step] = pattern.split('/');
-    return value % parseInt(step, 10) === 0;
+    const [base, step] = pattern.split('/');
+    const stepNum = parseInt(step, 10);
+    const baseNum = base === '*' ? 0 : parseInt(base, 10);
+    return value >= baseNum && (value - baseNum) % stepNum === 0;
   }
   if (pattern.includes(',')) {
     return pattern.split(',').map(Number).includes(value);

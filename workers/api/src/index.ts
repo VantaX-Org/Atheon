@@ -44,6 +44,7 @@ import trialAssessment from './routes/trial-assessment';
 import baselineRoutes from './routes/baseline';
 import targetRoutes from './routes/targets';
 import executiveSummary from './routes/executive-summary';
+import adminTooling from './routes/admin-tooling';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -358,6 +359,11 @@ app.route('/api/v1/seed-vantax', seedVantaX);
 app.use('/api/v1/admin/tenants/*', tenantIsolation());
 app.use('/api/v1/admin/tenants/*', requireRole('superadmin'));
 app.route('/api/v1/admin', tenantsAdmin);
+
+// Admin Tooling routes (ADMIN-001 to ADMIN-012)
+app.use('/api/v1/admin-tooling/*', tenantIsolation());
+app.route('/api/v1/admin-tooling', adminTooling);
+app.route('/api/admin-tooling', adminTooling);
 
 
 // Agent routes mounted separately — no tenantIsolation middleware

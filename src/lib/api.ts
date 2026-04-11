@@ -898,6 +898,76 @@ export const api = {
     get: () =>
       request<ExecutiveSummaryResponse>('/api/executive-summary'),
   },
+
+  // ── Admin Tooling (ADMIN-001 to ADMIN-012) ─────────────────
+  adminTooling: {
+    // ADMIN-001: Platform Health
+    platformHealth: () =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/platform-health'),
+    // ADMIN-002: Support Console
+    supportTenants: (q?: string) =>
+      request<{ tenants: Record<string, unknown>[] }>(`/api/v1/admin-tooling/support/tenants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    supportTenantDetail: (id: string) =>
+      request<Record<string, unknown>>(`/api/v1/admin-tooling/support/tenant/${id}`),
+    // ADMIN-003: Company Health
+    companyHealth: () =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/company-health'),
+    // ADMIN-004: Impersonation
+    impersonateSearch: (q?: string) =>
+      request<{ users: Record<string, unknown>[] }>(`/api/v1/admin-tooling/impersonate/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    impersonateStart: (userId: string) =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/impersonate/start', { method: 'POST', body: JSON.stringify({ userId }) }),
+    impersonateEnd: () =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/impersonate/end', { method: 'POST' }),
+    // ADMIN-005: Bulk Users
+    bulkUsersExport: (tenantId?: string) =>
+      request<{ users: Record<string, unknown>[]; count: number }>(`/api/v1/admin-tooling/bulk-users/export${tenantId ? `?tenantId=${tenantId}` : ''}`),
+    bulkUsersImport: (users: Array<{ name: string; email: string; role: string; department?: string }>) =>
+      request<{ imported: number; skipped: number }>('/api/v1/admin-tooling/bulk-users/import', { method: 'POST', body: JSON.stringify({ users }) }),
+    bulkUsersAction: (userIds: string[], action: string, value?: string) =>
+      request<{ affected: number }>('/api/v1/admin-tooling/bulk-users/action', { method: 'POST', body: JSON.stringify({ userIds, action, value }) }),
+    // ADMIN-006: Custom Roles
+    customRolesList: () =>
+      request<{ roles: Record<string, unknown>[]; count: number }>('/api/v1/admin-tooling/custom-roles'),
+    customRolesCreate: (data: { name: string; description: string; permissions: string[] }) =>
+      request<{ id: string }>('/api/v1/admin-tooling/custom-roles', { method: 'POST', body: JSON.stringify(data) }),
+    customRolesDelete: (id: string) =>
+      request<{ success: boolean }>(`/api/v1/admin-tooling/custom-roles/${id}`, { method: 'DELETE' }),
+    // ADMIN-007: Revenue
+    revenue: () =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/revenue'),
+    // ADMIN-008: Feature Flags
+    featureFlags: () =>
+      request<{ flags: Record<string, unknown>[] }>('/api/v1/admin-tooling/feature-flags'),
+    featureFlagCreate: (flag: { key: string; name: string; type: string; enabled: boolean; value?: unknown }) =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/feature-flags', { method: 'POST', body: JSON.stringify(flag) }),
+    featureFlagUpdate: (key: string, update: { enabled?: boolean; value?: unknown }) =>
+      request<Record<string, unknown>>(`/api/v1/admin-tooling/feature-flags/${key}`, { method: 'PUT', body: JSON.stringify(update) }),
+    featureFlagDelete: (key: string) =>
+      request<Record<string, unknown>>(`/api/v1/admin-tooling/feature-flags/${key}`, { method: 'DELETE' }),
+    // ADMIN-009: Data Governance
+    dataGovernance: () =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/data-governance'),
+    dsarCreate: (data: { type: string; subjectEmail: string; notes?: string }) =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/data-governance/dsar', { method: 'POST', body: JSON.stringify(data) }),
+    // ADMIN-010: Integration Health
+    integrationHealth: () =>
+      request<{ connections: Record<string, unknown>[] }>('/api/v1/admin-tooling/integration-health'),
+    // ADMIN-011: Tenant Read Access
+    tenantsRead: () =>
+      request<{ tenants: Record<string, unknown>[]; count: number }>('/api/v1/admin-tooling/tenants-read'),
+    tenantReadDetail: (id: string) =>
+      request<Record<string, unknown>>(`/api/v1/admin-tooling/tenants-read/${id}`),
+    // ADMIN-012: System Alerts
+    systemAlerts: () =>
+      request<{ alerts: Record<string, unknown>[] }>('/api/v1/admin-tooling/system-alerts'),
+    alertRules: () =>
+      request<{ rules: Record<string, unknown>[] }>('/api/v1/admin-tooling/system-alerts/rules'),
+    alertRuleCreate: (rule: { name: string; condition: string; severity: string; channels: string[] }) =>
+      request<Record<string, unknown>>('/api/v1/admin-tooling/system-alerts/rules', { method: 'POST', body: JSON.stringify(rule) }),
+    alertRuleUpdate: (id: string, update: Record<string, unknown>) =>
+      request<Record<string, unknown>>(`/api/v1/admin-tooling/system-alerts/rules/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
+  },
 };
 
 // Types for API responses

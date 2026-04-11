@@ -3,7 +3,7 @@ import { type ReactNode, type ButtonHTMLAttributes } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'outline';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -13,6 +13,7 @@ const variants: Record<string, string> = {
   ghost: 'bg-transparent hover:bg-[var(--bg-secondary)] t-secondary hover:t-primary',
   danger: 'bg-red-500/10 hover:bg-red-500/15 text-red-500 border border-red-500/20',
   success: 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-500 border border-emerald-500/20',
+  outline: 'bg-transparent hover:bg-[var(--bg-secondary)] t-secondary border border-[var(--border-card)]',
 };
 
 const sizes: Record<string, string> = {
