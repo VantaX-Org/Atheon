@@ -6,13 +6,15 @@ import type { AppBindings, AuthContext } from '../types';
 const deployments = new Hono<AppBindings>();
 
 // ── Licence key auth helper ──────────────────────────────────────────────
-async function getDeploymentByLicenceKey(db: D1Database, licenceKey: string) {
+async function _getDeploymentByLicenceKey(db: D1Database, licenceKey: string) {
   return db.prepare(
     'SELECT * FROM managed_deployments WHERE licence_key = ? AND status != ?'
   ).bind(licenceKey, 'suspended').first<Record<string, unknown>>();
 }
 
 // ── Superadmin auth guard ─────────────────────────────────────────────────
+void _getDeploymentByLicenceKey;
+
 function requireSuperAdmin(auth: AuthContext | undefined): boolean {
   return auth?.role === 'superadmin';
 }

@@ -29,10 +29,10 @@ export function useToast() {
     return {
       addToast: () => {},
       removeToast: () => {},
-      success: (_title: string, _message?: string) => {},
-      error: (_title: string, _message?: string) => {},
-      warning: (_title: string, _message?: string) => {},
-      info: (_title: string, _message?: string) => {},
+      success: (_title?: string, _message?: string) => { void _title; void _message; },
+      error: (_title?: string, _message?: string) => { void _title; void _message; },
+      warning: (_title?: string, _message?: string) => { void _title; void _message; },
+      info: (_title?: string, _message?: string) => { void _title; void _message; },
     };
   }
   return {

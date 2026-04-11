@@ -33,13 +33,15 @@ async function authedPost(path: string, body: Record<string, unknown>, token: st
 }
 
 /** Helper to PUT with auth */
-async function authedPut(path: string, body: Record<string, unknown>, token: string): Promise<Response> {
+// authedPut available for future tests
+function _authedPut(path: string, body: Record<string, unknown>, token: string): Promise<Response> {
   return SELF.fetch(`http://localhost${path}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
 }
+void _authedPut;
 
 /** Seed a tenant + user */
 async function seedTenant(tenantId: string, slug: string, name: string, industry: string): Promise<void> {
@@ -335,8 +337,6 @@ describe('Catalyst Engine', () => {
   // Cluster with Sub-Catalysts
   // ────────────────────────────────────────────
   describe('Sub-Catalysts', () => {
-    let subClusterId: string;
-
     it('creates cluster with sub-catalysts', async () => {
       const res = await authedPost('/api/v1/catalysts/clusters', {
         name: 'HR Workforce Catalyst',
@@ -351,7 +351,7 @@ describe('Catalyst Engine', () => {
       }, adminToken);
       expect(res.status).toBe(201);
       const body = await res.json() as { id: string };
-      subClusterId = body.id;
+      expect(body.id).toBeTruthy();
     });
 
     it('cluster with sub-catalysts is retrievable', async () => {

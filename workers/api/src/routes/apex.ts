@@ -175,7 +175,6 @@ apex.get('/health/dimensions/:dimension', async (c) => {
   
   // Find clusters that contribute to this dimension
   const contributingClusters = (clusterInfo.results || []).filter(cl => {
-    const clSubs = (JSON.parse(cl.sub_catalysts || '[]') as Array<{ name?: string }>).map(s => s.name || '').filter(Boolean);
     // Check if cluster domain maps to this dimension
     const clusterDomain = cl.domain || '';
     const dimForDomain = domainToDimensions[clusterDomain] || ['operational'];
@@ -595,10 +594,10 @@ apex.get('/risks/:riskId/suggest-causes', async (c) => {
 ${context.runStats ? JSON.stringify(context.runStats, null, 2) : 'No run data available'}
 
 **Top KPI Issues:**
-${context.topKpis.map((k: any) => `- ${k.kpi_name}: ${k.value} (${k.status})`).join('\n') || 'No KPI data'}
+${context.topKpis.map((k: Record<string, unknown>) => `- ${k.kpi_name}: ${k.value} (${k.status})`).join('\n') || 'No KPI data'}
 
 **Flagged Items:**
-${context.topIssues.map((i: any) => `- Item #${i.item_number}: ${i.exception_type} - ${i.field} (${i.discrepancy_reason || 'No reason'})`).join('\n') || 'No flagged items'}
+${context.topIssues.map((i: Record<string, unknown>) => `- Item #${i.item_number}: ${i.exception_type} - ${i.field} (${i.discrepancy_reason || 'No reason'})`).join('\n') || 'No flagged items'}
 
 **Task:** Identify the top 3 most likely root causes and provide:
 1. Root cause description
@@ -628,7 +627,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
         tenantId,
         'Root cause analysis',
         JSON.stringify(analysis.rootCauses || []),
-        JSON.stringify((analysis.rootCauses || []).map((r: any) => r.immediateAction)),
+        JSON.stringify((analysis.rootCauses || []).map((r: Record<string, unknown>) => r.immediateAction)),
         'Root cause analysis generated',
         new Date().toISOString()
       ).run();
@@ -642,7 +641,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
           model: 'llama-3.1-8b-instruct',
         },
       });
-    } catch (parseErr) {
+    } catch {
       // Fallback: return text as analysis
       return c.json({
         success: true,
@@ -680,7 +679,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
       });
     }
     
-    if (context.topKpis.some((k: any) => k.status === 'red')) {
+    if (context.topKpis.some((k: Record<string, unknown>) => k.status === 'red')) {
       heuristicCauses.push({
         description: 'Critical KPI failures suggest systemic process issues',
         confidence: 65,

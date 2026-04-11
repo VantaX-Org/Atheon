@@ -14,7 +14,7 @@ const admin = new Hono<AppBindings>();
 admin.use('/*', cors());
 
 // Helper: Check if user is superadmin
-function isSuperadmin(c: any): boolean {
+function isSuperadmin(c: { get: (key: string) => unknown }): boolean {
   const auth = c.get('auth') as AuthContext | undefined;
   return auth?.role === 'superadmin' || auth?.role === 'support_admin';
 }
@@ -24,7 +24,6 @@ function isSuperadmin(c: any): boolean {
  * Delete all data for VantaX tenant (except users and config)
  */
 admin.post('/data/cleanup', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
   if (!isSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -80,7 +79,6 @@ admin.post('/data/cleanup', async (c) => {
  * Seed VantaX tenant with SAP sample data (positive and negative scenarios)
  */
 admin.post('/data/seed-vantax', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
   if (!isSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -333,7 +331,6 @@ admin.post('/data/seed-vantax', async (c) => {
  * Cleanup and reseed in one operation
  */
 admin.post('/data/reset-vantax', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
   if (!isSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -380,7 +377,6 @@ admin.post('/data/reset-vantax', async (c) => {
  * Get current status of VantaX tenant data
  */
 admin.get('/data/vantax-status', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
   if (!isSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
@@ -406,11 +402,11 @@ admin.get('/data/vantax-status', async (c) => {
   return c.json({
     tenant: vantaxTenant,
     data: {
-      runs: (counts[0] as any)?.count || 0,
-      metrics: (counts[1] as any)?.count || 0,
-      risks: (counts[2] as any)?.count || 0,
-      healthScores: (counts[3] as any)?.count || 0,
-      briefings: (counts[4] as any)?.count || 0,
+      runs: (counts[0] as Record<string, unknown>)?.count || 0,
+      metrics: (counts[1] as Record<string, unknown>)?.count || 0,
+      risks: (counts[2] as Record<string, unknown>)?.count || 0,
+      healthScores: (counts[3] as Record<string, unknown>)?.count || 0,
+      briefings: (counts[4] as Record<string, unknown>)?.count || 0,
     },
   });
 });

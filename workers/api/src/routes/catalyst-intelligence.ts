@@ -5,7 +5,7 @@
 
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
-import { analysePatterns, calculateEffectiveness, calculateROI } from '../services/pattern-engine-v2';
+import { analysePatterns } from '../services/pattern-engine-v2';
 import { toCSV, csvResponse } from '../services/csv-export';
 
 const catalystIntelligence = new Hono<AppBindings>();
@@ -275,7 +275,7 @@ catalystIntelligence.post('/dependencies/discover', async (c) => {
 catalystIntelligence.get('/overview', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
-  const [patternStats, effectivenessStats, depStats, prescriptionStats] = await Promise.all([
+  const [patternStats, effectivenessStats, depStats] = await Promise.all([
     c.env.DB.prepare(
       `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) as resolved FROM catalyst_patterns WHERE tenant_id = ?`

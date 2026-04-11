@@ -184,7 +184,7 @@ pulse.get('/anomalies', async (c) => {
   const limit = parseInt(c.req.query('limit') || '50');
   const severity = c.req.query('severity');
 
-  let query = `
+  const query = `
     SELECT a.*, pm.name as metric_name, pm.value as current_value
     FROM anomalies a
     LEFT JOIN process_metrics pm ON a.metric_id = pm.id
@@ -196,10 +196,10 @@ pulse.get('/anomalies', async (c) => {
 
   const results = await c.env.DB.prepare(query)
     .bind(tenantId, ...(severity ? [severity] : []), limit)
-    .all<any>();
+    .all<Record<string, unknown>>();
 
   return c.json({
-    anomalies: (results.results || []).map((a: any) => ({
+    anomalies: (results.results || []).map((a: Record<string, unknown>) => ({
       id: a.id,
       metric: a.metric,
       metricName: a.metric_name,
@@ -716,12 +716,13 @@ pulse.post('/anomalies/detect', async (c) => {
      WHERE tenant_id = ? ${metricId ? 'AND id = ?' : ''}
      ORDER BY recorded_at DESC
      LIMIT 100`
-  ).bind(tenantId, ...(metricId ? [metricId] : [])).all<any>();
+  ).bind(tenantId, ...(metricId ? [metricId] : [])).all<Record<string, unknown>>();
 
   // Detect anomalies using Z-score
-  const anomalies = (currentMetrics.results || []).map((m: any) => {
-    const zScore = Math.abs((m.value - mean) / stdDev);
-    const deviation = ((m.value - mean) / mean) * 100;
+  const anomalies = (currentMetrics.results || []).map((m: Record<string, unknown>) => {
+    const val = Number(m.value);
+    const zScore = Math.abs((val - mean) / stdDev);
+    const deviation = ((val - mean) / mean) * 100;
     
     if (zScore > zThreshold) {
       return {

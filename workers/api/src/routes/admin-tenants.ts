@@ -14,7 +14,7 @@ tenants.use('/*', cors());
 /**
  * Middleware: Verify superadmin role
  */
-function requireSuperadmin(c: any): boolean {
+function requireSuperadmin(c: { get: (key: string) => unknown }): boolean {
   const auth = c.get('auth') as AuthContext | undefined;
   return auth?.role === 'superadmin';
 }
@@ -95,14 +95,14 @@ tenants.get('/:id', async (c) => {
       tenant: {
         ...tenant,
         stats: {
-          users: (stats[0] as any)?.count || 0,
-          clusters: (stats[1] as any)?.count || 0,
-          runs: (stats[2] as any)?.count || 0,
-          metrics: (stats[3] as any)?.count || 0,
-          risks: (stats[4] as any)?.count || 0,
-          healthScores: (stats[5] as any)?.count || 0,
-          briefings: (stats[6] as any)?.count || 0,
-          totalValueProcessed: (stats[7] as any)?.total || 0,
+          users: (stats[0] as Record<string, unknown>)?.count || 0,
+          clusters: (stats[1] as Record<string, unknown>)?.count || 0,
+          runs: (stats[2] as Record<string, unknown>)?.count || 0,
+          metrics: (stats[3] as Record<string, unknown>)?.count || 0,
+          risks: (stats[4] as Record<string, unknown>)?.count || 0,
+          healthScores: (stats[5] as Record<string, unknown>)?.count || 0,
+          briefings: (stats[6] as Record<string, unknown>)?.count || 0,
+          totalValueProcessed: (stats[7] as Record<string, unknown>)?.total || 0,
         },
       },
     });
@@ -293,7 +293,7 @@ tenants.post('/:id/export', async (c) => {
 
     return c.json({
       success: true,
-      message: `Exported ${(tenant as any).name} data successfully`,
+      message: `Exported ${(tenant as Record<string, unknown>).name} data successfully`,
       export: exportData,
       downloadUrl: `/api/v1/admin/tenants/${tenantId}/export/download`,
     });
@@ -342,7 +342,7 @@ tenants.get('/:id/export/download', async (c) => {
 
     const exportData = {
       exportDate: new Date().toISOString(),
-      tenant: { name: (tenant as any).name, slug: (tenant as any).slug, id: tenantId },
+      tenant: { name: (tenant as Record<string, unknown>).name, slug: (tenant as Record<string, unknown>).slug, id: tenantId },
       data: {
         users: users.results || [],
         clusters: clusters.results || [],
@@ -428,7 +428,7 @@ tenants.delete('/:id/permanent-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ? OR id = ?`
       ).bind(tenantId, tenantId).run();
-      deletedCount += (result.meta as any)?.changes || 0;
+      deletedCount += Number((result.meta as Record<string, unknown>)?.changes) || 0;
     }
 
     // Log deletion for audit

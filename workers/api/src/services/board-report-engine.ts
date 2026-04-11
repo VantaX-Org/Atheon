@@ -5,7 +5,7 @@
  * creates an Atheon-themed PDF using jsPDF, stores in R2.
  */
 
-import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from './llm-provider';
+import { loadLlmConfig, llmChatWithFallback } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
 import { computeStrategicContext } from './radar-engine-v2';
 

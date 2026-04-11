@@ -14,7 +14,7 @@ tenants.use('/*', cors());
 /**
  * Middleware: Verify superadmin role
  */
-function requireSuperadmin(c: any): boolean {
+function requireSuperadmin(c: { get: (key: string) => unknown }): boolean {
   const auth = c.get('auth') as AuthContext | undefined;
   return auth?.role === 'superadmin';
 }
@@ -42,7 +42,7 @@ tenants.get('/tenants', async (c) => {
 
     // Get data counts for each tenant
     const tenantsWithCounts = [];
-    for (const tenant of data as any[]) {
+    for (const tenant of data as Record<string, unknown>[]) {
       const counts = await Promise.all([
         c.env.DB.prepare('SELECT COUNT(*) as count FROM sub_catalyst_runs WHERE tenant_id = ?').bind(tenant.id).first(),
         c.env.DB.prepare('SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?').bind(tenant.id).first(),
@@ -53,10 +53,10 @@ tenants.get('/tenants', async (c) => {
       tenantsWithCounts.push({
         ...tenant,
         data: {
-          runs: (counts[0] as any)?.count || 0,
-          metrics: (counts[1] as any)?.count || 0,
-          risks: (counts[2] as any)?.count || 0,
-          users: (counts[3] as any)?.count || 0,
+          runs: (counts[0] as Record<string, unknown>)?.count || 0,
+          metrics: (counts[1] as Record<string, unknown>)?.count || 0,
+          risks: (counts[2] as Record<string, unknown>)?.count || 0,
+          users: (counts[3] as Record<string, unknown>)?.count || 0,
         },
       });
     }
@@ -65,8 +65,8 @@ tenants.get('/tenants', async (c) => {
       success: true,
       tenants: tenantsWithCounts,
       total: tenantsWithCounts.length,
-      active: tenantsWithCounts.filter((t: any) => !t.is_deleted).length,
-      deleted: tenantsWithCounts.filter((t: any) => t.is_deleted).length,
+      active: tenantsWithCounts.filter((t: Record<string, unknown>) => !t.is_deleted).length,
+      deleted: tenantsWithCounts.filter((t: Record<string, unknown>) => t.is_deleted).length,
     });
   } catch (err) {
     console.error('List tenants failed:', err);
@@ -117,14 +117,14 @@ tenants.get('/tenants/:id', async (c) => {
       tenant: {
         ...tenant,
         data: {
-          runs: (counts[0] as any)?.count || 0,
-          metrics: (counts[1] as any)?.count || 0,
-          risks: (counts[2] as any)?.count || 0,
-          healthScores: (counts[3] as any)?.count || 0,
-          briefings: (counts[4] as any)?.count || 0,
-          users: (counts[5] as any)?.count || 0,
-          clusters: (counts[6] as any)?.count || 0,
-          runItems: (counts[7] as any)?.count || 0,
+          runs: (counts[0] as Record<string, unknown>)?.count || 0,
+          metrics: (counts[1] as Record<string, unknown>)?.count || 0,
+          risks: (counts[2] as Record<string, unknown>)?.count || 0,
+          healthScores: (counts[3] as Record<string, unknown>)?.count || 0,
+          briefings: (counts[4] as Record<string, unknown>)?.count || 0,
+          users: (counts[5] as Record<string, unknown>)?.count || 0,
+          clusters: (counts[6] as Record<string, unknown>)?.count || 0,
+          runItems: (counts[7] as Record<string, unknown>)?.count || 0,
         },
       },
     });
@@ -327,7 +327,7 @@ tenants.get('/tenants/:id/export', async (c) => {
 
     // Return as JSON file download
     c.header('Content-Type', 'application/json');
-    c.header('Content-Disposition', `attachment; filename="tenant-export-${(tenant as any).slug}-${new Date().toISOString().split('T')[0]}.json"`);
+    c.header('Content-Disposition', `attachment; filename="tenant-export-${(tenant as Record<string, unknown>).slug}-${new Date().toISOString().split('T')[0]}.json"`);
     
     return c.json(exportData);
   } catch (err) {
@@ -410,7 +410,7 @@ tenants.delete('/tenants/:id/hard-delete', async (c) => {
       const result = await c.env.DB.prepare(
         `DELETE FROM ${table} WHERE tenant_id = ?`
       ).bind(tenantId).run();
-      deletedCount += (result.meta as any)?.changes || 0;
+      deletedCount += Number((result.meta as Record<string, unknown>)?.changes) || 0;
     }
 
     // Log the deletion

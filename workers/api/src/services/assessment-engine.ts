@@ -1721,7 +1721,7 @@ Write in a professional, confident tone. Reference specific data points. Do not 
   // Try LLM call if AI binding available
   if (ai) {
     try {
-      const result = await (ai as any).run('@cf/meta/llama-3.1-8b-instruct', {
+      const result = await (ai as { run: (model: string, params: Record<string, unknown>) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', {
         messages: [
           { role: 'system', content: 'You are a financial analyst at GONXT Technology writing assessment reports for Atheon AI platform prospects.' },
           { role: 'user', content: prompt },

@@ -33,7 +33,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm test -- --run --reporter=verbose --if-present
+      - run: npm run test --if-present -- --run --reporter=verbose
         env:
           CI: true
 

@@ -282,7 +282,7 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
     score: number; 
     trend: string; 
     delta: number;
-    contributors?: any;
+    contributors?: string[] | Record<string, unknown>;
     sourceRunId?: string | null;
     catalystName?: string;
     kpiContributors?: Array<{ name: string; value: number; status: string }>;
@@ -3182,7 +3182,8 @@ async function raiseExecutionExceptions(
   // Only check data-quality exceptions if execution succeeded or partially succeeded
   if (result.status === 'completed' || result.status === 'partial') {
     const totalSource = summary.total_records_source || 0;
-    const totalTarget = summary.total_records_target || 0;
+    const _totalTarget = summary.total_records_target || 0;
+    void _totalTarget;
     const matched = summary.matched || 0;
     const discrepancies = summary.discrepancies || 0;
     const unmatchedSource = summary.unmatched_source || 0;
@@ -5040,7 +5041,7 @@ catalysts.post('/runs/:runId/llm-insights', async (c) => {
      FROM sub_catalyst_runs r
      JOIN catalyst_clusters c ON r.cluster_id = c.id
      WHERE r.id = ? AND r.tenant_id = ?`
-  ).bind(runId, tenantId).first<any>();
+  ).bind(runId, tenantId).first<Record<string, unknown>>();
 
   if (!run) {
     return c.json({ error: 'Run not found' }, 404);
@@ -5052,7 +5053,7 @@ catalysts.post('/runs/:runId/llm-insights', async (c) => {
      FROM sub_catalyst_kpi_values kv
      JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id
      WHERE kv.run_id = ? AND kv.tenant_id = ?`
-  ).bind(runId, tenantId).all<any>();
+  ).bind(runId, tenantId).all<Record<string, unknown>>();
 
   // Get anomalies
   const anomalies = await c.env.DB.prepare(
@@ -5061,14 +5062,14 @@ catalysts.post('/runs/:runId/llm-insights', async (c) => {
      WHERE source_run_id = ? AND tenant_id = ?
      ORDER BY deviation DESC
      LIMIT 10`
-  ).bind(runId, tenantId).all<any>();
+  ).bind(runId, tenantId).all<Record<string, unknown>>();
 
   // Construct prompt for LLM
-  const kpiSummary = (kpis.results || []).map((k: any) => 
+  const kpiSummary = (kpis.results || []).map((k: Record<string, unknown>) => 
     `- ${k.kpi_name}: ${k.value} ${k.unit} (${k.status})`
   ).join('\n');
 
-  const anomalySummary = (anomalies.results || []).map((a: any) => 
+  const anomalySummary = (anomalies.results || []).map((a: Record<string, unknown>) => 
     `- ${a.metric}: ${a.deviation}% deviation (${a.severity}) - ${a.description}`
   ).join('\n');
 
@@ -5079,7 +5080,7 @@ catalysts.post('/runs/:runId/llm-insights', async (c) => {
 - Cluster: ${run.cluster_name} (${run.cluster_domain})
 - Status: ${run.status}
 - Records Processed: ${run.matched} matched, ${run.discrepancies} discrepancies, ${run.exceptions_raised} exceptions
-- Total Value: R ${(run.total_source_value / 1000000).toFixed(2)}M
+- Total Value: R ${(Number(run.total_source_value) / 1000000).toFixed(2)}M
 
 **KPIs Generated:**
 ${kpiSummary || 'No KPIs generated'}
@@ -5098,13 +5099,13 @@ Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impac
   // Call LLM (using Cloudflare AI or external API)
   try {
     // If using Cloudflare AI Workers
-    const aiResponse = await (c.env.AI as any).run('@cf/meta/llama-3.1-8b-instruct', {
+    const aiResponse = await (c.env.AI as { run: (model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>> }).run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       max_tokens: 500,
     });
 
-    const insights = JSON.parse(stripCodeFences((aiResponse as any).response || '{}'));
+    const insights = JSON.parse(stripCodeFences((aiResponse as Record<string, unknown>).response as string || '{}'));
     
     // Save insights to database
     await c.env.DB.prepare(
@@ -5127,9 +5128,9 @@ Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impac
         generatedAt: new Date().toISOString(),
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('LLM insights generation failed:', err);
-    return c.json({ error: 'Failed to generate AI insights', details: err.message }, 500);
+    return c.json({ error: 'Failed to generate AI insights', details: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
@@ -5144,7 +5145,7 @@ catalysts.get('/runs/:runId/insights', async (c) => {
      WHERE run_id = ? AND tenant_id = ?
      ORDER BY generated_at DESC
      LIMIT 1`
-  ).bind(runId, tenantId).first<any>();
+  ).bind(runId, tenantId).first<Record<string, unknown>>();
 
   if (!insights) {
     return c.json({ error: 'No insights generated yet. Call POST /llm-insights first.' }, 404);
@@ -5152,8 +5153,8 @@ catalysts.get('/runs/:runId/insights', async (c) => {
 
   return c.json({
     summary: insights.summary,
-    risks: JSON.parse(insights.risks || '[]'),
-    actions: JSON.parse(insights.actions || '[]'),
+    risks: JSON.parse(insights.risks as string || '[]'),
+    actions: JSON.parse(insights.actions as string || '[]'),
     impact: insights.impact,
     generatedAt: insights.generated_at,
   });

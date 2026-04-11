@@ -178,17 +178,17 @@ export function CatalystRunDetailPage() {
             </div>
             {run.kpis && run.kpis.length > 0 ? (
               <div className="space-y-3">
-                {run.kpis.map((kpi: any, i: any) => (
+                {run.kpis.map((kpi: Record<string, unknown>, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium t-primary">{kpi.name}</span>
+                      <span className="text-sm font-medium t-primary">{String(kpi.name)}</span>
                       <Badge variant={kpi.status === 'green' ? 'success' : kpi.status === 'amber' ? 'warning' : 'danger'} className="text-xs">
-                        {kpi.status}
+                        {String(kpi.status)}
                       </Badge>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="t-muted">Value: <span className="t-primary font-medium">{kpi.value} {kpi.unit}</span></span>
-                      <span className="t-muted">Target: <span className="t-primary">{kpi.target} {kpi.unit}</span></span>
+                      <span className="t-muted">Value: <span className="t-primary font-medium">{String(kpi.value)} {String(kpi.unit)}</span></span>
+                      <span className="t-muted">Target: <span className="t-primary">{String(kpi.target)} {String(kpi.unit)}</span></span>
                     </div>
                   </div>
                 ))}
@@ -208,16 +208,16 @@ export function CatalystRunDetailPage() {
             </div>
             {run.metrics && run.metrics.length > 0 ? (
               <div className="space-y-3">
-                {run.metrics.map((metric: any, i: any) => (
+                {run.metrics.map((metric: Record<string, unknown>, i: number) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium t-primary">{metric.name}</span>
+                      <span className="text-sm font-medium t-primary">{String(metric.name)}</span>
                       <Badge variant={metric.status === 'green' ? 'success' : metric.status === 'amber' ? 'warning' : 'danger'} className="text-xs">
-                        {metric.status}
+                        {String(metric.status)}
                       </Badge>
                     </div>
                     <div className="text-sm t-muted">
-                      Value: <span className="t-primary font-medium">{metric.value} {metric.unit}</span>
+                      Value: <span className="t-primary font-medium">{String(metric.value)} {String(metric.unit)}</span>
                     </div>
                     <button
                       onClick={() => navigate(`/pulse?metric=${metric.id}`)}
@@ -254,15 +254,15 @@ export function CatalystRunDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {run.sourceData.slice(0, 50).map((record: any, i: any) => (
+                    {run.sourceData.slice(0, 50).map((record: Record<string, unknown>, i: number) => (
                       <tr key={i} className="border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)]">
-                        <td className="py-2 px-3 t-primary font-mono text-xs">{record.id}</td>
-                        <td className="py-2 px-3 t-muted">{record.sourceSystem}</td>
-                        <td className="py-2 px-3 t-muted">{record.recordType}</td>
-                        <td className="py-2 px-3 text-right t-primary">{record.value?.toLocaleString()}</td>
+                        <td className="py-2 px-3 t-primary font-mono text-xs">{String(record.id)}</td>
+                        <td className="py-2 px-3 t-muted">{String(record.sourceSystem)}</td>
+                        <td className="py-2 px-3 t-muted">{String(record.recordType)}</td>
+                        <td className="py-2 px-3 text-right t-primary">{typeof record.value === 'number' ? record.value.toLocaleString() : String(record.value)}</td>
                         <td className="py-2 px-3 text-center">
                           <Badge variant={record.status === 'matched' ? 'success' : record.status === 'discrepancy' ? 'warning' : 'danger'} className="text-xs">
-                            {record.status}
+                            {String(record.status)}
                           </Badge>
                         </td>
                       </tr>

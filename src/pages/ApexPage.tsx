@@ -885,7 +885,7 @@ export function ApexPage() {
   const hiddenFields = new Set(['model', 'source', 'generated_at', 'recommendation', 'analysis_points']);
 
   // If recommendation contains embedded JSON, extract structured fields from it
-  let effectiveResults = scenario.results ? { ...scenario.results } : null;
+  const effectiveResults = scenario.results ? { ...scenario.results } : null;
   if (effectiveResults && typeof effectiveResults.recommendation === 'string') {
     const rec = (effectiveResults.recommendation as string).replace(/```json\s*/g, '').replace(/```/g, '').replace(/\*\*/g, '').replace(/\*/g, '').trim();
     try {
@@ -958,7 +958,7 @@ export function ApexPage() {
           .replace(/```json\s*/g, '').replace(/```/g, '')
           .replace(/\*\*/g, '').replace(/\*/g, '')
           .split('\n').filter((line: string) => line.trim())
-          .filter((line: string) => !/^[{}\[\]]+$/.test(line.trim()) && !/^"\w+"\s*:/.test(line.trim()))
+          .filter((line: string) => !/^[{}[\]]+$/.test(line.trim()) && !/^"\w+"\s*:/.test(line.trim()))
           .map((line: string, i: number) => (
            <p key={i}>{line.trim()}</p>
           ))}
