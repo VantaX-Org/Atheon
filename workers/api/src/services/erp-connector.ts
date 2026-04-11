@@ -1532,3 +1532,70 @@ export function listERPAdapters(): { system: string; name: string }[] {
     name: adapter.name,
   }));
 }
+
+// ── Merged from erp-pipeline.ts (SPEC-008) ──
+
+export interface ERPSyncStatus {
+  connectionId: string;
+  tenantId: string;
+  system: string;
+  status: 'idle' | 'syncing' | 'completed' | 'failed' | 'partial';
+  lastSyncAt?: string;
+  nextSyncAt?: string;
+  recordsSynced: number;
+  recordsFailed: number;
+  entities: { type: string; count: number; synced: number; failed: number; lastSyncAt?: string }[];
+  errors: string[];
+  duration?: number;
+}
+
+export interface XeroOAuthConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  scopes: string[];
+}
+
+export const XERO_SCOPES = [
+  'openid', 'profile', 'email',
+  'accounting.transactions.read', 'accounting.contacts.read',
+  'accounting.settings.read', 'accounting.reports.read',
+  'accounting.journals.read', 'accounting.attachments.read',
+];
+
+export function buildXeroAuthUrl(config: XeroOAuthConfig, state: string): string {
+  const params = new URLSearchParams({
+    response_type: 'code', client_id: config.clientId,
+    redirect_uri: config.redirectUri, scope: config.scopes.join(' '), state,
+  });
+  return `https://login.xero.com/identity/connect/authorize?${params.toString()}`;
+}
+
+export async function exchangeXeroCode(config: XeroOAuthConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const resp = await fetch('https://identity.xero.com/connect/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${btoa(`${config.clientId}:${config.clientSecret}`)}` },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: config.redirectUri }),
+  });
+  if (!resp.ok) throw new Error(`Xero token exchange failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function refreshXeroToken(config: XeroOAuthConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const resp = await fetch('https://identity.xero.com/connect/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${btoa(`${config.clientId}:${config.clientSecret}`)}` },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+  });
+  if (!resp.ok) throw new Error(`Xero token refresh failed: ${resp.status}`);
+  return resp.json();
+}
+
+export function mapXeroEntity(entityType: string, data: Record<string, unknown>): Record<string, unknown> {
+  switch (entityType) {
+    case 'contacts': return { source_id: data.ContactID, name: data.Name, email: data.EmailAddress, type: data.IsCustomer ? 'customer' : 'supplier', status: data.ContactStatus };
+    case 'invoices': return { source_id: data.InvoiceID, number: data.InvoiceNumber, type: data.Type, status: data.Status, total: data.Total, amount_due: data.AmountDue };
+    case 'accounts': return { source_id: data.AccountID, code: data.Code, name: data.Name, type: data.Type, status: data.Status };
+    default: return { source_id: (data as Record<string, unknown>)[`${entityType}ID`] || crypto.randomUUID(), ...data };
+  }
+}

@@ -1189,3 +1189,75 @@ export async function fanOutViaBatch(
   console.log(`[SCHEDULER] Fan-out complete: ${dispatched} dispatched, ${failed} failed`);
   return { dispatched, failed };
 }
+
+// ── Merged from scheduler.ts (SPEC-018) ──
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  cronExpression: string;
+  handler: string;
+  tenantId?: string;
+  enabled: boolean;
+  maxRetries: number;
+  timeoutMs: number;
+  lastRunAt?: string;
+  lastRunStatus?: 'success' | 'failure' | 'timeout';
+  nextRunAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TaskExecution {
+  id: string;
+  taskId: string;
+  startedAt: string;
+  completedAt?: string;
+  status: 'running' | 'success' | 'failure' | 'timeout' | 'dead_letter';
+  duration?: number;
+  error?: string;
+  retryCount: number;
+}
+
+export function getNextRunTime(cron: string, from: Date = new Date()): Date {
+  const parts = cron.split(' ');
+  if (parts.length !== 5) throw new Error('Invalid cron expression');
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  const next = new Date(from);
+  next.setSeconds(0, 0);
+  for (let i = 0; i < 525960; i++) {
+    next.setMinutes(next.getMinutes() + 1);
+    if (matchesCronField(next.getMinutes(), minute) && matchesCronField(next.getHours(), hour) &&
+        matchesCronField(next.getDate(), dayOfMonth) && matchesCronField(next.getMonth() + 1, month) &&
+        matchesCronField(next.getDay(), dayOfWeek)) {
+      return next;
+    }
+  }
+  throw new Error('Could not find next run time within 1 year');
+}
+
+function matchesCronField(value: number, pattern: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern.includes('/')) {
+    const [base, step] = pattern.split('/');
+    const stepNum = parseInt(step, 10);
+    const baseNum = base === '*' ? 0 : parseInt(base, 10);
+    return value >= baseNum && (value - baseNum) % stepNum === 0;
+  }
+  if (pattern.includes(',')) return pattern.split(',').map(Number).includes(value);
+  if (pattern.includes('-')) {
+    const [start, end] = pattern.split('-').map(Number);
+    return value >= start && value <= end;
+  }
+  return parseInt(pattern, 10) === value;
+}
+
+export function getDefaultScheduledTasks(): Omit<ScheduledTask, 'id'>[] {
+  return [
+    { name: 'health_score_recalculation', cronExpression: '0 */6 * * *', handler: 'recalculateHealthScores', enabled: true, maxRetries: 3, timeoutMs: 300000 },
+    { name: 'erp_sync_poll', cronExpression: '*/15 * * * *', handler: 'pollERPSync', enabled: true, maxRetries: 2, timeoutMs: 120000 },
+    { name: 'anomaly_detection', cronExpression: '0 */2 * * *', handler: 'runAnomalyDetection', enabled: true, maxRetries: 2, timeoutMs: 180000 },
+    { name: 'audit_log_cleanup', cronExpression: '0 3 * * 0', handler: 'cleanupAuditLogs', enabled: true, maxRetries: 1, timeoutMs: 600000 },
+    { name: 'report_generation', cronExpression: '0 6 * * 1', handler: 'generateWeeklyReports', enabled: true, maxRetries: 3, timeoutMs: 300000 },
+    { name: 'subscription_check', cronExpression: '0 0 * * *', handler: 'checkSubscriptionExpiry', enabled: true, maxRetries: 2, timeoutMs: 60000 },
+  ];
+}
