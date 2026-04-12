@@ -343,7 +343,7 @@ export function Header() {
                       key={n.id}
                       onClick={() => {
                         if (n.actionUrl) {
-                          try { navigate(new URL(n.actionUrl, window.location.origin).pathname); }
+                          try { const _u = new URL(n.actionUrl, window.location.origin); navigate(_u.pathname + _u.search + _u.hash); }
                           catch { navigate(n.actionUrl); }
                         }
                         setShowNotifications(false);
