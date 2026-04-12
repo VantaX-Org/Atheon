@@ -43,11 +43,6 @@ export const chartPalette = [
   '#06b6d4', // cyan
 ];
 
-// Get color by index (wraps around)
-export function getChartColor(index: number): string {
-  return chartPalette[index % chartPalette.length];
-}
-
 // Recharts tooltip style using design tokens
 export const tooltipStyle = {
   contentStyle: {

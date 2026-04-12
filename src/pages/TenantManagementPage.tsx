@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
+import { api } from "@/lib/api";
 import {
   Users, Database, Trash2, RotateCcw, Download, Shield, AlertTriangle,
   CheckCircle, XCircle, Search, Eye, Activity, TrendingUp,
@@ -61,19 +61,7 @@ export function TenantManagementPage() {
   const loadTenants = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/admin/tenants', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError('Access denied: Superadmin role required');
-          return;
-        }
-        throw new Error('Failed to load tenants');
-      }
-      
-      const data = await response.json();
+      const data = await api.get<{ tenants: Tenant[] }>('/api/v1/admin/tenants');
       setTenants(data.tenants);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenants');
@@ -85,13 +73,7 @@ export function TenantManagementPage() {
   const loadTenantDetails = async (tenantId: string) => {
     try {
       setActionLoading(tenantId);
-      const response = await fetch(`/api/v1/admin/tenants/${tenantId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      if (!response.ok) throw new Error('Failed to load tenant details');
-      
-      const data = await response.json();
+      const data = await api.get<{ tenant: TenantDetails }>(`/api/v1/admin/tenants/${tenantId}`);
       setSelectedTenant(data.tenant);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load details');
@@ -107,17 +89,7 @@ export function TenantManagementPage() {
 
     try {
       setActionLoading(tenantId);
-      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/soft-delete`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to soft-delete tenant');
-      }
-      
+      const data = await api.post<{ message: string }>(`/api/v1/admin/tenants/${tenantId}/soft-delete`);
       alert(`Success: ${data.message}`);
       loadTenants();
       setSelectedTenant(null);
@@ -135,17 +107,7 @@ export function TenantManagementPage() {
 
     try {
       setActionLoading(tenantId);
-      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/reactivate`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to reactivate tenant');
-      }
-      
+      const data = await api.post<{ message: string }>(`/api/v1/admin/tenants/${tenantId}/reactivate`);
       alert(`Success: ${data.message}`);
       loadTenants();
       setSelectedTenant(null);
@@ -159,17 +121,8 @@ export function TenantManagementPage() {
   const handleExport = async (tenantId: string, tenantSlug?: string) => {
     try {
       setActionLoading(tenantId);
-      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/export`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to export tenant');
-      }
-      
-      // Download as file
-      const blob = await response.blob();
+      const data = await api.get<Record<string, unknown>>(`/api/v1/admin/tenants/${tenantId}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -178,7 +131,6 @@ export function TenantManagementPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
       alert('Export downloaded successfully');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to export tenant');
@@ -200,17 +152,7 @@ export function TenantManagementPage() {
 
     try {
       setActionLoading(tenantId);
-      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/hard-delete`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token')}` },
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to hard-delete tenant');
-      }
-      
+      const data = await api.delete<{ message: string; audit: { totalRecordsDeleted: number } }>(`/api/v1/admin/tenants/${tenantId}/hard-delete`);
       alert(`PERMANENTLY DELETED: ${data.message}\n\nRecords deleted: ${data.audit.totalRecordsDeleted}`);
       loadTenants();
       setSelectedTenant(null);

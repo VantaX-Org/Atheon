@@ -958,7 +958,7 @@ export function MarketingPage() {
 
       {/* NAV */}
       <nav className="mk5-nav">
-        <a href="#" className="mk5-nav-logo" onClick={(e) => e.preventDefault()}>
+        <a href="/" className="mk5-nav-logo" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
           <AtheonLogo size={28} />
           Atheon
         </a>
@@ -1500,7 +1500,7 @@ export function MarketingPage() {
             and copilots. Three layers of intelligence. One platform. We&rsquo;re onboarding founding
             partners now.
           </p>
-          <a href="#" className="mk5-btn-main mk5-reveal" onClick={(e) => e.preventDefault()}>
+          <a href="/trial" className="mk5-btn-main mk5-reveal">
             Request Access
           </a>
         </div>
