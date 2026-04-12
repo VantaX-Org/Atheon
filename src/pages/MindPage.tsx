@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { Brain, Settings2, Play, DollarSign, Loader2, Thermometer, Hash, Zap } from "lucide-react";
+import { Brain, Settings2, Play, DollarSign, Loader2, Thermometer, Hash, Zap, AlertTriangle } from "lucide-react";
 
 interface ModelConfig {
   provider: string;
@@ -46,6 +46,7 @@ export function MindPage() {
   // Cost breakdown
   const [costs, setCosts] = useState<CostBreakdown[]>([]);
   const [totalCost, setTotalCost] = useState(0);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   useEffect(() => {
     // Load existing config
@@ -53,7 +54,9 @@ export function MindPage() {
       if (data && typeof data === "object" && "provider" in data) {
         setConfig(data as unknown as ModelConfig);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      // Config endpoint unavailable — use defaults
+    });
 
     // Load cost data
     api.get("/api/v1/mind/costs").then((data: Record<string, unknown>) => {
@@ -61,15 +64,18 @@ export function MindPage() {
         setCosts((data as { breakdown: CostBreakdown[] }).breakdown || []);
         setTotalCost((data as { total: number }).total || 0);
       }
-    }).catch(() => {});
+    }).catch(() => {
+      // Cost data unavailable — leave empty
+    });
   }, []);
 
   const saveConfig = async () => {
     setSaving(true);
+    setConfigError(null);
     try {
       await api.post("/api/v1/mind/config", config);
     } catch (err) {
-      console.error("Failed to save config", err);
+      setConfigError(err instanceof Error ? err.message : "Failed to save configuration. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -176,6 +182,13 @@ export function MindPage() {
               />
             </div>
           </div>
+
+          {configError && (
+            <div className="flex items-center gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">
+              <AlertTriangle size={14} className="text-red-400 flex-shrink-0" />
+              <p className="text-xs text-red-400">{configError}</p>
+            </div>
+          )}
 
           <button
             onClick={saveConfig}

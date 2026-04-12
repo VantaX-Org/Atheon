@@ -190,6 +190,13 @@ export function AuditPage() {
 
  {/* Audit Table */}
  <Card>
+ {entries.length === 0 ? (
+ <div className="flex flex-col items-center justify-center py-16">
+ <Shield className="w-10 h-10 t-muted mb-3 opacity-40" />
+ <p className="text-sm font-medium t-primary">No audit entries found</p>
+ <p className="text-xs t-muted mt-1">Audit events will appear here as actions are performed across Atheon.</p>
+ </div>
+ ) : (
  <div className="overflow-x-auto">
  <table className="w-full text-sm">
  <thead>
@@ -246,6 +253,7 @@ export function AuditPage() {
  </tbody>
  </table>
  </div>
+ )}
  </Card>
  </div>
  );

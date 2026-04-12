@@ -3005,7 +3005,7 @@ export function CatalystsPage() {
      <p className="text-xs t-muted mt-1">See anonymised resolution patterns from peers in your industry.</p>
      <Button variant="primary" size="sm" className="mt-4" onClick={() => {
       setStoriesLoading(true);
-      api.successStories.get().then(setSuccessStories).catch(() => {}).finally(() => setStoriesLoading(false));
+      api.successStories.get().then(setSuccessStories).catch(() => { /* non-critical — button stays visible */ }).finally(() => setStoriesLoading(false));
      }}>Load Insights</Button>
     </Card>
    )}
@@ -3021,7 +3021,7 @@ export function CatalystsPage() {
       </div>
       <Button variant="secondary" size="sm" onClick={() => {
        setStoriesLoading(true);
-       api.successStories.get().then(setSuccessStories).catch(() => {}).finally(() => setStoriesLoading(false));
+       api.successStories.get().then(setSuccessStories).catch(() => { /* non-critical — keep existing data */ }).finally(() => setStoriesLoading(false));
       }}><RefreshCw size={12} /> Refresh</Button>
      </div>
      {successStories.stories.length === 0 ? (
