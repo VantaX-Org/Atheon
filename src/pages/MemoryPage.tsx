@@ -92,6 +92,7 @@ export function MemoryPage() {
   };
 
   const handleDeleteEntity = async (id: string) => {
+    if (!confirm('Delete this entity? This action cannot be undone.')) return;
     try {
       await api.delete(`/api/v1/memory/entities/${id}`);
       await fetchData();

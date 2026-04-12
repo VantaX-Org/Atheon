@@ -572,6 +572,7 @@ export function CatalystsPage() {
  };
 
  const handleDeleteHitl = async (clusterId: string, subName?: string) => {
+   if (!confirm('Remove this HITL configuration?')) return;
    try {
      await api.catalysts.deleteHitlConfig(clusterId, subName || undefined);
      await loadHitlConfigs();
