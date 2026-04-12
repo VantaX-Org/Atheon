@@ -188,7 +188,7 @@ export function Dashboard() {
       if (ds.status === 'fulfilled') setDiagSummary(ds.value);
       if (roi.status === 'fulfilled') setRoiData(roi.value);
       if (bc.status === 'fulfilled') setBaselineComparison(bc.value);
-    });
+    }).catch(() => { /* allSettled won't reject, but guard the .then() chain */ });
   }, []);
 
   // UX-05: Silent auto-refresh every 60s
@@ -198,7 +198,7 @@ export function Dashboard() {
       loadData().then(() => {
         setRefreshFlash(true);
         setTimeout(() => setRefreshFlash(false), 2000);
-      });
+      }).catch(() => { /* silent auto-refresh failure */ });
     }, 60000);
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
   }, [loadData]);
@@ -279,7 +279,7 @@ export function Dashboard() {
               className="w-8 h-8 rounded-lg flex items-center justify-center t-muted hover:t-primary transition-all"
               style={{ background: "var(--bg-secondary)" }}
               title={`Last refreshed: ${lastRefreshed.toLocaleTimeString()}`}
-              onClick={() => loadData().then(() => { setRefreshFlash(true); setTimeout(() => setRefreshFlash(false), 2000); })}
+              onClick={() => loadData().then(() => { setRefreshFlash(true); setTimeout(() => setRefreshFlash(false), 2000); }).catch(() => { /* manual refresh failure handled by loadData */ })}
               aria-label="Refresh dashboard data"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
