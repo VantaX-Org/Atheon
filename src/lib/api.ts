@@ -606,15 +606,25 @@ export const api = {
         await generateBusinessPDF(assessment);
       }
     },
-    downloadTechnical: async (id: string) => {
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/assessments/${id}/report/technical`, { headers });
-      if (!res.ok) throw new Error('Failed to download technical report');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = `technical-sizing-${id}.pdf`; a.click();
-      URL.revokeObjectURL(url);
+    downloadTechnical: async (id: string, assessment?: Assessment) => {
+      // Try backend first; fall back to client-side generation
+      try {
+        const headers: Record<string, string> = {};
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const res = await fetch(`${API_URL}/api/assessments/${id}/report/technical`, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `technical-sizing-${id}.pdf`; a.click();
+          URL.revokeObjectURL(url);
+          return;
+        }
+      } catch { /* backend unavailable, fall through */ }
+      // Client-side PDF generation
+      if (assessment) {
+        const { generateTechnicalPDF } = await import('./report-generators');
+        await generateTechnicalPDF(assessment);
+      }
     },
     downloadExcel: async (id: string, assessment?: Assessment) => {
       // Try backend first; fall back to client-side generation
@@ -649,15 +659,25 @@ export const api = {
       request<{ processTiming: ProcessTimingRecord[]; total: number }>(`/api/assessments/${id}/process-timing`),
     valueSummary: (id: string) =>
       request<ValueSummaryRecord>(`/api/assessments/${id}/value-summary`),
-    downloadValueReport: async (id: string) => {
-      const headers: Record<string, string> = {};
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      const res = await fetch(`${API_URL}/api/assessments/${id}/report/value`, { headers });
-      if (!res.ok) throw new Error('Failed to download value report');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    downloadValueReport: async (id: string, assessment?: Assessment, findings?: ValueAssessmentFinding[], dataQuality?: DataQualityRecord[], processTiming?: ProcessTimingRecord[], valueSummary?: ValueSummaryRecord | null) => {
+      // Try backend first; fall back to client-side generation
+      try {
+        const headers: Record<string, string> = {};
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const res = await fetch(`${API_URL}/api/assessments/${id}/report/value`, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          return;
+        }
+      } catch { /* backend unavailable, fall through */ }
+      // Client-side PDF generation
+      if (assessment && findings) {
+        const { generateValueAssessmentPDF } = await import('./report-generators');
+        await generateValueAssessmentPDF(assessment, findings, dataQuality ?? [], processTiming ?? [], valueSummary ?? null);
+      }
     },
     evidence: (id: string, findingId: string) =>
       request<ValueAssessmentFinding>(`/api/assessments/${id}/evidence/${findingId}`),
