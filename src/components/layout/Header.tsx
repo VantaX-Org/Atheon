@@ -342,7 +342,10 @@ export function Header() {
                     <button
                       key={n.id}
                       onClick={() => {
-                        if (n.actionUrl) navigate(n.actionUrl.replace('https://atheon.vantax.co.za', ''));
+                        if (n.actionUrl) {
+                          try { const _u = new URL(n.actionUrl, window.location.origin); navigate(_u.pathname + _u.search + _u.hash); }
+                          catch { navigate(n.actionUrl); }
+                        }
                         setShowNotifications(false);
                       }}
                       className="w-full text-left px-3.5 py-2.5 transition-all hover:bg-[var(--bg-secondary)]"

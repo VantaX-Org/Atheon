@@ -39,7 +39,7 @@ export function AtheonScoreRing({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     api.atheonScore.get()
       .then(setData)
-      .catch(() => {})
+      .catch(() => { /* non-critical — ring stays hidden */ })
       .finally(() => setLoading(false));
   }, []);
 

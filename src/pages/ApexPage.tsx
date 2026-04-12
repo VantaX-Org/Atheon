@@ -1380,7 +1380,7 @@ export function ApexPage() {
      <p className="text-xs t-muted mt-1">Compare your performance against anonymised industry peers.</p>
      <Button variant="primary" size="sm" className="mt-4" onClick={() => {
       setPeerLoading(true);
-      api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => {}).finally(() => setPeerLoading(false));
+      api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => { /* non-critical — button stays visible */ }).finally(() => setPeerLoading(false));
      }}>Load Benchmarks</Button>
     </Card>
    )}
@@ -1396,7 +1396,7 @@ export function ApexPage() {
       </div>
       <Button variant="secondary" size="sm" onClick={() => {
        setPeerLoading(true);
-       api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => {}).finally(() => setPeerLoading(false));
+       api.peerBenchmarks.get().then(setPeerBenchmarks).catch(() => { /* non-critical — keep existing data */ }).finally(() => setPeerLoading(false));
       }}><RefreshCw size={12} /> Refresh</Button>
      </div>
      {peerBenchmarks.benchmarks.length === 0 ? (

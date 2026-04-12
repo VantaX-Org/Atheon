@@ -22,7 +22,7 @@ export function CostOfInactionTicker({ compact = false, data: externalData }: { 
     if (!externalData) {
       api.costOfInaction.get()
         .then(setInternalData)
-        .catch(() => {});
+        .catch(() => { /* non-critical — ticker stays hidden */ });
     }
   }, [externalData]);
 

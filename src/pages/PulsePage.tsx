@@ -2240,7 +2240,7 @@ export function PulsePage() {
               <p className="text-sm t-muted">No cost-of-inaction data yet</p>
               <Button variant="primary" size="sm" className="ml-auto" onClick={() => {
                 setCoiLoading(true);
-                api.costOfInaction.get().then(setCostOfInaction).catch(() => {}).finally(() => setCoiLoading(false));
+                api.costOfInaction.get().then(setCostOfInaction).catch(() => { /* non-critical — ticker stays hidden */ }).finally(() => setCoiLoading(false));
               }}>Calculate Cost</Button>
             </Card>
           )}
@@ -2252,7 +2252,7 @@ export function PulsePage() {
               <CostOfInactionTicker data={costOfInaction} />
               <Button variant="secondary" size="sm" onClick={() => {
                 setCoiLoading(true);
-                api.costOfInaction.get().then(setCostOfInaction).catch(() => {}).finally(() => setCoiLoading(false));
+                api.costOfInaction.get().then(setCostOfInaction).catch(() => { /* non-critical — keep existing data */ }).finally(() => setCoiLoading(false));
               }}><RefreshCw size={12} /> Recalculate</Button>
             </div>
           )}
