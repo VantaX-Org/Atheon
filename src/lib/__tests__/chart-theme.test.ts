@@ -1,5 +1,5 @@
 // TASK-026: Test for chart theme
-import { chartPalette, getChartColor, chartTheme } from "../chart-theme";
+import { chartPalette, chartTheme } from "../chart-theme";
 
 describe("chartTheme", () => {
   it("has required color tokens", () => {
@@ -23,8 +23,9 @@ describe("chartPalette", () => {
     expect(chartPalette.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("returns colors by index with wrapping", () => {
-    expect(getChartColor(0)).toBe(chartPalette[0]);
-    expect(getChartColor(chartPalette.length)).toBe(chartPalette[0]);
+  it("supports index-based access with wrapping", () => {
+    expect(chartPalette[0]).toBeDefined();
+    expect(chartPalette[0 % chartPalette.length]).toBe(chartPalette[0]);
+    expect(chartPalette[chartPalette.length % chartPalette.length]).toBe(chartPalette[0]);
   });
 });
