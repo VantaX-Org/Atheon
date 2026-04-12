@@ -3,7 +3,7 @@
  * Data retention, DSAR history, erasure history, encryption status, compliance checklist.
  * Route: /data-governance | Role: admin, support_admin, superadmin
  */
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabPanel, useTabState } from '@/components/ui/tabs';
@@ -88,6 +88,18 @@ export function DataGovernancePage() {
   const compliantCount = complianceItems.filter(c => c.status === 'compliant').length;
   const compliancePct = (compliantCount / complianceItems.length) * 100;
 
+  const handleDsarAction = useCallback((request: DSARRequest) => {
+    if (request.type === 'access') {
+      alert(`Viewing data access report for ${request.requestedBy} (${request.id})`);
+    } else if (request.type === 'portability') {
+      alert(`Exporting portable data for ${request.requestedBy} (${request.id})`);
+    } else if (request.type === 'erasure') {
+      if (confirm(`Are you sure you want to process erasure request ${request.id} for ${request.requestedBy}? This action cannot be undone.`)) {
+        alert(`Erasure request ${request.id} processing initiated.`);
+      }
+    }
+  }, []);
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex items-center gap-3">
@@ -162,9 +174,9 @@ export function DataGovernancePage() {
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  {d.type === 'access' && <button className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted"><Eye size={14} /></button>}
-                  {d.type === 'portability' && <button className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted"><Download size={14} /></button>}
-                  {d.type === 'erasure' && <button className="p-1.5 rounded-md hover:bg-red-500/10 t-muted hover:text-red-400"><Trash2 size={14} /></button>}
+                  {d.type === 'access' && <button onClick={() => handleDsarAction(d)} className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted" title="View data access report"><Eye size={14} /></button>}
+                  {d.type === 'portability' && <button onClick={() => handleDsarAction(d)} className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted" title="Export portable data"><Download size={14} /></button>}
+                  {d.type === 'erasure' && <button onClick={() => handleDsarAction(d)} className="p-1.5 rounded-md hover:bg-red-500/10 t-muted hover:text-red-400" title="Process erasure request"><Trash2 size={14} /></button>}
                 </div>
               </div>
             </Card>
