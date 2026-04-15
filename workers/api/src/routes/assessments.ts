@@ -173,10 +173,24 @@ assessments.get('/:id/report/business', async (c) => {
     return c.json({ error: 'Report not available' }, 404);
   }
 
-  const obj = await c.env.STORAGE.get(assessment.business_report_key as string);
+  // Only serve if the stored object is actually a PDF (not HTML from the value assessment engine)
+  const key = assessment.business_report_key as string;
+  if (key.endsWith('.html')) {
+    return c.json({ error: 'No PDF report available — use client-side generation' }, 404);
+  }
+
+  const obj = await c.env.STORAGE.get(key);
   if (!obj) return c.json({ error: 'Report file not found' }, 404);
 
-  return new Response(obj.body, {
+  // Peek at the first few bytes to verify it's actually a PDF
+  const arrayBuf = await obj.arrayBuffer();
+  const header = new Uint8Array(arrayBuf.slice(0, 5));
+  const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46; // %PDF
+  if (!isPdf) {
+    return c.json({ error: 'Stored report is not a PDF — use client-side generation' }, 404);
+  }
+
+  return new Response(arrayBuf, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${sanitizeFilename(assessment.prospect_name as string)}-business-case.pdf"`,

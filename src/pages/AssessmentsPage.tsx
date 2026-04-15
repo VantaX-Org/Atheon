@@ -1007,7 +1007,7 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
 
               {/* Download buttons */}
               <div className="flex gap-2">
-                <button onClick={() => api.assessments.downloadValueReport(assessment.id)}
+                <button onClick={() => api.assessments.downloadValueReport(assessment.id, assessment, findings, dataQuality, processTiming, valueSummary)}
                   className="px-4 py-2 text-sm font-medium rounded-lg text-white" style={{ background: 'var(--accent)' }}
                 >Download Value Assessment Report</button>
                 <button onClick={() => api.assessments.downloadBusiness(assessment.id, assessment)}
