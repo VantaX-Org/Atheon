@@ -240,8 +240,9 @@ export async function recordRun(
         const tv = parseFloat(String(d.target_value ?? 0));
         if (!isNaN(sv) && !isNaN(tv)) discItemValue = Math.abs(sv - tv);
       }
-      // Fallback: if difference parsing gives 0, use source_record amount
-      if (discItemValue === 0 && d.source_record) {
+      // Fallback: only use source_record amount for unmatched sources (no target),
+      // not for non-numeric field mismatches between matched source/target pairs
+      if (discItemValue === 0 && d.source_record && !d.target_record) {
         discItemValue = extractAmount(d.source_record);
       }
       totalDiscrepancyValue += discItemValue;
@@ -406,10 +407,10 @@ async function writeRunItems(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
           extractRef(rec.source),
           extractEntity(rec.source),
-          srcAmt || null, JSON.stringify(rec.source),
+          srcAmt !== 0 ? srcAmt : 0, JSON.stringify(rec.source),
           extractRef(rec.target),
           extractEntity(rec.target),
-          tgtAmt || null, JSON.stringify(rec.target),
+          tgtAmt !== 0 ? tgtAmt : 0, JSON.stringify(rec.target),
           rec.confidence ?? null, rec.matched_on ?? null
         ).run();
       } catch (err) { console.error('writeRunItems matched:', err); }
@@ -475,7 +476,7 @@ async function writeRunItems(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
           extractRef(rec),
           extractEntity(rec),
-          amt || null, JSON.stringify(rec)
+          amt !== 0 ? amt : 0, JSON.stringify(rec)
         ).run();
       } catch (err) { console.error('writeRunItems unmatched_source:', err); }
     }
@@ -494,7 +495,7 @@ async function writeRunItems(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
           extractRef(rec),
           extractEntity(rec),
-          amt || null, JSON.stringify(rec)
+          amt !== 0 ? amt : 0, JSON.stringify(rec)
         ).run();
       } catch (err) { console.error('writeRunItems unmatched_target:', err); }
     }
@@ -514,7 +515,7 @@ async function writeRunItems(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
           extractRef(exc.record),
           extractEntity(exc.record),
-          amt || null, JSON.stringify(exc.record),
+          amt !== 0 ? amt : 0, JSON.stringify(exc.record),
           exc.type, exc.severity, exc.detail
         ).run();
       } catch (err) { console.error('writeRunItems exception:', err); }
