@@ -167,11 +167,13 @@ seed.post('/seed-vantax', async (c) => {
     console.log('[VantaX Seeder] Starting seed for tenant:', tenantId);
 
     // STEP 1: Cleanup ALL old data for this tenant
-    const cleanupTables = [...ALLOWED_TABLES];
+    // Delete child tables first (FK constraints), then parent tables last
+    const childTables = [...ALLOWED_TABLES].filter(t => t !== 'catalyst_clusters' && t !== 'erp_connections');
+    const parentTables = ['erp_connections', 'catalyst_clusters'];
+    const cleanupTables = [...childTables, ...parentTables];
 
     let cleanupCount = 0;
     for (const table of cleanupTables) {
-      if (!ALLOWED_TABLES.has(table)) continue;
       try {
         const result = await c.env.DB.prepare(
           `DELETE FROM ${table} WHERE tenant_id = ?`
@@ -181,6 +183,12 @@ seed.post('/seed-vantax', async (c) => {
         // Table may not exist yet
       }
     }
+    // Also clean up tables that reference catalyst_clusters by cluster_id (no tenant_id column)
+    try {
+      await c.env.DB.prepare(
+        `DELETE FROM catalyst_hitl_config WHERE tenant_id = ?`
+      ).bind(tenantId).run();
+    } catch { /* may not exist */ }
     console.log(`[VantaX Seeder] Cleaned ${cleanupCount} old records`);
 
     // STEP 2: Create SAP S/4HANA Connector in erp_connections
