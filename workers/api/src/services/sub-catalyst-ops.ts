@@ -133,6 +133,58 @@ export interface SubCatalystKpisRow {
   updated_at: string;
 }
 
+// ── Helpers: extract financial amounts from any ERP record shape ──
+
+/** SAP fields: WRBTR (doc currency amt), DMBTR (local currency amt), NETWR (net value), KWBTR (bank amt) */
+const AMOUNT_FIELDS = [
+  'WRBTR', 'DMBTR', 'NETWR', 'KWBTR', 'NETPR', 'ITEM_NETWR',           // SAP
+  'amount_total', 'amount_untaxed', 'amount_residual', 'price_subtotal', // Odoo
+  'total', 'amount', 'Total', 'Amount', 'TotalAmt', 'SubTotal',         // Xero/QB/generic
+  'balance', 'Balance', 'value', 'Value',                               // generic
+];
+
+const REF_FIELDS = [
+  'BELNR', 'EBELN', 'VBELN', 'XBLNR', 'AUGBL',                         // SAP
+  'invoice_number', 'po_number', 'number', 'name', 'ref', 'reference',  // generic
+  'InvoiceNumber', 'PurchaseOrderNumber', 'Id', 'id',                 // Xero/QB/generic
+];
+
+const ENTITY_FIELDS = [
+  'LIFNR', 'KUNNR', 'KUNAG', 'NAME1',                                   // SAP
+  'customer_name', 'supplier_name', 'partner_name', 'name',             // generic
+  'ContactName', 'Name', 'DisplayName',                                 // Xero/QB
+];
+
+function extractAmount(rec: Record<string, unknown> | null | undefined): number {
+  if (!rec) return 0;
+  for (const f of AMOUNT_FIELDS) {
+    const v = rec[f];
+    if (v !== undefined && v !== null && v !== '') {
+      const num = parseFloat(String(v));
+      if (!isNaN(num)) return Math.abs(num);
+    }
+  }
+  return 0;
+}
+
+function extractRef(rec: Record<string, unknown> | null | undefined): string {
+  if (!rec) return '';
+  for (const f of REF_FIELDS) {
+    const v = rec[f];
+    if (v !== undefined && v !== null && v !== '') return String(v);
+  }
+  return '';
+}
+
+function extractEntity(rec: Record<string, unknown> | null | undefined): string {
+  if (!rec) return '';
+  for (const f of ENTITY_FIELDS) {
+    const v = rec[f];
+    if (v !== undefined && v !== null && v !== '') return String(v);
+  }
+  return '';
+}
+
 // ── recordRun ──
 
 export async function recordRun(
@@ -161,35 +213,41 @@ export async function recordRun(
   let totalUnmatchedValue = 0;
   let itemsTotal = 0;
 
-  // Count matched_records for financial values
+  // Count matched_records for financial values (handles SAP/Odoo/Xero/generic field names)
   if (result.matched_records) {
     for (const rec of result.matched_records) {
-      const amt = parseFloat(String(rec.source?.['total'] ?? rec.source?.['amount'] ?? rec.source?.['amount_total'] ?? 0));
-      totalMatchedValue += isNaN(amt) ? 0 : Math.abs(amt);
+      totalMatchedValue += extractAmount(rec.source);
     }
   }
   if (result.unmatched_source_records) {
     for (const rec of result.unmatched_source_records) {
-      const amt = parseFloat(String(rec['total'] ?? rec['amount'] ?? rec['amount_total'] ?? 0));
-      totalUnmatchedValue += isNaN(amt) ? 0 : Math.abs(amt);
+      totalUnmatchedValue += extractAmount(rec);
     }
   }
   if (result.exception_records) {
     for (const rec of result.exception_records) {
-      const amt = parseFloat(String(rec.record?.['total'] ?? rec.record?.['amount'] ?? rec.record?.['amount_total'] ?? 0));
-      totalExceptionValue += isNaN(amt) ? 0 : Math.abs(amt);
+      totalExceptionValue += extractAmount(rec.record);
     }
   }
   if (result.discrepancies) {
     for (const d of result.discrepancies) {
+      let discItemValue = 0;
       if (d.difference) {
         const num = parseFloat(String(d.difference).replace(/[^0-9.-]/g, ''));
-        totalDiscrepancyValue += isNaN(num) ? 0 : Math.abs(num);
+        discItemValue = isNaN(num) ? 0 : Math.abs(num);
       } else {
         const sv = parseFloat(String(d.source_value ?? 0));
         const tv = parseFloat(String(d.target_value ?? 0));
-        if (!isNaN(sv) && !isNaN(tv)) totalDiscrepancyValue += Math.abs(sv - tv);
+        if (!isNaN(sv) && !isNaN(tv)) discItemValue = Math.abs(sv - tv);
       }
+      // Fallback: only use source_record amount for unmatched sources (no target)
+      // Skip entirely when unmatched_source_records exists to prevent double-counting
+      // (performReconciliation pushes unmatched sources into both arrays)
+      if (discItemValue === 0 && d.source_record && !d.target_record
+          && !(result.unmatched_source_records?.length)) {
+        discItemValue = extractAmount(d.source_record);
+      }
+      totalDiscrepancyValue += discItemValue;
     }
   }
   totalSourceValue = totalMatchedValue + totalUnmatchedValue + totalDiscrepancyValue + totalExceptionValue;
@@ -337,24 +395,24 @@ async function writeRunItems(
 ): Promise<number> {
   let itemNumber = 0;
 
-  // Matched records
+  // Matched records (handles SAP/Odoo/Xero/generic field names)
   if (result.matched_records) {
     for (const rec of result.matched_records) {
       itemNumber++;
-      const srcAmt = parseFloat(String(rec.source?.['total'] ?? rec.source?.['amount'] ?? rec.source?.['amount_total'] ?? 0));
-      const tgtAmt = parseFloat(String(rec.target?.['total'] ?? rec.target?.['amount'] ?? rec.target?.['amount_total'] ?? 0));
+      const srcAmt = extractAmount(rec.source);
+      const tgtAmt = extractAmount(rec.target);
       try {
         await db.prepare(`INSERT INTO sub_catalyst_run_items (
           id, run_id, tenant_id, item_number, item_status, source_ref, source_entity, source_amount, source_data,
           target_ref, target_entity, target_amount, target_data, match_confidence, matched_on_field
         ) VALUES (?, ?, ?, ?, 'matched', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
-          String(rec.source?.['invoice_number'] ?? rec.source?.['po_number'] ?? rec.source?.['name'] ?? ''),
-          String(rec.source?.['customer_name'] ?? rec.source?.['supplier_name'] ?? rec.source?.['name'] ?? ''),
-          isNaN(srcAmt) ? null : srcAmt, JSON.stringify(rec.source),
-          String(rec.target?.['invoice_number'] ?? rec.target?.['po_number'] ?? rec.target?.['name'] ?? ''),
-          String(rec.target?.['customer_name'] ?? rec.target?.['supplier_name'] ?? rec.target?.['name'] ?? ''),
-          isNaN(tgtAmt) ? null : tgtAmt, JSON.stringify(rec.target),
+          extractRef(rec.source),
+          extractEntity(rec.source),
+          srcAmt !== 0 ? srcAmt : 0, JSON.stringify(rec.source),
+          extractRef(rec.target),
+          extractEntity(rec.target),
+          tgtAmt !== 0 ? tgtAmt : 0, JSON.stringify(rec.target),
           rec.confidence ?? null, rec.matched_on ?? null
         ).run();
       } catch (err) { console.error('writeRunItems matched:', err); }
@@ -365,7 +423,7 @@ async function writeRunItems(
   const unmatchedSourceRefs = new Set<string>();
   if (result.unmatched_source_records) {
     for (const rec of result.unmatched_source_records) {
-      const ref = String(rec['invoice_number'] ?? rec['po_number'] ?? rec['name'] ?? rec['id'] ?? '');
+      const ref = extractRef(rec);
       if (ref) unmatchedSourceRefs.add(ref);
     }
   }
@@ -375,8 +433,8 @@ async function writeRunItems(
     for (const d of result.discrepancies) {
       if (!d.target_record && unmatchedSourceRefs.size > 0) {
         // This unmatched source is already in unmatched_source_records — skip to avoid duplicates
-        const srcRef = String(d.source_record?.['invoice_number'] ?? d.source_record?.['po_number'] ?? d.source_record?.['name'] ?? d.source_record?.['id'] ?? '');
-        if (srcRef && unmatchedSourceRefs.has(srcRef)) continue;
+          const srcRef = extractRef(d.source_record);
+          if (srcRef && unmatchedSourceRefs.has(srcRef)) continue;
       }
       itemNumber++;
       const srcAmt = parseFloat(String(d.source_value ?? 0));
@@ -393,11 +451,11 @@ async function writeRunItems(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
           d.target_record ? 'discrepancy' : 'unmatched_source',
-          String(d.source_record?.['invoice_number'] ?? d.source_record?.['po_number'] ?? d.source_record?.['name'] ?? ''),
-          String(d.source_record?.['customer_name'] ?? d.source_record?.['supplier_name'] ?? ''),
+          extractRef(d.source_record),
+          extractEntity(d.source_record),
           isNaN(srcAmt) ? null : srcAmt, JSON.stringify(d.source_record),
-          d.target_record ? String((d.target_record as Record<string, unknown>)?.['invoice_number'] ?? (d.target_record as Record<string, unknown>)?.['name'] ?? '') : null,
-          d.target_record ? String((d.target_record as Record<string, unknown>)?.['customer_name'] ?? '') : null,
+          d.target_record ? extractRef(d.target_record as Record<string, unknown>) : null,
+          d.target_record ? extractEntity(d.target_record as Record<string, unknown>) : null,
           isNaN(tgtAmt) ? null : tgtAmt, d.target_record ? JSON.stringify(d.target_record) : null,
           d.field, String(d.source_value ?? ''), String(d.target_value ?? ''),
           discAmt, discPct, d.difference ?? null,
@@ -411,16 +469,16 @@ async function writeRunItems(
   if (result.unmatched_source_records) {
     for (const rec of result.unmatched_source_records) {
       itemNumber++;
-      const amt = parseFloat(String(rec['total'] ?? rec['amount'] ?? rec['amount_total'] ?? 0));
+      const amt = extractAmount(rec);
       try {
         await db.prepare(`INSERT INTO sub_catalyst_run_items (
           id, run_id, tenant_id, item_number, item_status,
           source_ref, source_entity, source_amount, source_data, exception_severity
         ) VALUES (?, ?, ?, ?, 'unmatched_source', ?, ?, ?, ?, 'medium')`).bind(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
-          String(rec['invoice_number'] ?? rec['po_number'] ?? rec['name'] ?? ''),
-          String(rec['customer_name'] ?? rec['supplier_name'] ?? rec['name'] ?? ''),
-          isNaN(amt) ? null : amt, JSON.stringify(rec)
+          extractRef(rec),
+          extractEntity(rec),
+          amt !== 0 ? amt : 0, JSON.stringify(rec)
         ).run();
       } catch (err) { console.error('writeRunItems unmatched_source:', err); }
     }
@@ -430,16 +488,16 @@ async function writeRunItems(
   if (result.unmatched_target_records) {
     for (const rec of result.unmatched_target_records) {
       itemNumber++;
-      const amt = parseFloat(String(rec['total'] ?? rec['amount'] ?? rec['amount_total'] ?? 0));
+      const amt = extractAmount(rec);
       try {
         await db.prepare(`INSERT INTO sub_catalyst_run_items (
           id, run_id, tenant_id, item_number, item_status,
           target_ref, target_entity, target_amount, target_data, exception_severity
         ) VALUES (?, ?, ?, ?, 'unmatched_target', ?, ?, ?, ?, 'medium')`).bind(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
-          String(rec['invoice_number'] ?? rec['po_number'] ?? rec['name'] ?? ''),
-          String(rec['customer_name'] ?? rec['supplier_name'] ?? rec['name'] ?? ''),
-          isNaN(amt) ? null : amt, JSON.stringify(rec)
+          extractRef(rec),
+          extractEntity(rec),
+          amt !== 0 ? amt : 0, JSON.stringify(rec)
         ).run();
       } catch (err) { console.error('writeRunItems unmatched_target:', err); }
     }
@@ -449,7 +507,7 @@ async function writeRunItems(
   if (result.exception_records) {
     for (const exc of result.exception_records) {
       itemNumber++;
-      const amt = parseFloat(String(exc.record?.['total'] ?? exc.record?.['amount'] ?? 0));
+      const amt = extractAmount(exc.record);
       try {
         await db.prepare(`INSERT INTO sub_catalyst_run_items (
           id, run_id, tenant_id, item_number, item_status,
@@ -457,9 +515,9 @@ async function writeRunItems(
           exception_type, exception_severity, exception_detail
         ) VALUES (?, ?, ?, ?, 'exception', ?, ?, ?, ?, ?, ?, ?)`).bind(
           `item-${crypto.randomUUID()}`, runId, tenantId, itemNumber,
-          String(exc.record?.['invoice_number'] ?? exc.record?.['name'] ?? ''),
-          String(exc.record?.['customer_name'] ?? ''),
-          isNaN(amt) ? null : amt, JSON.stringify(exc.record),
+          extractRef(exc.record),
+          extractEntity(exc.record),
+          amt !== 0 ? amt : 0, JSON.stringify(exc.record),
           exc.type, exc.severity, exc.detail
         ).run();
       } catch (err) { console.error('writeRunItems exception:', err); }

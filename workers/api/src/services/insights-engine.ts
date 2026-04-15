@@ -812,18 +812,33 @@ export async function generatePulseInsights(
   metricsQuery += ' ORDER BY measured_at DESC LIMIT 30';
   const metrics = await db.prepare(metricsQuery).bind(...metricBinds).all<Record<string, unknown>>();
 
+  // Fetch external signals (radar signals, regulatory events, benchmarks) for context
+  const externalSignals = await db.prepare(
+    'SELECT title, summary, category, sentiment FROM external_signals WHERE tenant_id = ? ORDER BY relevance_score DESC, detected_at DESC LIMIT 5'
+  ).bind(tenantId).all<Record<string, unknown>>();
+  const signalSummary = (externalSignals.results || []).map(s => `- [${s.category}] ${s.title}: ${s.summary} (sentiment: ${s.sentiment})`).join('\n');
+
+  const regulatoryEvents = await db.prepare(
+    "SELECT title, jurisdiction, compliance_deadline, readiness_score FROM regulatory_events WHERE tenant_id = ? AND status = 'upcoming' ORDER BY compliance_deadline ASC LIMIT 3"
+  ).bind(tenantId).all<Record<string, unknown>>();
+  const regSummary = (regulatoryEvents.results || []).map(r => `- ${r.title} (${r.jurisdiction}, deadline: ${r.compliance_deadline}, readiness: ${r.readiness_score}%)`).join('\n');
+
   // Build context for LLM
   const insightSummary = (recentInsights.results || []).map(i => `- [${i.severity}] ${i.title}: ${i.description}`).join('\n');
   const metricSummary = (metrics.results || []).map(m => `- ${m.name}: ${m.value} ${m.unit} (${m.status})`).join('\n');
 
-  const systemPrompt = `You are an enterprise operations intelligence engine. Analyze the following operational data and provide:
+  const systemPrompt = `You are an enterprise operations intelligence engine. Analyze the following operational data and external market signals to provide:
 1. A concise executive summary (2-3 sentences) of the current operational state${domain ? ` for the ${domain} department` : ''}
-2. Top 3 actionable recommendations
+2. Top 3 actionable recommendations (factor in external signals if relevant)
 3. Key performance drivers (what's driving the current state)
 
-Be specific with numbers. Focus on actionable intelligence. Never mention AI, models, or algorithms.`;
+Be specific with numbers. Factor external signals and regulatory events into your analysis when they affect operational performance. Never mention AI, models, or algorithms.`;
 
-  const userPrompt = `Recent Insights:\n${insightSummary || 'No recent insights collected yet.'}\n\nCurrent Metrics:\n${metricSummary || 'No metrics available.'}\n\nProvide analysis as JSON: { "summary": string, "recommendations": string[], "drivers": [{ "metric": string, "impact": string, "direction": "improving"|"declining"|"stable" }] }`;
+  const externalContext = (signalSummary || regSummary)
+    ? `\n\nExternal Signals:\n${signalSummary || 'None.'}\n\nRegulatory Events:\n${regSummary || 'None.'}`
+    : '';
+
+  const userPrompt = `Recent Insights:\n${insightSummary || 'No recent insights collected yet.'}\n\nCurrent Metrics:\n${metricSummary || 'No metrics available.'}${externalContext}\n\nProvide analysis as JSON: { "summary": string, "recommendations": string[], "drivers": [{ "metric": string, "impact": string, "direction": "improving"|"declining"|"stable" }] }`;
 
   // Build drivers from data (deterministic fallback)
   const drivers: Array<{ metric: string; impact: string; direction: string; traceability: Record<string, unknown> }> = [];
@@ -963,17 +978,40 @@ export async function generateApexInsights(
     });
   }
 
+  // Fetch external signals for executive context
+  const externalSignals = await db.prepare(
+    'SELECT title, summary, category, sentiment, relevance_score FROM external_signals WHERE tenant_id = ? ORDER BY relevance_score DESC, detected_at DESC LIMIT 5'
+  ).bind(tenantId).all<Record<string, unknown>>();
+  const signalContext = (externalSignals.results || []).length > 0
+    ? `External signals: ${(externalSignals.results || []).map(s => `[${s.category}/${s.sentiment}] ${s.title}`).join('; ')}.`
+    : '';
+
+  const regulatoryEvents = await db.prepare(
+    "SELECT title, compliance_deadline, readiness_score FROM regulatory_events WHERE tenant_id = ? AND status = 'upcoming' ORDER BY compliance_deadline ASC LIMIT 3"
+  ).bind(tenantId).all<Record<string, unknown>>();
+  const regContext = (regulatoryEvents.results || []).length > 0
+    ? ` Regulatory deadlines: ${(regulatoryEvents.results || []).map(r => `${r.title} (deadline: ${r.compliance_deadline}, readiness: ${r.readiness_score}%)`).join('; ')}.`
+    : '';
+
+  const benchmarks = await db.prepare(
+    'SELECT metric_name, benchmark_value, benchmark_unit, industry FROM market_benchmarks WHERE tenant_id = ? ORDER BY measured_at DESC LIMIT 3'
+  ).bind(tenantId).all<Record<string, unknown>>();
+  const benchContext = (benchmarks.results || []).length > 0
+    ? ` Industry benchmarks: ${(benchmarks.results || []).map(b => `${b.metric_name}: ${b.benchmark_value}${b.benchmark_unit || ''} (${b.industry})`).join('; ')}.`
+    : '';
+
   // LLM-powered executive summary
   const overallScore = health?.overall_score || 0;
   const systemPrompt = `You are an executive intelligence briefing engine for a large enterprise. Generate a concise executive summary that:
 1. Opens with the overall health score and trajectory
 2. Highlights the top 2-3 performance drivers
 3. Flags critical issues requiring executive attention
-4. Suggests strategic implications
+4. Incorporates external market signals, regulatory events, and industry benchmarks into strategic implications
+5. Suggests strategic implications
 
 Be specific, data-driven, and decisive. Never mention AI, models, or algorithms. This is YOUR analysis.`;
 
-  const contextData = `Health: ${overallScore}/100. Dimensions: ${JSON.stringify(dims)}. Active risks: ${(activeRisks.results || []).map(r => `[${r.severity}] ${r.title}`).join('; ') || 'None'}. Critical insights: ${(criticalInsights.results || []).slice(0, 5).map(i => i.title).join('; ') || 'None'}.`;
+  const contextData = `Health: ${overallScore}/100. Dimensions: ${JSON.stringify(dims)}. Active risks: ${(activeRisks.results || []).map(r => `[${r.severity}] ${r.title}`).join('; ') || 'None'}. Critical insights: ${(criticalInsights.results || []).slice(0, 5).map(i => i.title).join('; ') || 'None'}. ${signalContext}${regContext}${benchContext}`;
 
   let executiveSummary = '';
   let crossDepartmentCorrelations: string[] = [];
