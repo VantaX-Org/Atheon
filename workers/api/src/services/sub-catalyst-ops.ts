@@ -229,15 +229,6 @@ export async function recordRun(
       totalExceptionValue += extractAmount(rec.record);
     }
   }
-  // Build a set of unmatched source refs to avoid double-counting between
-  // discrepancies (with target_record=null) and unmatched_source_records
-  const unmatchedRefs = new Set<string>();
-  if (result.unmatched_source_records) {
-    for (const rec of result.unmatched_source_records) {
-      const ref = extractRef(rec);
-      if (ref) unmatchedRefs.add(ref);
-    }
-  }
   if (result.discrepancies) {
     for (const d of result.discrepancies) {
       let discItemValue = 0;
@@ -250,12 +241,11 @@ export async function recordRun(
         if (!isNaN(sv) && !isNaN(tv)) discItemValue = Math.abs(sv - tv);
       }
       // Fallback: only use source_record amount for unmatched sources (no target)
-      // that aren't already counted in totalUnmatchedValue
-      if (discItemValue === 0 && d.source_record && !d.target_record) {
-        const srcRef = extractRef(d.source_record);
-        if (!srcRef || !unmatchedRefs.has(srcRef)) {
-          discItemValue = extractAmount(d.source_record);
-        }
+      // Skip entirely when unmatched_source_records exists to prevent double-counting
+      // (performReconciliation pushes unmatched sources into both arrays)
+      if (discItemValue === 0 && d.source_record && !d.target_record
+          && !(result.unmatched_source_records?.length)) {
+        discItemValue = extractAmount(d.source_record);
       }
       totalDiscrepancyValue += discItemValue;
     }
