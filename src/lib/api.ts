@@ -593,17 +593,36 @@ export const api = {
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
         const res = await fetch(`${API_URL}/api/assessments/${id}/report/business`, { headers });
         if (res.ok) {
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `business-case-${id}.pdf`; a.click();
-          URL.revokeObjectURL(url);
-          return;
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/pdf')) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `business-case-${id}.pdf`; a.click();
+            URL.revokeObjectURL(url);
+            return;
+          }
         }
       } catch { /* backend unavailable, fall through */ }
-      // Client-side PDF generation
+      // Client-side PDF generation — prefer Value Assessment PDF if findings exist
       if (assessment) {
-        const { generateBusinessPDF } = await import('./report-generators');
-        await generateBusinessPDF(assessment);
+        try {
+          const [fRes, dqRes, ptRes, vsRes] = await Promise.all([
+            api.assessments.findings(id),
+            api.assessments.dataQuality(id),
+            api.assessments.processTiming(id),
+            api.assessments.valueSummary(id).catch(() => null),
+          ]);
+          if (fRes.findings && fRes.findings.length > 0) {
+            const { generateValueAssessmentPDF } = await import('./report-generators');
+            await generateValueAssessmentPDF(assessment, fRes.findings, dqRes.dataQuality ?? [], ptRes.processTiming ?? [], vsRes);
+            return;
+          }
+        } catch { /* no value assessment data, try legacy */ }
+        const results = assessment.results as AssessmentResults | null;
+        if (results?.catalyst_scores?.length) {
+          const { generateBusinessPDF } = await import('./report-generators');
+          await generateBusinessPDF(assessment);
+        }
       }
     },
     downloadTechnical: async (id: string, assessment?: Assessment) => {
