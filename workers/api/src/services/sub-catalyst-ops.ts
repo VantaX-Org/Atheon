@@ -146,7 +146,7 @@ const AMOUNT_FIELDS = [
 const REF_FIELDS = [
   'BELNR', 'EBELN', 'VBELN', 'XBLNR', 'AUGBL',                         // SAP
   'invoice_number', 'po_number', 'number', 'name', 'ref', 'reference',  // generic
-  'InvoiceNumber', 'PurchaseOrderNumber', 'Id',                         // Xero/QB
+  'InvoiceNumber', 'PurchaseOrderNumber', 'Id', 'id',                 // Xero/QB/generic
 ];
 
 const ENTITY_FIELDS = [
@@ -159,7 +159,7 @@ function extractAmount(rec: Record<string, unknown> | null | undefined): number 
   if (!rec) return 0;
   for (const f of AMOUNT_FIELDS) {
     const v = rec[f];
-    if (v !== undefined && v !== null && v !== '' && v !== 0) {
+    if (v !== undefined && v !== null && v !== '') {
       const num = parseFloat(String(v));
       if (!isNaN(num)) return Math.abs(num);
     }
