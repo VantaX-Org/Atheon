@@ -72,13 +72,13 @@ export async function handleScheduled(
       try { await checkGoalAchievements(db, tenantId); } catch (e) { console.error(`Goal achievement check failed for ${tenantId}:`, e); }
 
       // V2: Effectiveness + ROI recalculation
+      // OPTIMIZED: Fetch id + sub_catalysts in one query (was 2 queries per cluster — N+1)
       try {
-        const clusters = await db.prepare('SELECT id, name FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).all();
+        const clusters = await db.prepare('SELECT id, name, sub_catalysts FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).all();
         for (const cl of clusters.results) {
           const clRow = cl as Record<string, unknown>;
-          const subs = await db.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ?').bind(clRow.id).first();
-          if (subs?.sub_catalysts) {
-            const subList = JSON.parse(subs.sub_catalysts as string || '[]') as Array<{ name: string }>;
+          if (clRow.sub_catalysts) {
+            const subList = JSON.parse(clRow.sub_catalysts as string || '[]') as Array<{ name: string }>;
             for (const sub of subList) {
               await calculateEffectiveness(db, tenantId, clRow.id as string, sub.name).catch(() => {});
             }
@@ -292,6 +292,7 @@ async function generateBriefing(db: D1Database, ai: Ai, tenantId: string, ollama
 /**
  * 3.8: Memory Auto-Population
  * Creates graph entities from ERP canonical data (customers, suppliers, products)
+ * OPTIMIZED: Batch existence check instead of N+1 per-entity SELECT
  */
 async function autoPopulateMemory(db: D1Database, tenantId: string): Promise<void> {
   // Only run if there are ERP records but few graph entities
@@ -315,43 +316,51 @@ async function autoPopulateMemory(db: D1Database, tenantId: string): Promise<voi
   const totalErp = erpCustomers.results.length + erpSuppliers.results.length + erpProducts.results.length;
   if (totalErp === 0 || (entityCount?.count || 0) >= totalErp * 2) return;
 
-  // Upsert customers as graph entities
+  // OPTIMIZED: Fetch ALL existing entity names in one query instead of per-entity lookups
+  const existingEntities = await db.prepare(
+    "SELECT type, name FROM graph_entities WHERE tenant_id = ? AND source = 'erp_sync'"
+  ).bind(tenantId).all();
+
+  const existingSet = new Set(
+    existingEntities.results.map((e: Record<string, unknown>) => `${e.type}::${e.name}`)
+  );
+
+  // Collect all inserts into a batch (D1 batch API)
+  const insertStmts: D1PreparedStatement[] = [];
+
   for (const cust of erpCustomers.results) {
     const c = cust as Record<string, unknown>;
-    const existing = await db.prepare(
-      "SELECT id FROM graph_entities WHERE tenant_id = ? AND type = 'customer' AND name = ? AND source = 'erp_sync'"
-    ).bind(tenantId, c.name).first();
-    if (!existing) {
-      await db.prepare(
-        'INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, 'customer', c.name, JSON.stringify({ group: c.customer_group, city: c.city, status: c.status, erpId: c.id }), 0.95, 'erp_sync').run();
+    if (!existingSet.has(`customer::${c.name}`)) {
+      insertStmts.push(
+        db.prepare('INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), tenantId, 'customer', c.name, JSON.stringify({ group: c.customer_group, city: c.city, status: c.status, erpId: c.id }), 0.95, 'erp_sync')
+      );
     }
   }
 
-  // Upsert suppliers
   for (const sup of erpSuppliers.results) {
     const s = sup as Record<string, unknown>;
-    const existing = await db.prepare(
-      "SELECT id FROM graph_entities WHERE tenant_id = ? AND type = 'supplier' AND name = ? AND source = 'erp_sync'"
-    ).bind(tenantId, s.name).first();
-    if (!existing) {
-      await db.prepare(
-        'INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, 'supplier', s.name, JSON.stringify({ group: s.supplier_group, city: s.city, status: s.status, erpId: s.id }), 0.95, 'erp_sync').run();
+    if (!existingSet.has(`supplier::${s.name}`)) {
+      insertStmts.push(
+        db.prepare('INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), tenantId, 'supplier', s.name, JSON.stringify({ group: s.supplier_group, city: s.city, status: s.status, erpId: s.id }), 0.95, 'erp_sync')
+      );
     }
   }
 
-  // Upsert products
   for (const prod of erpProducts.results) {
     const p = prod as Record<string, unknown>;
-    const existing = await db.prepare(
-      "SELECT id FROM graph_entities WHERE tenant_id = ? AND type = 'product' AND name = ? AND source = 'erp_sync'"
-    ).bind(tenantId, p.name).first();
-    if (!existing) {
-      await db.prepare(
-        'INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), tenantId, 'product', p.name, JSON.stringify({ category: p.category, sku: p.sku, erpId: p.id }), 0.95, 'erp_sync').run();
+    if (!existingSet.has(`product::${p.name}`)) {
+      insertStmts.push(
+        db.prepare('INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), tenantId, 'product', p.name, JSON.stringify({ category: p.category, sku: p.sku, erpId: p.id }), 0.95, 'erp_sync')
+      );
     }
+  }
+
+  // Execute all inserts in a single batch (1 round-trip instead of up to 150)
+  if (insertStmts.length > 0) {
+    await db.batch(insertStmts);
   }
 }
 
@@ -929,51 +938,60 @@ async function checkGoalAchievements(db: D1Database, tenantId: string): Promise<
     "SELECT id, target_type, target_name, target_value, current_value FROM health_targets WHERE tenant_id = ? AND status = 'active'"
   ).bind(tenantId).all();
 
+  if (targets.results.length === 0) return;
+
+  // OPTIMIZED: Fetch health score ONCE instead of per-target (was N queries for N targets)
+  const health = await db.prepare(
+    'SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
+  ).bind(tenantId).first<{ overall_score: number; dimensions: string }>();
+
+  const parsedDims = health?.dimensions ? JSON.parse(health.dimensions) : {};
+
+  // Collect batch statements for updates
+  const updateStmts: D1PreparedStatement[] = [];
+
   for (const t of targets.results) {
     const row = t as Record<string, unknown>;
     let currentValue = (row.current_value as number) || 0;
 
-    // Refresh current value
+    // Refresh current value from the single pre-fetched health score
     if (row.target_type === 'overall') {
-      const health = await db.prepare(
-        'SELECT overall_score FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-      ).bind(tenantId).first();
       currentValue = (health?.overall_score as number) || 0;
     } else if (row.target_type === 'dimension') {
-      const health = await db.prepare(
-        'SELECT dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-      ).bind(tenantId).first();
-      if (health?.dimensions) {
-        const dims = JSON.parse(health.dimensions as string);
-        const dimData = dims[row.target_name as string];
-        if (dimData) currentValue = dimData.score || 0;
-      }
+      const dimData = parsedDims[row.target_name as string];
+      if (dimData) currentValue = dimData.score || 0;
     }
 
     // Update current value
-    await db.prepare('UPDATE health_targets SET current_value = ? WHERE id = ?').bind(currentValue, row.id).run();
+    updateStmts.push(
+      db.prepare('UPDATE health_targets SET current_value = ? WHERE id = ?').bind(currentValue, row.id)
+    );
 
     // Check if achieved
     if (currentValue >= (row.target_value as number)) {
-      await db.prepare(
-        "UPDATE health_targets SET status = 'achieved', achieved_at = datetime('now') WHERE id = ?"
-      ).bind(row.id).run();
-
-      // Create notification
-      try {
-        await db.prepare(
+      updateStmts.push(
+        db.prepare("UPDATE health_targets SET status = 'achieved', achieved_at = datetime('now') WHERE id = ?").bind(row.id)
+      );
+      updateStmts.push(
+        db.prepare(
           "INSERT INTO notifications (id, tenant_id, type, title, message, priority, created_at) VALUES (?, ?, 'achievement', ?, ?, 'high', datetime('now'))"
         ).bind(
           crypto.randomUUID(), tenantId,
           `Target Achieved: ${row.target_name}`,
           `Your ${row.target_type} target "${row.target_name}" has reached ${currentValue} (target: ${row.target_value}). Congratulations!`
-        ).run();
-      } catch { /* non-fatal */ }
+        )
+      );
     }
+  }
+
+  // Execute all updates in a single batch
+  if (updateStmts.length > 0) {
+    await db.batch(updateStmts);
   }
 }
 
 // §11.4 — Peer benchmarks calculation (runs daily via cron — computes anonymised industry benchmarks)
+// OPTIMIZED: Fetch all health scores in ONE query instead of per-tenant-per-dimension (was N×9 queries)
 async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
   // Get all industries with active tenants
   const industries = await db.prepare(
@@ -983,36 +1001,43 @@ async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
   const period = new Date().toISOString().slice(0, 7); // YYYY-MM
   const dimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology', 'risk', 'catalyst', 'process', 'overall'];
 
+  // OPTIMIZED: Single query to get latest health score per tenant (with industry), instead of N×9 queries
+  const allHealthScores = await db.prepare(
+    `SELECT hs.tenant_id, hs.overall_score, hs.dimensions, t.industry
+     FROM health_scores hs
+     JOIN tenants t ON hs.tenant_id = t.id AND t.status = 'active' AND t.industry IS NOT NULL
+     WHERE hs.calculated_at = (
+       SELECT MAX(hs2.calculated_at) FROM health_scores hs2 WHERE hs2.tenant_id = hs.tenant_id
+     )`
+  ).all();
+
+  // Group health scores by industry
+  const healthByIndustry: Record<string, Array<{ overall_score: number; dimensions: Record<string, { score: number }> }>> = {};
+  for (const row of allHealthScores.results) {
+    const r = row as Record<string, unknown>;
+    const industry = r.industry as string;
+    if (!healthByIndustry[industry]) healthByIndustry[industry] = [];
+    healthByIndustry[industry].push({
+      overall_score: (r.overall_score as number) || 0,
+      dimensions: r.dimensions ? JSON.parse(r.dimensions as string) : {},
+    });
+  }
+
+  const insertStmts: D1PreparedStatement[] = [];
+
   for (const indRow of industries.results) {
     const industry = (indRow as Record<string, unknown>).industry as string;
-
-    // Get all active tenants in this industry
-    const tenants = await db.prepare(
-      "SELECT id FROM tenants WHERE industry = ? AND status = 'active'"
-    ).bind(industry).all();
-
-    const tenantCount = tenants.results.length;
-    if (tenantCount < 3) continue; // Anonymity threshold
+    const healthData = healthByIndustry[industry] || [];
+    if (healthData.length < 3) continue; // Anonymity threshold
 
     for (const dim of dimensions) {
       const scores: number[] = [];
 
-      for (const tenant of tenants.results) {
-        const tId = (tenant as Record<string, unknown>).id as string;
-
+      for (const h of healthData) {
         if (dim === 'overall') {
-          const health = await db.prepare(
-            'SELECT overall_score FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-          ).bind(tId).first();
-          if (health?.overall_score) scores.push(health.overall_score as number);
+          if (h.overall_score) scores.push(h.overall_score);
         } else {
-          const health = await db.prepare(
-            'SELECT dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1'
-          ).bind(tId).first();
-          if (health?.dimensions) {
-            const dims = JSON.parse(health.dimensions as string);
-            if (dims[dim]?.score) scores.push(dims[dim].score);
-          }
+          if (h.dimensions[dim]?.score) scores.push(h.dimensions[dim].score);
         }
       }
 
@@ -1024,14 +1049,18 @@ async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
       const p50 = scores[Math.floor(scores.length * 0.5)] || 0;
       const p75 = scores[Math.floor(scores.length * 0.75)] || 0;
 
-      const id = crypto.randomUUID();
-      try {
-        await db.prepare(
+      insertStmts.push(
+        db.prepare(
           `INSERT OR REPLACE INTO anonymised_benchmarks (id, industry, dimension, period, tenant_count, avg_score, p25_score, p50_score, p75_score, min_score, max_score, calculated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-        ).bind(id, industry, dim, period, scores.length, avg, p25, p50, p75, scores[0], scores[scores.length - 1]).run();
-      } catch { /* UNIQUE constraint — already exists for this period */ }
+        ).bind(crypto.randomUUID(), industry, dim, period, scores.length, avg, p25, p50, p75, scores[0], scores[scores.length - 1])
+      );
     }
+  }
+
+  // Batch all benchmark inserts
+  if (insertStmts.length > 0) {
+    await db.batch(insertStmts);
   }
 }
 

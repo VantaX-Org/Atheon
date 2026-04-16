@@ -116,28 +116,22 @@ pulse.get('/insights', async (c) => {
 });
 
 // GET /api/pulse/domains — List available domains for department filtering
+// OPTIMIZED: Single UNION query instead of 2 separate queries
 pulse.get('/domains', async (c) => {
   const tenantId = getTenantId(c);
   const result = await c.env.DB.prepare(
-    'SELECT DISTINCT domain, COUNT(*) as metric_count FROM process_metrics WHERE tenant_id = ? AND domain IS NOT NULL GROUP BY domain ORDER BY metric_count DESC'
-  ).bind(tenantId).all<Record<string, unknown>>();
+    `SELECT DISTINCT domain FROM (
+       SELECT domain FROM process_metrics WHERE tenant_id = ? AND domain IS NOT NULL
+       UNION
+       SELECT domain FROM catalyst_clusters WHERE tenant_id = ? AND domain IS NOT NULL
+     ) ORDER BY domain`
+  ).bind(tenantId, tenantId).all<Record<string, unknown>>();
 
-  // Also get domains from catalyst clusters
-  const clusterDomains = await c.env.DB.prepare(
-    'SELECT DISTINCT domain FROM catalyst_clusters WHERE tenant_id = ?'
-  ).bind(tenantId).all<Record<string, unknown>>();
-
-  const domains = new Set<string>();
-  for (const r of (result.results || [])) {
-    if (r.domain) domains.add(r.domain as string);
-  }
-  for (const c2 of (clusterDomains.results || [])) {
-    if (c2.domain) domains.add(c2.domain as string);
-  }
+  const domains = (result.results || []).map(r => r.domain as string).filter(Boolean);
 
   return c.json({
-    domains: Array.from(domains),
-    total: domains.size,
+    domains,
+    total: domains.length,
   });
 });
 
