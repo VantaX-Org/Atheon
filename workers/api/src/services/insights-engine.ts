@@ -156,10 +156,10 @@ export async function collectRunInsights(
     insights.push(...trendInsights);
   }
 
-  // 4. Store all insights
-  for (const insight of insights) {
-    try {
-      await db.prepare(
+  // 4. Store all insights — OPTIMIZED: batch INSERT instead of per-insight INSERT
+  if (insights.length > 0) {
+    const insightStmts: D1PreparedStatement[] = insights.map(insight =>
+      db.prepare(
         `INSERT INTO catalyst_insights (id, tenant_id, source_type, source_run_id, cluster_id, sub_catalyst_name, domain, insight_level, category, title, description, severity, data, traceability, generated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
@@ -168,9 +168,12 @@ export async function collectRunInsights(
         insight.insight_level, insight.category, insight.title, insight.description,
         insight.severity, JSON.stringify(insight.data), JSON.stringify(insight.traceability),
         insight.generated_at,
-      ).run();
+      )
+    );
+    try {
+      await db.batch(insightStmts);
     } catch (err) {
-      console.error('collectRunInsights: failed to store insight:', err);
+      console.error('collectRunInsights: failed to batch-store insights:', err);
     }
   }
 
@@ -466,34 +469,37 @@ async function autoGenerateRiskAlerts(
   const criticalInsights = insights.filter(i => i.severity === 'critical');
   if (criticalInsights.length === 0) return;
 
-  for (const insight of criticalInsights) {
+  // OPTIMIZED: batch INSERT all risk alerts instead of per-insight INSERT
+  const alertStmts: D1PreparedStatement[] = criticalInsights.map(insight => {
     const alertId = `ra-auto-${context.tenantId}-${context.runId}-${insight.category}-${insight.id}`;
-    try {
-      await db.prepare(
-        `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at, source_run_id, cluster_id, sub_catalyst_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, 'active', ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET description=excluded.description, detected_at=excluded.detected_at, status='active'`
-      ).bind(
-        alertId, context.tenantId,
-        insight.title,
-        insight.description,
-        insight.severity === 'critical' ? 'high' : 'medium',
-        insight.domain || 'operational',
-        0.8,
-        (insight.data.totalDiscrepancyValue as number) || (insight.data.totalUnmatchedValue as number) || 0,
-        JSON.stringify([
-          `Review ${context.subCatalystName} run details`,
-          'Investigate root cause of flagged items',
-          'Escalate to department head if unresolved within 24 hours',
-        ]),
-        now,
-        context.runId,
-        context.clusterId,
-        context.subCatalystName,
-      ).run();
-    } catch (err) {
-      console.error('autoGenerateRiskAlerts: failed to create alert:', err);
-    }
+    return db.prepare(
+      `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at, source_run_id, cluster_id, sub_catalyst_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, 'active', ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET description=excluded.description, detected_at=excluded.detected_at, status='active'`
+    ).bind(
+      alertId, context.tenantId,
+      insight.title,
+      insight.description,
+      insight.severity === 'critical' ? 'high' : 'medium',
+      insight.domain || 'operational',
+      0.8,
+      (insight.data.totalDiscrepancyValue as number) || (insight.data.totalUnmatchedValue as number) || 0,
+      JSON.stringify([
+        `Review ${context.subCatalystName} run details`,
+        'Investigate root cause of flagged items',
+        'Escalate to department head if unresolved within 24 hours',
+      ]),
+      now,
+      context.runId,
+      context.clusterId,
+      context.subCatalystName,
+    );
+  });
+
+  try {
+    await db.batch(alertStmts);
+  } catch (err) {
+    console.error('autoGenerateRiskAlerts: failed to batch-create alerts:', err);
   }
 }
 
@@ -562,6 +568,8 @@ export async function bridgeKpisToProcessMetrics(
 
     const now = new Date().toISOString();
 
+    // OPTIMIZED: batch INSERT all process metrics instead of per-KPI INSERT
+    const metricStmts: D1PreparedStatement[] = [];
     for (const def of defs.results) {
       const value = def.value as number | null;
       if (value === null) continue;
@@ -575,17 +583,23 @@ export async function bridgeKpisToProcessMetrics(
       // Create a deterministic metric ID so we upsert correctly
       const metricId = `pm-${tenantId}-${clusterId}-${subCatalystName.replace(/\s+/g, '-').toLowerCase()}-${kpiName.replace(/\s+/g, '-').toLowerCase()}`;
 
-      await db.prepare(
-        `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, source_system, measured_at, trend, sub_catalyst_name, source_run_id, cluster_id, domain, category)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET value=excluded.value, status=excluded.status, measured_at=excluded.measured_at, trend=excluded.trend, source_run_id=excluded.source_run_id`
-      ).bind(
-        metricId, tenantId, `${subCatalystName}: ${kpiName}`, value, unit, status,
-        def.threshold_green as number | null, def.threshold_amber as number | null, def.threshold_red as number | null,
-        subCatalystName, now, trendStr,
-        subCatalystName, runId, clusterId, domain, category,
-      ).run();
+      metricStmts.push(
+        db.prepare(
+          `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, source_system, measured_at, trend, sub_catalyst_name, source_run_id, cluster_id, domain, category)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET value=excluded.value, status=excluded.status, measured_at=excluded.measured_at, trend=excluded.trend, source_run_id=excluded.source_run_id`
+        ).bind(
+          metricId, tenantId, `${subCatalystName}: ${kpiName}`, value, unit, status,
+          def.threshold_green as number | null, def.threshold_amber as number | null, def.threshold_red as number | null,
+          subCatalystName, now, trendStr,
+          subCatalystName, runId, clusterId, domain, category,
+        )
+      );
       bridged++;
+    }
+
+    if (metricStmts.length > 0) {
+      await db.batch(metricStmts);
     }
   } catch (err) {
     console.error('bridgeKpisToProcessMetrics: failed:', err);

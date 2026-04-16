@@ -252,17 +252,17 @@ app.get('/healthz', async (c) => {
   }
 
   // Spec 7 PERF-2: Aggregate performance metrics from KV
+  // OPTIMIZED: Use KV list() to find keys in one call instead of 61 individual GETs
   let avgResponseMs = 0;
   let slowRequestsLastHour = 0;
   try {
-    const now = Date.now();
-    const currentMinute = Math.floor(now / 60000);
+    const perfKeys = await c.env.CACHE.list({ prefix: 'perf:/api:' });
     let totalRequests = 0;
     let totalMs = 0;
     let totalSlow = 0;
-    // Sample last 60 minutes from a known bucket
-    for (let m = currentMinute - 60; m <= currentMinute; m++) {
-      const raw = await c.env.CACHE.get(`perf:/api:${m}`);
+    // Fetch values for found keys (typically far fewer than 61)
+    for (const key of perfKeys.keys) {
+      const raw = await c.env.CACHE.get(key.name);
       if (raw) {
         const parsed = JSON.parse(raw) as { count: number; totalMs: number; slowCount: number };
         totalRequests += parsed.count;

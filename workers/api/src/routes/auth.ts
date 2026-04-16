@@ -170,8 +170,9 @@ auth.post('/login', async (c) => {
       await recordFailedLogin(c.env.CACHE, body.email);
       return c.json({ error: 'Invalid credentials' }, 401);
     }
+    // OPTIMIZED: Include t.industry in JOIN to avoid separate tenant query later
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
     ).bind(body.email, loginTenantRow.id, 'active').first();
   } else {
     const tenantRows = await c.env.DB.prepare(
@@ -181,8 +182,9 @@ auth.post('/login', async (c) => {
       const tenants = tenantRows.results.map((r: Record<string, unknown>) => ({ slug: r.slug as string, name: r.name as string }));
       return c.json({ error: 'Tenant selection required', tenantSelectionRequired: true, tenants, message: 'This email exists in multiple workspaces. Please select one.' }, 400);
     }
+    // OPTIMIZED: Include t.industry in JOIN to avoid separate tenant query later
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
     ).bind(body.email, 'active').first();
   }
 
@@ -267,9 +269,7 @@ auth.post('/login', async (c) => {
     name: user.name, role: user.role, permissions: JSON.parse(user.permissions as string || '[]'),
   }), { expirationTtl: REFRESH_TTL });
 
-  // Fetch tenant industry for the user's company
-  const loginTenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(user.tenant_id).first();
-
+  // OPTIMIZED: tenant_industry already fetched in the JOIN above (was a separate query)
   return c.json({
     token,
     refreshToken,
@@ -282,7 +282,7 @@ auth.post('/login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
-      tenantIndustry: loginTenant?.industry || 'general',
+      tenantIndustry: (user.tenant_industry as string) || 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
