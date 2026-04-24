@@ -1241,17 +1241,21 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Compliance & Regulatory Catalyst',
+    // Renamed from "Compliance & Regulatory Catalyst" in PR #19 to free
+    // up the unqualified name for the new cross-industry compliance
+    // cluster (SOX-style controls). This cluster remains the
+    // financial-services-focused AML/KYC/FICA bundle.
+    name: 'Financial Services Compliance & Regulatory Catalyst',
     domain: 'finance',
-    description: 'AML screening, KYC verification, and regulatory reporting automation',
+    description: 'AML screening, KYC verification, and regulatory reporting automation for financial institutions',
     autonomy_tier: 'read-only',
     tags: [
       'function:compliance',
-      'vertical:financial-services', 'vertical:general',
+      'vertical:financial-services',
       'criticality:compliance-critical',
-      'maturity:starter',
+      'maturity:core',
       // Legacy aliases
-      'financial_services', 'finance', 'general',
+      'financial_services', 'finance',
     ],
     sub_catalysts: [
       { name: 'AML Screening', enabled: true, description: 'Automated anti-money laundering transaction screening' },
@@ -1596,6 +1600,259 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Gift Card & Voucher', enabled: true, description: 'Gift card program management, liability tracking, and redemption analytics' },
     ],
   },
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Cross-industry expansion (PR #19) — compliance, finance depth, HR,
+  // operations, ESG, and customer data clusters. All tagged
+  // `vertical:general`; every sub-catalyst declares `implementation:
+  // 'generic'` until domain handlers are added in later PRs.
+  // ───────────────────────────────────────────────────────────────────────
+  {
+    name: 'Tax & Statutory Filing Catalyst',
+    domain: 'compliance-tax',
+    description: 'Automates tax return prep, GST/VAT reconciliation, withholding verification, and statutory filings across jurisdictions',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:compliance',
+      'function:finance',
+      'vertical:general',
+      'criticality:compliance-critical',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'finance', 'compliance', 'tax',
+    ],
+    sub_catalysts: [
+      { name: 'VAT/GST Reconciliation', enabled: true, description: 'Automated VAT/GST return preparation with input/output ledger reconciliation', implementation: 'generic' },
+      { name: 'Withholding Tax Verification', enabled: true, description: 'Verify withholding tax rates, certificates, and deduction accuracy across suppliers and payroll', implementation: 'generic' },
+      { name: 'Income Tax Provisioning', enabled: true, description: 'Current and deferred income tax provision calculation with effective tax rate tracking', implementation: 'generic' },
+      { name: 'Statutory Filing Calendar', enabled: true, description: 'Jurisdictional filing deadline tracking, preparer assignment, and submission status monitoring', implementation: 'generic' },
+      { name: 'Tax Authority Correspondence', enabled: false, description: 'Triage tax authority letters, notices, and queries with response SLA tracking', implementation: 'generic' },
+      { name: 'Transfer Pricing Review', enabled: false, description: 'Intercompany transaction benchmarking and transfer pricing documentation support', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Audit Preparation Catalyst',
+    domain: 'compliance-audit',
+    description: 'Prepares internal and external audit work papers, reconciliations, and control evidence with traceable lineage',
+    autonomy_tier: 'read-only',
+    tags: [
+      'function:compliance',
+      'function:finance',
+      'vertical:general',
+      'criticality:compliance-critical',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'compliance', 'audit',
+    ],
+    sub_catalysts: [
+      { name: 'Audit Trail Aggregation', enabled: true, description: 'Consolidated audit trail across ERP, HRIS, and ancillary systems with immutable lineage', implementation: 'generic' },
+      { name: 'Control Evidence Collection', enabled: true, description: 'Automated evidence capture for key controls, including screenshots, logs, and approvals', implementation: 'generic' },
+      { name: 'Account Reconciliation Workpapers', enabled: true, description: 'Period-end account reconciliation workpapers with supporting schedules and reviewer sign-off', implementation: 'generic' },
+      { name: 'Walkthrough Documentation', enabled: true, description: 'Process walkthrough narratives and flowcharts captured and versioned for each audit cycle', implementation: 'generic' },
+      { name: 'Finding Tracker', enabled: true, description: 'Audit finding log with remediation owners, due dates, and closure evidence', implementation: 'generic' },
+      { name: 'Independence Declaration Management', enabled: false, description: 'Auditor independence and conflict-of-interest declarations tracked per engagement', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Treasury & Cash Management Catalyst',
+    domain: 'finance-treasury',
+    description: 'Cash position optimization, debt and liquidity planning, FX hedging, and bank account governance',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:finance',
+      'vertical:general',
+      'criticality:cost-impacting',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'finance', 'treasury',
+    ],
+    sub_catalysts: [
+      { name: 'Daily Cash Position', enabled: true, description: 'Consolidated multi-bank daily cash position with same-day sweep recommendations', implementation: 'generic' },
+      { name: 'Liquidity Forecasting', enabled: true, description: 'Rolling 13-week liquidity forecast with scenario modelling for stress events', implementation: 'generic' },
+      { name: 'Debt Portfolio Management', enabled: true, description: 'Loan, bond, and facility tracking with covenant, interest, and maturity monitoring', implementation: 'generic' },
+      { name: 'FX Exposure Monitoring', enabled: true, description: 'Currency exposure tracking with hedging coverage and value-at-risk visibility', implementation: 'generic' },
+      { name: 'Bank Account Governance', enabled: true, description: 'Bank account inventory, signatory management, and dormant account sweeps', implementation: 'generic' },
+      { name: 'Intercompany Netting', enabled: false, description: 'Multilateral intercompany netting calculations and settlement scheduling', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'GL Close & Statutory Reporting Catalyst',
+    domain: 'finance-close',
+    description: 'Period-end close automation: journal review, account reconciliation, consolidation, and statutory reports',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:finance',
+      'vertical:general',
+      'criticality:compliance-critical',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'finance',
+    ],
+    sub_catalysts: [
+      { name: 'Close Checklist Orchestration', enabled: true, description: 'Period-end close task orchestration with owner assignment, dependencies, and status tracking', implementation: 'generic' },
+      { name: 'Journal Entry Review', enabled: true, description: 'Risk-scored journal entry review queues with approval workflows', implementation: 'generic' },
+      { name: 'Account Reconciliation Automation', enabled: true, description: 'Automated balance-sheet account reconciliation with exception aging', implementation: 'generic' },
+      { name: 'Consolidation & Eliminations', enabled: true, description: 'Multi-entity consolidation with intercompany eliminations and FX translation', implementation: 'generic' },
+      { name: 'Management Reporting Pack', enabled: true, description: 'Monthly management reporting pack generation with commentary templates', implementation: 'generic' },
+      { name: 'Prior-Period Adjustment Tracking', enabled: false, description: 'Prior-period adjustment log with materiality assessment and disclosure support', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Recruitment & Talent Acquisition Catalyst',
+    domain: 'hr-recruitment',
+    description: 'Applicant sourcing, screening, interview orchestration, offer management, and onboarding handoff',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:hr',
+      'vertical:general',
+      'criticality:revenue-impacting',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'hr', 'talent',
+    ],
+    sub_catalysts: [
+      { name: 'Requisition Management', enabled: true, description: 'Open role intake, approval routing, and hiring plan alignment', implementation: 'generic' },
+      { name: 'Candidate Sourcing', enabled: true, description: 'Multi-channel candidate sourcing with pipeline health and source-of-hire analytics', implementation: 'generic' },
+      { name: 'Screening & Matching', enabled: true, description: 'Automated CV screening and role-matching with bias-aware ranking', implementation: 'generic' },
+      { name: 'Interview Scheduling', enabled: true, description: 'Panel coordination, interviewer load balancing, and candidate self-booking', implementation: 'generic' },
+      { name: 'Offer & Contract Management', enabled: true, description: 'Offer generation, approval routing, negotiation tracking, and e-signature capture', implementation: 'generic' },
+      { name: 'Onboarding Handoff', enabled: true, description: 'Handoff of accepted offers to onboarding with day-one readiness checklist', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Employee Engagement & Culture Catalyst',
+    domain: 'hr-engagement',
+    description: 'Pulse surveys, engagement analytics, manager feedback loops, and early warning for disengagement risk',
+    autonomy_tier: 'read-only',
+    tags: [
+      'function:hr',
+      'vertical:general',
+      'criticality:operational',
+      'maturity:core',
+      // Legacy aliases
+      'general', 'hr', 'engagement',
+    ],
+    sub_catalysts: [
+      { name: 'Pulse Survey Program', enabled: true, description: 'Recurring pulse survey orchestration with response-rate tracking and reminders', implementation: 'generic' },
+      { name: 'Engagement Index Tracking', enabled: true, description: 'Composite engagement index with trend analysis by team, tenure, and location', implementation: 'generic' },
+      { name: 'Manager Feedback Loops', enabled: true, description: 'Structured 1:1 and upward-feedback cadence tracking with theme analysis', implementation: 'generic' },
+      { name: 'Disengagement Risk Scoring', enabled: true, description: 'Early warning scoring for disengagement risk using survey, attendance, and movement signals', implementation: 'generic' },
+      { name: 'Recognition Programs Analytics', enabled: true, description: 'Peer and manager recognition program participation and impact analytics', implementation: 'generic' },
+      { name: 'DEI Metrics', enabled: false, description: 'Diversity, equity, and inclusion metrics with representation and progression tracking', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Continuous Improvement (Lean/6σ) Catalyst',
+    domain: 'operations-ci',
+    description: 'Kaizen tracking, process capability monitoring, and DMAIC project orchestration',
+    autonomy_tier: 'read-only',
+    tags: [
+      'function:operations',
+      'vertical:general',
+      'criticality:operational',
+      'maturity:advanced',
+      // Legacy aliases
+      'general', 'operations', 'lean',
+    ],
+    sub_catalysts: [
+      { name: 'Improvement Opportunity Pipeline', enabled: true, description: 'Idea intake, scoring, and prioritisation for continuous improvement opportunities', implementation: 'generic' },
+      { name: 'Kaizen Event Tracker', enabled: true, description: 'Kaizen event planning, participation, and outcome tracking', implementation: 'generic' },
+      { name: 'Process Capability Monitoring', enabled: true, description: 'Cp/Cpk and process capability monitoring across critical processes', implementation: 'generic' },
+      { name: 'DMAIC Project Dashboard', enabled: true, description: 'Define-Measure-Analyze-Improve-Control project tollgate and milestone tracking', implementation: 'generic' },
+      { name: 'Waste Analysis (MUDA)', enabled: true, description: 'Seven-waste identification and quantification across operational processes', implementation: 'generic' },
+      { name: 'Benefit Realization Tracking', enabled: true, description: 'Validated benefit realization tracking for completed improvement projects', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Data Quality & Master Data Governance Catalyst',
+    domain: 'operations-data-quality',
+    description: 'Data profiling, master data stewardship, deduplication, and lineage tracking across customer, product, and supplier domains',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:operations',
+      'function:it',
+      'vertical:general',
+      'criticality:operational',
+      'maturity:starter',
+      // Legacy aliases
+      'general', 'data-quality', 'mdm',
+    ],
+    sub_catalysts: [
+      { name: 'Data Profiling & Health Scoring', enabled: true, description: 'Automated profiling of key data domains with completeness, validity, and uniqueness scoring', implementation: 'generic' },
+      { name: 'Master Data Stewardship Workflows', enabled: true, description: 'Stewardship queues, change requests, and approval workflows for master data updates', implementation: 'generic' },
+      { name: 'Duplicate Detection & Merge', enabled: true, description: 'Fuzzy duplicate detection and guided merge for customer, supplier, and product records', implementation: 'generic' },
+      { name: 'Reference Data Management', enabled: true, description: 'Reference data (country, currency, UoM, code list) governance and versioning', implementation: 'generic' },
+      { name: 'Data Lineage Tracking', enabled: true, description: 'End-to-end lineage tracking from source to report with impact analysis', implementation: 'generic' },
+      { name: 'Data Quality Issue Triage', enabled: true, description: 'Issue intake, routing, and remediation tracking for data quality incidents', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'ESG & Sustainability Reporting Catalyst',
+    domain: 'compliance-esg',
+    description: 'Emissions tracking, water/waste monitoring, diversity reporting, and automated sustainability disclosures (CSRD, JSE, TCFD)',
+    autonomy_tier: 'read-only',
+    tags: [
+      'function:compliance',
+      'vertical:general',
+      'criticality:compliance-critical',
+      'maturity:advanced',
+      // Legacy aliases
+      'general', 'compliance', 'esg', 'sustainability',
+    ],
+    sub_catalysts: [
+      { name: 'Emissions Scope 1/2/3 Tracking', enabled: true, description: 'Scope 1, 2, and 3 greenhouse gas emissions tracking with activity-based calculations', implementation: 'generic' },
+      { name: 'Water & Waste Monitoring', enabled: true, description: 'Water withdrawal, discharge, and waste stream monitoring with intensity metrics', implementation: 'generic' },
+      { name: 'Diversity & Inclusion Reporting', enabled: true, description: 'Workforce diversity reporting with representation, pay equity, and progression metrics', implementation: 'generic' },
+      { name: 'Sustainability Disclosure Automation (CSRD/TCFD)', enabled: true, description: 'Automated CSRD, JSE Sustainability Disclosure, and TCFD report generation', implementation: 'generic' },
+      { name: 'Supply Chain Sustainability', enabled: true, description: 'Supplier sustainability assessments and scope 3 supply chain emissions visibility', implementation: 'generic' },
+      { name: 'Carbon Credit & Offset Management', enabled: false, description: 'Carbon credit purchase, retirement, and offset project portfolio tracking', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Customer Data Platform Catalyst',
+    domain: 'customer-cdp',
+    description: 'Unified customer profiles, identity resolution, segment activation, and journey analytics across touchpoints',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:customer',
+      'function:sales',
+      'vertical:general',
+      'criticality:revenue-impacting',
+      'maturity:advanced',
+      // Legacy aliases
+      'general', 'customer', 'cdp',
+    ],
+    sub_catalysts: [
+      { name: 'Identity Resolution & Household Mapping', enabled: true, description: 'Deterministic and probabilistic identity resolution with household and account mapping', implementation: 'generic' },
+      { name: 'Unified Customer Profile', enabled: true, description: 'Single customer profile aggregating transactional, behavioural, and consent attributes', implementation: 'generic' },
+      { name: 'Segment Activation', enabled: true, description: 'Audience segment definition and activation to marketing, sales, and service channels', implementation: 'generic' },
+      { name: 'Journey Mapping & Analytics', enabled: true, description: 'Cross-touchpoint journey mapping with drop-off and conversion analytics', implementation: 'generic' },
+      { name: 'Consent & Preference Management', enabled: true, description: 'Consent capture, preference centre, and regulation-aligned suppression enforcement', implementation: 'generic' },
+      { name: 'Voice of Customer Aggregation', enabled: true, description: 'Aggregated voice-of-customer signals from surveys, reviews, support, and social channels', implementation: 'generic' },
+    ],
+  },
+  {
+    name: 'Compliance & Regulatory Catalyst',
+    domain: 'compliance-general',
+    description: 'General-purpose compliance orchestration: policy attestation, control testing, regulatory change monitoring, and SOX-style evidence capture',
+    autonomy_tier: 'read-only',
+    tags: [
+      'function:compliance',
+      'vertical:general',
+      'criticality:compliance-critical',
+      'maturity:starter',
+      // Legacy aliases
+      'general', 'compliance',
+    ],
+    sub_catalysts: [
+      { name: 'Policy Attestation Tracking', enabled: true, description: 'Policy acknowledgement campaigns with attestation status and reminder automation', implementation: 'generic' },
+      { name: 'Control Testing Automation', enabled: true, description: 'Periodic control testing with sampling, evidence capture, and exception workflow', implementation: 'generic' },
+      { name: 'Regulatory Change Monitoring', enabled: true, description: 'Horizon scanning for regulatory change with applicability assessment and owner routing', implementation: 'generic' },
+      { name: 'SOX-Style Control Evidence', enabled: true, description: 'SOX-style key control inventory with evidence repository and sign-off workflow', implementation: 'generic' },
+      { name: 'Exception & Waiver Management', enabled: true, description: 'Policy exception requests, risk scoring, approval workflow, and expiry tracking', implementation: 'generic' },
+      { name: 'Compliance Risk Dashboard', enabled: true, description: 'Aggregated compliance risk dashboard across policies, controls, findings, and regulatory events', implementation: 'generic' },
+    ],
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1691,13 +1948,12 @@ export function getTemplateForIndustry(industry: string): IndustryTemplate | und
  * operational ones — so the tenant gets a working baseline without
  * having to know which tags to pick.
  *
- * TODO(PR #19): the starter bundle currently maps two placeholder
- * clusters — "Compliance & Regulatory Catalyst" (currently the
- * financial-services compliance cluster; will be generalised in PR #19)
- * and "Data Quality & Master Data Governance" (which does not yet exist
- * in CATALYST_CATALOG; falls back to the general operations excellence
- * cluster until PR #19 introduces it). Once PR #19 lands, replace those
- * placeholders with the real cross-industry clusters.
+ * PR #19: the two previous placeholder slots (financial-services
+ * compliance and a fallback operations cluster) are replaced with the
+ * real cross-industry clusters added in this PR — the generic
+ * "Compliance & Regulatory Catalyst" (SOX-style controls) and the new
+ * "Data Quality & Master Data Governance Catalyst". Both carry
+ * `maturity:starter` so tag-based discovery also surfaces them.
  */
 export const STARTER_CLUSTER_NAMES: readonly string[] = [
   'Finance Catalyst',
@@ -1712,11 +1968,11 @@ export const STARTER_CLUSTER_NAMES: readonly string[] = [
   // starter bundle and overlapped on Customer Segmentation per review)
   'Customer Intelligence & Retention Catalyst',
   'Risk Management Catalyst',
-  // Placeholder — closest existing cluster, pending PR #19
+  // Cross-industry compliance cluster added in PR #19 (SOX-style
+  // controls, policy attestation, regulatory change monitoring).
   'Compliance & Regulatory Catalyst',
-  // Placeholder — "Data Quality & Master Data Governance" does not yet
-  // exist; fall back to General Operations Excellence until PR #19
-  'General Operations Excellence Catalyst',
+  // Cross-industry data quality cluster added in PR #19.
+  'Data Quality & Master Data Governance Catalyst',
 ] as const;
 
 /** Resolve the starter bundle from the flat catalog. */
