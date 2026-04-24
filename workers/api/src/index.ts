@@ -11,6 +11,8 @@ import { handleScheduled, handleQueueMessage } from './services/scheduled';
 import { captureException } from './services/sentry';
 import type { CatalystQueueMessage } from './services/scheduled';
 import { sendOrQueueEmail } from './services/email';
+import { requestIdMiddleware } from './middleware/requestid';
+import { logError, logInfo, logWarn } from './services/logger';
 import auth, { validatePasswordStrength } from './routes/auth';
 import tenants from './routes/tenants';
 import iam from './routes/iam';
@@ -80,12 +82,14 @@ app.use('*', cors({
   credentials: true,
 }));
 
-// Security S8: X-Request-ID correlation header + H6: Security headers (CSRF protection)
+// Security S8: X-Request-ID correlation header (generates or validates inbound IDs,
+// then echoes them back on the response). Registered FIRST so downstream middleware,
+// auth, rate limiting, and logger calls can read c.get('requestId').
+app.use('*', requestIdMiddleware);
+
+// H6: CSRF protection + additional security headers
 app.use('*', async (c, next) => {
-  const requestId = c.req.header('X-Request-ID') || crypto.randomUUID();
-  c.set('requestId' as never, requestId as never);
   await next();
-  c.header('X-Request-ID', requestId);
   // H6: CSRF protection — enforce SameSite=Strict on any Set-Cookie headers
   const existingCookie = c.res.headers.get('Set-Cookie');
   if (existingCookie && !existingCookie.includes('SameSite')) {
@@ -529,6 +533,22 @@ app.post('/api/v1/admin/migrate', async (c) => {
     const migrationKey = `db:migrated:${MIGRATION_VERSION}`;
     await env.CACHE.put(migrationKey, 'true', { expirationTtl: 86400 });
 
+    // Structured migration summary log — support uses this to verify deploys
+    const logFn = migrationResult.errors.length === 0 ? logInfo : logWarn;
+    logFn('migration.completed', {
+      requestId: c.get('requestId'),
+      layer: 'migration',
+      action: 'admin.migrate',
+    }, {
+      version: migrationResult.version,
+      tablesCreated: migrationResult.tablesCreated,
+      indexesCreated: migrationResult.indexesCreated,
+      columnsHealed: migrationResult.columnsHealed,
+      durationMs: migrationResult.durationMs,
+      errorCount: migrationResult.errors.length,
+      errors: migrationResult.errors.slice(0, 10),
+    });
+
     // Audit log
     try {
       await env.DB.prepare(
@@ -544,7 +564,11 @@ app.post('/api/v1/admin/migrate', async (c) => {
 
     return c.json(migrationResult);
   } catch (err) {
-    console.error('Migration failed:', err);
+    logError('migration.failed', err, {
+      requestId: c.get('requestId'),
+      layer: 'migration',
+      action: 'admin.migrate',
+    });
     return c.json({ error: 'Migration failed', message: (err as Error).message }, 500);
   }
 });
@@ -649,12 +673,19 @@ app.notFound((c) => {
 
 // Error handler — consistent format, no stack traces in production, reports to Sentry
 app.onError((err, c) => {
-  console.error('Unhandled error:', err);
+  const auth = c.get('auth') as { userId?: string; email?: string; tenantId?: string } | undefined;
+  const requestId = c.get('requestId') as string | undefined;
+  logError('unhandled-error', err, {
+    requestId,
+    tenantId: auth?.tenantId,
+    userId: auth?.userId,
+    layer: 'http',
+    action: 'request.error',
+  }, { url: c.req.url, method: c.req.method });
 
   // Report to Sentry if configured
   const sentryDsn = c.env?.SENTRY_DSN;
   if (sentryDsn) {
-    const auth = c.get('auth') as { userId?: string; email?: string } | undefined;
     captureException(err, {
       dsn: sentryDsn,
       environment: c.env?.ENVIRONMENT || 'production',

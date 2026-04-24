@@ -4,6 +4,7 @@
  */
 
 import { chatWithFallback } from './ollama';
+import { logError } from './logger';
 
 export interface TaskDefinition {
   id: string;
@@ -281,6 +282,19 @@ export async function executeTask(
         await db.prepare(
           'UPDATE catalyst_actions SET status = ?, confidence = ?, reasoning = ?, output_data = ? WHERE id = ?'
         ).bind('failed', confidence, reasoning, JSON.stringify({ error: (err as Error).message, retries: retryCount }), task.id).run();
+
+        logError('catalyst.action.failed', err, {
+          tenantId: task.tenantId,
+          layer: 'catalysts',
+          action: 'catalyst.action.failed',
+        }, {
+          actionId: task.id,
+          clusterId: task.clusterId,
+          catalystName: task.catalystName,
+          actionName: task.action,
+          retries: retryCount,
+          confidence,
+        });
 
         return {
           actionId: task.id, status: 'failed', confidence, reasoning,

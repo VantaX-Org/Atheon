@@ -11,6 +11,7 @@ import { calculateEffectiveness, calculateROI } from './pattern-engine-v2';
 import { checkOverduePrescriptions } from './diagnostics-engine-v2';
 import { queueEmail } from './email';
 import { getWeeklyDigestEmailTemplate } from './email';
+import { logInfo, logError } from './logger';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -31,11 +32,18 @@ export async function handleScheduled(
 ): Promise<void> {
   const db = env.DB;
   const cache = env.CACHE;
+  // Synthetic request-ID per cron invocation so every tenant-iteration log
+  // in this run is correlatable (no Hono context available here).
+  const runId = crypto.randomUUID();
 
   // Get all active tenants
   const tenants = await db.prepare(
     "SELECT id, slug FROM tenants WHERE status = 'active'"
   ).all();
+
+  logInfo('scheduled.run.start', { requestId: runId, layer: 'scheduled', action: 'cron.tick' }, {
+    tenantCount: tenants.results.length,
+  });
 
   for (const tenant of tenants.results) {
     const tenantId = tenant.id as string;
@@ -87,7 +95,12 @@ export async function handleScheduled(
         await calculateROI(db, tenantId);
       } catch (e) { console.error(`Effectiveness/ROI calc failed for ${tenantId}:`, e); }
     } catch (err) {
-      console.error(`Scheduled tasks failed for tenant ${tenantId}:`, err);
+      logError('scheduled.tenant.failed', err, {
+        requestId: runId,
+        tenantId,
+        layer: 'scheduled',
+        action: 'tenant.failed',
+      });
     }
   }
 

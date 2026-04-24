@@ -5,6 +5,7 @@
  */
 
 import type { Env } from '../types';
+import { logError } from './logger';
 
 export interface EmailPayload {
   to: string[];
@@ -369,10 +370,18 @@ export async function sendEmail(payload: EmailPayload, env: Env): Promise<EmailR
     }
 
     const errorText = await resp.text().catch(() => '');
-    console.error(`MS Graph sendMail error (${resp.status}):`, errorText);
+    logError('email.send.http-error', new Error(`MS Graph HTTP ${resp.status}`), {
+      tenantId: payload.tenantId,
+      layer: 'email',
+      action: 'email.send.http-error',
+    }, { emailId: id, status: resp.status, errorSnippet: errorText.slice(0, 500), recipientCount: payload.to.length });
     return { id, sent: false, channel: 'queued', error: `MS Graph HTTP ${resp.status}: ${errorText}` };
   } catch (err) {
-    console.error('Email send error:', err);
+    logError('email.send.exception', err, {
+      tenantId: payload.tenantId,
+      layer: 'email',
+      action: 'email.send.exception',
+    }, { emailId: id, recipientCount: payload.to.length });
     return { id, sent: false, channel: 'queued', error: (err as Error).message };
   }
 }
