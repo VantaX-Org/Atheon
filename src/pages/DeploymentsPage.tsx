@@ -1,12 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 import type {
   ManagedDeployment, CreateDeploymentRequest, CreateDeploymentResponse, AgentErrorLog
 } from '@/lib/api';
 
 type View = 'overview' | 'provision' | 'detail' | 'logs';
 
+/**
+ * Deployment lifecycle for on-premise / hybrid customer installations:
+ * plan (provision) → stage (edit config) → promote (push config / push update)
+ * → rollback (re-push a previous version).
+ *
+ * Endpoints (all confirmed in workers/api/src/routes/deployments.ts):
+ *   - GET    /api/deployments
+ *   - GET    /api/deployments/:id
+ *   - POST   /api/deployments
+ *   - PUT    /api/deployments/:id
+ *   - POST   /api/deployments/:id/push-config
+ *   - POST   /api/deployments/:id/push-update  (used for both promote and rollback)
+ *   - GET    /api/deployments/:id/logs
+ *   - DELETE /api/deployments/:id (revoke)
+ *
+ * Canary: canary promotion (a subset of the fleet receives the new version
+ * first) is not yet implemented on the backend. The canary UI block is
+ * clearly labelled as such with a link-worthy TODO rather than shipped half-
+ * working.
+ *
+ * Rollback: implemented by supplying a previous version to push-update.
+ * The backend does not currently persist a version history; the operator
+ * is expected to know the previous tag. A future ticket should add an
+ * `agent_version_history` table and a dedicated POST :id/rollback route.
+ */
 export function DeploymentsPage() {
+  const toast = useToast();
   const [view, setView] = useState<View>('overview');
   const [deployments, setDeployments] = useState<ManagedDeployment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -15,17 +42,24 @@ export function DeploymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [installModal, setInstallModal] = useState<CreateDeploymentResponse | null>(null);
 
+  const reportError = useCallback((title: string, err: unknown) => {
+    const message = err instanceof Error ? err.message : undefined;
+    const requestId = err instanceof ApiError ? err.requestId : null;
+    setError(message ?? title);
+    toast.error(title, { message, requestId });
+  }, [toast]);
+
   const loadDeployments = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.deployments.list();
       setDeployments(data.deployments);
     } catch (err) {
-      setError((err as Error).message);
+      reportError('Failed to load deployments', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [reportError]);
 
   useEffect(() => { loadDeployments(); }, [loadDeployments]);
 
@@ -34,9 +68,9 @@ export function DeploymentsPage() {
       const data = await api.deployments.get(id);
       setSelectedDeployment(data);
     } catch (err) {
-      setError((err as Error).message);
+      reportError('Failed to load deployment detail', err);
     }
-  }, []);
+  }, [reportError]);
 
   const openDetail = (id: string) => {
     setSelectedId(id);
@@ -127,9 +161,9 @@ export function DeploymentsPage() {
 
       {/* Views */}
       {view === 'overview' && <OverviewView deployments={deployments} loading={loading} statusColor={statusColor} openDetail={openDetail} openLogs={openLogs} />}
-      {view === 'provision' && <ProvisionView onCreated={(resp) => setInstallModal(resp)} onError={setError} />}
-      {view === 'detail' && selectedId && <DetailView deployment={selectedDeployment} id={selectedId} onRefresh={() => loadDetail(selectedId)} onError={setError} onBack={() => { setView('overview'); setSelectedId(null); setSelectedDeployment(null); loadDeployments(); }} />}
-      {view === 'logs' && selectedId && <LogsView id={selectedId} />}
+      {view === 'provision' && <ProvisionView onCreated={(resp) => setInstallModal(resp)} onError={reportError} />}
+      {view === 'detail' && selectedId && <DetailView deployment={selectedDeployment} id={selectedId} onRefresh={() => loadDetail(selectedId)} onError={reportError} onBack={() => { setView('overview'); setSelectedId(null); setSelectedDeployment(null); loadDeployments(); }} />}
+      {view === 'logs' && selectedId && <LogsView id={selectedId} onError={reportError} />}
     </div>
   );
 }
@@ -239,7 +273,7 @@ function OverviewView({ deployments, loading, statusColor, openDetail, openLogs 
 // ── Provision View ────────────────────────────────────────────────────────
 function ProvisionView({ onCreated, onError }: {
   onCreated: (resp: CreateDeploymentResponse) => void;
-  onError: (err: string) => void;
+  onError: (title: string, err?: unknown) => void;
 }) {
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState<CreateDeploymentRequest>({
@@ -268,7 +302,7 @@ function ProvisionView({ onCreated, onError }: {
       const resp = await api.deployments.create(form);
       onCreated(resp);
     } catch (err) {
-      onError((err as Error).message);
+      onError('Provision failed', err);
     } finally {
       setSubmitting(false);
     }
@@ -373,13 +407,17 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
   deployment: ManagedDeployment | null;
   id: string;
   onRefresh: () => void;
-  onError: (err: string) => void;
+  onError: (title: string, err?: unknown) => void;
   onBack: () => void;
 }) {
+  const toast = useToast();
   const [configText, setConfigText] = useState('');
   const [updateVersion, setUpdateVersion] = useState('');
+  const [rollbackVersion, setRollbackVersion] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pushingUpdate, setPushingUpdate] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', region: '', deployment_type: '' as string, licence_expires_at: '' });
 
@@ -406,22 +444,47 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
       setSaving(true);
       const parsed = JSON.parse(configText);
       await api.deployments.pushConfig(id, parsed);
+      toast.success('Configuration pushed', 'Agent will pick up on next heartbeat.');
       onRefresh();
     } catch (err) {
-      onError((err as Error).message);
+      onError('Push config failed', err);
     } finally {
       setSaving(false);
     }
   };
 
   const pushUpdate = async () => {
-    if (!updateVersion) return;
+    if (!updateVersion.trim()) return;
     try {
-      await api.deployments.pushUpdate(id, updateVersion);
+      setPushingUpdate(true);
+      await api.deployments.pushUpdate(id, updateVersion.trim());
+      toast.success('Update promoted', `Agent instructed to pull ${updateVersion.trim()}.`);
       setUpdateVersion('');
       onRefresh();
     } catch (err) {
-      onError((err as Error).message);
+      onError('Push update failed', err);
+    } finally {
+      setPushingUpdate(false);
+    }
+  };
+
+  const doRollback = async () => {
+    const target = rollbackVersion.trim();
+    if (!target) {
+      onError('Enter a previous version tag to roll back to');
+      return;
+    }
+    if (!confirm(`Roll back "${deployment.name}" to ${target}? The agent will immediately pull this image on next heartbeat.`)) return;
+    try {
+      setRollingBack(true);
+      await api.deployments.pushUpdate(id, target);
+      toast.success('Rollback initiated', `Agent instructed to pull ${target}.`);
+      setRollbackVersion('');
+      onRefresh();
+    } catch (err) {
+      onError('Rollback failed', err);
+    } finally {
+      setRollingBack(false);
     }
   };
 
@@ -434,10 +497,11 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
         deployment_type: editForm.deployment_type,
         licence_expires_at: editForm.licence_expires_at || null,
       });
+      toast.success('Deployment updated');
       setEditing(false);
       onRefresh();
     } catch (err) {
-      onError((err as Error).message);
+      onError('Update failed', err);
     } finally {
       setSaving(false);
     }
@@ -450,9 +514,10 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
     }
     try {
       await api.deployments.revoke(id);
+      toast.success('Deployment revoked');
       onBack();
     } catch (err) {
-      onError((err as Error).message);
+      onError('Revoke failed', err);
     }
   };
 
@@ -585,9 +650,12 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
         </button>
       </div>
 
-      {/* Push Update */}
+      {/* Promote / Push New Version */}
       <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-        <h3 className="font-medium mb-3" style={{ color: 'var(--text-primary)' }}>Push Docker Update</h3>
+        <h3 className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Promote New Version</h3>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          Instruct the on-premise agent to pull a new Docker image. Current: <span className="font-mono">{deployment.agentVersion || '—'}</span>
+        </p>
         <div className="flex gap-2">
           <input
             type="text"
@@ -599,11 +667,58 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
           />
           <button
             onClick={pushUpdate}
-            className="px-4 py-2 text-sm font-medium rounded-lg text-white"
+            disabled={pushingUpdate || !updateVersion.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
           >
-            Push Update
+            {pushingUpdate ? 'Pushing...' : 'Promote'}
           </button>
+        </div>
+      </div>
+
+      {/* Rollback */}
+      <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
+        <h3 className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Rollback</h3>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          Re-push a previous image tag. Version history is not persisted yet &mdash; enter the tag you want to roll back to.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="e.g. gonxt/atheon-api:v2.0.0"
+            value={rollbackVersion}
+            onChange={e => setRollbackVersion(e.target.value)}
+            className="flex-1 rounded-lg px-3 py-2 text-sm"
+            style={inputStyle}
+          />
+          <button
+            onClick={doRollback}
+            disabled={rollingBack || !rollbackVersion.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-50"
+            style={{ background: '#b45309' }}
+            title="Instruct the agent to pull the specified previous image"
+          >
+            {rollingBack ? 'Rolling back...' : 'Rollback'}
+          </button>
+        </div>
+      </div>
+
+      {/* Canary — Not yet implemented */}
+      <div className="rounded-xl p-5" style={{ background: 'var(--bg-card)', border: '1px dashed var(--border-card)' }}>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <h3 className="font-medium mb-1 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              Canary Promotion
+              <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                Not yet implemented
+              </span>
+            </h3>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Canary deployments (rolling out a version to a subset of the fleet first) require a backend endpoint
+              <span className="font-mono"> POST /api/deployments/:id/canary </span>
+              plus an <span className="font-mono">agent_version_history</span> table. Track progress in the Deployments epic.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -637,16 +752,16 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
 }
 
 // ── Logs View ─────────────────────────────────────────────────────────────
-function LogsView({ id }: { id: string }) {
+function LogsView({ id, onError }: { id: string; onError: (title: string, err?: unknown) => void }) {
   const [logs, setLogs] = useState<AgentErrorLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.deployments.getLogs(id)
       .then(d => setLogs(d.logs))
-      .catch(console.error)
+      .catch((err) => onError('Failed to load logs', err))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, onError]);
 
   const severityColor = (sev: string) => {
     switch (sev) {
