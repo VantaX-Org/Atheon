@@ -5,7 +5,10 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v47-platform';
+// v48-narrative: No new schema. Bumped alongside catalyst-narrative service so
+// callers can confirm the deployed worker carries the narrative endpoint (the
+// KV cache key + existing tenant_llm_usage counter are the only storage).
+export const MIGRATION_VERSION = 'v48-narrative';
 
 /** Result of a migration run */
 export interface MigrationResult {
