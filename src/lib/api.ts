@@ -208,7 +208,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   auth: {
     login: (email: string, password: string, tenantSlug?: string) =>
-      request<{ token: string; user: AuthUser; tenantSelectionRequired?: boolean; tenants?: { slug: string; name: string }[] }>('/api/auth/login', {
+      request<{
+        token: string;
+        refreshToken?: string;
+        user: AuthUser;
+        tenantSelectionRequired?: boolean;
+        tenants?: { slug: string; name: string }[];
+        // Backend PR #221: MFA challenge required before session is established.
+        mfaRequired?: boolean;
+        mfa_required?: boolean;
+        challengeToken?: string;
+        challenge_token?: string;
+        // Grace-period warning for admin roles that haven't enrolled MFA yet.
+        mfaEnforcementWarning?: { daysRemaining: number; reason?: string; mfaSetupUrl?: string };
+      }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password, ...(tenantSlug ? { tenant_slug: tenantSlug } : {}) }),
       }),
@@ -251,10 +264,30 @@ export const api = {
         body: JSON.stringify({ token, new_password: newPassword }),
       }),
     // Phase 4.4: MFA endpoints
+    // Backend PR #221 shape: { secret, qr_uri, provisioning_uri } — legacy key `otpauthUri` kept as optional fallback.
     mfaSetup: () =>
-      request<{ secret: string; otpauthUri: string }>('/api/auth/mfa/setup', { method: 'POST' }),
+      request<{ secret: string; qr_uri?: string; provisioning_uri?: string; otpauthUri?: string }>('/api/auth/mfa/setup', { method: 'POST' }),
+    // Returns { success, backupCodes } — backup codes are shown ONCE at enrollment.
     mfaVerify: (code: string) =>
-      request<{ success: boolean }>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+      request<{ success: boolean; backupCodes?: string[]; backup_codes?: string[] }>('/api/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+    // Disable MFA — requires a fresh valid TOTP code.
+    mfaDisable: (code: string) =>
+      request<{ success: boolean }>('/api/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ code }) }),
+    // Login MFA challenge — accepts TOTP (6 digits) or backup code (xxxx-xxxx).
+    mfaValidate: (code: string, challengeToken?: string) =>
+      request<{ token: string; refreshToken?: string; user: AuthUser; backupCodesRemaining?: number }>('/api/auth/mfa/validate', {
+        method: 'POST',
+        body: JSON.stringify({ code, ...(challengeToken ? { challenge_token: challengeToken } : {}) }),
+      }),
+    // Regenerate backup codes — requires JWT + fresh valid TOTP. Returns 8 new codes (shown once).
+    mfaRegenerateBackupCodes: (code: string) =>
+      request<{ backupCodes?: string[]; backup_codes?: string[] }>('/api/auth/mfa/regenerate-backup-codes', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      }),
+    // MFA status — best-effort; server may embed status on /me instead.
+    mfaStatus: () =>
+      request<{ enabled: boolean; backupCodesRemaining?: number }>('/api/auth/mfa/status'),
     // API key management
     listApiKeys: () =>
       request<{ keys: { id: string; name: string; prefix: string; createdAt: string; lastUsed: string | null }[] }>('/api/auth/api-keys'),

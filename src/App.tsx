@@ -10,6 +10,7 @@ import { ChatPage } from "@/pages/ChatPage";
 import { ConnectivityPage } from "@/pages/ConnectivityPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { MFASetupPage } from "@/pages/MFASetupPage";
 import { TenantsPage } from "@/pages/TenantsPage";
 import { IAMPage } from "@/pages/IAMPage";
 import { ControlPlanePage } from "@/pages/ControlPlanePage";
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="/connectivity" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/mfa" element={<MFASetupPage />} />
           <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
           <Route path="/iam" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IAMPage /></ProtectedRoute>} />
