@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Tabs, TabPanel } from "@/components/ui/tabs";
 
 import { api } from "@/lib/api";
 import { useSelectedCompanyId } from "@/stores/appStore";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { cleanLlmText } from "@/lib/utils";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse } from "@/lib/api";
 import { PeerComparisonBar } from "@/components/ui/peer-comparison-bar";
@@ -236,23 +237,37 @@ export function ApexPage() {
  const updateVariable = (idx: number, field: 'name' | 'baseValue', value: string) =>
  setScenarioVariables(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
 
- useEffect(() => {
- async function load() {
- setLoading(true);
- const co = companyId || undefined;
- const [h, b, r, s, hh, br] = await Promise.allSettled([
- api.apex.health(undefined, undefined, co), api.apex.briefing(undefined, undefined, co), api.apex.risks(undefined, undefined, co), api.apex.scenarios(undefined, undefined, co), api.apex.healthHistory(undefined, undefined, co), api.boardReport.list(),
- ]);
- if (h.status === 'fulfilled') setHealth(h.value);
- if (b.status === 'fulfilled') setBriefing(b.value);
- if (r.status === 'fulfilled') setRisks(r.value.risks);
- if (s.status === 'fulfilled') setScenarios(s.value.scenarios);
- if (hh.status === 'fulfilled') setHealthHistory(hh.value);
- if (br.status === 'fulfilled') setBoardReports(br.value.reports);
- setLoading(false);
- }
- load();
+ // Data loader — extracted as a callback so both the initial effect and the
+ // mobile pull-to-refresh gesture can reuse it.
+ const loadApexData = useCallback(async (opts: { showLoading?: boolean } = {}) => {
+  if (opts.showLoading) setLoading(true);
+  const co = companyId || undefined;
+  const [h, b, r, s, hh, br] = await Promise.allSettled([
+   api.apex.health(undefined, undefined, co),
+   api.apex.briefing(undefined, undefined, co),
+   api.apex.risks(undefined, undefined, co),
+   api.apex.scenarios(undefined, undefined, co),
+   api.apex.healthHistory(undefined, undefined, co),
+   api.boardReport.list(),
+  ]);
+  if (h.status === 'fulfilled') setHealth(h.value);
+  if (b.status === 'fulfilled') setBriefing(b.value);
+  if (r.status === 'fulfilled') setRisks(r.value.risks);
+  if (s.status === 'fulfilled') setScenarios(s.value.scenarios);
+  if (hh.status === 'fulfilled') setHealthHistory(hh.value);
+  if (br.status === 'fulfilled') setBoardReports(br.value.reports);
+  if (opts.showLoading) setLoading(false);
  }, [companyId]);
+
+ useEffect(() => {
+  loadApexData({ showLoading: true });
+ }, [loadApexData]);
+
+ // Mobile pull-to-refresh — active on small viewports where the page is a
+ // single scroll column. On desktop the gesture is inert (no touch events).
+ const { containerProps: pullProps, pullDistance, refreshing } = usePullToRefresh(
+  () => loadApexData({ showLoading: false })
+ );
 
  const overallScore = health?.overall ?? 0;
  const dimensions = health?.dimensions
@@ -296,7 +311,27 @@ export function ApexPage() {
   }
 
   return (
- <div className="space-y-6 animate-fadeIn">
+ <div
+  ref={pullProps.ref}
+  onTouchStart={pullProps.onTouchStart}
+  onTouchMove={pullProps.onTouchMove}
+  onTouchEnd={pullProps.onTouchEnd}
+  className="space-y-6 animate-fadeIn"
+ >
+ {/* Mobile pull-to-refresh indicators (touch-only; invisible on desktop). */}
+ {pullDistance > 0 && (
+  <div className="flex justify-center py-2 md:hidden" style={{ height: pullDistance }}>
+   <RefreshCw
+    className={`w-5 h-5 t-muted ${pullDistance > 50 ? 'text-accent' : ''}`}
+    style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+   />
+  </div>
+ )}
+ {refreshing && (
+  <div className="flex justify-center py-3 md:hidden">
+   <RefreshCw className="w-5 h-5 text-accent animate-spin" />
+  </div>
+ )}
  <div className="space-y-4">
  {pageHeader}
  <div className="flex items-center gap-2 flex-shrink-0">
@@ -403,6 +438,54 @@ export function ApexPage() {
  {/* Business Health Tab */}
  {activeTab === 'health' && (
  <TabPanel>
+  {/*
+   * Mobile-only above-the-fold strip (consolidated from ExecutiveMobilePage):
+   * a tight 3-card summary (overall score + quick counts) plus a horizontal
+   * scroll-snap KPI carousel for dimensions. Hidden on md+ where the full
+   * grid below provides the same information in a richer layout.
+   */}
+  <div className="md:hidden space-y-4 mb-4">
+   <div className="grid grid-cols-3 gap-2">
+    <Card className="flex flex-col items-center justify-center py-3 px-2">
+     <ScoreRing score={overallScore} size="sm" />
+     <p className="text-[10px] t-muted mt-1 text-center">Health</p>
+    </Card>
+    <Card className="flex flex-col items-center justify-center py-3 px-2">
+     <p className="text-2xl font-bold text-red-400">{risks.length}</p>
+     <p className="text-[10px] t-muted text-center">Risks</p>
+    </Card>
+    <Card className="flex flex-col items-center justify-center py-3 px-2">
+     <p className="text-2xl font-bold text-amber-400">{dimensions.filter(d => d.score < 60).length}</p>
+     <p className="text-[10px] t-muted text-center">Critical</p>
+    </Card>
+   </div>
+
+   {dimensions.length > 0 && (
+    <div
+     className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4"
+     style={{ scrollbarWidth: 'none' }}
+     aria-label="Business dimension KPIs"
+    >
+     {dimensions.map((dim) => (
+      <button
+       key={dim.key}
+       onClick={() => handleOpenDimensionTrace(dim.key)}
+       className="snap-center flex-shrink-0 w-[140px] rounded-xl p-4 text-left hover:bg-[var(--bg-secondary)] transition-colors"
+       style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)', minHeight: 44 }}
+       aria-label={`${dim.name} dimension — open traceability`}
+      >
+       <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{dim.name}</p>
+       <p className="text-xl font-bold t-primary">{dim.score}</p>
+       <div className="flex items-center gap-1 mt-1">
+        {trendIcon(dim.trend, 12)}
+        <span className="text-xs t-muted">{dim.trend || 'stable'}</span>
+       </div>
+      </button>
+     ))}
+    </div>
+   )}
+  </div>
+
   {/* 2.1.1 Dimension Comparison Grid (pinned dimensions) */}
   <DimensionComparisonGrid
    selectedDimensions={selectedDimensions}

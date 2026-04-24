@@ -24,7 +24,6 @@ import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { TenantManagementPage } from "@/pages/TenantManagementPage";
 import { TenantLlmBudgetPage } from "@/pages/admin/TenantLlmBudgetPage";
 import { TrialPage } from "@/pages/TrialPage";
-import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
 import { ExecutiveSummaryPage } from "@/pages/ExecutiveSummaryPage";
 import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
 import { PlatformHealthPage } from "@/pages/PlatformHealthPage";
@@ -104,7 +103,10 @@ export default function App() {
           <Route path="/erp-adapters" element={<Navigate to="/integrations" replace />} />
           <Route path="/deployments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><DeploymentsPage /></ProtectedRoute>} />
           <Route path="/assessments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><AssessmentsPage /></ProtectedRoute>} />
-          <Route path="/executive" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveMobilePage /></ProtectedRoute>} />
+          {/* /executive was the retired ExecutiveMobilePage — now consolidated
+              into the responsive ApexPage (mobile KPI strip, pull-to-refresh,
+              and tight 3-card above-fold layout). Redirect preserves old links. */}
+          <Route path="/executive" element={<Navigate to="/apex" replace />} />
           <Route path="/executive-summary" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveSummaryPage /></ProtectedRoute>} />
           {/* Admin Tooling Routes (ADMIN-001 to ADMIN-012) */}
           <Route path="/platform-health" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><PlatformHealthPage /></ProtectedRoute>} />
