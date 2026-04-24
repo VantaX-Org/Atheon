@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v39';
+export const MIGRATION_VERSION = 'v40';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -36,7 +36,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
 
   // ── Core Tables ──
   const coreTableSQL = `
-    CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, industry TEXT NOT NULL DEFAULT 'general', plan TEXT NOT NULL DEFAULT 'starter', status TEXT NOT NULL DEFAULT 'active', deployment_model TEXT NOT NULL DEFAULT 'saas', region TEXT NOT NULL DEFAULT 'af-south-1', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, plan TEXT NOT NULL DEFAULT 'starter', status TEXT NOT NULL DEFAULT 'active', deployment_model TEXT NOT NULL DEFAULT 'saas', region TEXT NOT NULL DEFAULT 'af-south-1', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS tenant_entitlements (tenant_id TEXT PRIMARY KEY REFERENCES tenants(id), layers TEXT NOT NULL DEFAULT '["apex","pulse"]', catalyst_clusters TEXT NOT NULL DEFAULT '["finance"]', max_agents INTEGER NOT NULL DEFAULT 5, max_users INTEGER NOT NULL DEFAULT 10, autonomy_tiers TEXT NOT NULL DEFAULT '["read-only"]', llm_tiers TEXT NOT NULL DEFAULT '["tier-1"]', features TEXT NOT NULL DEFAULT '[]', sso_enabled INTEGER NOT NULL DEFAULT 0, api_access INTEGER NOT NULL DEFAULT 0, custom_branding INTEGER NOT NULL DEFAULT 0, data_retention_days INTEGER NOT NULL DEFAULT 90);
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), email TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'analyst', password_hash TEXT, permissions TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'active', last_login TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, email));
     CREATE TABLE IF NOT EXISTS iam_policies (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, type TEXT NOT NULL DEFAULT 'rbac', rules TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
@@ -834,6 +834,23 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
       result.columnsHealed++;
     } catch {
       // Column already exists — expected, skip silently
+    }
+  }
+
+  // ── Column Drops ──
+  // Columns we deliberately removed. D1/SQLite 3.35+ supports DROP COLUMN.
+  // Wrapped in try/catch so the migration is idempotent (after the column is
+  // dropped, subsequent runs throw and we skip silently).
+  const columnsToDrop: Array<{ table: string; column: string }> = [
+    // Industry no longer tracked per-tenant — catalog is tag-based and not
+    // industry-gated. Benchmark tables that still carry `industry` are untouched.
+    { table: 'tenants', column: 'industry' },
+  ];
+  for (const col of columnsToDrop) {
+    try {
+      await db.prepare(`ALTER TABLE ${col.table} DROP COLUMN ${col.column}`).run();
+    } catch {
+      // Column already removed or never existed — idempotent skip.
     }
   }
 

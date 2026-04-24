@@ -1,7 +1,25 @@
 /**
- * Industry Catalyst Templates
- * Pre-configured catalyst cluster templates with sub-catalysts for each supported industry.
- * Used when deploying catalysts from the Tenants page during company onboarding.
+ * Catalyst Catalog
+ *
+ * A single, flat catalog of catalyst clusters — available to every tenant.
+ *
+ * This module used to segment catalysts into 10 industry buckets (mining,
+ * agriculture, healthcare, logistics, technology, manufacturing, financial
+ * services, fmcg, retail, general). The segmentation created a lot of
+ * duplication (34 named sub-catalysts appeared 2-6 times each, and
+ * "Procurement Catalyst" existed 8 separate times with mostly-overlapping
+ * sub-catalysts) and caused tenants to only ever see one vertical's
+ * catalysts during deployment.
+ *
+ * We now expose a single {@link CATALYST_CATALOG} that deduplicates by
+ * name and carries multi-domain tags. Industry filtering migrates to
+ * tag-based lookups via {@link getClustersByTag}.
+ *
+ * Backwards compatibility: the {@link INDUSTRY_TEMPLATES} export and the
+ * {@link getTemplateForIndustry} helper are preserved (derived from the
+ * flat catalog, grouped on a primary tag) so the existing `/templates`
+ * and `/deploy-template` endpoints continue to work unchanged while the
+ * frontend is updated.
  */
 
 export interface SubCatalystTemplate {
@@ -21,9 +39,21 @@ export interface CatalystTemplate {
   domain: string;
   description: string;
   autonomy_tier: string;
+  /**
+   * Tags replace the old industry segmentation. Clusters can carry
+   * multiple tags — e.g. ['finance', 'mining'] for a mining-finance
+   * cluster — so existing filters can migrate to tag-based lookups.
+   */
+  tags: string[];
   sub_catalysts: SubCatalystTemplate[];
 }
 
+/**
+ * @deprecated Use {@link CATALYST_CATALOG} with tag filtering via
+ * {@link getClustersByTag}. Kept for backwards compatibility during the
+ * flatten rollout so existing consumers (the `/templates` endpoint and
+ * the frontend Tenants page) keep working until they are updated.
+ */
 export interface IndustryTemplate {
   industry: string;
   label: string;
@@ -32,13 +62,230 @@ export interface IndustryTemplate {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MINING / STEEL MANUFACTURING
+// CATALYST CATALOG — single flat catalog, no industry segmentation
 // ═══════════════════════════════════════════════════════════════════════════
-const miningClusters: CatalystTemplate[] = [
+// All cluster names from the previous 10-industry catalog are preserved
+// here so existing deployments (which use `name` as the tenant-unique key)
+// and frontend references continue to resolve. Where the same name appeared
+// in multiple industries (e.g. "Procurement Catalyst" × 8), we kept ONE
+// canonical definition and tagged it with every industry it originated
+// from. Where an industry published its own named variant (e.g.
+// "Retail Finance Catalyst" vs "SaaS Finance Catalyst"), we kept the
+// variant as a distinct cluster so the specialised sub-catalysts are
+// still available.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CATALYST_CATALOG: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Cross-cutting / universal clusters (merged from multiple industries)
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Equipment Health Catalyst', domain: 'mining-equipment',
+    name: 'Finance Catalyst',
+    domain: 'finance',
+    description: 'Accounts payable, receivable, reconciliation, cash flow, and reporting across the business',
+    autonomy_tier: 'assisted',
+    tags: ['general', 'agriculture', 'fmcg', 'finance'],
+    sub_catalysts: [
+      { name: 'Accounts Payable', enabled: true, description: 'Invoice processing and payment scheduling automation' },
+      { name: 'Accounts Receivable', enabled: true, description: 'Invoicing and collections management' },
+      { name: 'Reconciliation', enabled: true, description: 'Bank and account reconciliation automation' },
+      { name: 'Cash Flow Forecast', enabled: true, description: '12-week rolling cash flow projection' },
+      { name: 'Financial Reporting', enabled: false, description: 'Automated financial statement generation' },
+      { name: 'Budget Management', enabled: true, description: 'Budget tracking and variance reporting' },
+      { name: 'Seasonal Budget Planning', enabled: false, description: 'Cycle-aligned budget forecasting and variance tracking' },
+      { name: 'Grant & Subsidy Tracking', enabled: false, description: 'Grant applications and compliance monitoring' },
+    ],
+  },
+  {
+    name: 'Finance Operations Catalyst',
+    domain: 'finance',
+    description: 'Automated journal entries, variance analysis, cost allocation, and inventory valuation',
+    autonomy_tier: 'transactional',
+    tags: ['mining', 'manufacturing', 'finance'],
+    sub_catalysts: [
+      { name: 'Accounts Receivable', enabled: true, description: 'Automated AR aging and collection workflows' },
+      { name: 'Accounts Payable', enabled: true, description: 'Invoice matching and payment scheduling' },
+      { name: 'Invoice Reconciliation', enabled: true, description: '3-way match: PO, GRN, Invoice' },
+      { name: 'Cost Allocation', enabled: false, description: 'Activity-based costing across cost centers' },
+      { name: 'Variance Analysis', enabled: true, description: 'Budget vs actual variance detection and reporting' },
+      { name: 'Production Costing', enabled: true, description: 'Standard vs actual cost variance by product and work center' },
+      { name: 'Inventory Valuation', enabled: true, description: 'FIFO/weighted average inventory valuation automation' },
+      { name: 'Budget Forecasting', enabled: false, description: 'Volume-linked budget and cash flow forecasting' },
+    ],
+  },
+  {
+    name: 'Procurement Catalyst',
+    domain: 'procurement',
+    description: 'Supplier management, PO automation, sourcing, and spend analytics',
+    autonomy_tier: 'assisted',
+    tags: ['general', 'mining', 'agriculture', 'logistics', 'technology', 'manufacturing', 'financial_services', 'fmcg'],
+    sub_catalysts: [
+      { name: 'Supplier Management', enabled: true, description: 'Vendor qualification, performance rating, and relationship management' },
+      { name: 'Supplier Scoring', enabled: true, description: 'Automated supplier risk and performance rating' },
+      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and multi-level approval workflows' },
+      { name: 'Strategic Sourcing', enabled: false, description: 'Sourcing event management and competitive bidding coordination' },
+      { name: 'Spend Analytics', enabled: false, description: 'Category-level spend analysis and savings identification' },
+      { name: 'Contract Management', enabled: true, description: 'Automated contract renewal alerts and compliance tracking' },
+      { name: 'Supplier Risk', enabled: true, description: 'Supplier financial health monitoring and supply disruption risk scoring' },
+      { name: 'Vendor Scoring', enabled: false, description: 'Supplier reliability and pricing benchmarking' },
+      { name: 'Tender Management', enabled: false, description: 'Tender creation, evaluation, and awarding' },
+      { name: 'Input Procurement', enabled: false, description: 'Raw input (seed/fertilizer/chemical) purchasing and price comparison' },
+      { name: 'Cooperative Buying', enabled: false, description: 'Cooperative bulk purchasing coordination for volume discounts' },
+      { name: 'Equipment Purchasing', enabled: false, description: 'Machinery sourcing, leasing, and total cost of ownership analysis' },
+      { name: 'Contract Farming', enabled: false, description: 'Buyer contract management and compliance for off-take agreements' },
+      { name: 'Fuel Procurement', enabled: false, description: 'Bulk fuel purchasing and depot price optimization' },
+      { name: 'Parts Purchasing', enabled: false, description: 'Automated spare parts reordering based on maintenance schedules' },
+      { name: 'SaaS License Management', enabled: false, description: 'Software license utilization tracking and optimization' },
+      { name: 'Vendor Consolidation', enabled: false, description: 'Overlapping tool identification and consolidation opportunities' },
+      { name: 'Contract Negotiation', enabled: false, description: 'Benchmark-based pricing intelligence for vendor negotiations' },
+      { name: 'Budget Forecasting', enabled: false, description: 'Technology/category spend forecasting by department and category' },
+      { name: 'IT Vendor Management', enabled: false, description: 'Technology vendor performance and contract management' },
+      { name: 'Outsourcing Governance', enabled: false, description: 'BPO and outsourcing SLA monitoring and cost tracking' },
+      { name: 'Cost Optimization', enabled: false, description: 'Operational cost benchmarking and reduction opportunity identification' },
+      { name: 'RFP Management', enabled: false, description: 'Request for proposal lifecycle automation' },
+      { name: 'Ingredient Sourcing', enabled: false, description: 'Raw material supplier qualification and price benchmarking' },
+      { name: 'Co-Packer Management', enabled: false, description: 'Third-party manufacturer performance tracking and quality compliance' },
+      { name: 'Packaging Procurement', enabled: false, description: 'Packaging material sourcing and minimum order quantity optimization' },
+    ],
+  },
+  {
+    name: 'Supply Chain Catalyst',
+    domain: 'supply-chain',
+    description: 'Inventory management, logistics, demand forecasting, and supplier coordination',
+    autonomy_tier: 'assisted',
+    tags: ['general', 'mining', 'agriculture', 'technology', 'manufacturing', 'fmcg'],
+    sub_catalysts: [
+      { name: 'Inventory Management', enabled: true, description: 'Stock level monitoring and reorder optimization' },
+      { name: 'Inventory Optimization', enabled: true, description: 'Safety stock calculation and reorder point optimization' },
+      { name: 'Demand Forecasting', enabled: true, description: 'Statistical demand prediction and planning' },
+      { name: 'Demand Planning', enabled: true, description: 'Statistical and promotional demand forecasting' },
+      { name: 'Logistics Tracking', enabled: true, description: 'Shipment tracking and delivery management' },
+      { name: 'Logistics Management', enabled: false, description: 'Inbound and outbound freight management and cost optimization' },
+      { name: 'Warehouse Operations', enabled: true, description: 'Warehouse efficiency and pick/pack optimization' },
+      { name: 'Warehouse Optimization', enabled: false, description: 'Layout optimization and material flow' },
+      { name: 'Warehouse Management', enabled: false, description: 'DC inventory optimization and order fulfillment' },
+      { name: 'MRP Planning', enabled: false, description: 'Material requirements planning based on production schedule' },
+      { name: 'Supplier Coordination', enabled: true, description: 'Supplier delivery scheduling and performance tracking' },
+      { name: 'Supplier Lead Time Tracking', enabled: false, description: 'Monitor and predict supplier delivery performance' },
+      { name: 'Production Scheduling', enabled: false, description: 'Factory production plan optimization' },
+      { name: 'S&OP Coordination', enabled: false, description: 'Sales and operations planning process automation' },
+      { name: 'Transportation', enabled: false, description: 'Route optimization and carrier management' },
+      { name: 'Ore Inventory Management', enabled: false, description: 'Real-time iron ore, coke, and flux inventory tracking' },
+      { name: 'Inbound Logistics', enabled: false, description: 'Rail and truck scheduling for raw material delivery' },
+      { name: 'Harvest Planning', enabled: false, description: 'Seasonal yield forecasting and resource allocation' },
+      { name: 'Cold Chain Monitor', enabled: false, description: 'Temperature and humidity tracking in transit' },
+      { name: 'Distributor Coordination', enabled: false, description: 'Automated order fulfillment and delivery scheduling' },
+      { name: 'Traceability', enabled: false, description: 'End-to-end traceability for certification and recalls' },
+      { name: 'Packaging Optimization', enabled: false, description: 'Optimal pack size and material selection based on buyer requirements' },
+      { name: 'Hardware Lifecycle', enabled: false, description: 'Employee device tracking, refresh cycles, and disposal management' },
+      { name: 'License Compliance', enabled: false, description: 'Software audit readiness and entitlement tracking' },
+      { name: 'Resource Planning', enabled: false, description: 'Professional services resource allocation and utilization optimization' },
+    ],
+  },
+  {
+    name: 'Operations Catalyst',
+    domain: 'supply-chain',
+    description: 'Process automation, SLA monitoring, and operational efficiency',
+    autonomy_tier: 'assisted',
+    tags: ['financial_services', 'general'],
+    sub_catalysts: [
+      { name: 'Process Automation', enabled: true, description: 'Straight-through processing rate monitoring and improvement' },
+      { name: 'SLA Monitoring', enabled: true, description: 'Service level agreement tracking and breach alerting' },
+      { name: 'Capacity Planning', enabled: false, description: 'Transaction volume forecasting and resource planning' },
+      { name: 'Quality Assurance', enabled: true, description: 'Transaction accuracy monitoring and error rate tracking' },
+    ],
+  },
+  {
+    name: 'HR & Workforce Catalyst',
+    domain: 'hr',
+    description: 'Employee management, scheduling, and compliance',
+    autonomy_tier: 'read-only',
+    tags: ['general'],
+    sub_catalysts: [
+      { name: 'Leave Management', enabled: true, description: 'Leave request processing and balance tracking' },
+      { name: 'Scheduling', enabled: true, description: 'Employee shift scheduling and availability management' },
+      { name: 'Compliance Training', enabled: true, description: 'Mandatory training completion tracking' },
+      { name: 'Performance Reviews', enabled: false, description: 'Review cycle management and goal tracking' },
+    ],
+  },
+  {
+    name: 'Workforce Management Catalyst',
+    domain: 'hr',
+    description: 'Shift scheduling, skills tracking, and safety compliance across operational workforces',
+    autonomy_tier: 'read-only',
+    tags: ['mining', 'manufacturing', 'retail'],
+    sub_catalysts: [
+      { name: 'Shift Scheduling', enabled: true, description: 'Automated roster generation considering skills, fatigue, and leave' },
+      { name: 'Smart Scheduling', enabled: false, description: 'Traffic/demand-driven staff scheduling with skills and availability matching' },
+      { name: 'Skills Matrix', enabled: true, description: 'Competency tracking and gap analysis' },
+      { name: 'Training Compliance', enabled: true, description: 'Safety and product certification tracking and renewal reminders' },
+      { name: 'Safety Compliance', enabled: true, description: 'PPE compliance, safety induction, and incident tracking' },
+      { name: 'Overtime Management', enabled: false, description: 'Overtime pattern analysis, cost tracking, and authorization workflow' },
+      { name: 'Succession Planning', enabled: false, description: 'Critical role identification and talent pipeline management' },
+      { name: 'Labor Cost Control', enabled: false, description: 'Labor-to-sales ratio monitoring and overtime management' },
+      { name: 'Attrition Prediction', enabled: false, description: 'Employee flight risk scoring and retention intervention triggers' },
+      { name: 'Onboarding Automation', enabled: false, description: 'New hire onboarding workflow automation and checklist management' },
+    ],
+  },
+  {
+    name: 'Workforce Catalyst',
+    domain: 'hr',
+    description: 'Branch/field workforce staffing, training compliance, and performance management',
+    autonomy_tier: 'read-only',
+    tags: ['financial_services', 'fmcg'],
+    sub_catalysts: [
+      { name: 'Branch Staffing', enabled: true, description: 'Optimal branch headcount planning based on transaction volumes' },
+      { name: 'Sales Force Effectiveness', enabled: true, description: 'Sales rep productivity and territory coverage analysis' },
+      { name: 'Merchandiser Scheduling', enabled: false, description: 'Store visit scheduling and route optimization for merchandisers' },
+      { name: 'Compliance Training', enabled: true, description: 'Regulatory training completion tracking and certification management' },
+      { name: 'Training Management', enabled: false, description: 'Product knowledge and selling skills training completion tracking' },
+      { name: 'Performance Management', enabled: true, description: 'KPI-based performance tracking and incentive calculation' },
+      { name: 'Talent Pipeline', enabled: false, description: 'Succession planning and high-potential identification' },
+      { name: 'Incentive Calculation', enabled: false, description: 'Commission and bonus calculation automation' },
+    ],
+  },
+  {
+    name: 'Sales Catalyst',
+    domain: 'sales',
+    description: 'Customer management, pipeline tracking, and order processing',
+    autonomy_tier: 'assisted',
+    tags: ['general'],
+    sub_catalysts: [
+      { name: 'Pipeline Management', enabled: true, description: 'Sales pipeline tracking and forecasting' },
+      { name: 'Order Processing', enabled: true, description: 'Customer order intake and fulfillment tracking' },
+      { name: 'Customer Scoring', enabled: false, description: 'Customer value scoring and segmentation' },
+      { name: 'Quote Management', enabled: true, description: 'Quotation generation and follow-up automation' },
+    ],
+  },
+  {
+    name: 'Sales & Distribution Catalyst',
+    domain: 'sales',
+    description: 'Customer order management, pricing optimization, and delivery scheduling',
+    autonomy_tier: 'assisted',
+    tags: ['mining', 'agriculture', 'manufacturing'],
+    sub_catalysts: [
+      { name: 'Order Management', enabled: true, description: 'Automated order intake, confirmation, and prioritization' },
+      { name: 'Dynamic Pricing', enabled: false, description: 'Market-based pricing recommendation' },
+      { name: 'Pricing Engine', enabled: false, description: 'Volume-based and customer-specific pricing management' },
+      { name: 'Delivery Scheduling', enabled: true, description: 'Optimized dispatch planning linked to production schedule' },
+      { name: 'Delivery Coordination', enabled: false, description: 'Dispatch planning and proof of delivery tracking' },
+      { name: 'Customer Credit Scoring', enabled: false, description: 'Real-time credit limit monitoring and risk assessment' },
+      { name: 'Route-to-Market', enabled: false, description: 'Optimal delivery route and schedule planning' },
+      { name: 'Retailer Scorecarding', enabled: false, description: 'Buyer performance tracking and relationship health scoring' },
+      { name: 'Seasonal Promotions', enabled: false, description: 'Availability-linked promotional campaign coordination' },
+      { name: 'Customer Portal', enabled: false, description: 'Self-service order tracking and invoice access' },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Mining & steel manufacturing
+  // ───────────────────────────────────────────────────────────────────────
+  {
+    name: 'Equipment Health Catalyst',
+    domain: 'mining-equipment',
     description: 'Predictive maintenance for blast furnaces, rolling mills, and cranes',
     autonomy_tier: 'assisted',
+    tags: ['mining'],
     sub_catalysts: [
       { name: 'Predictive Maintenance', enabled: true, description: 'ML-based failure prediction for heavy equipment' },
       { name: 'Vibration Analysis', enabled: true, description: 'Real-time vibration monitoring on rotating equipment' },
@@ -48,9 +295,11 @@ const miningClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Safety Compliance Catalyst', domain: 'mining-safety',
+    name: 'Safety Compliance Catalyst',
+    domain: 'mining-safety',
     description: 'Real-time safety monitoring, incident prediction, and compliance tracking',
     autonomy_tier: 'read-only',
+    tags: ['mining'],
     sub_catalysts: [
       { name: 'Incident Prediction', enabled: true, description: 'Near-miss and incident trend analysis' },
       { name: 'PPE Compliance', enabled: true, description: 'Computer vision PPE detection at entry points' },
@@ -60,56 +309,11 @@ const miningClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Finance Operations Catalyst', domain: 'finance',
-    description: 'Automated journal entries, variance analysis, and cost allocation',
-    autonomy_tier: 'transactional',
-    sub_catalysts: [
-      { name: 'Accounts Receivable', enabled: true, description: 'Automated AR aging and collection workflows' },
-      { name: 'Accounts Payable', enabled: true, description: 'Invoice matching and payment scheduling' },
-      { name: 'Invoice Reconciliation', enabled: true, description: '3-way match: PO, GRN, Invoice' },
-      { name: 'Cost Allocation', enabled: false, description: 'Activity-based costing across cost centers' },
-      { name: 'Variance Analysis', enabled: true, description: 'Budget vs actual variance detection and reporting' },
-    ],
-  },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Supplier evaluation, PO automation, and spend analytics',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Supplier Scoring', enabled: true, description: 'Automated supplier risk and performance rating' },
-      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and approval routing' },
-      { name: 'Spend Analytics', enabled: false, description: 'Category-level spend analysis and savings identification' },
-      { name: 'Contract Management', enabled: true, description: 'Automated contract renewal alerts and compliance tracking' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Raw material logistics, inventory optimization, and demand planning',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Ore Inventory Management', enabled: true, description: 'Real-time iron ore, coke, and flux inventory tracking' },
-      { name: 'Demand Forecasting', enabled: true, description: 'Steel demand prediction by product grade and customer' },
-      { name: 'Inbound Logistics', enabled: true, description: 'Rail and truck scheduling for raw material delivery' },
-      { name: 'Warehouse Optimization', enabled: false, description: 'Stockyard layout optimization and material flow' },
-      { name: 'Supplier Lead Time Tracking', enabled: true, description: 'Monitor and predict supplier delivery performance' },
-    ],
-  },
-  {
-    name: 'Workforce Management Catalyst', domain: 'hr',
-    description: 'Shift scheduling, skills tracking, safety training compliance',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Shift Scheduling', enabled: true, description: 'Automated roster generation considering skills, fatigue, and leave' },
-      { name: 'Skills Matrix', enabled: true, description: 'Competency tracking and gap analysis for mining operations' },
-      { name: 'Training Compliance', enabled: true, description: 'Safety certification tracking and renewal reminders' },
-      { name: 'Overtime Management', enabled: false, description: 'Overtime pattern analysis and budget control' },
-      { name: 'Succession Planning', enabled: false, description: 'Critical role identification and talent pipeline management' },
-    ],
-  },
-  {
-    name: 'Ore Processing Catalyst', domain: 'mining-ore',
+    name: 'Ore Processing Catalyst',
+    domain: 'mining-ore',
     description: 'Smelting optimization, ore grade tracking, and yield maximization',
     autonomy_tier: 'assisted',
+    tags: ['mining'],
     sub_catalysts: [
       { name: 'Grade Control', enabled: true, description: 'Real-time ore grade monitoring and blending optimization' },
       { name: 'Smelting Optimization', enabled: true, description: 'Blast furnace parameter tuning for yield maximization' },
@@ -119,9 +323,11 @@ const miningClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Environmental Compliance Catalyst', domain: 'mining-environment',
+    name: 'Environmental Compliance Catalyst',
+    domain: 'mining-environment',
     description: 'Emissions monitoring, water management, waste tracking',
     autonomy_tier: 'read-only',
+    tags: ['mining'],
     sub_catalysts: [
       { name: 'Emissions Monitoring', enabled: true, description: 'CO2, SO2, and particulate matter continuous monitoring' },
       { name: 'Water Management', enabled: true, description: 'Cooling water quality, recycling rates, and discharge compliance' },
@@ -130,51 +336,16 @@ const miningClusters: CatalystTemplate[] = [
       { name: 'Carbon Credit Tracking', enabled: false, description: 'Carbon offset calculation and trading opportunity identification' },
     ],
   },
-  {
-    name: 'Sales & Distribution Catalyst', domain: 'sales',
-    description: 'Customer order management, pricing optimization, and delivery scheduling',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Order Management', enabled: true, description: 'Automated order intake, confirmation, and prioritization' },
-      { name: 'Dynamic Pricing', enabled: false, description: 'Market-based pricing recommendation for steel grades' },
-      { name: 'Delivery Scheduling', enabled: true, description: 'Optimized dispatch planning linked to production schedule' },
-      { name: 'Customer Credit Scoring', enabled: true, description: 'Real-time credit limit monitoring and risk assessment' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// AGRICULTURE / ORGANIC FARMING
-// ═══════════════════════════════════════════════════════════════════════════
-const agricultureClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Agriculture
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Finance Catalyst', domain: 'finance',
-    description: 'Automated invoicing, expense categorization, cash flow forecasting',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Accounts Receivable', enabled: true, description: 'Invoice generation and debtor management' },
-      { name: 'Accounts Payable', enabled: true, description: 'Supplier payment scheduling' },
-      { name: 'Cash Flow Forecast', enabled: true, description: '12-week rolling cash flow projection' },
-      { name: 'Seasonal Budget Planning', enabled: true, description: 'Crop cycle-aligned budget forecasting and variance tracking' },
-      { name: 'Grant & Subsidy Tracking', enabled: false, description: 'Agricultural grant applications and compliance monitoring' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Harvest planning, cold chain monitoring, distributor coordination',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Harvest Planning', enabled: true, description: 'Seasonal yield forecasting and resource allocation' },
-      { name: 'Cold Chain Monitor', enabled: true, description: 'Temperature and humidity tracking in transit' },
-      { name: 'Distributor Coordination', enabled: false, description: 'Automated order fulfillment and delivery scheduling' },
-      { name: 'Traceability', enabled: true, description: 'Field-to-fork traceability for organic certification and recalls' },
-      { name: 'Packaging Optimization', enabled: false, description: 'Optimal pack size and material selection based on buyer requirements' },
-    ],
-  },
-  {
-    name: 'Crop Intelligence Catalyst', domain: 'agri-crop',
+    name: 'Crop Intelligence Catalyst',
+    domain: 'agri-crop',
     description: 'Soil analysis, crop health monitoring, pest prediction, and yield optimization',
     autonomy_tier: 'assisted',
+    tags: ['agriculture'],
     sub_catalysts: [
       { name: 'Soil Health Monitoring', enabled: true, description: 'Real-time soil moisture, pH, and nutrient level tracking' },
       { name: 'Pest & Disease Prediction', enabled: true, description: 'ML-based pest outbreak prediction using weather and historical data' },
@@ -184,9 +355,11 @@ const agricultureClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Irrigation Management Catalyst', domain: 'agri-irrigation',
+    name: 'Irrigation Management Catalyst',
+    domain: 'agri-irrigation',
     description: 'Smart irrigation scheduling, water usage optimization, and borehole management',
     autonomy_tier: 'assisted',
+    tags: ['agriculture'],
     sub_catalysts: [
       { name: 'Smart Scheduling', enabled: true, description: 'Soil moisture-driven irrigation scheduling' },
       { name: 'Water Budget Management', enabled: true, description: 'Farm-level water allocation and usage tracking' },
@@ -196,9 +369,11 @@ const agricultureClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Quality Assurance Catalyst', domain: 'agri-quality',
+    name: 'Quality Assurance Catalyst',
+    domain: 'agri-quality',
     description: 'Organic certification compliance, produce grading, and quality testing',
     autonomy_tier: 'read-only',
+    tags: ['agriculture'],
     sub_catalysts: [
       { name: 'Organic Certification', enabled: true, description: 'SAOSO certification requirement tracking and documentation' },
       { name: 'Produce Grading', enabled: true, description: 'Automated visual grading and size classification' },
@@ -208,31 +383,24 @@ const agricultureClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Market Intelligence Catalyst', domain: 'agri-market',
+    name: 'Market Intelligence Catalyst',
+    domain: 'agri-market',
     description: 'Fresh produce pricing, buyer demand signals, and market access',
     autonomy_tier: 'read-only',
+    tags: ['agriculture'],
     sub_catalysts: [
       { name: 'Price Monitoring', enabled: true, description: 'Daily fresh produce market price tracking across major markets' },
       { name: 'Demand Forecasting', enabled: true, description: 'Retailer order pattern analysis and demand prediction' },
       { name: 'Export Opportunity', enabled: false, description: 'International market access and phytosanitary compliance' },
-      { name: 'Competitor Benchmarking', enabled: false, description: 'Regional organic farm yield and pricing benchmarking' },
+      { name: 'Competitor Benchmarking', enabled: false, description: 'Regional yield and pricing benchmarking' },
     ],
   },
   {
-    name: 'Sales & Distribution Catalyst', domain: 'sales',
-    description: 'Customer order management, route-to-market optimization',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Order Management', enabled: true, description: 'Automated order intake from retailers and distributors' },
-      { name: 'Route-to-Market', enabled: true, description: 'Optimal delivery route and schedule planning' },
-      { name: 'Retailer Scorecarding', enabled: false, description: 'Buyer performance tracking and relationship health scoring' },
-      { name: 'Seasonal Promotions', enabled: true, description: 'Produce availability-linked promotional campaign coordination' },
-    ],
-  },
-  {
-    name: 'Farm Workforce Catalyst', domain: 'hr',
+    name: 'Farm Workforce Catalyst',
+    domain: 'hr',
     description: 'Seasonal labor planning, worker safety, and skills tracking',
     autonomy_tier: 'read-only',
+    tags: ['agriculture'],
     sub_catalysts: [
       { name: 'Seasonal Labor Planning', enabled: true, description: 'Harvest labor demand forecasting and recruitment scheduling' },
       { name: 'Worker Safety', enabled: true, description: 'Heat stress monitoring and chemical handling compliance' },
@@ -240,28 +408,16 @@ const agricultureClusters: CatalystTemplate[] = [
       { name: 'Payroll Integration', enabled: false, description: 'Piece-rate and hourly payroll calculation automation' },
     ],
   },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Seed, fertilizer, and equipment procurement, supplier management',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Input Procurement', enabled: true, description: 'Seed, fertilizer, and chemical purchasing and price comparison' },
-      { name: 'Supplier Management', enabled: true, description: 'Agricultural input supplier performance tracking and scoring' },
-      { name: 'Equipment Purchasing', enabled: true, description: 'Farm machinery sourcing, leasing, and total cost of ownership analysis' },
-      { name: 'Contract Farming', enabled: false, description: 'Buyer contract management and compliance for off-take agreements' },
-      { name: 'Cooperative Buying', enabled: true, description: 'Cooperative bulk purchasing coordination for volume discounts' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HEALTHCARE
-// ═══════════════════════════════════════════════════════════════════════════
-const healthcareClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Healthcare
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Patient Flow Catalyst', domain: 'health-patient',
+    name: 'Patient Flow Catalyst',
+    domain: 'health-patient',
     description: 'Patient scheduling, ward allocation, discharge planning, readmission prediction',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Scheduling', enabled: true, description: 'Automated patient appointment scheduling' },
       { name: 'Ward Allocation', enabled: true, description: 'Real-time bed management and allocation' },
@@ -272,9 +428,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare Compliance Catalyst', domain: 'health-compliance',
+    name: 'Healthcare Compliance Catalyst',
+    domain: 'health-compliance',
     description: 'NDoH reporting, POPIA compliance, clinical audit preparation',
     autonomy_tier: 'read-only',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'NDoH Reporting', enabled: true, description: 'Automated National Department of Health submissions' },
       { name: 'POPIA Compliance', enabled: true, description: 'Patient data privacy compliance checks' },
@@ -284,9 +442,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare Finance Catalyst', domain: 'finance',
+    name: 'Healthcare Finance Catalyst',
+    domain: 'finance',
     description: 'Medical aid billing, claims management, revenue cycle optimization',
     autonomy_tier: 'assisted',
+    tags: ['healthcare', 'finance'],
     sub_catalysts: [
       { name: 'Medical Aid Billing', enabled: true, description: 'Automated medical aid claim submission' },
       { name: 'Claims Management', enabled: true, description: 'Claim tracking, follow-up, and rejection handling' },
@@ -296,9 +456,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Clinical Staffing Catalyst', domain: 'health-staffing',
+    name: 'Clinical Staffing Catalyst',
+    domain: 'health-staffing',
     description: 'Nurse scheduling, locum management, skills-mix optimization',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Nurse Rostering', enabled: true, description: 'Automated shift scheduling considering skills, ward acuity, and leave' },
       { name: 'Locum Management', enabled: true, description: 'Temporary staff sourcing, onboarding, and cost tracking' },
@@ -308,9 +470,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Medical Supply Chain Catalyst', domain: 'health-supply',
+    name: 'Medical Supply Chain Catalyst',
+    domain: 'health-supply',
     description: 'Pharmaceutical inventory, medical device tracking, supply chain resilience',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Pharmaceutical Inventory', enabled: true, description: 'Drug stock level monitoring and expiry date management' },
       { name: 'Formulary Management', enabled: true, description: 'Preferred drug list compliance and generic substitution tracking' },
@@ -320,9 +484,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Patient Experience Catalyst', domain: 'health-experience',
+    name: 'Patient Experience Catalyst',
+    domain: 'health-experience',
     description: 'Patient satisfaction tracking, feedback analysis, service recovery',
     autonomy_tier: 'read-only',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Satisfaction Surveys', enabled: true, description: 'Automated post-visit survey distribution and scoring' },
       { name: 'Complaint Management', enabled: true, description: 'Patient complaint logging, routing, and resolution tracking' },
@@ -332,9 +498,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare HR Catalyst', domain: 'hr',
+    name: 'Healthcare HR Catalyst',
+    domain: 'hr',
     description: 'Medical professional recruitment, credentialing, and CPD',
     autonomy_tier: 'read-only',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Recruitment Pipeline', enabled: true, description: 'Medical professional vacancy tracking and sourcing' },
       { name: 'Credentialing', enabled: true, description: 'License verification and practice number validation' },
@@ -344,9 +512,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare Procurement Catalyst', domain: 'procurement',
+    name: 'Healthcare Procurement Catalyst',
+    domain: 'procurement',
     description: 'Medical supply procurement, tender management, and vendor evaluation',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Tender Management', enabled: true, description: 'Medical supply tender creation, evaluation, and awarding' },
       { name: 'Vendor Evaluation', enabled: true, description: 'Supplier quality, delivery, and pricing scorecarding' },
@@ -355,9 +525,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare Sales & Revenue Catalyst', domain: 'sales',
+    name: 'Healthcare Sales & Revenue Catalyst',
+    domain: 'sales',
     description: 'Patient acquisition, referral management, and service line growth',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Referral Management', enabled: true, description: 'GP and specialist referral tracking and relationship management' },
       { name: 'Service Line Analytics', enabled: true, description: 'Revenue and volume analysis per clinical service line' },
@@ -367,9 +539,11 @@ const healthcareClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Healthcare Supply Chain Catalyst', domain: 'supply-chain',
+    name: 'Healthcare Supply Chain Catalyst',
+    domain: 'supply-chain',
     description: 'End-to-end medical supply chain from order to bedside delivery',
     autonomy_tier: 'assisted',
+    tags: ['healthcare'],
     sub_catalysts: [
       { name: 'Demand Planning', enabled: true, description: 'Patient volume-driven medical supply demand forecasting' },
       { name: 'Inventory Optimization', enabled: true, description: 'Par level management and automated replenishment for wards' },
@@ -378,16 +552,16 @@ const healthcareClusters: CatalystTemplate[] = [
       { name: 'Emergency Stock', enabled: false, description: 'Critical supply buffer management and emergency sourcing protocols' },
     ],
   },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LOGISTICS / TRANSPORT
-// ═══════════════════════════════════════════════════════════════════════════
-const logisticsClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Logistics & transport
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Route Optimization Catalyst', domain: 'supply-chain',
+    name: 'Route Optimization Catalyst',
+    domain: 'supply-chain',
     description: 'Real-time route planning, fuel optimization, fleet scheduling',
     autonomy_tier: 'assisted',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'Route Planning', enabled: true, description: 'Dynamic route optimization with traffic and weather' },
       { name: 'Fuel Optimization', enabled: true, description: 'Fuel consumption tracking and efficiency coaching' },
@@ -397,9 +571,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Transport Finance Catalyst', domain: 'finance',
+    name: 'Transport Finance Catalyst',
+    domain: 'finance',
     description: 'Fuel cost tracking, trip costing, customer billing automation',
     autonomy_tier: 'assisted',
+    tags: ['logistics', 'finance'],
     sub_catalysts: [
       { name: 'Trip Costing', enabled: true, description: 'Automated per-trip cost calculation' },
       { name: 'Customer Billing', enabled: true, description: 'POD-based automated invoice generation' },
@@ -409,9 +585,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Fleet Maintenance Catalyst', domain: 'logistics-fleet',
+    name: 'Fleet Maintenance Catalyst',
+    domain: 'logistics-fleet',
     description: 'Predictive vehicle maintenance, tyre management, and compliance tracking',
     autonomy_tier: 'assisted',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'Predictive Maintenance', enabled: true, description: 'Engine telemetry-based maintenance prediction and scheduling' },
       { name: 'Tyre Management', enabled: true, description: 'Tyre wear tracking, rotation scheduling, and retread optimization' },
@@ -421,9 +599,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Driver Management Catalyst', domain: 'hr',
+    name: 'Driver Management Catalyst',
+    domain: 'hr',
     description: 'Driver scheduling, licensing compliance, fatigue management',
     autonomy_tier: 'read-only',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'Driver Scheduling', enabled: true, description: 'Automated driver rostering considering hours-of-service regulations' },
       { name: 'License Tracking', enabled: true, description: 'Code 14 EC license expiry and renewal management' },
@@ -433,9 +613,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Transport Compliance Catalyst', domain: 'logistics-compliance',
+    name: 'Transport Compliance Catalyst',
+    domain: 'logistics-compliance',
     description: 'RTMS compliance, cross-border permits, and regulatory reporting',
     autonomy_tier: 'read-only',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'RTMS Compliance', enabled: true, description: 'Road Transport Management System accreditation tracking' },
       { name: 'Cross-Border Permits', enabled: true, description: 'SADC cross-border permit management and customs documentation' },
@@ -445,9 +627,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Warehouse Operations Catalyst', domain: 'logistics-warehouse',
+    name: 'Warehouse Operations Catalyst',
+    domain: 'logistics-warehouse',
     description: 'Depot operations optimization, inventory management, dock scheduling',
     autonomy_tier: 'assisted',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'Dock Scheduling', enabled: true, description: 'Loading bay allocation and truck queuing optimization' },
       { name: 'Inventory Tracking', enabled: true, description: 'Cross-dock and break-bulk inventory visibility' },
@@ -456,9 +640,11 @@ const logisticsClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Customer Service Catalyst', domain: 'sales',
+    name: 'Customer Service Catalyst',
+    domain: 'sales',
     description: 'Customer SLA tracking, delivery visibility, and relationship management',
     autonomy_tier: 'assisted',
+    tags: ['logistics'],
     sub_catalysts: [
       { name: 'SLA Monitoring', enabled: true, description: 'Real-time delivery SLA tracking per customer contract' },
       { name: 'Track & Trace', enabled: true, description: 'Customer-facing shipment visibility and ETA updates' },
@@ -467,27 +653,16 @@ const logisticsClusters: CatalystTemplate[] = [
       { name: 'Contract Renewal', enabled: true, description: 'Contract expiry tracking and renewal opportunity alerts' },
     ],
   },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Fuel procurement, parts purchasing, and vendor management',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Fuel Procurement', enabled: true, description: 'Bulk fuel purchasing and depot price optimization' },
-      { name: 'Parts Purchasing', enabled: true, description: 'Automated spare parts reordering based on maintenance schedules' },
-      { name: 'Vendor Scoring', enabled: true, description: 'Supplier reliability and pricing benchmarking' },
-      { name: 'Tender Management', enabled: false, description: 'Fleet service provider tender creation and evaluation' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TECHNOLOGY / SAAS
-// ═══════════════════════════════════════════════════════════════════════════
-const technologyClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Technology / SaaS
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Revenue Operations Catalyst', domain: 'sales',
+    name: 'Revenue Operations Catalyst',
+    domain: 'sales',
     description: 'Churn prediction, upsell identification, pipeline health, renewal management',
     autonomy_tier: 'transactional',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Churn Prediction', enabled: true, description: 'ML model predicting customer churn probability' },
       { name: 'Upsell Engine', enabled: true, description: 'Cross-sell and upsell opportunity identification' },
@@ -498,9 +673,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'SaaS Finance Catalyst', domain: 'finance',
+    name: 'SaaS Finance Catalyst',
+    domain: 'finance',
     description: 'Revenue recognition, ARR tracking, cash flow forecasting',
     autonomy_tier: 'assisted',
+    tags: ['technology', 'finance'],
     sub_catalysts: [
       { name: 'Revenue Recognition', enabled: true, description: 'ASC 606 compliant revenue recognition' },
       { name: 'ARR Tracking', enabled: true, description: 'Real-time ARR, MRR, and expansion metrics' },
@@ -510,9 +687,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Talent Intelligence Catalyst', domain: 'hr',
+    name: 'Talent Intelligence Catalyst',
+    domain: 'hr',
     description: 'Retention prediction, compensation benchmarking, hiring pipeline',
     autonomy_tier: 'read-only',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Retention Prediction', enabled: true, description: 'Employee flight risk scoring' },
       { name: 'Compensation Benchmarking', enabled: true, description: 'Market rate comparison and equity analysis' },
@@ -522,9 +701,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'DevOps Intelligence Catalyst', domain: 'tech-devops',
+    name: 'DevOps Intelligence Catalyst',
+    domain: 'tech-devops',
     description: 'CI/CD pipeline monitoring, deployment risk scoring, infrastructure cost optimization',
     autonomy_tier: 'transactional',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Pipeline Monitoring', enabled: true, description: 'CI/CD pipeline health, build times, and failure rate tracking' },
       { name: 'Deployment Risk Scoring', enabled: true, description: 'ML-based deployment risk assessment before production releases' },
@@ -535,9 +716,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Security Operations Catalyst', domain: 'tech-security',
+    name: 'Security Operations Catalyst',
+    domain: 'tech-security',
     description: 'Vulnerability management, access control auditing, compliance monitoring',
     autonomy_tier: 'read-only',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Vulnerability Scanning', enabled: true, description: 'Automated dependency and infrastructure vulnerability detection' },
       { name: 'Access Audit', enabled: true, description: 'Permission review, orphaned account detection, and least-privilege enforcement' },
@@ -548,9 +731,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Product Analytics Catalyst', domain: 'tech-product',
+    name: 'Product Analytics Catalyst',
+    domain: 'tech-product',
     description: 'Feature adoption tracking, user journey analysis, A/B testing',
     autonomy_tier: 'assisted',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Feature Adoption', enabled: true, description: 'Feature usage tracking and adoption funnel analysis' },
       { name: 'User Journey Mapping', enabled: true, description: 'Session flow analysis and drop-off point identification' },
@@ -560,9 +745,11 @@ const technologyClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Customer Success Catalyst', domain: 'tech-customer-success',
+    name: 'Customer Success Catalyst',
+    domain: 'tech-customer-success',
     description: 'Customer health scoring, onboarding automation, support intelligence',
     autonomy_tier: 'assisted',
+    tags: ['technology'],
     sub_catalysts: [
       { name: 'Health Scoring', enabled: true, description: 'Multi-signal customer health score combining usage, support, and payment data' },
       { name: 'Onboarding Automation', enabled: true, description: 'Guided onboarding workflow with milestone tracking and intervention triggers' },
@@ -572,37 +759,16 @@ const technologyClusters: CatalystTemplate[] = [
       { name: 'Advocacy Program', enabled: false, description: 'NPS-based referral and case study candidate identification' },
     ],
   },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'SaaS vendor management, license optimization, technology spend governance',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'SaaS License Management', enabled: true, description: 'Software license utilization tracking and optimization' },
-      { name: 'Vendor Consolidation', enabled: true, description: 'Overlapping tool identification and consolidation opportunities' },
-      { name: 'Contract Negotiation', enabled: false, description: 'Benchmark-based pricing intelligence for vendor negotiations' },
-      { name: 'Budget Forecasting', enabled: true, description: 'Technology spend forecasting by department and category' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Hardware procurement, data center inventory, and resource planning',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Hardware Lifecycle', enabled: true, description: 'Employee device tracking, refresh cycles, and disposal management' },
-      { name: 'License Compliance', enabled: true, description: 'Software audit readiness and entitlement tracking' },
-      { name: 'Resource Planning', enabled: false, description: 'Professional services resource allocation and utilization optimization' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MANUFACTURING
-// ═══════════════════════════════════════════════════════════════════════════
-const manufacturingClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Manufacturing
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Production Line Catalyst', domain: 'mfg-production',
+    name: 'Production Line Catalyst',
+    domain: 'mfg-production',
     description: 'Production scheduling, throughput optimization, and OEE monitoring',
     autonomy_tier: 'assisted',
+    tags: ['manufacturing'],
     sub_catalysts: [
       { name: 'Production Scheduling', enabled: true, description: 'Automated production order sequencing and machine allocation' },
       { name: 'OEE Monitoring', enabled: true, description: 'Overall Equipment Effectiveness tracking and loss categorization' },
@@ -612,9 +778,11 @@ const manufacturingClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Quality Control Catalyst', domain: 'mfg-quality',
+    name: 'Quality Control Catalyst',
+    domain: 'mfg-quality',
     description: 'SPC monitoring, defect prediction, and non-conformance management',
     autonomy_tier: 'read-only',
+    tags: ['manufacturing'],
     sub_catalysts: [
       { name: 'SPC Monitoring', enabled: true, description: 'Statistical process control charts and out-of-control detection' },
       { name: 'Defect Prediction', enabled: true, description: 'ML model predicting defect probability from process parameters' },
@@ -624,9 +792,11 @@ const manufacturingClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Maintenance Catalyst', domain: 'mfg-maintenance',
+    name: 'Maintenance Catalyst',
+    domain: 'mfg-maintenance',
     description: 'Preventive maintenance scheduling, spare parts management, and CMMS integration',
     autonomy_tier: 'assisted',
+    tags: ['manufacturing'],
     sub_catalysts: [
       { name: 'Preventive Scheduling', enabled: true, description: 'Time and usage-based maintenance schedule generation' },
       { name: 'Predictive Maintenance', enabled: true, description: 'Condition monitoring-based failure prediction' },
@@ -636,9 +806,11 @@ const manufacturingClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Energy Management Catalyst', domain: 'mfg-energy',
+    name: 'Energy Management Catalyst',
+    domain: 'mfg-energy',
     description: 'Energy consumption monitoring, load management, and sustainability reporting',
     autonomy_tier: 'read-only',
+    tags: ['manufacturing'],
     sub_catalysts: [
       { name: 'Consumption Monitoring', enabled: true, description: 'Real-time energy usage tracking by machine and production line' },
       { name: 'Load Management', enabled: true, description: 'Peak demand management and load shedding scheduling' },
@@ -647,74 +819,16 @@ const manufacturingClusters: CatalystTemplate[] = [
       { name: 'Carbon Reporting', enabled: false, description: 'Scope 1 & 2 emissions calculation and reporting' },
     ],
   },
-  {
-    name: 'Finance Operations Catalyst', domain: 'finance',
-    description: 'Production costing, inventory valuation, and variance analysis',
-    autonomy_tier: 'transactional',
-    sub_catalysts: [
-      { name: 'Production Costing', enabled: true, description: 'Standard vs actual cost variance by product and work center' },
-      { name: 'Inventory Valuation', enabled: true, description: 'FIFO/weighted average inventory valuation automation' },
-      { name: 'Accounts Payable', enabled: true, description: 'Supplier invoice processing and 3-way matching' },
-      { name: 'Budget Forecasting', enabled: false, description: 'Production volume-linked budget and cash flow forecasting' },
-      { name: 'Accounts Receivable', enabled: true, description: 'Customer invoicing and collections management' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Raw material procurement, inventory management, and supplier coordination',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'MRP Planning', enabled: true, description: 'Material requirements planning based on production schedule' },
-      { name: 'Inventory Optimization', enabled: true, description: 'Safety stock calculation and reorder point optimization' },
-      { name: 'Supplier Coordination', enabled: true, description: 'Supplier delivery scheduling and performance tracking' },
-      { name: 'Demand Planning', enabled: false, description: 'Finished goods demand forecasting from sales orders and trends' },
-      { name: 'Logistics Management', enabled: true, description: 'Inbound and outbound freight management and cost optimization' },
-    ],
-  },
-  {
-    name: 'Workforce Management Catalyst', domain: 'hr',
-    description: 'Shift scheduling, skills tracking, and safety compliance',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Shift Scheduling', enabled: true, description: 'Multi-shift roster optimization considering skills and regulations' },
-      { name: 'Skills Matrix', enabled: true, description: 'Operator competency tracking and training gap identification' },
-      { name: 'Safety Compliance', enabled: true, description: 'PPE compliance, safety induction, and incident tracking' },
-      { name: 'Overtime Analytics', enabled: false, description: 'Overtime cost tracking and authorization workflow' },
-    ],
-  },
-  {
-    name: 'Sales & Distribution Catalyst', domain: 'sales',
-    description: 'Order management, pricing, and delivery coordination',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Order Management', enabled: true, description: 'Customer order intake, ATP check, and delivery scheduling' },
-      { name: 'Pricing Engine', enabled: true, description: 'Volume-based and customer-specific pricing management' },
-      { name: 'Delivery Coordination', enabled: true, description: 'Dispatch planning and proof of delivery tracking' },
-      { name: 'Customer Portal', enabled: false, description: 'Self-service order tracking and invoice access' },
-    ],
-  },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Raw material purchasing, supplier management, and sourcing optimization',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Supplier Management', enabled: true, description: 'Vendor qualification, performance rating, and relationship management' },
-      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and multi-level approval workflows' },
-      { name: 'Strategic Sourcing', enabled: true, description: 'Sourcing event management and competitive bidding coordination' },
-      { name: 'Spend Analytics', enabled: false, description: 'Category-level spend analysis and savings opportunity identification' },
-      { name: 'Supplier Risk', enabled: true, description: 'Supplier financial health monitoring and supply disruption risk scoring' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FINANCIAL SERVICES
-// ═══════════════════════════════════════════════════════════════════════════
-const financialServicesClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Financial services
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Risk Management Catalyst', domain: 'finance',
+    name: 'Risk Management Catalyst',
+    domain: 'finance',
     description: 'Credit risk scoring, market risk monitoring, and regulatory capital calculation',
     autonomy_tier: 'read-only',
+    tags: ['financial_services', 'finance'],
     sub_catalysts: [
       { name: 'Credit Risk Scoring', enabled: true, description: 'ML-based credit scoring and probability of default modeling' },
       { name: 'Market Risk', enabled: true, description: 'VaR calculation and market exposure monitoring' },
@@ -724,9 +838,11 @@ const financialServicesClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Compliance & Regulatory Catalyst', domain: 'finance',
+    name: 'Compliance & Regulatory Catalyst',
+    domain: 'finance',
     description: 'AML screening, KYC verification, and regulatory reporting automation',
     autonomy_tier: 'read-only',
+    tags: ['financial_services', 'finance'],
     sub_catalysts: [
       { name: 'AML Screening', enabled: true, description: 'Automated anti-money laundering transaction screening' },
       { name: 'KYC Verification', enabled: true, description: 'Customer due diligence and identity verification' },
@@ -736,9 +852,11 @@ const financialServicesClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Customer Intelligence Catalyst', domain: 'sales',
+    name: 'Customer Intelligence Catalyst',
+    domain: 'sales',
     description: 'Customer segmentation, product recommendation, and retention management',
     autonomy_tier: 'assisted',
+    tags: ['financial_services'],
     sub_catalysts: [
       { name: 'Customer Segmentation', enabled: true, description: 'Behavioral and value-based customer segmentation' },
       { name: 'Product Recommendation', enabled: true, description: 'Next-best-product recommendation engine' },
@@ -747,49 +865,16 @@ const financialServicesClusters: CatalystTemplate[] = [
       { name: 'Cross-Sell Analytics', enabled: true, description: 'Product affinity analysis and cross-sell opportunity scoring' },
     ],
   },
-  {
-    name: 'Operations Catalyst', domain: 'supply-chain',
-    description: 'Process automation, SLA monitoring, and operational efficiency',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Process Automation', enabled: true, description: 'Straight-through processing rate monitoring and improvement' },
-      { name: 'SLA Monitoring', enabled: true, description: 'Service level agreement tracking and breach alerting' },
-      { name: 'Capacity Planning', enabled: false, description: 'Transaction volume forecasting and resource planning' },
-      { name: 'Quality Assurance', enabled: true, description: 'Transaction accuracy monitoring and error rate tracking' },
-    ],
-  },
-  {
-    name: 'Workforce Catalyst', domain: 'hr',
-    description: 'Branch staffing, compliance training, and performance management',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Branch Staffing', enabled: true, description: 'Optimal branch headcount planning based on transaction volumes' },
-      { name: 'Compliance Training', enabled: true, description: 'Regulatory training completion tracking and certification management' },
-      { name: 'Performance Management', enabled: true, description: 'KPI-based performance tracking and incentive calculation' },
-      { name: 'Talent Pipeline', enabled: false, description: 'Succession planning and high-potential identification' },
-    ],
-  },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'IT vendor management, outsourcing governance, and cost optimization',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'IT Vendor Management', enabled: true, description: 'Technology vendor performance and contract management' },
-      { name: 'Outsourcing Governance', enabled: true, description: 'BPO and outsourcing SLA monitoring and cost tracking' },
-      { name: 'Cost Optimization', enabled: true, description: 'Operational cost benchmarking and reduction opportunity identification' },
-      { name: 'RFP Management', enabled: false, description: 'Request for proposal lifecycle automation' },
-    ],
-  },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FMCG (Fast-Moving Consumer Goods)
-// ═══════════════════════════════════════════════════════════════════════════
-const fmcgClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // FMCG
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Trade Promotion Catalyst', domain: 'fmcg-trade',
+    name: 'Trade Promotion Catalyst',
+    domain: 'fmcg-trade',
     description: 'Trade spend optimization, promotion ROI tracking, and retail execution',
     autonomy_tier: 'assisted',
+    tags: ['fmcg'],
     sub_catalysts: [
       { name: 'Promotion Planning', enabled: true, description: 'Trade promotion calendar management and budget allocation' },
       { name: 'ROI Analysis', enabled: true, description: 'Post-promotion effectiveness and lift measurement' },
@@ -799,9 +884,11 @@ const fmcgClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Distributor Management Catalyst', domain: 'fmcg-distributor',
+    name: 'Distributor Management Catalyst',
+    domain: 'fmcg-distributor',
     description: 'Distributor performance tracking, inventory visibility, and route-to-market',
     autonomy_tier: 'assisted',
+    tags: ['fmcg'],
     sub_catalysts: [
       { name: 'Distributor Scorecarding', enabled: true, description: 'Multi-dimensional distributor performance rating' },
       { name: 'Inventory Visibility', enabled: true, description: 'Real-time distributor stock levels and days-of-stock tracking' },
@@ -810,9 +897,11 @@ const fmcgClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Product Launch Catalyst', domain: 'fmcg-launch',
+    name: 'Product Launch Catalyst',
+    domain: 'fmcg-launch',
     description: 'New product introduction, market testing, and launch tracking',
     autonomy_tier: 'read-only',
+    tags: ['fmcg'],
     sub_catalysts: [
       { name: 'Stage-Gate Tracking', enabled: true, description: 'NPD stage-gate process management and milestone tracking' },
       { name: 'Test Market Analysis', enabled: true, description: 'Regional test market performance monitoring' },
@@ -821,9 +910,11 @@ const fmcgClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Shelf Intelligence Catalyst', domain: 'fmcg-shelf',
+    name: 'Shelf Intelligence Catalyst',
+    domain: 'fmcg-shelf',
     description: 'Share of shelf tracking, planogram compliance, and competitive intelligence',
     autonomy_tier: 'read-only',
+    tags: ['fmcg'],
     sub_catalysts: [
       { name: 'Share of Shelf', enabled: true, description: 'Shelf space measurement and share tracking by retailer' },
       { name: 'Planogram Compliance', enabled: true, description: 'In-store planogram adherence monitoring using image recognition' },
@@ -832,56 +923,11 @@ const fmcgClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Finance Catalyst', domain: 'finance',
-    description: 'Revenue management, cost optimization, and financial reporting',
-    autonomy_tier: 'transactional',
-    sub_catalysts: [
-      { name: 'Revenue Management', enabled: true, description: 'Revenue recognition and category profitability analysis' },
-      { name: 'Cost of Goods Sold', enabled: true, description: 'COGS tracking, material cost variance, and margin analysis' },
-      { name: 'Accounts Receivable', enabled: true, description: 'Debtor management and collection optimization' },
-      { name: 'Trade Spend Accounting', enabled: true, description: 'Accrual management and trade promotion accounting' },
-      { name: 'Transfer Pricing', enabled: false, description: 'Intercompany transfer pricing compliance and documentation' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Demand planning, production scheduling, and warehouse management',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Demand Planning', enabled: true, description: 'Statistical and promotional demand forecasting' },
-      { name: 'Production Scheduling', enabled: true, description: 'Factory production plan optimization' },
-      { name: 'Warehouse Management', enabled: true, description: 'DC inventory optimization and order fulfillment' },
-      { name: 'Transportation', enabled: false, description: 'Route optimization and carrier management' },
-      { name: 'S&OP Coordination', enabled: true, description: 'Sales and operations planning process automation' },
-    ],
-  },
-  {
-    name: 'Workforce Catalyst', domain: 'hr',
-    description: 'Sales force management, merchandiser scheduling, and training',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Sales Force Effectiveness', enabled: true, description: 'Sales rep productivity and territory coverage analysis' },
-      { name: 'Merchandiser Scheduling', enabled: true, description: 'Store visit scheduling and route optimization for merchandisers' },
-      { name: 'Training Management', enabled: true, description: 'Product knowledge and selling skills training completion tracking' },
-      { name: 'Incentive Calculation', enabled: false, description: 'Commission and bonus calculation automation' },
-    ],
-  },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Raw material sourcing, co-packer management, and packaging procurement',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Ingredient Sourcing', enabled: true, description: 'Raw material supplier qualification and price benchmarking' },
-      { name: 'Co-Packer Management', enabled: true, description: 'Third-party manufacturer performance tracking and quality compliance' },
-      { name: 'Packaging Procurement', enabled: true, description: 'Packaging material sourcing and minimum order quantity optimization' },
-      { name: 'Contract Management', enabled: false, description: 'Supplier contract lifecycle management and renewal tracking' },
-      { name: 'Spend Analytics', enabled: true, description: 'Category-level procurement spend analysis and savings identification' },
-    ],
-  },
-  {
-    name: 'Sales & Key Accounts Catalyst', domain: 'sales',
+    name: 'Sales & Key Accounts Catalyst',
+    domain: 'sales',
     description: 'Retailer relationship management, key account planning, and order management',
     autonomy_tier: 'assisted',
+    tags: ['fmcg'],
     sub_catalysts: [
       { name: 'Key Account Management', enabled: true, description: 'Major retailer relationship tracking and joint business planning' },
       { name: 'Order Management', enabled: true, description: 'Customer order processing, allocation, and delivery coordination' },
@@ -890,16 +936,16 @@ const fmcgClusters: CatalystTemplate[] = [
       { name: 'Tender Response', enabled: false, description: 'Retailer tender and listing application automation' },
     ],
   },
-];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RETAIL
-// ═══════════════════════════════════════════════════════════════════════════
-const retailClusters: CatalystTemplate[] = [
+  // ───────────────────────────────────────────────────────────────────────
+  // Retail
+  // ───────────────────────────────────────────────────────────────────────
   {
-    name: 'Point of Sale Intelligence Catalyst', domain: 'retail-pos',
+    name: 'Point of Sale Intelligence Catalyst',
+    domain: 'retail-pos',
     description: 'POS analytics, basket analysis, transaction monitoring, and shrinkage detection',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Transaction Analytics', enabled: true, description: 'Real-time POS transaction monitoring and trend analysis' },
       { name: 'Basket Analysis', enabled: true, description: 'Market basket analysis for cross-sell and upsell opportunities' },
@@ -909,9 +955,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Inventory & Merchandise Catalyst', domain: 'retail-inventory',
+    name: 'Inventory & Merchandise Catalyst',
+    domain: 'retail-inventory',
     description: 'Stock optimization, replenishment automation, and merchandise planning',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Automated Replenishment', enabled: true, description: 'ML-driven reorder point calculation and purchase order generation' },
       { name: 'Stock Allocation', enabled: true, description: 'Multi-store stock allocation based on demand patterns and store profiles' },
@@ -921,9 +969,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Customer Experience Catalyst', domain: 'retail-cx',
+    name: 'Customer Experience Catalyst',
+    domain: 'retail-cx',
     description: 'Loyalty program management, customer segmentation, and omnichannel engagement',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Loyalty Analytics', enabled: true, description: 'Loyalty program performance, redemption patterns, and churn prediction' },
       { name: 'Customer Segmentation', enabled: true, description: 'RFM-based customer segmentation and lifecycle stage tracking' },
@@ -933,9 +983,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Retail Finance Catalyst', domain: 'finance',
+    name: 'Retail Finance Catalyst',
+    domain: 'finance',
     description: 'Daily reconciliation, margin analysis, rent and lease management',
     autonomy_tier: 'transactional',
+    tags: ['retail', 'finance'],
     sub_catalysts: [
       { name: 'Daily Reconciliation', enabled: true, description: 'POS-to-bank daily cash reconciliation and variance detection' },
       { name: 'Margin Analysis', enabled: true, description: 'Product and category-level margin tracking and erosion alerts' },
@@ -945,9 +997,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Supply Chain & Logistics Catalyst', domain: 'retail-supply-chain',
+    name: 'Supply Chain & Logistics Catalyst',
+    domain: 'retail-supply-chain',
     description: 'Supplier management, distribution center operations, and last-mile delivery',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Supplier Performance', enabled: true, description: 'Supplier fill rate, lead time, and quality scorecarding' },
       { name: 'DC Operations', enabled: true, description: 'Distribution center throughput monitoring and bottleneck detection' },
@@ -957,9 +1011,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Pricing & Promotions Catalyst', domain: 'retail-pricing',
+    name: 'Pricing & Promotions Catalyst',
+    domain: 'retail-pricing',
     description: 'Dynamic pricing, promotion effectiveness, and competitor price monitoring',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Dynamic Pricing', enabled: true, description: 'AI-driven price optimization based on demand elasticity and competition' },
       { name: 'Promotion ROI', enabled: true, description: 'Promotion effectiveness measurement and cannibalization analysis' },
@@ -969,9 +1025,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Store Operations Catalyst', domain: 'retail-ops',
+    name: 'Store Operations Catalyst',
+    domain: 'retail-ops',
     description: 'Store performance benchmarking, task management, and compliance',
     autonomy_tier: 'read-only',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Store Scorecarding', enabled: true, description: 'Multi-KPI store performance ranking and benchmarking' },
       { name: 'Task Management', enabled: true, description: 'Store task assignment, completion tracking, and escalation' },
@@ -981,21 +1039,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Workforce Management Catalyst', domain: 'hr',
-    description: 'Staff scheduling, labor cost optimization, and training compliance',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Smart Scheduling', enabled: true, description: 'Traffic-driven staff scheduling with skills and availability matching' },
-      { name: 'Labor Cost Control', enabled: true, description: 'Labor-to-sales ratio monitoring and overtime management' },
-      { name: 'Training Compliance', enabled: true, description: 'Product knowledge and compliance training completion tracking' },
-      { name: 'Attrition Prediction', enabled: false, description: 'Employee flight risk scoring and retention intervention triggers' },
-      { name: 'Onboarding Automation', enabled: true, description: 'New hire onboarding workflow automation and checklist management' },
-    ],
-  },
-  {
-    name: 'E-Commerce Intelligence Catalyst', domain: 'retail-ecommerce',
+    name: 'E-Commerce Intelligence Catalyst',
+    domain: 'retail-ecommerce',
     description: 'Online store analytics, conversion optimization, and marketplace integration',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Conversion Funnel', enabled: true, description: 'Cart abandonment analysis and checkout optimization' },
       { name: 'Product Recommendations', enabled: true, description: 'Collaborative and content-based product recommendation engine' },
@@ -1005,9 +1053,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Procurement & Buying Catalyst', domain: 'procurement',
+    name: 'Procurement & Buying Catalyst',
+    domain: 'procurement',
     description: 'Merchandise buying, supplier negotiations, and import management',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Buying Planning', enabled: true, description: 'Open-to-buy budget management and category buying plans' },
       { name: 'Supplier Negotiations', enabled: true, description: 'Supplier cost negotiation tracking and rebate management' },
@@ -1017,9 +1067,11 @@ const retailClusters: CatalystTemplate[] = [
     ],
   },
   {
-    name: 'Sales & Revenue Catalyst', domain: 'sales',
+    name: 'Sales & Revenue Catalyst',
+    domain: 'sales',
     description: 'Revenue tracking, channel management, and customer acquisition',
     autonomy_tier: 'assisted',
+    tags: ['retail'],
     sub_catalysts: [
       { name: 'Revenue Analytics', enabled: true, description: 'Store, channel, and category revenue tracking and forecasting' },
       { name: 'Channel Management', enabled: true, description: 'Omnichannel revenue attribution and channel mix optimization' },
@@ -1031,133 +1083,98 @@ const retailClusters: CatalystTemplate[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GENERAL (cross-industry baseline)
+// CATALOG LOOKUPS
 // ═══════════════════════════════════════════════════════════════════════════
-const generalClusters: CatalystTemplate[] = [
-  {
-    name: 'Finance Catalyst', domain: 'finance',
-    description: 'Accounts payable, receivable, reconciliation, and reporting',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Accounts Payable', enabled: true, description: 'Invoice processing and payment scheduling automation' },
-      { name: 'Accounts Receivable', enabled: true, description: 'Invoicing and collections management' },
-      { name: 'Reconciliation', enabled: true, description: 'Bank and account reconciliation automation' },
-      { name: 'Financial Reporting', enabled: false, description: 'Automated financial statement generation' },
-      { name: 'Budget Management', enabled: true, description: 'Budget tracking and variance reporting' },
-    ],
-  },
-  {
-    name: 'Procurement Catalyst', domain: 'procurement',
-    description: 'Supplier management, purchase orders, and spend analytics',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Supplier Management', enabled: true, description: 'Vendor performance tracking and relationship management' },
-      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and approval workflows' },
-      { name: 'Spend Analytics', enabled: false, description: 'Category spend analysis and savings identification' },
-      { name: 'Contract Management', enabled: true, description: 'Contract lifecycle management and compliance tracking' },
-    ],
-  },
-  {
-    name: 'Supply Chain Catalyst', domain: 'supply-chain',
-    description: 'Inventory management, logistics, and demand forecasting',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Inventory Management', enabled: true, description: 'Stock level monitoring and reorder optimization' },
-      { name: 'Logistics Tracking', enabled: true, description: 'Shipment tracking and delivery management' },
-      { name: 'Demand Forecasting', enabled: false, description: 'Statistical demand prediction and planning' },
-      { name: 'Warehouse Operations', enabled: true, description: 'Warehouse efficiency and pick/pack optimization' },
-    ],
-  },
-  {
-    name: 'HR & Workforce Catalyst', domain: 'hr',
-    description: 'Employee management, scheduling, and compliance',
-    autonomy_tier: 'read-only',
-    sub_catalysts: [
-      { name: 'Leave Management', enabled: true, description: 'Leave request processing and balance tracking' },
-      { name: 'Scheduling', enabled: true, description: 'Employee shift scheduling and availability management' },
-      { name: 'Compliance Training', enabled: true, description: 'Mandatory training completion tracking' },
-      { name: 'Performance Reviews', enabled: false, description: 'Review cycle management and goal tracking' },
-    ],
-  },
-  {
-    name: 'Sales Catalyst', domain: 'sales',
-    description: 'Customer management, pipeline tracking, and order processing',
-    autonomy_tier: 'assisted',
-    sub_catalysts: [
-      { name: 'Pipeline Management', enabled: true, description: 'Sales pipeline tracking and forecasting' },
-      { name: 'Order Processing', enabled: true, description: 'Customer order intake and fulfillment tracking' },
-      { name: 'Customer Scoring', enabled: false, description: 'Customer value scoring and segmentation' },
-      { name: 'Quote Management', enabled: true, description: 'Quotation generation and follow-up automation' },
-    ],
-  },
-];
+
+/** Lookup a cluster by exact name. */
+export function getClusterByName(name: string): CatalystTemplate | undefined {
+  return CATALYST_CATALOG.find(c => c.name === name);
+}
+
+/**
+ * Filter by tag (e.g. 'mining', 'finance'). Replaces the previous
+ * industry filter — a cluster is returned as long as the tag appears
+ * anywhere in its `tags` array.
+ */
+export function getClustersByTag(tag: string): CatalystTemplate[] {
+  return CATALYST_CATALOG.filter(c => c.tags.includes(tag));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TEMPLATE REGISTRY
+// BACKWARDS-COMPATIBLE INDUSTRY TEMPLATES (DEPRECATED)
 // ═══════════════════════════════════════════════════════════════════════════
-export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
-  {
-    industry: 'mining',
-    label: 'Mining & Steel',
-    description: 'Equipment maintenance, safety compliance, ore processing, and environmental monitoring',
-    clusters: miningClusters,
-  },
-  {
-    industry: 'agriculture',
-    label: 'Agriculture',
-    description: 'Crop intelligence, irrigation, quality assurance, and market access',
-    clusters: agricultureClusters,
-  },
-  {
-    industry: 'healthcare',
-    label: 'Healthcare',
-    description: 'Patient flow, clinical compliance, medical billing, and staffing',
-    clusters: healthcareClusters,
-  },
-  {
-    industry: 'logistics',
-    label: 'Logistics & Transport',
-    description: 'Route optimization, fleet maintenance, driver management, and compliance',
-    clusters: logisticsClusters,
-  },
-  {
-    industry: 'technology',
-    label: 'Technology & SaaS',
-    description: 'DevOps, security, product analytics, customer success, and revenue ops',
-    clusters: technologyClusters,
-  },
-  {
-    industry: 'manufacturing',
-    label: 'Manufacturing',
-    description: 'Production optimization, quality control, maintenance, and energy management',
-    clusters: manufacturingClusters,
-  },
-  {
-    industry: 'financial_services',
-    label: 'Financial Services',
-    description: 'Risk management, regulatory compliance, customer intelligence, and operations',
-    clusters: financialServicesClusters,
-  },
-  {
-    industry: 'fmcg',
-    label: 'FMCG',
-    description: 'Trade promotion, distributor management, shelf intelligence, and product launch',
-    clusters: fmcgClusters,
-  },
-  {
-    industry: 'retail',
-    label: 'Retail',
-    description: 'POS intelligence, inventory optimization, customer experience, pricing, and e-commerce',
-    clusters: retailClusters,
-  },
-  {
-    industry: 'general',
-    label: 'General',
-    description: 'Cross-industry baseline catalysts for finance, procurement, supply chain, HR, and sales',
-    clusters: generalClusters,
-  },
+// Derived from CATALYST_CATALOG by grouping on the first (primary) tag.
+// Kept so existing consumers — the `/templates` endpoint, any cached
+// frontend industry pickers, tests — continue to function while we roll
+// out tag-based discovery.
+
+interface IndustryMeta {
+  industry: string;
+  label: string;
+  description: string;
+}
+
+const INDUSTRY_METADATA: IndustryMeta[] = [
+  { industry: 'mining',             label: 'Mining & Steel',       description: 'Equipment maintenance, safety compliance, ore processing, and environmental monitoring' },
+  { industry: 'agriculture',        label: 'Agriculture',          description: 'Crop intelligence, irrigation, quality assurance, and market access' },
+  { industry: 'healthcare',         label: 'Healthcare',           description: 'Patient flow, clinical compliance, medical billing, and staffing' },
+  { industry: 'logistics',          label: 'Logistics & Transport', description: 'Route optimization, fleet maintenance, driver management, and compliance' },
+  { industry: 'technology',         label: 'Technology & SaaS',    description: 'DevOps, security, product analytics, customer success, and revenue ops' },
+  { industry: 'manufacturing',      label: 'Manufacturing',        description: 'Production optimization, quality control, maintenance, and energy management' },
+  { industry: 'financial_services', label: 'Financial Services',   description: 'Risk management, regulatory compliance, customer intelligence, and operations' },
+  { industry: 'fmcg',               label: 'FMCG',                 description: 'Trade promotion, distributor management, shelf intelligence, and product launch' },
+  { industry: 'retail',             label: 'Retail',               description: 'POS intelligence, inventory optimization, customer experience, pricing, and e-commerce' },
+  { industry: 'general',            label: 'General',              description: 'Cross-industry baseline catalysts for finance, procurement, supply chain, HR, and sales' },
 ];
 
+/**
+ * @deprecated Use {@link CATALYST_CATALOG} with tag filtering.
+ * Derived at module load from the flat catalog. A cluster appears in an
+ * industry's bucket if it carries that industry's tag, preserving the
+ * previous vertical menus for the Tenants page.
+ */
+export const INDUSTRY_TEMPLATES: IndustryTemplate[] = INDUSTRY_METADATA.map(meta => ({
+  industry: meta.industry,
+  label: meta.label,
+  description: meta.description,
+  clusters: CATALYST_CATALOG.filter(c => c.tags.includes(meta.industry)),
+}));
+
+/**
+ * @deprecated Use {@link getClustersByTag} instead.
+ */
 export function getTemplateForIndustry(industry: string): IndustryTemplate | undefined {
   return INDUSTRY_TEMPLATES.find(t => t.industry === industry);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STARTER BUNDLE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A curated "starter" bundle deployed to a tenant when neither an
+ * `industry` nor a custom `clusters` payload is provided to
+ * `/deploy-template`. Pick the ~10 most universally useful clusters —
+ * finance, procurement, supply chain, HR, sales plus a few risk/
+ * operational ones — so the tenant gets a working baseline without
+ * having to know which tags to pick.
+ */
+export const STARTER_CLUSTER_NAMES: readonly string[] = [
+  'Finance Catalyst',
+  'Procurement Catalyst',
+  'Supply Chain Catalyst',
+  'HR & Workforce Catalyst',
+  'Sales Catalyst',
+  'Operations Catalyst',
+  'Customer Intelligence Catalyst',
+  'Risk Management Catalyst',
+  'Customer Experience Catalyst',
+  'Inventory & Merchandise Catalyst',
+] as const;
+
+/** Resolve the starter bundle from the flat catalog. */
+export function getStarterClusters(): CatalystTemplate[] {
+  return STARTER_CLUSTER_NAMES
+    .map(name => getClusterByName(name))
+    .filter((c): c is CatalystTemplate => c !== undefined);
 }

@@ -301,9 +301,9 @@ radar.get('/peer-benchmarks', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
 
-  // Get tenant's industry
-  const tenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
-  const industry = (tenant?.industry as string) || 'general';
+  // Industry no longer tracked on tenants — fall back to 'general' benchmarks.
+  // Per-tenant industry tagging can be reintroduced via tenant_tags if needed.
+  const industry = 'general';
 
   // Get anonymised benchmarks for this industry (only if >= 3 tenants contribute)
   const benchmarks = await c.env.DB.prepare(
@@ -348,8 +348,9 @@ radar.get('/success-stories', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
 
-  const tenant = await c.env.DB.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
-  const industry = (tenant?.industry as string) || 'general';
+  // Industry no longer tracked on tenants — fall back to 'general' patterns.
+  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
+  const industry = 'general';
 
   // Only show resolution patterns with >= 3 resolutions (anonymity threshold)
   const patterns = await c.env.DB.prepare(

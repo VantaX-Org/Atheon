@@ -104,7 +104,8 @@ adminTooling.get('/support/tenants', async (c) => {
 
   const q = c.req.query('q') || '';
   try {
-    let query = 'SELECT id, name, slug, industry, plan, status, created_at FROM tenants WHERE status != ?';
+    // industry column removed from tenants; omit from SELECT.
+    let query = 'SELECT id, name, slug, plan, status, created_at FROM tenants WHERE status != ?';
     const binds: string[] = ['deleted'];
     if (q) {
       query += ' AND (name LIKE ? OR slug LIKE ? OR id LIKE ?)';
@@ -633,7 +634,8 @@ adminTooling.get('/tenants-read', async (c) => {
 
   try {
     const result = await c.env.DB.prepare(
-      "SELECT id, name, slug, industry, plan, status, region, created_at FROM tenants WHERE status != 'deleted' ORDER BY name ASC"
+      // industry column removed from tenants; omit from SELECT.
+      "SELECT id, name, slug, plan, status, region, created_at FROM tenants WHERE status != 'deleted' ORDER BY name ASC"
     ).all();
 
     return c.json({ success: true, tenants: result.results || [], count: result.results?.length || 0 });
@@ -648,7 +650,8 @@ adminTooling.get('/tenants-read/:id', async (c) => {
 
   try {
     const tenant = await c.env.DB.prepare(
-      'SELECT id, name, slug, industry, plan, status, region, created_at, updated_at FROM tenants WHERE id = ?'
+      // industry column removed from tenants; omit from SELECT.
+      'SELECT id, name, slug, plan, status, region, created_at, updated_at FROM tenants WHERE id = ?'
     ).bind(tenantId).first();
     if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
 

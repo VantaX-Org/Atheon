@@ -66,8 +66,9 @@ app.get('/', async (c) => {
   const trend = (history.results || []).map((r: Record<string, unknown>) => ({ score: r.score as number, date: r.recorded_at as string })).reverse();
 
   // Get industry average (from anonymised benchmarks if available)
-  const tenant = await db.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first();
-  const industry = (tenant?.industry as string) || 'general';
+  // Industry no longer tracked on tenants — fall back to 'general' benchmarks.
+  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
+  const industry = 'general';
   let industryAvg: number | null = null;
   try {
     const bench = await db.prepare(

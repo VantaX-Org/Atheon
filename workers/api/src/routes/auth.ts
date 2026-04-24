@@ -136,7 +136,8 @@ auth.post('/register', async (c) => {
       tenantId: tenant.id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
-      tenantIndustry: tenant.industry || 'general',
+      // industry column removed from tenants; fall back to 'general'.
+      tenantIndustry: 'general',
       permissions: ['read'],
     },
   }, 201);
@@ -170,9 +171,9 @@ auth.post('/login', async (c) => {
       await recordFailedLogin(c.env.CACHE, body.email);
       return c.json({ error: 'Invalid credentials' }, 401);
     }
-    // OPTIMIZED: Include t.industry in JOIN to avoid separate tenant query later
+    // industry column removed from tenants; tenantIndustry defaults to 'general' in response.
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ? AND u.status = ?'
     ).bind(body.email, loginTenantRow.id, 'active').first();
   } else {
     const tenantRows = await c.env.DB.prepare(
@@ -182,9 +183,9 @@ auth.post('/login', async (c) => {
       const tenants = tenantRows.results.map((r: Record<string, unknown>) => ({ slug: r.slug as string, name: r.name as string }));
       return c.json({ error: 'Tenant selection required', tenantSelectionRequired: true, tenants, message: 'This email exists in multiple workspaces. Please select one.' }, 400);
     }
-    // OPTIMIZED: Include t.industry in JOIN to avoid separate tenant query later
+    // industry column removed from tenants; tenantIndustry defaults to 'general' in response.
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
+      'SELECT u.*, t.slug as tenant_slug, t.name as tenant_name FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.status = ?'
     ).bind(body.email, 'active').first();
   }
 
@@ -269,7 +270,7 @@ auth.post('/login', async (c) => {
     name: user.name, role: user.role, permissions: JSON.parse(user.permissions as string || '[]'),
   }), { expirationTtl: REFRESH_TTL });
 
-  // OPTIMIZED: tenant_industry already fetched in the JOIN above (was a separate query)
+  // industry column removed from tenants; tenantIndustry defaults to 'general'.
   return c.json({
     token,
     refreshToken,
@@ -282,7 +283,7 @@ auth.post('/login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
-      tenantIndustry: (user.tenant_industry as string) || 'general',
+      tenantIndustry: 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
@@ -387,7 +388,8 @@ auth.post('/demo-login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
-      tenantIndustry: tenant.industry || 'general',
+      // industry column removed from tenants; fall back to 'general'.
+      tenantIndustry: 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
@@ -785,8 +787,9 @@ auth.post('/sso/callback', async (c) => {
   }
 
   // Find or auto-provision user
+  // industry column removed from tenants; tenantIndustry defaults to 'general' in response.
   let user = await c.env.DB.prepare(
-    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
+    'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = ? AND u.tenant_id = ?'
   ).bind(ssoEmail, tenant.id).first();
 
   if (!user && sso.auto_provision) {
@@ -800,7 +803,8 @@ auth.post('/sso/callback', async (c) => {
     ).bind(userId, tenant.id, ssoEmail, ssoName, defaultRole, defaultPerms, 'active').run();
 
     user = await c.env.DB.prepare(
-      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug, t.industry as tenant_industry FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
+      // industry column removed from tenants; tenantIndustry defaults to 'general' in response.
+      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
     ).bind(userId).first();
 
     // Log auto-provision
@@ -845,7 +849,8 @@ auth.post('/sso/callback', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
-      tenantIndustry: user.tenant_industry || 'general',
+      // industry column removed from tenants; fall back to 'general'.
+      tenantIndustry: 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },
   });
@@ -1198,8 +1203,8 @@ auth.post('/mfa/validate', async (c) => {
     'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(crypto.randomUUID(), userData.tenantId, userData.userId, 'login_mfa', 'auth', 'session', JSON.stringify({ email: userData.email }), 'success').run();
 
-  // Fetch tenant info
-  const loginTenant = await c.env.DB.prepare('SELECT name, slug, industry FROM tenants WHERE id = ?').bind(userData.tenantId).first();
+  // Fetch tenant info (industry column removed from tenants).
+  const loginTenant = await c.env.DB.prepare('SELECT name, slug FROM tenants WHERE id = ?').bind(userData.tenantId).first();
 
   return c.json({
     token,
@@ -1213,7 +1218,8 @@ auth.post('/mfa/validate', async (c) => {
       tenantId: userData.tenantId,
       tenantName: loginTenant?.name || '',
       tenantSlug: loginTenant?.slug || '',
-      tenantIndustry: loginTenant?.industry || 'general',
+      // industry column removed from tenants; fall back to 'general'.
+      tenantIndustry: 'general',
       permissions: userData.permissions,
     },
   });

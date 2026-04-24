@@ -423,11 +423,12 @@ export async function generateBoardReport(
 
   // 7) Build LLM prompt
   const llmConfig = await loadLlmConfig(db, tenantId);
-  const tenant = await db.prepare('SELECT name, industry FROM tenants WHERE id = ?').bind(tenantId).first<{ name: string; industry: string }>();
+  // industry column removed from tenants; fall back to 'general' in board reports.
+  const tenant = await db.prepare('SELECT name FROM tenants WHERE id = ?').bind(tenantId).first<{ name: string }>();
 
   const dataPayload: BoardReportData = {
     company: tenant?.name || 'Company',
-    industry: tenant?.industry || 'general',
+    industry: 'general',
     healthScore: health?.overall_score || 0,
     dimensions: health?.dimensions ? JSON.parse(health.dimensions) : {},
     context,
