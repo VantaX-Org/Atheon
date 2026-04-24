@@ -1,103 +1,149 @@
 /**
  * ADMIN-001: Platform Health Dashboard
- * Superadmin-only real-time view of infrastructure, data pipeline, tenant health, and system alerts.
+ * Superadmin-only real-time view of infrastructure, tenant roster, and system alerts.
  * Route: /platform-health | Role: superadmin only
+ *
+ * Endpoints (all confirmed in workers/api/src/routes/admin-tooling.ts):
+ *   - GET /api/v1/admin-tooling/platform-health  (ADMIN-001, superadmin only)
+ *   - GET /api/v1/admin-tooling/tenants-read     (ADMIN-011, support_admin+)
+ *   - GET /api/v1/admin-tooling/system-alerts    (ADMIN-012, admin+)
+ *
+ * Behaviour on failure: surfaces a toast with requestId and shows an empty
+ * state — no more silent fallback to fake mock data.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabPanel, useTabState } from '@/components/ui/tabs';
-import { api } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
+import { api, ApiError } from '@/lib/api';
 import {
-  Activity, Server, Database, HardDrive, Cpu, Wifi, AlertTriangle,
+  Activity, Server, Database, AlertTriangle,
   CheckCircle, XCircle, Clock, RefreshCw, Loader2,
-  Users, Building2, Zap, TrendingUp, BarChart3,
+  Users, Building2, Zap,
 } from 'lucide-react';
 
-interface InfraMetric {
-  name: string;
-  value: number;
-  unit: string;
-  status: 'healthy' | 'degraded' | 'critical';
-  threshold?: { warn: number; critical: number };
+// ── Response shapes (mirrors workers/api/src/routes/admin-tooling.ts) ──
+interface PlatformHealthResponse {
+  success?: boolean;
+  infrastructure?: {
+    apiResponseMs?: number;
+    totalRequestsLastHour?: number;
+    dbStatus?: 'healthy' | 'degraded' | 'critical';
+    workerStatus?: 'healthy' | 'degraded' | 'critical';
+  };
+  tenants?: { total?: number };
+  users?: { total?: number };
+  timestamp?: string;
 }
 
-interface TenantHealth {
+interface TenantReadRow {
   id: string;
   name: string;
-  status: 'active' | 'suspended' | 'provisioning';
-  userCount: number;
-  storageUsedMb: number;
-  apiCallsToday: number;
-  healthScore: number;
-  lastActivity: string;
+  slug?: string;
+  plan?: string;
+  status?: string;
+  region?: string;
+  created_at?: string;
 }
 
-interface SystemAlert {
-  id: string;
-  severity: 'critical' | 'warning' | 'info';
-  title: string;
-  message: string;
-  source: string;
-  createdAt: string;
-  acknowledged: boolean;
+interface SystemAlertRow {
+  id?: string;
+  severity?: 'critical' | 'warning' | 'info';
+  title?: string;
+  message?: string;
+  source?: string;
+  createdAt?: string;
+  created_at?: string;
+  acknowledged?: boolean;
 }
 
-const statusColor = (s: string) => {
-  if (s === 'healthy' || s === 'active') return 'success';
-  if (s === 'degraded' || s === 'warning' || s === 'provisioning') return 'warning';
+// ── Helpers ──
+const healthStatusColor = (s?: string) => {
+  if (s === 'healthy') return 'success';
+  if (s === 'degraded') return 'warning';
   return 'danger';
 };
 
-const statusIcon = (s: string) => {
-  if (s === 'healthy' || s === 'active') return <CheckCircle size={14} className="text-emerald-400" />;
-  if (s === 'degraded' || s === 'warning') return <AlertTriangle size={14} className="text-amber-400" />;
-  return <XCircle size={14} className="text-red-400" />;
+const tenantStatusColor = (s?: string) => {
+  if (s === 'active') return 'success';
+  if (s === 'provisioning' || s === 'pending') return 'warning';
+  if (s === 'suspended' || s === 'deleted') return 'danger';
+  return 'default';
+};
+
+const alertSeverityIcon = (sev?: string) => {
+  if (sev === 'critical') return <XCircle size={16} className="text-red-400 mt-0.5" />;
+  if (sev === 'warning') return <AlertTriangle size={16} className="text-amber-400 mt-0.5" />;
+  return <Activity size={16} className="text-blue-400 mt-0.5" />;
 };
 
 export function PlatformHealthPage() {
+  const toast = useToast();
   const { activeTab, setActiveTab } = useTabState('infrastructure');
   const [loading, setLoading] = useState(true);
-  const [infraMetrics, setInfraMetrics] = useState<InfraMetric[]>([]);
-  const [tenantHealth, setTenantHealth] = useState<TenantHealth[]>([]);
-  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const [platformHealth, setPlatformHealth] = useState<PlatformHealthResponse | null>(null);
+  const [tenants, setTenants] = useState<TenantReadRow[]>([]);
+  const [alerts, setAlerts] = useState<SystemAlertRow[]>([]);
 
-  async function loadData() {
-    setLoading(true);
-    try {
-      const res = await api.adminTooling.platformHealth() as { infrastructure: InfraMetric[]; tenants: TenantHealth[]; alerts: SystemAlert[] };
-      setInfraMetrics(res.infrastructure);
-      setTenantHealth(res.tenants);
-      setAlerts(res.alerts);
-    } catch {
-      // Generate mock data for demo
-      setInfraMetrics([
-        { name: 'API Response Time', value: 45, unit: 'ms', status: 'healthy', threshold: { warn: 200, critical: 500 } },
-        { name: 'CPU Utilization', value: 32, unit: '%', status: 'healthy', threshold: { warn: 70, critical: 90 } },
-        { name: 'Memory Usage', value: 58, unit: '%', status: 'healthy', threshold: { warn: 80, critical: 95 } },
-        { name: 'D1 Query Latency', value: 12, unit: 'ms', status: 'healthy', threshold: { warn: 50, critical: 100 } },
-        { name: 'KV Read Latency', value: 3, unit: 'ms', status: 'healthy', threshold: { warn: 20, critical: 50 } },
-        { name: 'R2 Storage Used', value: 2.4, unit: 'GB', status: 'healthy' },
-        { name: 'Worker Invocations/min', value: 847, unit: 'req', status: 'healthy' },
-        { name: 'Error Rate', value: 0.12, unit: '%', status: 'healthy', threshold: { warn: 1, critical: 5 } },
-      ]);
-      setTenantHealth([
-        { id: '1', name: 'VantaX Demo', status: 'active', userCount: 12, storageUsedMb: 450, apiCallsToday: 3420, healthScore: 94, lastActivity: new Date().toISOString() },
-        { id: '2', name: 'Acme Corp', status: 'active', userCount: 45, storageUsedMb: 1200, apiCallsToday: 8900, healthScore: 87, lastActivity: new Date().toISOString() },
-        { id: '3', name: 'TechStart Inc', status: 'provisioning', userCount: 3, storageUsedMb: 50, apiCallsToday: 120, healthScore: 72, lastActivity: new Date().toISOString() },
-      ]);
-      setAlerts([
-        { id: '1', severity: 'warning', title: 'High memory usage on Worker', message: 'Worker memory at 78% for tenant Acme Corp', source: 'infrastructure', createdAt: new Date().toISOString(), acknowledged: false },
-        { id: '2', severity: 'info', title: 'Scheduled maintenance window', message: 'D1 maintenance scheduled for Sunday 02:00 UTC', source: 'system', createdAt: new Date().toISOString(), acknowledged: true },
-      ]);
+  const loadData = useCallback(async () => {
+    const [ph, tr, al] = await Promise.allSettled([
+      api.adminTooling.platformHealth(),
+      api.adminTooling.tenantsRead(),
+      api.adminTooling.systemAlerts(),
+    ]);
+
+    if (ph.status === 'fulfilled') {
+      setPlatformHealth(ph.value as PlatformHealthResponse);
+    } else {
+      setPlatformHealth(null);
+      const err = ph.reason;
+      toast.error('Failed to load platform health', {
+        message: err instanceof Error ? err.message : undefined,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
-    setLoading(false);
-  }
+
+    if (tr.status === 'fulfilled') {
+      const rows = (tr.value?.tenants as unknown as TenantReadRow[] | undefined) ?? [];
+      setTenants(rows);
+    } else {
+      setTenants([]);
+      // Non-fatal — a superadmin on a fresh environment may see no tenants.
+      // Only surface a toast on real errors (not silent 403s).
+      const err = tr.reason;
+      if (err instanceof ApiError && err.status !== 403) {
+        toast.error('Failed to load tenants', {
+          message: err.message,
+          requestId: err.requestId,
+        });
+      }
+    }
+
+    if (al.status === 'fulfilled') {
+      const rows = (al.value?.alerts as unknown as SystemAlertRow[] | undefined) ?? [];
+      setAlerts(rows);
+    } else {
+      setAlerts([]);
+      const err = al.reason;
+      if (err instanceof ApiError && err.status !== 403) {
+        toast.error('Failed to load system alerts', {
+          message: err.message,
+          requestId: err.requestId,
+        });
+      }
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await loadData();
+      setLoading(false);
+    })();
+  }, [loadData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -105,11 +151,14 @@ export function PlatformHealthPage() {
     setRefreshing(false);
   };
 
+  const infra = platformHealth?.infrastructure ?? {};
+  const unacknowledgedAlerts = alerts.filter(a => !a.acknowledged);
+  const criticalAlerts = alerts.filter(a => a.severity === 'critical');
+
   const tabs = [
-    { id: 'infrastructure', label: 'Infrastructure', icon: <Server size={14} />, count: infraMetrics.length },
-    { id: 'tenants', label: 'Tenant Health', icon: <Building2 size={14} />, count: tenantHealth.length },
-    { id: 'alerts', label: 'System Alerts', icon: <AlertTriangle size={14} />, count: alerts.filter(a => !a.acknowledged).length },
-    { id: 'data-pipeline', label: 'Data Pipeline', icon: <Database size={14} /> },
+    { id: 'infrastructure', label: 'Infrastructure', icon: <Server size={14} /> },
+    { id: 'tenants', label: 'Tenant Roster', icon: <Building2 size={14} />, count: tenants.length },
+    { id: 'alerts', label: 'System Alerts', icon: <AlertTriangle size={14} />, count: unacknowledgedAlerts.length },
   ];
 
   if (loading) {
@@ -129,13 +178,18 @@ export function PlatformHealthPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold t-primary">Platform Health</h1>
-            <p className="text-xs t-muted">Real-time infrastructure & tenant monitoring</p>
+            <p className="text-xs t-muted">
+              Real-time infrastructure & tenant monitoring
+              {platformHealth?.timestamp && (
+                <> · updated {new Date(platformHealth.timestamp).toLocaleTimeString()}</>
+              )}
+            </p>
           </div>
         </div>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary hover:bg-[var(--bg-secondary)] transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary hover:bg-[var(--bg-secondary)] transition-all disabled:opacity-50"
         >
           <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
           Refresh
@@ -146,93 +200,170 @@ export function PlatformHealthPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2 mb-1">
-            <Cpu size={14} className="text-accent" />
-            <span className="text-[10px] t-muted uppercase tracking-wider">Uptime</span>
+            <Database size={14} className="text-accent" />
+            <span className="text-[10px] t-muted uppercase tracking-wider">DB Status</span>
           </div>
-          <p className="text-xl font-bold t-primary">99.97%</p>
-          <p className="text-[10px] t-muted">Last 30 days</p>
+          <p className="text-xl font-bold t-primary capitalize">{infra.dbStatus ?? '—'}</p>
+          <p className="text-[10px] t-muted">Worker: {infra.workerStatus ?? '—'}</p>
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-2 mb-1">
             <Users size={14} className="text-accent" />
-            <span className="text-[10px] t-muted uppercase tracking-wider">Active Users</span>
+            <span className="text-[10px] t-muted uppercase tracking-wider">Platform Users</span>
           </div>
-          <p className="text-xl font-bold t-primary">{tenantHealth.reduce((s, t) => s + t.userCount, 0)}</p>
-          <p className="text-[10px] t-muted">Across {tenantHealth.length} tenants</p>
+          <p className="text-xl font-bold t-primary">{platformHealth?.users?.total ?? '—'}</p>
+          <p className="text-[10px] t-muted">Across {platformHealth?.tenants?.total ?? tenants.length} tenants</p>
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-2 mb-1">
             <Zap size={14} className="text-accent" />
-            <span className="text-[10px] t-muted uppercase tracking-wider">API Calls Today</span>
+            <span className="text-[10px] t-muted uppercase tracking-wider">API Calls (1h)</span>
           </div>
-          <p className="text-xl font-bold t-primary">{(tenantHealth.reduce((s, t) => s + t.apiCallsToday, 0) / 1000).toFixed(1)}k</p>
-          <p className="text-[10px] text-emerald-400 flex items-center gap-0.5"><TrendingUp size={10} /> +12.4%</p>
+          <p className="text-xl font-bold t-primary">
+            {typeof infra.totalRequestsLastHour === 'number'
+              ? infra.totalRequestsLastHour.toLocaleString()
+              : '—'}
+          </p>
+          <p className="text-[10px] t-muted">Avg {infra.apiResponseMs ?? '—'} ms</p>
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle size={14} className="text-amber-400" />
             <span className="text-[10px] t-muted uppercase tracking-wider">Active Alerts</span>
           </div>
-          <p className="text-xl font-bold t-primary">{alerts.filter(a => !a.acknowledged).length}</p>
-          <p className="text-[10px] t-muted">{alerts.filter(a => a.severity === 'critical').length} critical</p>
+          <p className="text-xl font-bold t-primary">{unacknowledgedAlerts.length}</p>
+          <p className="text-[10px] t-muted">{criticalAlerts.length} critical</p>
         </Card>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <TabPanel id="infrastructure" activeTab={activeTab}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {infraMetrics.map((m) => (
-            <Card key={m.name} className="p-4">
+        {!platformHealth ? (
+          <Card className="p-8 text-center">
+            <XCircle size={24} className="mx-auto text-red-400 mb-2" />
+            <p className="text-sm t-primary font-medium">Infrastructure data unavailable</p>
+            <p className="text-xs t-muted mt-1">
+              /api/v1/admin-tooling/platform-health failed or returned no data. Try refresh.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <Card className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">{m.name}</span>
-                {statusIcon(m.status)}
+                <span className="text-xs t-muted">API Response Time</span>
+                <Badge variant={
+                  typeof infra.apiResponseMs !== 'number' ? 'default' :
+                  infra.apiResponseMs < 200 ? 'success' :
+                  infra.apiResponseMs < 500 ? 'warning' : 'danger'
+                } className="text-[10px]">
+                  {typeof infra.apiResponseMs !== 'number' ? 'n/a' :
+                   infra.apiResponseMs < 200 ? 'healthy' :
+                   infra.apiResponseMs < 500 ? 'degraded' : 'critical'}
+                </Badge>
               </div>
-              <p className="text-2xl font-bold t-primary">{m.value}<span className="text-sm t-muted ml-1">{m.unit}</span></p>
-              {m.threshold && (
-                <div className="mt-2 h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.min((m.value / m.threshold.critical) * 100, 100)}%`,
-                      background: m.status === 'healthy' ? 'var(--accent)' : m.status === 'degraded' ? '#f59e0b' : '#ef4444',
-                    }}
-                  />
-                </div>
-              )}
-              <Badge variant={statusColor(m.status)} className="mt-2 text-[10px]">{m.status}</Badge>
+              <p className="text-2xl font-bold t-primary">
+                {infra.apiResponseMs ?? '—'}
+                <span className="text-sm t-muted ml-1">ms</span>
+              </p>
+              <p className="text-[10px] t-muted mt-1">Rolling avg, last 60 min</p>
             </Card>
-          ))}
-        </div>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted">Requests / Hour</span>
+                <CheckCircle size={14} className="text-emerald-400" />
+              </div>
+              <p className="text-2xl font-bold t-primary">
+                {typeof infra.totalRequestsLastHour === 'number'
+                  ? infra.totalRequestsLastHour.toLocaleString()
+                  : '—'}
+              </p>
+              <p className="text-[10px] t-muted mt-1">Observed inbound traffic</p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted">D1 Database</span>
+                <Badge variant={healthStatusColor(infra.dbStatus)} className="text-[10px]">
+                  {infra.dbStatus ?? 'unknown'}
+                </Badge>
+              </div>
+              <p className="text-2xl font-bold t-primary capitalize">{infra.dbStatus ?? '—'}</p>
+              <p className="text-[10px] t-muted mt-1">SELECT 1 probe</p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted">Worker</span>
+                <Badge variant={healthStatusColor(infra.workerStatus)} className="text-[10px]">
+                  {infra.workerStatus ?? 'unknown'}
+                </Badge>
+              </div>
+              <p className="text-2xl font-bold t-primary capitalize">{infra.workerStatus ?? '—'}</p>
+              <p className="text-[10px] t-muted mt-1">Cloudflare Worker runtime</p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted">Total Tenants</span>
+                <Building2 size={14} className="text-accent" />
+              </div>
+              <p className="text-2xl font-bold t-primary">{platformHealth.tenants?.total ?? '—'}</p>
+              <p className="text-[10px] t-muted mt-1">Non-deleted tenants</p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs t-muted">Total Users</span>
+                <Users size={14} className="text-accent" />
+              </div>
+              <p className="text-2xl font-bold t-primary">{platformHealth.users?.total ?? '—'}</p>
+              <p className="text-[10px] t-muted mt-1">All tenants combined</p>
+            </Card>
+          </div>
+        )}
       </TabPanel>
 
       <TabPanel id="tenants" activeTab={activeTab}>
-        <div className="space-y-2">
-          {tenantHealth.map((t) => (
-            <Card key={t.id} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                  <Building2 size={14} className="text-accent" />
+        {tenants.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Building2 size={24} className="mx-auto t-muted mb-2" />
+            <p className="text-sm t-muted">No tenants visible.</p>
+            <p className="text-[10px] t-muted mt-1">
+              Requires support_admin or superadmin role.
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {tenants.map((t) => (
+              <Card key={t.id} className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                    <Building2 size={14} className="text-accent" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium t-primary">{t.name}</p>
+                    <p className="text-[10px] t-muted">
+                      {t.slug ? `${t.slug} · ` : ''}
+                      {t.region ?? 'no region'}
+                      {t.plan ? ` · ${t.plan}` : ''}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium t-primary">{t.name}</p>
-                  <p className="text-[10px] t-muted">{t.userCount} users · {(t.storageUsedMb / 1024).toFixed(1)} GB storage</p>
+                <div className="flex items-center gap-3 text-xs">
+                  {t.created_at && (
+                    <div className="text-right hidden sm:block">
+                      <p className="t-muted">Created</p>
+                      <p className="font-medium t-primary">{new Date(t.created_at).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  <Badge variant={tenantStatusColor(t.status)}>{t.status ?? 'unknown'}</Badge>
                 </div>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <div className="text-right">
-                  <p className="t-muted">API Calls</p>
-                  <p className="font-medium t-primary">{t.apiCallsToday.toLocaleString()}</p>
-                </div>
-                <div className="text-right">
-                  <p className="t-muted">Health</p>
-                  <p className="font-medium" style={{ color: t.healthScore >= 80 ? 'var(--accent)' : t.healthScore >= 60 ? '#f59e0b' : '#ef4444' }}>{t.healthScore}%</p>
-                </div>
-                <Badge variant={statusColor(t.status)}>{t.status}</Badge>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </TabPanel>
 
       <TabPanel id="alerts" activeTab={activeTab}>
@@ -241,76 +372,36 @@ export function PlatformHealthPage() {
             <Card className="p-8 text-center">
               <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2" />
               <p className="text-sm t-muted">No active alerts</p>
+              <p className="text-[10px] t-muted mt-1">
+                Alerts are published to KV (alerts:{'<tenant>'}) by background jobs.
+              </p>
             </Card>
-          ) : alerts.map((a) => (
-            <Card key={a.id} className="p-4 flex items-start gap-3">
-              {a.severity === 'critical' ? <XCircle size={16} className="text-red-400 mt-0.5" /> :
-               a.severity === 'warning' ? <AlertTriangle size={16} className="text-amber-400 mt-0.5" /> :
-               <Activity size={16} className="text-blue-400 mt-0.5" />}
+          ) : alerts.map((a, idx) => (
+            <Card key={a.id ?? idx} className="p-4 flex items-start gap-3">
+              {alertSeverityIcon(a.severity)}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium t-primary">{a.title}</p>
-                  <Badge variant={a.severity === 'critical' ? 'danger' : a.severity === 'warning' ? 'warning' : 'info'} className="text-[10px]">{a.severity}</Badge>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium t-primary">{a.title ?? 'Alert'}</p>
+                  <Badge
+                    variant={a.severity === 'critical' ? 'danger' : a.severity === 'warning' ? 'warning' : 'info'}
+                    className="text-[10px]"
+                  >
+                    {a.severity ?? 'info'}
+                  </Badge>
                   {a.acknowledged && <Badge variant="default" className="text-[10px]">acknowledged</Badge>}
                 </div>
-                <p className="text-xs t-muted mt-0.5">{a.message}</p>
-                <p className="text-[10px] t-muted mt-1 flex items-center gap-1"><Clock size={10} /> {new Date(a.createdAt).toLocaleString()} · {a.source}</p>
+                {a.message && <p className="text-xs t-muted mt-0.5">{a.message}</p>}
+                <p className="text-[10px] t-muted mt-1 flex items-center gap-1">
+                  <Clock size={10} />
+                  {(() => {
+                    const ts = a.createdAt || a.created_at;
+                    return ts ? new Date(ts).toLocaleString() : 'unknown time';
+                  })()}
+                  {a.source && ` · ${a.source}`}
+                </p>
               </div>
             </Card>
           ))}
-        </div>
-      </TabPanel>
-
-      <TabPanel id="data-pipeline" activeTab={activeTab}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Database size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">D1 Database</span>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Total Queries (24h)</span><span className="t-primary font-medium">124,567</span></div>
-              <div className="flex justify-between"><span className="t-muted">Avg Query Time</span><span className="t-primary font-medium">12ms</span></div>
-              <div className="flex justify-between"><span className="t-muted">Slow Queries (&gt;100ms)</span><span className="t-primary font-medium">23</span></div>
-              <div className="flex justify-between"><span className="t-muted">Database Size</span><span className="t-primary font-medium">1.2 GB</span></div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <HardDrive size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">R2 Object Storage</span>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Total Objects</span><span className="t-primary font-medium">8,432</span></div>
-              <div className="flex justify-between"><span className="t-muted">Storage Used</span><span className="t-primary font-medium">2.4 GB</span></div>
-              <div className="flex justify-between"><span className="t-muted">Reads Today</span><span className="t-primary font-medium">4,210</span></div>
-              <div className="flex justify-between"><span className="t-muted">Writes Today</span><span className="t-primary font-medium">892</span></div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Wifi size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">KV Cache</span>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Hit Rate</span><span className="t-primary font-medium">94.2%</span></div>
-              <div className="flex justify-between"><span className="t-muted">Keys Stored</span><span className="t-primary font-medium">12,340</span></div>
-              <div className="flex justify-between"><span className="t-muted">Avg Latency</span><span className="t-primary font-medium">3ms</span></div>
-              <div className="flex justify-between"><span className="t-muted">Evictions (24h)</span><span className="t-primary font-medium">156</span></div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">ERP Sync Pipeline</span>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Active Connections</span><span className="t-primary font-medium">7</span></div>
-              <div className="flex justify-between"><span className="t-muted">Syncs Today</span><span className="t-primary font-medium">42</span></div>
-              <div className="flex justify-between"><span className="t-muted">Records Processed</span><span className="t-primary font-medium">156,789</span></div>
-              <div className="flex justify-between"><span className="t-muted">Failed Syncs</span><span className="text-red-400 font-medium">2</span></div>
-            </div>
-          </Card>
         </div>
       </TabPanel>
     </div>
