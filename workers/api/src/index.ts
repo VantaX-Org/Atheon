@@ -50,6 +50,7 @@ import adminTooling from './routes/admin-tooling';
 import webhooksRoutes from './routes/webhooks';
 import governance from './routes/governance';
 import systemAlerts from './routes/system-alerts';
+import featureFlagsRoutes from './routes/feature-flags';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -387,6 +388,17 @@ app.route('/api/admin-tooling', adminTooling);
 // tenantIsolation provides the JWT-backed auth context.
 app.use('/api/v1/governance/*', tenantIsolation());
 app.route('/api/v1/governance', governance);
+
+// Feature Flags (v47-platform) — admin CRUD gated by role inside handler, evaluate endpoint
+// requires only auth. tenantIsolation runs first to populate c.get('auth').
+app.use('/api/v1/admin/feature-flags', tenantIsolation());
+app.use('/api/v1/admin/feature-flags/*', tenantIsolation());
+app.use('/api/admin/feature-flags', tenantIsolation());
+app.use('/api/admin/feature-flags/*', tenantIsolation());
+app.use('/api/v1/feature-flags/*', tenantIsolation());
+app.use('/api/feature-flags/*', tenantIsolation());
+app.route('/api/v1', featureFlagsRoutes);
+app.route('/api', featureFlagsRoutes);
 
 
 // Agent routes mounted separately — no tenantIsolation middleware

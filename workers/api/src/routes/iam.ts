@@ -219,7 +219,8 @@ iam.put('/users/:id', async (c) => {
   const { data: body, errors } = await getValidatedJsonBody<{
     role?: string; status?: string; name?: string; permissions?: string[];
   }>(c, [
-    { field: 'role', type: 'string', required: false, maxLength: 32 },
+    // `custom:<uuid>` is up to 43 chars; allow 64 to be safe
+    { field: 'role', type: 'string', required: false, maxLength: 64 },
     { field: 'status', type: 'string', required: false, maxLength: 32 },
     { field: 'name', type: 'string', required: false, maxLength: 100 },
   ]);
@@ -254,12 +255,25 @@ iam.put('/users/:id', async (c) => {
 
   // Validate new role if provided
   if (body.role) {
-    if (!VALID_ROLES.has(body.role)) {
-      return c.json({ error: 'Invalid role', message: `Role "${body.role}" is not valid. Valid roles: ${[...VALID_ROLES].join(', ')}` }, 400);
-    }
-    const requestedLevel = ROLE_LEVELS[body.role] ?? 0;
-    if (requestedLevel > callerLevel) {
-      return c.json({ error: 'Forbidden', message: `Cannot assign role "${body.role}" — exceeds your own privilege level` }, 403);
+    // Custom roles carry a `custom:<id>` prefix — verify the custom role exists for this tenant
+    if (body.role.startsWith('custom:')) {
+      const customId = body.role.slice('custom:'.length);
+      if (!customId) return c.json({ error: 'Invalid role', message: 'custom role id is required' }, 400);
+      const customRow = await c.env.DB.prepare(
+        'SELECT id FROM iam_custom_roles WHERE id = ? AND tenant_id = ?'
+      ).bind(customId, tenantId).first();
+      if (!customRow) {
+        return c.json({ error: 'Invalid role', message: `Custom role "${customId}" does not exist for this tenant` }, 400);
+      }
+      // Custom roles are always strictly below caller privilege — managers can assign them
+    } else {
+      if (!VALID_ROLES.has(body.role)) {
+        return c.json({ error: 'Invalid role', message: `Role "${body.role}" is not valid. Valid roles: ${[...VALID_ROLES].join(', ')}` }, 400);
+      }
+      const requestedLevel = ROLE_LEVELS[body.role] ?? 0;
+      if (requestedLevel > callerLevel) {
+        return c.json({ error: 'Forbidden', message: `Cannot assign role "${body.role}" — exceeds your own privilege level` }, 403);
+      }
     }
   }
 
@@ -698,6 +712,259 @@ iam.get('/sso', async (c) => {
   }));
 
   return c.json({ configs: formatted });
+});
+
+// ───────────────────────────────────────────────────────────
+// Custom Roles (v46-platform) — admin+, tenant-scoped
+// ───────────────────────────────────────────────────────────
+
+/**
+ * Canonical permission taxonomy surfaced via GET /permissions.
+ * Kept in sync with user.permissions values already used by the platform
+ * (grep migrate.ts seed data for evidence: `apex.read`, `pulse.read`,
+ * `catalysts.execute`, `mind.query`, …). Admin roles get the wildcard
+ * `admin.*` which implies full platform access.
+ */
+const PERMISSION_TAXONOMY: string[] = [
+  'apex.read', 'apex.write',
+  'pulse.read', 'pulse.write',
+  'catalysts.read', 'catalysts.execute', 'catalysts.approve',
+  'mind.query',
+  'memory.read', 'memory.write',
+  'iam.users.read', 'iam.users.write',
+  'tenants.read',
+  'admin.*',
+];
+
+/**
+ * Permissions inherited by each built-in base role. Custom roles that set
+ * `inherits_from` implicitly acquire these permissions (plus anything extra
+ * the creator adds). The UI reflects this by showing inherited permissions
+ * as read-only / pre-checked.
+ */
+const BASE_ROLE_PERMISSIONS: Record<string, string[]> = {
+  analyst: ['apex.read', 'pulse.read', 'catalysts.read', 'mind.query', 'memory.read'],
+  operator: ['apex.read', 'pulse.read', 'catalysts.read', 'catalysts.execute', 'mind.query'],
+  manager: ['apex.read', 'apex.write', 'pulse.read', 'pulse.write', 'catalysts.read', 'catalysts.execute', 'catalysts.approve', 'mind.query', 'memory.read', 'memory.write', 'iam.users.read'],
+  admin: ['admin.*'],
+};
+
+const VALID_BASE_ROLES = new Set(Object.keys(BASE_ROLE_PERMISSIONS));
+
+/** Shape of a persisted custom role row. */
+interface CustomRoleRow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  permissions: string;
+  inherits_from: string | null;
+  user_count: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Format a custom role row for the API response, including user_count recomputed on read. */
+async function formatCustomRole(db: D1Database, row: CustomRoleRow): Promise<Record<string, unknown>> {
+  let perms: string[] = [];
+  try { perms = JSON.parse(row.permissions || '[]'); } catch { perms = []; }
+
+  // Denormalized user_count — always recompute on read per spec
+  const countRes = await db
+    .prepare('SELECT COUNT(*) as c FROM users WHERE tenant_id = ? AND role = ?')
+    .bind(row.tenant_id, `custom:${row.id}`)
+    .first<{ c: number }>();
+  const userCount = countRes?.c || 0;
+
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    description: row.description || '',
+    permissions: Array.isArray(perms) ? perms : [],
+    inheritsFrom: row.inherits_from,
+    inheritedPermissions: row.inherits_from ? (BASE_ROLE_PERMISSIONS[row.inherits_from] || []) : [],
+    userCount,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** Require caller to be admin+ (admin, support_admin, superadmin). */
+function requireAdmin(c: { get: (k: string) => unknown }): { ok: true; auth: AuthContext } | { ok: false; error: string } {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth) return { ok: false, error: 'Unauthorized' };
+  const role = auth.role;
+  if (role !== 'admin' && role !== 'support_admin' && role !== 'superadmin') {
+    return { ok: false, error: 'Forbidden' };
+  }
+  return { ok: true, auth };
+}
+
+// GET /api/iam/permissions — master permission taxonomy
+iam.get('/permissions', async (c) => {
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+
+  return c.json({
+    permissions: PERMISSION_TAXONOMY,
+    baseRoles: Object.entries(BASE_ROLE_PERMISSIONS).map(([id, perms]) => ({
+      id, name: id.charAt(0).toUpperCase() + id.slice(1), permissions: perms,
+    })),
+  });
+});
+
+// GET /api/iam/custom-roles — list custom roles for the tenant
+iam.get('/custom-roles', async (c) => {
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+  const tenantId = getTenantId(c);
+
+  const results = await c.env.DB.prepare(
+    'SELECT * FROM iam_custom_roles WHERE tenant_id = ? ORDER BY created_at DESC'
+  ).bind(tenantId).all<CustomRoleRow>();
+
+  const roles = await Promise.all((results.results || []).map(r => formatCustomRole(c.env.DB, r)));
+  return c.json({ roles, total: roles.length });
+});
+
+// POST /api/iam/custom-roles — create a new custom role for the tenant
+iam.post('/custom-roles', async (c) => {
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+  const tenantId = getTenantId(c);
+
+  const { data: body, errors } = await getValidatedJsonBody<{
+    name: string;
+    description?: string;
+    permissions?: string[];
+    inherits_from?: string;
+  }>(c, [
+    { field: 'name', type: 'string', required: true, minLength: 1, maxLength: 100 },
+    { field: 'description', type: 'string', required: false, maxLength: 500 },
+    { field: 'inherits_from', type: 'string', required: false, maxLength: 32 },
+  ]);
+  if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
+
+  if (body.inherits_from && !VALID_BASE_ROLES.has(body.inherits_from)) {
+    return c.json({ error: 'Invalid inherits_from', message: `Must be one of: ${[...VALID_BASE_ROLES].join(', ')}` }, 400);
+  }
+
+  const permSet = new Set<string>();
+  for (const p of (body.permissions || [])) {
+    if (typeof p === 'string' && p.length > 0 && p.length <= 64) permSet.add(p);
+  }
+  // Reject obviously invalid permission strings (not in taxonomy)
+  const allowedPerms = new Set(PERMISSION_TAXONOMY);
+  for (const p of permSet) {
+    if (!allowedPerms.has(p)) {
+      return c.json({ error: 'Invalid permission', message: `Unknown permission: ${p}` }, 400);
+    }
+  }
+
+  // Reject duplicate name for this tenant
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM iam_custom_roles WHERE tenant_id = ? AND name = ?'
+  ).bind(tenantId, body.name.trim()).first();
+  if (existing) return c.json({ error: 'Role already exists', message: `A custom role named "${body.name}" already exists` }, 409);
+
+  const id = crypto.randomUUID();
+  const auth = c.get('auth') as AuthContext | undefined;
+  await c.env.DB.prepare(
+    `INSERT INTO iam_custom_roles (id, tenant_id, name, description, permissions, inherits_from, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id, tenantId, body.name.trim(), body.description || '',
+    JSON.stringify([...permSet]),
+    body.inherits_from || null,
+    auth?.userId || null,
+  ).run();
+
+  const row = await c.env.DB.prepare('SELECT * FROM iam_custom_roles WHERE id = ?').bind(id).first<CustomRoleRow>();
+  return c.json({ role: row ? await formatCustomRole(c.env.DB, row) : { id } }, 201);
+});
+
+// PUT /api/iam/custom-roles/:id — update
+iam.put('/custom-roles/:id', async (c) => {
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+  const tenantId = getTenantId(c);
+  const id = c.req.param('id');
+
+  const existing = await c.env.DB.prepare(
+    'SELECT * FROM iam_custom_roles WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first<CustomRoleRow>();
+  if (!existing) return c.json({ error: 'Role not found' }, 404);
+
+  const { data: body, errors } = await getValidatedJsonBody<{
+    name?: string;
+    description?: string;
+    permissions?: string[];
+    inherits_from?: string | null;
+  }>(c, [
+    { field: 'name', type: 'string', required: false, minLength: 1, maxLength: 100 },
+    { field: 'description', type: 'string', required: false, maxLength: 500 },
+    { field: 'inherits_from', type: 'string', required: false, maxLength: 32 },
+  ]);
+  if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
+
+  if (body.inherits_from && !VALID_BASE_ROLES.has(body.inherits_from)) {
+    return c.json({ error: 'Invalid inherits_from' }, 400);
+  }
+
+  const updates: string[] = [];
+  const values: (string | null)[] = [];
+  if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name.trim()); }
+  if (body.description !== undefined) { updates.push('description = ?'); values.push(body.description); }
+  if (body.inherits_from !== undefined) { updates.push('inherits_from = ?'); values.push(body.inherits_from || null); }
+  if (body.permissions !== undefined) {
+    const allowedPerms = new Set(PERMISSION_TAXONOMY);
+    const permSet = new Set<string>();
+    for (const p of body.permissions) {
+      if (typeof p !== 'string') continue;
+      if (!allowedPerms.has(p)) return c.json({ error: 'Invalid permission', message: `Unknown permission: ${p}` }, 400);
+      permSet.add(p);
+    }
+    updates.push('permissions = ?'); values.push(JSON.stringify([...permSet]));
+  }
+
+  if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+  updates.push("updated_at = datetime('now')");
+
+  values.push(id, tenantId);
+  await c.env.DB.prepare(
+    `UPDATE iam_custom_roles SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`
+  ).bind(...values).run();
+
+  const row = await c.env.DB.prepare('SELECT * FROM iam_custom_roles WHERE id = ?').bind(id).first<CustomRoleRow>();
+  return c.json({ role: row ? await formatCustomRole(c.env.DB, row) : null });
+});
+
+// DELETE /api/iam/custom-roles/:id — blocked if any users assigned
+iam.delete('/custom-roles/:id', async (c) => {
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+  const tenantId = getTenantId(c);
+  const id = c.req.param('id');
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM iam_custom_roles WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return c.json({ error: 'Role not found' }, 404);
+
+  // Block delete when users are still assigned to this custom role
+  const countRes = await c.env.DB.prepare(
+    'SELECT COUNT(*) as c FROM users WHERE tenant_id = ? AND role = ?'
+  ).bind(tenantId, `custom:${id}`).first<{ c: number }>();
+  const userCount = countRes?.c || 0;
+  if (userCount > 0) {
+    return c.json({ error: 'Role in use', message: `Cannot delete — ${userCount} user(s) are still assigned to this role`, userCount }, 409);
+  }
+
+  await c.env.DB.prepare('DELETE FROM iam_custom_roles WHERE id = ? AND tenant_id = ?').bind(id, tenantId).run();
+  return c.json({ success: true });
 });
 
 // POST /api/iam/sso
