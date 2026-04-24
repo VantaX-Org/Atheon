@@ -1541,11 +1541,41 @@ export interface DataSourceConfig {
   config: Record<string, unknown>;
 }
 
+/**
+ * Implementation tier for a sub-catalyst, reported by the catalog:
+ *   - 'real'    : backed by a dedicated domain handler
+ *   - 'generic' : falls through to the default dispatcher (generic shape)
+ *   - 'stub'    : named-only in the catalog, disabled at runtime
+ */
+export type Implementation = 'real' | 'generic' | 'stub';
+
+/**
+ * Maturity label for a cluster derived from its sub-catalyst mix:
+ *   - 'production' : >= 50% of sub-catalysts are 'real'
+ *   - 'partial'    : any 'real' sub-catalysts, but below 50%
+ *   - 'planned'    : no 'real' sub-catalysts
+ */
+export type Maturity = 'production' | 'partial' | 'planned';
+
+/**
+ * Per-cluster implementation summary returned by `/api/catalysts/templates`.
+ * Counts sub-catalysts by implementation tier plus a derived `maturity`.
+ */
+export interface ImplementationSummary {
+  real: number;
+  generic: number;
+  stub: number;
+  total: number;
+  maturity: Maturity;
+}
+
 export interface CatalystSubCatalystTemplate {
   name: string;
   enabled: boolean;
   description: string;
   schedule?: SubCatalystSchedule;
+  /** Implementation tier for this sub-catalyst (optional for backwards compat). */
+  implementation?: Implementation;
 }
 
 export interface CatalystClusterTemplate {
@@ -1555,6 +1585,8 @@ export interface CatalystClusterTemplate {
   autonomy_tier: string;
   subCatalystCount: number;
   sub_catalysts: CatalystSubCatalystTemplate[];
+  /** Aggregated implementation stats for the cluster (optional for backwards compat). */
+  implementationSummary?: ImplementationSummary;
 }
 
 export interface CatalystIndustryTemplate {

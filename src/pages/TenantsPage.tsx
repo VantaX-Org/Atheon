@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
+import { MaturityBadge } from "@/components/MaturityBadge";
+import { ImplementationDot } from "@/components/ImplementationDot";
 import { api } from "@/lib/api";
-import type { Tenant, IAMUser, CatalystIndustryTemplate, CatalystClusterTemplate, ClusterItem, SubCatalyst } from "@/lib/api";
+import type { Tenant, IAMUser, CatalystIndustryTemplate, CatalystClusterTemplate, ClusterItem, SubCatalyst, Maturity } from "@/lib/api";
 import {
  Building2, Cloud, Server, GitBranch, Users, Bot, Shield,
  ChevronDown, ChevronUp, CheckCircle, XCircle, Plus, Layers, Loader2, X,
@@ -32,6 +34,16 @@ const statusBadge = (status: string) => {
  if (status === 'archived') return <Badge variant="default">archived</Badge>;
  return <Badge variant="default">{status}</Badge>;
 };
+
+// Sort order for cluster maturity: production-ready first, planned last.
+const MATURITY_RANK: Record<Maturity, number> = { production: 0, partial: 1, planned: 2 };
+
+// When a template cluster is missing `implementationSummary` (e.g. backend
+// hasn't shipped yet) we default to 'production' so sort/filter behaviour
+// stays unchanged — the cluster will still render without a badge.
+function clusterMaturity(c: CatalystClusterTemplate): Maturity {
+ return c.implementationSummary?.maturity ?? 'production';
+}
 
 export function TenantsPage() {
  const { activeTab, setActiveTab } = useTabState('overview');
@@ -63,6 +75,11 @@ export function TenantsPage() {
  const [templateClusters, setTemplateClusters] = useState<Array<CatalystClusterTemplate & { selected: boolean }>>([]);
  const [deployStep, setDeployStep] = useState<'choose' | 'customize' | 'deploying' | 'done' | 'manage'>('choose');
  const [deployResult, setDeployResult] = useState<{ clustersCreated: number; existingClusters: number } | null>(null);
+ // Implementation-maturity filter for the customize step. All tiers are
+ // shown by default; state is not persisted — resets on each page load /
+ // modal open (users who care will re-toggle).
+ const [maturityFilter, setMaturityFilter] = useState<Record<Maturity, boolean>>({
+ production: true, partial: true, planned: true});
 
  // Manage catalysts state (post-deploy sub-catalyst toggle & config)
  const [tenantClusters, setTenantClusters] = useState<ClusterItem[]>([]);
@@ -176,10 +193,25 @@ export function TenantsPage() {
  setSelectedIndustry(industry);
  const tmpl = templates.find(t => t.industry === industry);
  if (tmpl) {
- setTemplateClusters(tmpl.clusters.map(c => ({ ...c, selected: true })));
+ // Default sort: production clusters first, then partial, then planned.
+ const sorted = [...tmpl.clusters].sort(
+ (a, b) => MATURITY_RANK[clusterMaturity(a)] - MATURITY_RANK[clusterMaturity(b)]
+ );
+ setTemplateClusters(sorted.map(c => ({ ...c, selected: true })));
+ // Reset maturity filter to "all on" whenever a template is chosen.
+ setMaturityFilter({ production: true, partial: true, planned: true });
  setDeployStep('customize');
  }
  }, [templates]);
+
+ // Visible cluster list = filtered by active maturity tiers. Preserves the
+ // original sorted order (production -> partial -> planned).
+ const visibleTemplateClusters = useMemo(
+ () => templateClusters
+ .map((c, originalIndex) => ({ c, originalIndex }))
+ .filter(({ c }) => maturityFilter[clusterMaturity(c)]),
+ [templateClusters, maturityFilter]
+ );
 
  // Deploy the selected template
  const handleDeployTemplate = async () => {
@@ -793,7 +825,14 @@ export function TenantsPage() {
  <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-accent animate-spin" /></div>
  ) : (
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
- {templates.map(tmpl => (
+ {templates.map(tmpl => {
+ // Aggregate cluster counts per maturity tier for the card summary.
+ const tierCounts = tmpl.clusters.reduce<Record<Maturity, number>>((acc, c) => {
+ const m = clusterMaturity(c);
+ acc[m] = (acc[m] ?? 0) + 1;
+ return acc;
+ }, { production: 0, partial: 0, planned: 0 });
+ return (
  <button
  key={tmpl.industry}
  onClick={() => selectIndustryTemplate(tmpl.industry)}
@@ -806,12 +845,22 @@ export function TenantsPage() {
  <h4 className="text-sm font-semibold t-primary group-hover:text-accent">{tmpl.label}</h4>
  </div>
  <p className="text-xs t-muted line-clamp-2">{tmpl.description}</p>
- <div className="flex items-center gap-2 mt-3">
+ <div className="flex flex-wrap items-center gap-2 mt-3">
  <Badge variant="info" size="sm">{tmpl.clusterCount} clusters</Badge>
  <Badge variant="outline" size="sm">{tmpl.clusters.reduce((a, c) => a + c.subCatalystCount, 0)} sub-catalysts</Badge>
+ {tierCounts.production > 0 && (
+ <MaturityBadge maturity="production" />
+ )}
+ {tierCounts.production === 0 && tierCounts.partial > 0 && (
+ <MaturityBadge maturity="partial" />
+ )}
+ {tierCounts.production === 0 && tierCounts.partial === 0 && tierCounts.planned > 0 && (
+ <MaturityBadge maturity="planned" />
+ )}
  </div>
  </button>
- ))}
+ );
+ })}
  </div>
  )}
 
@@ -835,9 +884,44 @@ export function TenantsPage() {
  {/* Step 2: Customize Template Clusters */}
  {deployStep === 'customize' && (
  <div className="space-y-4">
- <p className="text-sm t-muted">Review and customize which clusters to deploy. Toggle individual sub-catalysts on/off before deploying.</p>
+ <p className="text-sm t-muted">Review and customize which clusters to deploy. Toggle individual sub-catalysts on/off before deploying. Clusters are sorted production-ready first.</p>
+
+ {/* Maturity filter — show only clusters whose implementation tier is toggled on. */}
+ <div className="flex flex-wrap items-center gap-2 text-xs">
+ <span className="t-muted">Show:</span>
+ {(['production', 'partial', 'planned'] as Maturity[]).map(tier => {
+ const active = maturityFilter[tier];
+ const label = tier.charAt(0).toUpperCase() + tier.slice(1);
+ const count = templateClusters.filter(c => clusterMaturity(c) === tier).length;
+ return (
+ <button
+ key={tier}
+ type="button"
+ onClick={() => setMaturityFilter(prev => ({ ...prev, [tier]: !prev[tier] }))}
+ className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium transition-colors ${
+ active
+ ? 'border-accent/40 bg-accent/10 text-accent'
+ : 'border-[var(--border-card)] t-muted hover:border-accent/30'
+ }`}
+ title={`Toggle ${label} clusters`}
+ aria-pressed={active}
+ >
+ <span className={`inline-block w-2 h-2 rounded-full ${
+ tier === 'production' ? 'bg-emerald-500' : tier === 'partial' ? 'bg-amber-500' : 'bg-gray-500'
+ }`} />
+ {label}
+ <span className="t-muted">({count})</span>
+ </button>
+ );
+ })}
+ </div>
+
  <div className="space-y-3">
- {templateClusters.map((cluster, idx) => (
+ {visibleTemplateClusters.length === 0 ? (
+ <div className="text-center py-8 text-xs t-muted">
+ No clusters match the selected maturity filters.
+ </div>
+ ) : visibleTemplateClusters.map(({ c: cluster, originalIndex: idx }) => (
  <div key={cluster.domain + idx} className={`rounded-xl border transition-all ${
  cluster.selected ? 'border-accent/40 bg-accent/5' : 'border-[var(--border-card)] bg-[var(--bg-secondary)] opacity-60'
  }`}>
@@ -861,6 +945,12 @@ export function TenantsPage() {
  <div className="flex items-center gap-2">
  <Badge variant="outline" size="sm">{cluster.domain}</Badge>
  <Badge variant="info" size="sm">{cluster.autonomy_tier}</Badge>
+ {cluster.implementationSummary && (
+ <MaturityBadge
+ maturity={cluster.implementationSummary.maturity}
+ summary={cluster.implementationSummary}
+ />
+ )}
  </div>
  </div>
 
@@ -887,8 +977,11 @@ export function TenantsPage() {
  <XCircle size={14} className="text-gray-400" />
  )}
  </button>
- <div className="min-w-0">
+ <div className="min-w-0 flex-1">
+ <div className="flex items-center gap-1.5">
+ {sub.implementation && <ImplementationDot implementation={sub.implementation} />}
  <span className={`text-xs font-medium ${sub.enabled ? 't-primary' : 'text-gray-400'}`}>{sub.name}</span>
+ </div>
  <p className="text-[10px] t-muted truncate">{sub.description}</p>
  </div>
  </div>
