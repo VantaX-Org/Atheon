@@ -15,6 +15,7 @@ import { generateKpiDefinitions } from '../services/kpi-definitions';
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences, checkAndReserveBudget, recordLlmUsage, estimateTokensFor } from '../services/llm-provider';
 import type { LlmMessage } from '../services/llm-provider';
 import { logInfo, logWarn } from '../services/logger';
+import { generateRunNarrative, NarrativeError } from '../services/catalyst-narrative';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -5362,6 +5363,49 @@ catalysts.get('/runs/:runId/insights', async (c) => {
     impact: insights.impact,
     generatedAt: insights.generated_at,
   });
+});
+
+// GET /api/catalysts/runs/:runId/narrative — LLM-generated "tl;dr" for a completed run.
+// Thin wrapper over services/catalyst-narrative.ts — handles HTTP mapping only.
+// Mounted under both /api/v1/catalysts and /api/catalysts by the app-level router.
+catalysts.get('/runs/:runId/narrative', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const requestId = c.get('requestId');
+
+  try {
+    const result = await generateRunNarrative(c.env.DB, c.env, runId, tenantId, requestId);
+    return c.json({
+      runId,
+      narrative: result.narrative,
+      cached: result.cached,
+      tokensIn: result.tokens_in,
+      tokensOut: result.tokens_out,
+      costUsd: result.cost_usd,
+    });
+  } catch (err) {
+    if (err instanceof NarrativeError) {
+      const statusByCode: Record<string, number> = {
+        not_found: 404,
+        not_finished: 409,
+        budget_exhausted: 429,
+        llm_failed: 502,
+      };
+      const status = statusByCode[err.code] ?? 500;
+      // Surface a structured JSON body even on 429 so the UI can show a clean
+      // "budget exhausted" message rather than a 500-style generic error.
+      return c.json(
+        {
+          error: err.code,
+          message: err.message,
+          ...(err.details || {}),
+        },
+        status as 404 | 409 | 429 | 500 | 502,
+      );
+    }
+    console.error('run narrative generation failed:', err);
+    return c.json({ error: 'internal_error', message: err instanceof Error ? err.message : 'Unknown error' }, 500);
+  }
 });
 
 export { sendHitlNotification, sendRunResultsEmail };
