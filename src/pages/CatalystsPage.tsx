@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem, SuccessStoriesResponse } from "@/lib/api";
 import { SuccessStoryCard } from "@/components/ui/success-story-card";
 import {
@@ -48,6 +49,7 @@ const statusBadgeVariant = (status: string): 'success' | 'warning' | 'danger' | 
 
 export function CatalystsPage() {
  const user = useAppStore((s) => s.user);
+ const toast = useToast();
  const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin' || user?.role === 'executive';
  const { activeTab, setActiveTab } = useTabState('clusters');
  const [expandedAction, setExpandedAction] = useState<string | null>(null);
@@ -152,7 +154,12 @@ export function CatalystsPage() {
  setQuickRunSuccess(null);
  }, 2000);
  } catch (err) {
- setQuickRunError(err instanceof Error ? err.message : 'Execution failed');
+ const message = err instanceof Error ? err.message : 'Execution failed';
+ setQuickRunError(message);
+ toast.error('Quick run failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setQuickRunning(false);
  };
@@ -169,7 +176,12 @@ export function CatalystsPage() {
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  } catch (err) {
- setActionError(err instanceof Error ? err.message : 'Failed to approve action');
+ const message = err instanceof Error ? err.message : 'Failed to approve action';
+ setActionError(message);
+ toast.error('Approval failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setUpdatingAction(null);
  };
@@ -184,7 +196,12 @@ export function CatalystsPage() {
  const a = await api.catalysts.actions(undefined, undefined, ind);
  setActions(a.actions);
  } catch (err) {
- setActionError(err instanceof Error ? err.message : 'Failed to reject action');
+ const message = err instanceof Error ? err.message : 'Failed to reject action';
+ setActionError(message);
+ toast.error('Rejection failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setUpdatingAction(null);
  };
@@ -219,7 +236,12 @@ export function CatalystsPage() {
  setExecSuccess(null);
  }, 2000);
  } catch (err) {
- setExecError(err instanceof Error ? err.message : 'Execution failed');
+ const message = err instanceof Error ? err.message : 'Execution failed';
+ setExecError(message);
+ toast.error('Manual execution failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setExecuting(false);
  };

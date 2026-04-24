@@ -1,4 +1,6 @@
 // M5 fix: Use env variable with production fallback (not personal Workers subdomain)
+import { generateRequestId } from './request-id';
+
 export const API_URL = import.meta.env.VITE_API_URL || 'https://atheon-api.vantax.co.za';
 
 let authToken: string | null = localStorage.getItem('atheon_token');
@@ -15,6 +17,37 @@ export interface RateLimitInfo {
 }
 let lastRateLimitInfo: RateLimitInfo = { limit: null, remaining: null, resetAt: null };
 export function getRateLimitInfo(): RateLimitInfo { return lastRateLimitInfo; }
+
+/**
+ * Request-ID correlation (backend PR #222).
+ *
+ * Every request carries a self-generated `X-Request-ID`. Every response's
+ * `X-Request-ID` is captured into lastRequestId so UI surfaces (e.g. error
+ * toasts) can quote it back to support even when the caller only catches
+ * a plain Error from legacy code paths.
+ */
+let lastRequestId: string | null = null;
+export function getLastRequestId(): string | null { return lastRequestId; }
+
+/**
+ * Typed API error carrying the HTTP status, backend-reported request-ID, and
+ * raw body (if JSON). Callers that want to surface a support-quotable ID can
+ * `if (err instanceof ApiError) err.requestId`.
+ *
+ * Subclasses `Error`, so existing `catch (err) { err.message }` call-sites
+ * continue to work unchanged.
+ */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly requestId: string | null,
+    public readonly body?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 export function setToken(token: string | null, refresh?: string | null) {
   authToken = token;
@@ -75,9 +108,26 @@ async function attemptTokenRefresh(): Promise<boolean> {
   }
 }
 
+/**
+ * Capture X-Request-ID (PR #222) from any response and mirror it into the
+ * module-level lastRequestId. Returns the header value (or null) so callers
+ * can attach it to thrown errors.
+ */
+function captureRequestId(res: Response): string | null {
+  const id = res.headers.get('X-Request-ID');
+  if (id) lastRequestId = id;
+  return id;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  // Client-generated request-id correlates browser-side logs with the server's
+  // X-Request-ID middleware. The server echoes a valid inbound id, so this
+  // value should round-trip in the response header.
+  const requestId = generateRequestId();
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Request-ID': requestId,
     ...(options?.headers as Record<string, string> || {}),
   };
 
@@ -96,6 +146,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
     headers,
   });
+
+  // Capture response request-id (server may echo ours or generate its own)
+  const responseRequestId = captureRequestId(res);
 
   // M6: Read rate limit headers from response
   const rlLimit = res.headers.get('X-RateLimit-Limit');
@@ -120,12 +173,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const refreshed = await refreshPromise;
 
     if (refreshed) {
-      // Retry the original request with the new token
+      // Retry the original request with a fresh id + new token
+      const retryRequestId = generateRequestId();
       headers['Authorization'] = `Bearer ${authToken}`;
+      headers['X-Request-ID'] = retryRequestId;
       const retryRes = await fetch(`${API_URL}${finalPath}`, { ...options, headers });
+      const retryResponseId = captureRequestId(retryRes);
       if (!retryRes.ok) {
         const err = await retryRes.json().catch(() => ({ error: retryRes.statusText }));
-        throw new Error((err as Record<string, string>).error || retryRes.statusText);
+        const body = err as Record<string, string>;
+        throw new ApiError(retryRes.status, body.error || retryRes.statusText, retryResponseId, body);
       }
       return retryRes.json() as Promise<T>;
     } else {
@@ -134,13 +191,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
         window.location.href = '/login?session_expired=1';
       }
-      throw new Error('Session expired. Please log in again.');
+      throw new ApiError(401, 'Session expired. Please log in again.', responseRequestId);
     }
   }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as Record<string, string>).error || res.statusText);
+    const body = err as Record<string, string>;
+    throw new ApiError(res.status, body.error || res.statusText, responseRequestId, body);
   }
 
   return res.json() as Promise<T>;
@@ -363,7 +421,8 @@ export const api = {
     deployTemplate: (data: { tenant_id: string; industry: string; clusters?: Array<{ name: string; domain: string; description: string; autonomy_tier: string; sub_catalysts: Array<{ name: string; enabled: boolean; description: string }> }> }) =>
       request<{ success: boolean; industry: string; clustersCreated: number; clusterIds: string[]; existingClusters: number }>('/api/catalysts/deploy-template', { method: 'POST', body: JSON.stringify(data) }),
     manualExecute: async (data: FormData): Promise<ManualExecuteResult> => {
-      const headers: Record<string, string> = {};
+      const requestId = generateRequestId();
+      const headers: Record<string, string> = { 'X-Request-ID': requestId };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       // Include tenant override for cross-tenant manual execution
       let url = `${API_URL}/api/catalysts/manual-execute`;
@@ -373,9 +432,11 @@ export const api = {
       const res = await fetch(url, {
         method: 'POST', headers, body: data,
       });
+      const responseRequestId = captureRequestId(res);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error((err as Record<string, string>).error || res.statusText);
+        const body = err as Record<string, string>;
+        throw new ApiError(res.status, body.error || res.statusText, responseRequestId, body);
       }
       return res.json() as Promise<ManualExecuteResult>;
     },
@@ -589,9 +650,10 @@ export const api = {
     downloadBusiness: async (id: string, assessment?: Assessment) => {
       // Try backend first; fall back to client-side generation
       try {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
         const res = await fetch(`${API_URL}/api/assessments/${id}/report/business`, { headers });
+        captureRequestId(res);
         if (res.ok) {
           const contentType = res.headers.get('content-type') || '';
           if (contentType.includes('application/pdf')) {
@@ -628,9 +690,10 @@ export const api = {
     downloadTechnical: async (id: string, assessment?: Assessment) => {
       // Try backend first; fall back to client-side generation
       try {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
         const res = await fetch(`${API_URL}/api/assessments/${id}/report/technical`, { headers });
+        captureRequestId(res);
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
@@ -648,9 +711,10 @@ export const api = {
     downloadExcel: async (id: string, assessment?: Assessment) => {
       // Try backend first; fall back to client-side generation
       try {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
         const res = await fetch(`${API_URL}/api/assessments/${id}/report/excel`, { headers });
+        captureRequestId(res);
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
@@ -681,9 +745,10 @@ export const api = {
     downloadValueReport: async (id: string, assessment?: Assessment, findings?: ValueAssessmentFinding[], dataQuality?: DataQualityRecord[], processTiming?: ProcessTimingRecord[], valueSummary?: ValueSummaryRecord | null) => {
       // Try backend first; fall back to client-side generation
       try {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
         const res = await fetch(`${API_URL}/api/assessments/${id}/report/value`, { headers });
+        captureRequestId(res);
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
@@ -833,10 +898,12 @@ export const api = {
     history: (limit?: number) =>
       request<{ history: ROISummary[]; total: number }>(`/api/roi/history${qs({ limit: limit?.toString() })}`),
     exportPdf: async () => {
-      const headers: Record<string, string> = {};
+      const requestId = generateRequestId();
+      const headers: Record<string, string> = { 'X-Request-ID': requestId };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       const res = await fetch(`${API_URL}/api/roi/export`, { headers });
-      if (!res.ok) throw new Error('Failed to export ROI PDF');
+      const responseRequestId = captureRequestId(res);
+      if (!res.ok) throw new ApiError(res.status, 'Failed to export ROI PDF', responseRequestId);
       return res.blob();
     },
     // Legacy aliases for backwards compat
@@ -862,10 +929,12 @@ export const api = {
     getV2: (id: string, tenantId?: string) =>
       request<BoardReport>(`/api/board-report/${id}${qs({ tenant_id: tenantId })}`),
     downloadPdf: async (id: string, title?: string) => {
-      const headers: Record<string, string> = {};
+      const requestId = generateRequestId();
+      const headers: Record<string, string> = { 'X-Request-ID': requestId };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       const res = await fetch(`${API_URL}/api/board-report/${id}/pdf`, { headers });
-      if (!res.ok) throw new Error('Failed to download board report PDF');
+      const responseRequestId = captureRequestId(res);
+      if (!res.ok) throw new ApiError(res.status, 'Failed to download board report PDF', responseRequestId);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const safeName = (title || 'board-report').replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);

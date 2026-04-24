@@ -5,7 +5,8 @@ import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { ScoreRing } from "@/components/ui/score-ring";
 // FlipCard removed per UI cleanup spec
 import { Progress } from "@/components/ui/progress";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 // cleanLlmText now used by IntelligencePanel sub-component
 import { useAppStore } from "@/stores/appStore";
 import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse, BaselineComparisonResponse } from "@/lib/api";
@@ -86,6 +87,7 @@ function TintedCard({ children, className = "" }: { children: React.ReactNode; c
 export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
   const user = useAppStore((s) => s.user);
+  const toast = useToast();
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -142,6 +144,10 @@ export function Dashboard() {
     } catch (err) {
       console.error('Failed to load dimension traceability', err);
       setActionError('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+      toast.error('Failed to load traceability', {
+        message: err instanceof Error ? err.message : 'Please ensure catalysts have been run for this domain.',
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setLoadingTrace(false);
     }
