@@ -592,6 +592,228 @@ describe('Auth + Tenant Isolation', () => {
   });
 
   // ────────────────────────────────────────────
+  // v40: Mandatory MFA enforcement for admin roles
+  // ────────────────────────────────────────────
+  describe('MFA Enforcement (v40)', () => {
+    // Helpers — scoped here so the rest of the suite is untouched.
+    const MFA_ADMIN_EXPIRED = 'mfa-admin-expired@tenant-a.com';
+    const MFA_ADMIN_GRACE = 'mfa-admin-grace@tenant-a.com';
+    const MFA_ANALYST = 'mfa-analyst@tenant-a.com';
+    const MFA_ADMIN_BACKUP = 'mfa-admin-backup@tenant-a.com';
+    const MFA_ADMIN_REGEN = 'mfa-admin-regen@tenant-a.com';
+
+    async function setGraceUntil(userId: string, iso: string | null): Promise<void> {
+      await env.DB.prepare('UPDATE users SET mfa_grace_until = ? WHERE id = ?').bind(iso, userId).run();
+    }
+
+    async function enableMfaWithBackupCodes(
+      userId: string,
+      backupCodes: string[],
+    ): Promise<void> {
+      const hashes = await Promise.all(backupCodes.map(async (code) => {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code.trim().toLowerCase()));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }));
+      // Clear any grace — MFA is now "enabled" for test purposes.
+      await env.DB.prepare(
+        'UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, mfa_grace_until = NULL WHERE id = ?',
+      ).bind('JBSWY3DPEHPK3PXP', JSON.stringify(hashes), userId).run();
+    }
+
+    /** Create an MFA challenge directly in KV (bypasses password step for isolated testing). */
+    async function seedMfaChallenge(
+      userId: string, tenantId: string, email: string, name: string, role: string,
+    ): Promise<string> {
+      const token = crypto.randomUUID();
+      await env.CACHE.put(`mfa_challenge:${token}`, JSON.stringify({
+        userId, tenantId, email, name, role, permissions: ['*'],
+      }), { expirationTtl: 300 });
+      return token;
+    }
+
+    beforeAll(async () => {
+      await seedTestUser('mfa-admin-expired', TENANT_A_ID, MFA_ADMIN_EXPIRED, TEST_PASSWORD, 'admin', 'MFA Expired');
+      await seedTestUser('mfa-admin-grace', TENANT_A_ID, MFA_ADMIN_GRACE, TEST_PASSWORD, 'admin', 'MFA Grace');
+      await seedTestUser('mfa-analyst', TENANT_A_ID, MFA_ANALYST, TEST_PASSWORD, 'analyst', 'MFA Analyst');
+      await seedTestUser('mfa-admin-backup', TENANT_A_ID, MFA_ADMIN_BACKUP, TEST_PASSWORD, 'admin', 'MFA Backup');
+      await seedTestUser('mfa-admin-regen', TENANT_A_ID, MFA_ADMIN_REGEN, TEST_PASSWORD, 'admin', 'MFA Regen');
+    });
+
+    it('blocks admin login when MFA is off and grace period has expired', async () => {
+      // Set grace_until to yesterday.
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      await setGraceUntil('mfa-admin-expired', yesterday);
+      // Ensure MFA is off.
+      await env.DB.prepare('UPDATE users SET mfa_enabled = 0 WHERE id = ?').bind('mfa-admin-expired').run();
+      // Clear any stale lockout.
+      await env.CACHE.delete(`login_attempts:${MFA_ADMIN_EXPIRED}`);
+
+      const res = await postJSON('/api/v1/auth/login', {
+        email: MFA_ADMIN_EXPIRED, password: TEST_PASSWORD, tenant_slug: 'tenant-a',
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.error).toBe('MFA required for this role');
+      expect(body.action).toBe('enable_mfa');
+      expect(body.mfaSetupUrl).toBe('/settings/security/mfa');
+    });
+
+    it('allows admin login during grace period but returns mfaEnforcementWarning', async () => {
+      const tenDaysOut = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+      await setGraceUntil('mfa-admin-grace', tenDaysOut);
+      await env.DB.prepare('UPDATE users SET mfa_enabled = 0 WHERE id = ?').bind('mfa-admin-grace').run();
+      await env.CACHE.delete(`login_attempts:${MFA_ADMIN_GRACE}`);
+
+      const res = await postJSON('/api/v1/auth/login', {
+        email: MFA_ADMIN_GRACE, password: TEST_PASSWORD, tenant_slug: 'tenant-a',
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.token).toBeTruthy();
+      expect(body.mfaEnforcementWarning).toBeTruthy();
+      const warn = body.mfaEnforcementWarning as Record<string, unknown>;
+      expect(warn.reason).toBe('MFA must be enabled for admin roles');
+      expect(typeof warn.daysRemaining).toBe('number');
+      expect((warn.daysRemaining as number) > 0).toBe(true);
+      expect((warn.daysRemaining as number) <= 14).toBe(true);
+    });
+
+    it('does NOT enforce MFA for non-admin roles', async () => {
+      await env.DB.prepare(
+        'UPDATE users SET mfa_enabled = 0, mfa_grace_until = NULL WHERE id = ?',
+      ).bind('mfa-analyst').run();
+      await env.CACHE.delete(`login_attempts:${MFA_ANALYST}`);
+
+      const res = await postJSON('/api/v1/auth/login', {
+        email: MFA_ANALYST, password: TEST_PASSWORD, tenant_slug: 'tenant-a',
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.token).toBeTruthy();
+      expect(body.mfaEnforcementWarning).toBeUndefined();
+    });
+
+    it('back-fills mfa_grace_until for existing admin with no grace set', async () => {
+      // Simulate an admin account that pre-dates v40 — no grace timestamp at all.
+      await env.DB.prepare(
+        'UPDATE users SET mfa_enabled = 0, mfa_grace_until = NULL WHERE id = ?',
+      ).bind('mfa-admin-grace').run();
+      await env.CACHE.delete(`login_attempts:${MFA_ADMIN_GRACE}`);
+
+      const res = await postJSON('/api/v1/auth/login', {
+        email: MFA_ADMIN_GRACE, password: TEST_PASSWORD, tenant_slug: 'tenant-a',
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.mfaEnforcementWarning).toBeTruthy();
+
+      // Verify grace_until is now populated on the row.
+      const row = await env.DB.prepare('SELECT mfa_grace_until FROM users WHERE id = ?')
+        .bind('mfa-admin-grace').first();
+      expect(row?.mfa_grace_until).toBeTruthy();
+      const ts = Date.parse(row!.mfa_grace_until as string);
+      expect(Number.isNaN(ts)).toBe(false);
+      expect(ts).toBeGreaterThan(Date.now());
+    });
+
+    it('accepts a backup code on /mfa/validate and consumes it', async () => {
+      const codes = ['aaaa-bbbb', 'cccc-dddd', 'eeee-ffff', 'gggg-hhhh'];
+      await enableMfaWithBackupCodes('mfa-admin-backup', codes);
+
+      const token = await seedMfaChallenge(
+        'mfa-admin-backup', TENANT_A_ID, MFA_ADMIN_BACKUP, 'MFA Backup', 'admin',
+      );
+
+      const res = await postJSON('/api/v1/auth/mfa/validate', {
+        challenge_token: token,
+        code: 'aaaa-bbbb',
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.token).toBeTruthy();
+      expect(body.mfaMethodUsed).toBe('backup_code');
+      expect(body.backupCodesRemaining).toBe(3);
+      // 3 remaining < 3 is false, so low-codes warning should NOT be set (strict <).
+      // But since remaining==3, expect not-low.
+      expect(body.mfaBackupCodesLow).toBeUndefined();
+
+      // The used code must now be gone — second attempt should fail.
+      const token2 = await seedMfaChallenge(
+        'mfa-admin-backup', TENANT_A_ID, MFA_ADMIN_BACKUP, 'MFA Backup', 'admin',
+      );
+      const res2 = await postJSON('/api/v1/auth/mfa/validate', {
+        challenge_token: token2,
+        code: 'aaaa-bbbb',
+      });
+      expect(res2.status).toBe(401);
+    });
+
+    it('emits mfaBackupCodesLow when fewer than 3 codes remain after use', async () => {
+      // Seed exactly 3 codes — after consuming one, 2 remain which is < 3.
+      const codes = ['lowa-low1', 'lowb-low2', 'lowc-low3'];
+      await enableMfaWithBackupCodes('mfa-admin-backup', codes);
+
+      const token = await seedMfaChallenge(
+        'mfa-admin-backup', TENANT_A_ID, MFA_ADMIN_BACKUP, 'MFA Backup', 'admin',
+      );
+      const res = await postJSON('/api/v1/auth/mfa/validate', {
+        challenge_token: token,
+        code: 'lowa-low1',
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.backupCodesRemaining).toBe(2);
+      expect(body.mfaBackupCodesLow).toBe(true);
+    });
+
+    it('rejects an unknown backup code without consuming any', async () => {
+      const codes = ['keep-aaaa', 'keep-bbbb'];
+      await enableMfaWithBackupCodes('mfa-admin-backup', codes);
+
+      const token = await seedMfaChallenge(
+        'mfa-admin-backup', TENANT_A_ID, MFA_ADMIN_BACKUP, 'MFA Backup', 'admin',
+      );
+      const res = await postJSON('/api/v1/auth/mfa/validate', {
+        challenge_token: token,
+        code: 'zzzz-zzzz',
+      });
+      expect(res.status).toBe(401);
+
+      // All codes still present.
+      const row = await env.DB.prepare('SELECT mfa_backup_codes FROM users WHERE id = ?')
+        .bind('mfa-admin-backup').first();
+      const stored = JSON.parse(row!.mfa_backup_codes as string) as string[];
+      expect(stored.length).toBe(2);
+    });
+
+    it('/mfa/regenerate-backup-codes requires auth', async () => {
+      const res = await postJSON('/api/v1/auth/mfa/regenerate-backup-codes', { code: '123456' });
+      expect(res.status).toBe(401);
+    });
+
+    it('/mfa/regenerate-backup-codes rejects when MFA is not enabled', async () => {
+      // Seed an analyst (non-admin so no enforcement blocks login) without MFA.
+      await env.DB.prepare(
+        'UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, mfa_backup_codes = NULL, mfa_grace_until = NULL WHERE id = ?',
+      ).bind('mfa-admin-regen').run();
+      // Switch role to analyst just for this auth step so the login goes through.
+      await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind('analyst', 'mfa-admin-regen').run();
+      await env.CACHE.delete(`login_attempts:${MFA_ADMIN_REGEN}`);
+      const result = await login(MFA_ADMIN_REGEN, TEST_PASSWORD, 'tenant-a');
+      expect(result).not.toBeNull();
+
+      const res = await authedPost(
+        '/api/v1/auth/mfa/regenerate-backup-codes',
+        { code: '123456' },
+        result!.token,
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.error).toBe('MFA is not enabled');
+    });
+  });
+
+  // ────────────────────────────────────────────
   // Backward Compatibility (/api/ prefix)
   // ────────────────────────────────────────────
   describe('Backward Compat Routes', () => {

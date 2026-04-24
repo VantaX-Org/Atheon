@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v41';
+export const MIGRATION_VERSION = 'v42-mfa';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -679,6 +679,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // Phase 1.4: MFA/TOTP support
     { table: 'users', column: 'mfa_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { table: 'users', column: 'mfa_secret', definition: 'TEXT' },
+    // v40: Mandatory MFA enforcement for admin roles
+    { table: 'users', column: 'mfa_backup_codes', definition: 'TEXT' }, // JSON array of SHA-256 hashed backup codes
+    { table: 'users', column: 'mfa_grace_until', definition: 'TEXT' },  // ISO timestamp; null means no active grace period
     // Phase 6.1: Data retention
     { table: 'email_queue', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { table: 'email_queue', column: 'max_retries', definition: 'INTEGER NOT NULL DEFAULT 3' },

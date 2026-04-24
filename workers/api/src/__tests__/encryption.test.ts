@@ -45,7 +45,7 @@ async function authedGet(path: string, token: string): Promise<Response> {
 
 async function seedTenant(id: string, slug: string, name: string): Promise<void> {
   await env.DB.prepare(
-    `INSERT OR REPLACE INTO tenants (id, name, slug, industry, plan, status) VALUES (?, ?, ?, 'technology', 'enterprise', 'active')`
+    `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, ?, ?, 'enterprise', 'active')`
   ).bind(id, name, slug).run();
   await env.DB.prepare(
     `INSERT OR REPLACE INTO tenant_entitlements (tenant_id, layers, catalyst_clusters, max_agents, max_users) VALUES (?, '["apex","pulse","mind","memory"]', '["finance"]', 50, 100)`
