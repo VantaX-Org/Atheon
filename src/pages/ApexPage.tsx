@@ -20,11 +20,15 @@ import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
  Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
- CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw
+ CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw, PinOff, Pin
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { RiskMatrix } from "./apex/RiskMatrix";
+import { DimensionComparisonGrid } from "@/components/DimensionComparisonGrid";
+import { HealthTrendChart } from "@/components/HealthTrendChart";
+import { RiskHeatMap } from "@/components/RiskHeatMap";
+import { ScenarioComparisonGrid } from "@/components/ScenarioComparisonGrid";
 
 
 const trendIcon = (trend: string, size = 14) => {
@@ -80,6 +84,25 @@ export function ApexPage() {
  // §11.4 Peer Benchmarks state
  const [peerBenchmarks, setPeerBenchmarks] = useState<PeerBenchmarksResponse | null>(null);
  const [peerLoading, setPeerLoading] = useState(false);
+
+ // 2.1.1 Dimension comparison state
+ const [selectedDimensions, setSelectedDimensions] = useState<string[]>([]);
+ const toggleDimensionCompare = (key: string) =>
+  setSelectedDimensions(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+ // 2.1.3 Risk heat map filter state
+ const [riskHeatFilter, setRiskHeatFilter] = useState<{ category: string; severity: string } | null>(null);
+ const visibleRisks = riskHeatFilter
+  ? risks.filter(r =>
+     r.category?.toLowerCase() === riskHeatFilter.category.toLowerCase() &&
+     (r.severity ?? '').toLowerCase() === riskHeatFilter.severity.toLowerCase()
+    )
+  : risks;
+
+ // 2.1.4 Scenario comparison state
+ const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
+ const toggleScenarioCompare = (id: string) =>
+  setSelectedScenarios(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
 
  const handleGenerateBoardReport = async () => {
   setGeneratingReport(true);
@@ -380,6 +403,17 @@ export function ApexPage() {
  {/* Business Health Tab */}
  {activeTab === 'health' && (
  <TabPanel>
+  {/* 2.1.1 Dimension Comparison Grid (pinned dimensions) */}
+  <DimensionComparisonGrid
+   selectedDimensions={selectedDimensions}
+   onRemove={(d) => setSelectedDimensions(prev => prev.filter(x => x !== d))}
+   risks={risks}
+   companyId={companyId || undefined}
+  />
+
+  {/* 2.1.2 Health Score Trend Chart */}
+  <HealthTrendChart companyId={companyId || undefined} initialHistory={healthHistory} />
+
   {/* Top Row: Health Ring + Dimensions */}
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
    <FlipCard
@@ -463,8 +497,17 @@ export function ApexPage() {
          </div>
          <Sparkline data={dim.sparkline} width={60} height={20} color={dim.score >= 80 ? '#10b981' : dim.score >= 60 ? '#f59e0b' : '#ef4444'} />
          <button
+          onClick={() => toggleDimensionCompare(dim.key)}
+          className={`text-[10px] flex items-center gap-0.5 transition-all ml-2 ${selectedDimensions.includes(dim.key) ? 'text-accent opacity-100' : 'opacity-0 group-hover:opacity-100 text-accent hover:text-accent/80'}`}
+          title={selectedDimensions.includes(dim.key) ? `Remove ${dim.name} from comparison` : `Compare ${dim.name}`}
+          aria-pressed={selectedDimensions.includes(dim.key)}
+         >
+          {selectedDimensions.includes(dim.key) ? <PinOff size={10} /> : <Pin size={10} />}
+          <span className="hidden sm:inline">{selectedDimensions.includes(dim.key) ? 'Unpin' : 'Compare'}</span>
+         </button>
+         <button
           onClick={() => handleOpenDimensionTrace(dim.key)}
-          className="opacity-0 group-hover:opacity-100 text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-all ml-2"
+          className="opacity-0 group-hover:opacity-100 text-[10px] text-accent hover:text-accent/80 flex items-center gap-0.5 transition-all ml-1"
           title={`Trace ${dim.name}`}
          >
           <Eye size={10} />
@@ -710,15 +753,29 @@ export function ApexPage() {
  {/* Risk Alerts Tab */}
  {activeTab === 'risks' && (
  <TabPanel><div className="space-y-4">
+ {/* 2.1.3 Risk Heat Map — category × severity */}
+ <RiskHeatMap
+  risks={risks}
+  activeFilter={riskHeatFilter}
+  onCellClick={(category, severity) => setRiskHeatFilter(prev => prev && prev.category === category && prev.severity === severity ? null : { category, severity })}
+  onClearFilter={() => setRiskHeatFilter(null)}
+ />
  {/* TASK-002: Decomposed RiskMatrix sub-component for grouped severity view */}
- <RiskMatrix risks={risks} />
+ <RiskMatrix risks={visibleRisks} />
  {risks.length === 0 && (
   <div className="flex items-center gap-3 py-6 px-4">
  <Shield className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
  <p className="text-sm t-muted">No risk alerts detected yet</p>
  </div>
  )}
- {risks.map((risk) => (
+ {riskHeatFilter && visibleRisks.length === 0 && risks.length > 0 && (
+  <div className="flex items-center gap-3 py-6 px-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+   <AlertCircle className="w-4 h-4 t-muted flex-shrink-0" />
+   <p className="text-sm t-muted flex-1">No risks match the selected filter.</p>
+   <button onClick={() => setRiskHeatFilter(null)} className="text-xs text-accent hover:text-accent/80">Clear filter</button>
+  </div>
+ )}
+ {visibleRisks.map((risk) => (
  <div
  key={risk.id}
   onClick={() => setExpandedRisk(expandedRisk === risk.id ? null : risk.id)}
@@ -876,6 +933,13 @@ export function ApexPage() {
  {/* Scenario Modelling Tab */}
  {activeTab === 'scenarios' && (
  <TabPanel><div className="space-y-6">
+ {/* 2.1.4 Scenario comparison grid */}
+ <ScenarioComparisonGrid
+  scenarios={scenarios}
+  selectedIds={selectedScenarios}
+  baselineHealth={overallScore}
+  onRemove={(id) => setSelectedScenarios(prev => prev.filter(x => x !== id))}
+ />
  <div className="flex items-center justify-between">
  <h3 className="text-lg font-semibold t-primary">What-If Analysis</h3>
  <Button variant="primary" size="sm" onClick={() => { resetScenarioBuilder(); setShowScenarioBuilder(true); }} title="Create a new what-if scenario analysis"><Plus size={14} /> New Scenario</Button>
@@ -917,7 +981,7 @@ export function ApexPage() {
   const hasResults = resultEntries.length > 0 || !!effectiveResults?.recommendation;
   return (
    <Card key={scenario.id}>
-    <div className="flex items-start justify-between">
+    <div className="flex items-start justify-between gap-3">
      <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2">
        <h3 className="text-base font-semibold t-primary">{scenario.title}</h3>
@@ -929,6 +993,16 @@ export function ApexPage() {
        {scenario.createdAt && <span>Created: {new Date(scenario.createdAt).toLocaleDateString()}</span>}
       </div>
      </div>
+     <button
+      type="button"
+      onClick={() => toggleScenarioCompare(scenario.id)}
+      className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${selectedScenarios.includes(scenario.id) ? 'bg-accent/20 text-accent border border-accent/40' : 'bg-[var(--bg-secondary)] text-accent border border-[var(--border-card)] hover:bg-accent/10'}`}
+      title={selectedScenarios.includes(scenario.id) ? 'Remove from comparison' : 'Add to comparison'}
+      aria-pressed={selectedScenarios.includes(scenario.id)}
+     >
+      {selectedScenarios.includes(scenario.id) ? <PinOff size={11} /> : <Pin size={11} />}
+      {selectedScenarios.includes(scenario.id) ? 'Unpin' : 'Compare'}
+     </button>
     </div>
 
     {/* Scenario Report */}
