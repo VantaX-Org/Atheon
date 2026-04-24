@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useParams, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
 import type { SubCatalystRunItem, SubCatalystRunItemsResponse, RunComment } from "@/lib/api";
-import { useToast } from "@/components/ui/toast";
+import { useToast, type ToastApi } from "@/components/ui/toast";
 import {
   RunItemsFilterBar,
   type ItemStatus,
@@ -97,6 +97,14 @@ export function CatalystRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  // `useToast()` returns a freshly-constructed object on every render (its
+  // helper methods close over the provider's addToast). Including `toast` in
+  // any useCallback dep array therefore invalidates the callback on every
+  // render, which — when those callbacks feed a useEffect — triggers an
+  // infinite load loop (see #re-render-loop). Stash the API in a ref so we
+  // can call the latest version without destabilising memoised callbacks.
+  const toastRef = useRef<ToastApi>(toast);
+  toastRef.current = toast;
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<{ message: string; requestId: string | null } | null>(null);
@@ -145,11 +153,11 @@ export function CatalystRunDetailPage() {
       const message = err instanceof Error ? err.message : 'Failed to load run details';
       const requestId = err instanceof ApiError ? err.requestId : null;
       setLoadError({ message, requestId });
-      toast.error('Failed to load run', { message, requestId });
+      toastRef.current.error('Failed to load run', { message, requestId });
     } finally {
       setLoading(false);
     }
-  }, [runId, toast]);
+  }, [runId]);
 
   const loadItems = useCallback(async (page = 0) => {
     if (!runId) return;
@@ -164,11 +172,11 @@ export function CatalystRunDetailPage() {
       const message = err instanceof Error ? err.message : 'Failed to load items';
       const requestId = err instanceof ApiError ? err.requestId : null;
       setItemsError(message);
-      toast.error('Failed to load items', { message, requestId });
+      toastRef.current.error('Failed to load items', { message, requestId });
     } finally {
       setItemsLoading(false);
     }
-  }, [runId, toast]);
+  }, [runId]);
 
   const loadComments = useCallback(async () => {
     if (!runId) return;
@@ -180,11 +188,11 @@ export function CatalystRunDetailPage() {
       console.error('Failed to load comments:', err);
       const message = err instanceof Error ? err.message : 'Failed to load comments';
       const requestId = err instanceof ApiError ? err.requestId : null;
-      toast.error('Failed to load comments', { message, requestId });
+      toastRef.current.error('Failed to load comments', { message, requestId });
     } finally {
       setCommentsLoading(false);
     }
-  }, [runId, toast]);
+  }, [runId]);
 
   useEffect(() => {
     if (!runId) return;
