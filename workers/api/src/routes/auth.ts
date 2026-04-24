@@ -1,9 +1,62 @@
 import { Hono } from 'hono';
 import type { AppBindings } from '../types';
-import { generateToken, verifyToken, hashPassword, verifyPassword, ACCESS_TOKEN_TTL_SECONDS } from '../middleware/auth';
+import {
+  generateToken,
+  verifyToken,
+  hashPassword,
+  verifyPassword,
+  ACCESS_TOKEN_TTL_SECONDS,
+  requiresMFA,
+  withinMfaGracePeriod,
+  computeMfaGraceUntil,
+  mfaGraceDaysRemaining,
+} from '../middleware/auth';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 import { sendOrQueueEmail, getPasswordResetEmailTemplate } from '../services/email';
+
+// ── Backup Code helpers (v40) ──
+//
+// Format: 8 codes like "a8h3-k1m9" (lowercase base32-ish, dash-separated for readability).
+// Storage: SHA-256 hex of the code string — NOT the stronger PBKDF2 hashPassword helper.
+// Rationale: backup codes are high-entropy random secrets (40 bits each), so a fast hash
+// is acceptable; the goal here is only to avoid storing the plaintext at rest. PBKDF2
+// would add 100k iterations × 8 codes × every login verify with no real security gain.
+
+const BACKUP_CODE_COUNT = 8;
+const BACKUP_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // no 0/o/1/l/i to avoid ambiguity
+const BACKUP_CODE_PATTERN = /^[a-z0-9]{4}-[a-z0-9]{4}$/;
+
+/** Generate a single human-friendly backup code like "a8h3-k1m9". */
+function generateBackupCode(): string {
+  const pick = (n: number): string => {
+    const bytes = crypto.getRandomValues(new Uint8Array(n));
+    let out = '';
+    for (const b of bytes) out += BACKUP_CODE_ALPHABET[b % BACKUP_CODE_ALPHABET.length];
+    return out;
+  };
+  return `${pick(4)}-${pick(4)}`;
+}
+
+/** SHA-256 hex of a backup code (normalized to lowercase, dashes preserved). */
+async function hashBackupCode(code: string): Promise<string> {
+  const normalized = code.trim().toLowerCase();
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Generate a fresh set of 8 backup codes + their stored hashes (JSON string). */
+async function generateBackupCodeSet(): Promise<{ codes: string[]; hashedJson: string }> {
+  const codes: string[] = [];
+  for (let i = 0; i < BACKUP_CODE_COUNT; i++) codes.push(generateBackupCode());
+  const hashed = await Promise.all(codes.map(hashBackupCode));
+  return { codes, hashedJson: JSON.stringify(hashed) };
+}
+
+/** True-ish check that an input looks like a backup code (xxxx-xxxx). */
+function looksLikeBackupCode(input: string): boolean {
+  return BACKUP_CODE_PATTERN.test(input.trim().toLowerCase());
+}
 
 const auth = new Hono<AppBindings>();
 
@@ -238,8 +291,55 @@ auth.post('/login', async (c) => {
     return c.json({
       mfaRequired: true,
       mfaChallengeToken,
-      message: 'Please provide your TOTP code to complete login.',
+      message: 'Please provide your TOTP code or backup code to complete login.',
     });
+  }
+
+  // v40: Mandatory MFA for admin-tier roles. Runs AFTER password verify but BEFORE
+  // issuing the JWT. If the user has no MFA, is an admin-tier role, and is past their
+  // grace window, block the login and direct them to set up MFA.
+  let mfaEnforcementWarning: { daysRemaining: number; reason: string; mfaSetupUrl: string } | null = null;
+  if (requiresMFA(user.role as string) && (mfaEnabled ?? 0) !== 1) {
+    const graceUntil = (user.mfa_grace_until as string | null | undefined) ?? null;
+
+    // Back-fill grace on existing admin accounts that pre-date v40 so they aren't
+    // locked out instantly on the first login after rollout.
+    let effectiveGrace = graceUntil;
+    if (!effectiveGrace) {
+      effectiveGrace = computeMfaGraceUntil();
+      await c.env.DB.prepare('UPDATE users SET mfa_grace_until = ? WHERE id = ?')
+        .bind(effectiveGrace, user.id).run();
+    }
+
+    if (withinMfaGracePeriod(effectiveGrace)) {
+      mfaEnforcementWarning = {
+        daysRemaining: mfaGraceDaysRemaining(effectiveGrace),
+        reason: 'MFA must be enabled for admin roles',
+        mfaSetupUrl: '/settings/security/mfa',
+      };
+      // Audit: admin logged in under MFA grace period (visibility for security team)
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), user.tenant_id, user.id, 'login_admin_mfa_grace', 'auth', 'session',
+        JSON.stringify({ email: body.email, daysRemaining: mfaEnforcementWarning.daysRemaining }),
+        'success',
+      ).run();
+    } else {
+      // Grace expired — block login until MFA is enabled.
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), user.tenant_id, user.id, 'login_blocked_mfa_required', 'auth', 'session',
+        JSON.stringify({ email: body.email, role: user.role }), 'failure',
+      ).run();
+      await clearLoginAttempts(c.env.CACHE, body.email);
+      return c.json({
+        error: 'MFA required for this role',
+        action: 'enable_mfa',
+        mfaSetupUrl: '/settings/security/mfa',
+      }, 403);
+    }
   }
 
   // Security S5: Clear lockout counter on successful login
@@ -275,6 +375,7 @@ auth.post('/login', async (c) => {
     token,
     refreshToken,
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    ...(mfaEnforcementWarning ? { mfaEnforcementWarning } : {}),
     user: {
       id: user.id,
       email: user.email,
@@ -797,10 +898,12 @@ auth.post('/sso/callback', async (c) => {
     const userId = crypto.randomUUID();
     const defaultRole = (sso.default_role as string) || 'analyst';
     const defaultPerms = defaultRole === 'admin' ? '["*"]' : '["read"]';
+    // v40: Admin-tier auto-provisioned accounts start with an MFA grace window.
+    const graceUntil = requiresMFA(defaultRole) ? computeMfaGraceUntil() : null;
 
     await c.env.DB.prepare(
-      'INSERT INTO users (id, tenant_id, email, name, role, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(userId, tenant.id, ssoEmail, ssoName, defaultRole, defaultPerms, 'active').run();
+      'INSERT INTO users (id, tenant_id, email, name, role, permissions, status, mfa_grace_until) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(userId, tenant.id, ssoEmail, ssoName, defaultRole, defaultPerms, 'active', graceUntil).run();
 
     user = await c.env.DB.prepare(
       // industry column removed from tenants; tenantIndustry defaults to 'general' in response.
@@ -1122,9 +1225,15 @@ auth.post('/mfa/verify', async (c) => {
 
   // Enable MFA and store encrypted secret
   const encryptedMfaSecret = await encrypt(pendingSecret, c.env.ENCRYPTION_KEY);
+
+  // v40: Generate 8 one-time backup codes. Plaintext returned here ONCE;
+  // only SHA-256 hashes are persisted.
+  const { codes: backupCodes, hashedJson: backupHashes } = await generateBackupCodeSet();
+
+  // v40: Clear any grace window — the user now has MFA active.
   await c.env.DB.prepare(
-    'UPDATE users SET mfa_enabled = 1, mfa_secret = ? WHERE id = ?'
-  ).bind(encryptedMfaSecret, payload.sub).run();
+    'UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, mfa_grace_until = NULL WHERE id = ?'
+  ).bind(encryptedMfaSecret, backupHashes, payload.sub).run();
 
   // Clean up
   await c.env.CACHE.delete(`mfa_setup:${payload.sub}`);
@@ -1132,16 +1241,22 @@ auth.post('/mfa/verify', async (c) => {
   // Audit log
   await c.env.DB.prepare(
     'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(crypto.randomUUID(), payload.tenant_id, payload.sub, 'mfa_enabled', 'auth', 'user', '{}', 'success').run();
+  ).bind(crypto.randomUUID(), payload.tenant_id, payload.sub, 'mfa_enabled', 'auth', 'user', JSON.stringify({ backupCodesIssued: backupCodes.length }), 'success').run();
 
-  return c.json({ success: true, message: 'MFA has been enabled successfully.' });
+  return c.json({
+    success: true,
+    message: 'MFA has been enabled successfully. Store your backup codes in a safe place — they will not be shown again.',
+    backupCodes,
+  });
 });
 
-// POST /api/auth/mfa/validate - Complete login with TOTP code
+// POST /api/auth/mfa/validate - Complete login with TOTP code OR backup code
 auth.post('/mfa/validate', async (c) => {
+  // v40: `code` now accepts either a 6-digit TOTP or an 8-char dash-separated backup
+  // code like "a8h3-k1m9" (9 chars with the dash). Widen the length bounds accordingly.
   const { data: body, errors } = await getValidatedJsonBody<{ challenge_token: string; code: string }>(c, [
     { field: 'challenge_token', type: 'string', required: true, minLength: 1 },
-    { field: 'code', type: 'string', required: true, minLength: 6, maxLength: 6 },
+    { field: 'code', type: 'string', required: true, minLength: 6, maxLength: 16 },
   ]);
   if (!body || errors.length > 0) {
     return c.json({ error: 'Invalid input', details: errors }, 400);
@@ -1158,22 +1273,59 @@ auth.post('/mfa/validate', async (c) => {
     name: string; role: string; permissions: string[];
   };
 
-  // Get user's MFA secret
-  const user = await c.env.DB.prepare('SELECT mfa_secret FROM users WHERE id = ?').bind(userData.userId).first();
+  // v40: Fetch both MFA secret and backup-code hashes in one query.
+  const user = await c.env.DB.prepare(
+    'SELECT mfa_secret, mfa_backup_codes FROM users WHERE id = ?',
+  ).bind(userData.userId).first();
   if (!user || !user.mfa_secret) {
     return c.json({ error: 'MFA not configured' }, 400);
   }
 
-  // Verify TOTP code — decrypt secret if encrypted
-  const rawMfaSecret = isEncrypted(user.mfa_secret as string)
-    ? await decrypt(user.mfa_secret as string, c.env.ENCRYPTION_KEY)
-    : user.mfa_secret as string;
-  if (!rawMfaSecret) {
-    return c.json({ error: 'MFA configuration error' }, 500);
+  const inputCode = body.code.trim();
+  let usedBackupCode = false;
+  let backupCodesRemaining: number | null = null;
+  let valid = false;
+
+  if (looksLikeBackupCode(inputCode)) {
+    // ── Backup-code path ──
+    const storedHashesJson = (user.mfa_backup_codes as string | null) || '[]';
+    let storedHashes: string[];
+    try {
+      storedHashes = JSON.parse(storedHashesJson) as string[];
+      if (!Array.isArray(storedHashes)) storedHashes = [];
+    } catch {
+      storedHashes = [];
+    }
+    const candidate = await hashBackupCode(inputCode);
+    const idx = storedHashes.indexOf(candidate);
+    if (idx >= 0) {
+      // Consume the code — remove it from the stored array (one-time use).
+      const remaining = storedHashes.filter((_, i) => i !== idx);
+      await c.env.DB.prepare('UPDATE users SET mfa_backup_codes = ? WHERE id = ?')
+        .bind(JSON.stringify(remaining), userData.userId).run();
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), userData.tenantId, userData.userId, 'mfa.backup_code_used',
+        'auth', 'session', JSON.stringify({ remaining: remaining.length }), 'success',
+      ).run();
+      usedBackupCode = true;
+      backupCodesRemaining = remaining.length;
+      valid = true;
+    }
+  } else {
+    // ── TOTP path ──
+    const rawMfaSecret = isEncrypted(user.mfa_secret as string)
+      ? await decrypt(user.mfa_secret as string, c.env.ENCRYPTION_KEY)
+      : user.mfa_secret as string;
+    if (!rawMfaSecret) {
+      return c.json({ error: 'MFA configuration error' }, 500);
+    }
+    valid = await verifyTOTP(rawMfaSecret, inputCode);
   }
-  const valid = await verifyTOTP(rawMfaSecret, body.code);
+
   if (!valid) {
-    return c.json({ error: 'Invalid TOTP code' }, 401);
+    return c.json({ error: 'Invalid TOTP or backup code' }, 401);
   }
 
   // Clean up challenge
@@ -1201,15 +1353,23 @@ auth.post('/mfa/validate', async (c) => {
   // Audit log
   await c.env.DB.prepare(
     'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(crypto.randomUUID(), userData.tenantId, userData.userId, 'login_mfa', 'auth', 'session', JSON.stringify({ email: userData.email }), 'success').run();
+  ).bind(
+    crypto.randomUUID(), userData.tenantId, userData.userId, 'login_mfa', 'auth', 'session',
+    JSON.stringify({ email: userData.email, method: usedBackupCode ? 'backup_code' : 'totp' }), 'success',
+  ).run();
 
   // Fetch tenant info (industry column removed from tenants).
   const loginTenant = await c.env.DB.prepare('SELECT name, slug FROM tenants WHERE id = ?').bind(userData.tenantId).first();
+
+  // v40: If a backup code was used and the user has < 3 codes remaining, nudge regeneration.
+  const mfaBackupCodesLow = usedBackupCode && backupCodesRemaining !== null && backupCodesRemaining < 3;
 
   return c.json({
     token,
     refreshToken,
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    ...(usedBackupCode ? { mfaMethodUsed: 'backup_code', backupCodesRemaining } : {}),
+    ...(mfaBackupCodesLow ? { mfaBackupCodesLow: true } : {}),
     user: {
       id: userData.userId,
       email: userData.email,
@@ -1260,7 +1420,10 @@ auth.post('/mfa/disable', async (c) => {
     return c.json({ error: 'Invalid TOTP code' }, 401);
   }
 
-  await c.env.DB.prepare('UPDATE users SET mfa_enabled = 0, mfa_secret = NULL WHERE id = ?').bind(payload.sub).run();
+  // v40: Clear backup codes when MFA is disabled.
+  await c.env.DB.prepare(
+    'UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, mfa_backup_codes = NULL WHERE id = ?',
+  ).bind(payload.sub).run();
 
   // Audit log
   await c.env.DB.prepare(
@@ -1268,6 +1431,62 @@ auth.post('/mfa/disable', async (c) => {
   ).bind(crypto.randomUUID(), payload.tenant_id, payload.sub, 'mfa_disabled', 'auth', 'user', '{}', 'success').run();
 
   return c.json({ success: true, message: 'MFA has been disabled.' });
+});
+
+// POST /api/auth/mfa/regenerate-backup-codes — invalidate old backup codes, issue 8 new.
+// Requires a valid TOTP code from the active MFA device for authorization.
+auth.post('/mfa/regenerate-backup-codes', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  const payload = await verifyToken(authHeader.replace('Bearer ', ''), c.env.JWT_SECRET);
+  if (!payload) {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
+
+  const { data: body, errors } = await getValidatedJsonBody<{ code: string }>(c, [
+    { field: 'code', type: 'string', required: true, minLength: 6, maxLength: 6 },
+  ]);
+  if (!body || errors.length > 0) {
+    return c.json({ error: 'Invalid input', details: errors }, 400);
+  }
+
+  const user = await c.env.DB.prepare(
+    'SELECT mfa_secret, mfa_enabled FROM users WHERE id = ?',
+  ).bind(payload.sub).first();
+  if (!user || (user.mfa_enabled as number) !== 1 || !user.mfa_secret) {
+    return c.json({ error: 'MFA is not enabled' }, 400);
+  }
+
+  // Require current TOTP for this sensitive operation.
+  const rawSecret = isEncrypted(user.mfa_secret as string)
+    ? await decrypt(user.mfa_secret as string, c.env.ENCRYPTION_KEY)
+    : user.mfa_secret as string;
+  if (!rawSecret) {
+    return c.json({ error: 'MFA configuration error' }, 500);
+  }
+  const valid = await verifyTOTP(rawSecret, body.code);
+  if (!valid) {
+    return c.json({ error: 'Invalid TOTP code' }, 401);
+  }
+
+  const { codes: backupCodes, hashedJson: backupHashes } = await generateBackupCodeSet();
+  await c.env.DB.prepare('UPDATE users SET mfa_backup_codes = ? WHERE id = ?')
+    .bind(backupHashes, payload.sub).run();
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), payload.tenant_id, payload.sub, 'mfa.backup_codes_regenerated',
+    'auth', 'user', JSON.stringify({ count: backupCodes.length }), 'success',
+  ).run();
+
+  return c.json({
+    success: true,
+    message: 'New backup codes generated. Previous codes are no longer valid.',
+    backupCodes,
+  });
 });
 
 // Phase 6 Fix: Server-side API key generation

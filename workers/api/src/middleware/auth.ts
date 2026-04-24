@@ -108,6 +108,47 @@ export async function verifyToken(token: string, secret: string): Promise<Record
   }
 }
 
+// ── MFA Enforcement for Admin Roles (v40) ──
+
+/** Roles that MUST have MFA enabled — login is blocked once grace period expires. */
+export const MFA_REQUIRED_ROLES = ['admin', 'system_admin', 'superadmin', 'support_admin'] as const;
+
+/** Days a newly-created admin account has to enable MFA before login is blocked. */
+export const MFA_GRACE_PERIOD_DAYS = 14;
+
+/** True when `role` is one of the admin-tier roles that must enable MFA. */
+export function requiresMFA(role: string | null | undefined): boolean {
+  if (!role) return false;
+  return (MFA_REQUIRED_ROLES as readonly string[]).includes(role);
+}
+
+/**
+ * True when `graceUntil` is a valid ISO timestamp strictly in the future.
+ * Null / undefined / invalid / past values all return false.
+ */
+export function withinMfaGracePeriod(graceUntil: string | null | undefined): boolean {
+  if (!graceUntil) return false;
+  const t = Date.parse(graceUntil);
+  if (Number.isNaN(t)) return false;
+  return t > Date.now();
+}
+
+/** Compute an ISO timestamp `MFA_GRACE_PERIOD_DAYS` from `from` (defaults to now). */
+export function computeMfaGraceUntil(from: Date = new Date()): string {
+  const d = new Date(from.getTime() + MFA_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  return d.toISOString();
+}
+
+/** Days remaining in a grace period (ceil). Returns 0 if already expired or null. */
+export function mfaGraceDaysRemaining(graceUntil: string | null | undefined): number {
+  if (!graceUntil) return 0;
+  const t = Date.parse(graceUntil);
+  if (Number.isNaN(t)) return 0;
+  const ms = t - Date.now();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
 // ── Auth Middleware ──
 // NOTE: tenantIsolation() middleware in middleware/tenant.ts is now the preferred
 // auth+tenant middleware. This is kept for backward compatibility.
