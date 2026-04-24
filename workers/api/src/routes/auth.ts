@@ -145,25 +145,30 @@ auth.post('/register', async (c) => {
     userId, email: body.email, tenantId: tenant.id,
   }), { expirationTtl: 86400 });
 
-  // Send verification email immediately via MS Graph (falls back to queue)
+  // Send verification email via MS Graph, falling back to queue. Fired via
+  // ctx.waitUntil so the HTTP response returns immediately regardless of
+  // email send latency \u2014 prevents the 45s hang we saw when MS Graph auth
+  // is misconfigured (AZURE_AD_TENANT_ID = 'test').
   const verifyUrl = `https://atheon.vantax.co.za/verify-email?token=${verificationToken}`;
-  await sendOrQueueEmail(c.env.DB, {
-    to: [body.email],
-    subject: 'Atheon\u2122 \u2014 Verify Your Email',
-    htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
-      <h2 style="color:#0ea5e9;">Welcome to Atheon\u2122</h2>
-      <p>Hi ${body.name},</p>
-      <p>Please verify your email address to activate your account:</p>
-      <p style="text-align:center;margin:24px 0;">
-        <a href="${verifyUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a>
-      </p>
-      <p style="color:#666;font-size:13px;">This link expires in 24 hours.</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
-      <p style="color:#9ca3af;font-size:12px;">Atheon\u2122 Enterprise Intelligence Platform</p>
-    </div>`,
-    textBody: `Verify your email: ${verifyUrl}\nThis link expires in 24 hours.`,
-    tenantId: tenant.id as string,
-  }, c.env).catch((err) => { console.error('Phase 1.3: failed to send verification email:', err); });
+  c.executionCtx.waitUntil(
+    sendOrQueueEmail(c.env.DB, {
+      to: [body.email],
+      subject: 'Atheon\u2122 \u2014 Verify Your Email',
+      htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
+        <h2 style="color:#0ea5e9;">Welcome to Atheon\u2122</h2>
+        <p>Hi ${body.name},</p>
+        <p>Please verify your email address to activate your account:</p>
+        <p style="text-align:center;margin:24px 0;">
+          <a href="${verifyUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a>
+        </p>
+        <p style="color:#666;font-size:13px;">This link expires in 24 hours.</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+        <p style="color:#9ca3af;font-size:12px;">Atheon\u2122 Enterprise Intelligence Platform</p>
+      </div>`,
+      textBody: `Verify your email: ${verifyUrl}\nThis link expires in 24 hours.`,
+      tenantId: tenant.id as string,
+    }, c.env).catch((err) => { console.error('Phase 1.3: failed to send verification email:', err); }),
+  );
 
   const token = await generateToken({
     sub: userId,
@@ -618,22 +623,27 @@ auth.post('/forgot-password', async (c) => {
       tenantId: user.tenant_id,
     }), { expirationTtl: 3600 });
 
-    // Send password reset email immediately via MS Graph (falls back to queue)
+    // Send password reset email via MS Graph, fallback to queue. Fired via
+    // ctx.waitUntil so the HTTP response returns immediately regardless of
+    // MS Graph latency — also means response timing can't be used to probe
+    // whether the account exists (the handler returns identically either way).
     const resetUrl = `https://atheon.vantax.co.za/reset-password?token=${resetToken}`;
     const { html, text } = getPasswordResetEmailTemplate(user.name as string, resetUrl);
-    await sendOrQueueEmail(c.env.DB, {
-      to: [user.email as string],
-      subject: 'Atheon™ — Password Reset Request',
-      htmlBody: html,
-      textBody: text,
-      tenantId: user.tenant_id as string,
-    }, c.env).catch((err) => {
-      console.error('Failed to send forgot-password email:', err);
-      // Log to audit but don't fail the request - email will be retried from queue
-      c.env.DB.prepare(
-        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'forgot_password_email_queued', 'auth', 'user', JSON.stringify({ email: body.email, queued: true }), 'success').run();
-    });
+    c.executionCtx.waitUntil(
+      sendOrQueueEmail(c.env.DB, {
+        to: [user.email as string],
+        subject: 'Atheon™ — Password Reset Request',
+        htmlBody: html,
+        textBody: text,
+        tenantId: user.tenant_id as string,
+      }, c.env).catch((err) => {
+        console.error('Failed to send forgot-password email:', err);
+        // Log to audit but don't fail the request - email will be retried from queue
+        return c.env.DB.prepare(
+          'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'forgot_password_email_queued', 'auth', 'user', JSON.stringify({ email: body.email, queued: true }), 'success').run().catch(() => {});
+      }),
+    );
 
     // Audit log
     await c.env.DB.prepare(
@@ -1076,19 +1086,21 @@ auth.post('/resend-verification', async (c) => {
     }), { expirationTtl: 86400 });
 
     const verifyUrl = `https://atheon.vantax.co.za/verify-email?token=${verificationToken}`;
-    await sendOrQueueEmail(c.env.DB, {
-      to: [user.email as string],
-      subject: 'Atheon\u2122 \u2014 Verify Your Email',
-      htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
-        <h2 style="color:#0ea5e9;">Email Verification</h2>
-        <p>Hi ${user.name},</p>
-        <p>Click below to verify your email:</p>
-        <p style="text-align:center;margin:24px 0;"><a href="${verifyUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a></p>
-        <p style="color:#666;font-size:13px;">This link expires in 24 hours.</p>
-      </div>`,
-      textBody: `Verify your email: ${verifyUrl}`,
-      tenantId: user.tenant_id as string,
-    }, c.env).catch((err) => { console.error('Phase 1.3: failed to send resend verification email:', err); });
+    c.executionCtx.waitUntil(
+      sendOrQueueEmail(c.env.DB, {
+        to: [user.email as string],
+        subject: 'Atheon\u2122 \u2014 Verify Your Email',
+        htmlBody: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;">
+          <h2 style="color:#0ea5e9;">Email Verification</h2>
+          <p>Hi ${user.name},</p>
+          <p>Click below to verify your email:</p>
+          <p style="text-align:center;margin:24px 0;"><a href="${verifyUrl}" style="background:#0ea5e9;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Verify Email</a></p>
+          <p style="color:#666;font-size:13px;">This link expires in 24 hours.</p>
+        </div>`,
+        textBody: `Verify your email: ${verifyUrl}`,
+        tenantId: user.tenant_id as string,
+      }, c.env).catch((err) => { console.error('Phase 1.3: failed to send resend verification email:', err); }),
+    );
   }
 
   // Always return success (don't reveal if user exists)
