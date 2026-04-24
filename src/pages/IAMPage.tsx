@@ -5,8 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { IAMPolicy, SSOConfig, IAMRole, IAMUser } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import {
  Shield, Key, Users, UserCheck, Lock, Unlock, Plus, UserPlus,
  ShieldCheck, Globe, Loader2, X, Pencil, Trash2, Save, Mail,
@@ -33,6 +34,7 @@ const ASSIGNABLE_ROLES: Record<string, string[]> = {
 };
 
 export function IAMPage() {
+ const toast = useToast();
  const { activeTab, setActiveTab } = useTabState('users');
  const [policies, setPolicies] = useState<IAMPolicy[]>([]);
  const [ssoConfigs, setSsoConfigs] = useState<SSOConfig[]>([]);
@@ -68,6 +70,17 @@ export function IAMPage() {
    setTimeout(() => setActionFeedback(null), 4000);
  };
 
+ /** Show an error — inline banner plus a toast with the backend request-ID for support traceability. */
+ const showError = (title: string, err: unknown, fallbackMessage: string) => {
+   const message = err instanceof Error ? err.message : fallbackMessage;
+   setActionFeedback({ type: 'error', message });
+   setTimeout(() => setActionFeedback(null), 4000);
+   toast.error(title, {
+     message,
+     requestId: err instanceof ApiError ? err.requestId : null,
+   });
+ };
+
  /** Check if the current user can manage the target user */
  const canManageUser = (targetUser: IAMUser): boolean => {
    if (currentUser?.id === targetUser.id) return false;
@@ -100,7 +113,7 @@ export function IAMPage() {
      showFeedback('success', 'Policy created successfully');
    } catch (err) {
      console.error('Failed to create policy', err);
-     showFeedback('error', 'Failed to create policy');
+     showError('Failed to create policy', err, 'Failed to create policy');
    }
    setCreatingPolicy(false);
  };
@@ -126,9 +139,8 @@ export function IAMPage() {
      }
      showFeedback('success', `User ${inviteForm.email} invited successfully`);
    } catch (err) {
-     const message = err instanceof Error ? err.message : 'Failed to invite user';
      console.error('Failed to invite user', err);
-     showFeedback('error', message);
+     showError('Failed to invite user', err, 'Failed to invite user');
    }
    setInviting(false);
  };
@@ -142,9 +154,8 @@ export function IAMPage() {
      setEditingUserId(null);
      showFeedback('success', 'User updated successfully');
    } catch (err) {
-     const message = err instanceof Error ? err.message : 'Failed to update user';
      console.error('Failed to update user', err);
-     showFeedback('error', message);
+     showError('Failed to update user', err, 'Failed to update user');
    }
    setSavingUser(false);
  };
@@ -156,9 +167,8 @@ export function IAMPage() {
      setUsers(prev => prev.filter(u => u.id !== user.id));
      showFeedback('success', `User ${user.email} deleted`);
    } catch (err) {
-     const message = err instanceof Error ? err.message : 'Failed to delete user';
      console.error('Failed to delete user', err);
-     showFeedback('error', message);
+     showError('Failed to delete user', err, 'Failed to delete user');
    }
  };
 
@@ -172,7 +182,7 @@ export function IAMPage() {
      showFeedback('success', `Welcome email resent to ${user.email}`);
    } catch (err) {
      console.error('Failed to resend welcome', err);
-     showFeedback('error', 'Failed to resend welcome email');
+     showError('Failed to resend welcome', err, 'Failed to resend welcome email');
    }
  };
 
@@ -627,7 +637,7 @@ export function IAMPage() {
                          await api.iam.deletePolicy(policy.id);
                          setPolicies(prev => prev.filter(p => p.id !== policy.id));
                          showFeedback('success', `Policy "${policy.name}" deleted`);
-                       } catch (err) { console.error('Failed to delete policy', err); showFeedback('error', 'Failed to delete policy'); }
+                       } catch (err) { console.error('Failed to delete policy', err); showError('Failed to delete policy', err, 'Failed to delete policy'); }
                      }} title="Delete policy"><Trash2 size={12} className="text-red-400" /></Button>
                    )}
                  </div>

@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/appStore";
 import type { AccentColor } from "@/stores/appStore";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { LlmConfigResponse } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import {
  Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2, Brain
 } from "lucide-react";
@@ -18,6 +19,7 @@ interface NotificationPref {
 }
 
 export function SettingsPage() {
+ const toast = useToast();
  const { user, setUser, theme, setTheme, accentColor, setAccentColor } = useAppStore();
  const [displayName, setDisplayName] = useState(user?.name || '');
  const [email, setEmail] = useState(user?.email || '');
@@ -71,7 +73,12 @@ export function SettingsPage() {
  setCurrentPw('');
  setNewPw('');
  } catch (err) {
- setPwMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to change password' });
+ const text = err instanceof Error ? err.message : 'Failed to change password';
+ setPwMsg({ type: 'error', text });
+ toast.error('Failed to change password', {
+  message: text,
+  requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setChangingPw(false);
  };
@@ -92,7 +99,12 @@ export function SettingsPage() {
      setMfaSecret(res.secret);
      setMfaQrUri(res.otpauthUri);
    } catch (err) {
-     setMfaMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to setup MFA' });
+     const text = err instanceof Error ? err.message : 'Failed to setup MFA';
+     setMfaMsg({ type: 'error', text });
+     toast.error('Failed to setup MFA', {
+       message: text,
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
    }
    setMfaSetupLoading(false);
  };
@@ -105,7 +117,12 @@ export function SettingsPage() {
      setMfaMsg({ type: 'success', text: 'MFA enabled successfully!' });
      setMfaSecret(null); setMfaQrUri(null); setMfaCode('');
    } catch (err) {
-     setMfaMsg({ type: 'error', text: err instanceof Error ? err.message : 'Invalid code' });
+     const text = err instanceof Error ? err.message : 'Invalid code';
+     setMfaMsg({ type: 'error', text });
+     toast.error('MFA verification failed', {
+       message: text,
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
    }
  };
 
@@ -137,7 +154,12 @@ export function SettingsPage() {
      setApiKeyMeta({ id: res.id, name: res.name, prefix: res.prefix, createdAt: new Date().toISOString() });
      setApiKeyVisible(true);
    } catch (err) {
-     setApiKeyError(err instanceof Error ? err.message : 'Failed to generate API key');
+     const message = err instanceof Error ? err.message : 'Failed to generate API key';
+     setApiKeyError(message);
+     toast.error('Failed to generate API key', {
+       message,
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
    }
    setApiKeyLoading(false);
  };
@@ -187,7 +209,12 @@ export function SettingsPage() {
    await loadLlmConfig();
    setTimeout(() => setLlmSaved(false), 3000);
   } catch (err) {
-   setLlmError(err instanceof Error ? err.message : 'Failed to save LLM configuration');
+   const message = err instanceof Error ? err.message : 'Failed to save LLM configuration';
+   setLlmError(message);
+   toast.error('Failed to save LLM configuration', {
+    message,
+    requestId: err instanceof ApiError ? err.requestId : null,
+   });
   }
   setLlmSaving(false);
  };

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import {
   Users, Database, Trash2, RotateCcw, Download, Shield, AlertTriangle,
   CheckCircle, XCircle, Search, Eye, Activity, TrendingUp,
@@ -46,6 +47,7 @@ interface TenantDetails extends Tenant {
 }
 
 export function TenantManagementPage() {
+  const toast = useToast();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<TenantDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +66,12 @@ export function TenantManagementPage() {
       const data = await api.get<{ tenants: Tenant[] }>('/api/v1/admin/tenants');
       setTenants(data.tenants);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tenants');
+      const message = err instanceof Error ? err.message : 'Failed to load tenants';
+      setError(message);
+      toast.error('Failed to load tenants', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setLoading(false);
     }
@@ -76,7 +83,12 @@ export function TenantManagementPage() {
       const data = await api.get<{ tenant: TenantDetails }>(`/api/v1/admin/tenants/${tenantId}`);
       setSelectedTenant(data.tenant);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load details');
+      const message = err instanceof Error ? err.message : 'Failed to load details';
+      setError(message);
+      toast.error('Failed to load tenant details', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setActionLoading(null);
     }
@@ -94,7 +106,12 @@ export function TenantManagementPage() {
       loadTenants();
       setSelectedTenant(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to soft-delete tenant');
+      const message = err instanceof Error ? err.message : 'Failed to soft-delete tenant';
+      alert(message);
+      toast.error('Soft-delete failed', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setActionLoading(null);
     }
@@ -112,7 +129,12 @@ export function TenantManagementPage() {
       loadTenants();
       setSelectedTenant(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reactivate tenant');
+      const message = err instanceof Error ? err.message : 'Failed to reactivate tenant';
+      alert(message);
+      toast.error('Reactivate failed', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setActionLoading(null);
     }
@@ -133,7 +155,12 @@ export function TenantManagementPage() {
       document.body.removeChild(a);
       alert('Export downloaded successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to export tenant');
+      const message = err instanceof Error ? err.message : 'Failed to export tenant';
+      alert(message);
+      toast.error('Export failed', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setActionLoading(null);
     }
@@ -157,7 +184,12 @@ export function TenantManagementPage() {
       loadTenants();
       setSelectedTenant(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to hard-delete tenant');
+      const message = err instanceof Error ? err.message : 'Failed to hard-delete tenant';
+      alert(message);
+      toast.error('Hard-delete failed', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     } finally {
       setActionLoading(null);
     }
