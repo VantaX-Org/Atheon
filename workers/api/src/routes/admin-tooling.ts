@@ -146,7 +146,7 @@ adminTooling.get('/company-health', async (c) => {
     const [users, catalystRuns, recentLogins] = await Promise.all([
       c.env.DB.prepare('SELECT COUNT(*) as count FROM users WHERE tenant_id = ?').bind(tenantId).first(),
       c.env.DB.prepare('SELECT COUNT(*) as count FROM sub_catalyst_runs WHERE tenant_id = ?').bind(tenantId).first(),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE tenant_id = ? AND last_login_at > datetime('now', '-7 days')").bind(tenantId).first(),
+      c.env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE tenant_id = ? AND last_login > datetime('now', '-7 days')").bind(tenantId).first(),
     ]);
 
     return c.json({
@@ -162,6 +162,107 @@ adminTooling.get('/company-health', async (c) => {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
+    return c.json({ error: 'Failed', details: (err as Error).message }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// Company Health v2 — aggregation view (read-only, per tenant)
+// GET /api/v1/admin-tooling/company-health/:tenantId
+// ═══
+// Aggregates from existing tables: users, catalyst_clusters, catalyst_actions,
+// tenant_llm_usage, tenant_entitlements, erp_connections. No new tables.
+// Cost is ESTIMATED from total_tokens × LLM_COST_PER_TOKEN_USD — real billing
+// should come from provider invoices when that lands.
+// ══════════════════════════════════════════════════════════
+
+/** Estimated per-token cost in USD — rough Claude-ish blended rate.
+ *  Marked as ESTIMATE in responses. Real cost should come from provider bills. */
+const LLM_COST_PER_TOKEN_USD = 0.0000015;
+
+adminTooling.get('/company-health/:tenantId', async (c) => {
+  if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden' }, 403);
+  const auth = getAuth(c);
+  const requestedTenantId = c.req.param('tenantId');
+
+  // Admins are scoped to their own tenant. Support/superadmin can look at any.
+  const tenantId = isSupportOrAbove(c)
+    ? requestedTenantId
+    : (requestedTenantId === auth?.tenantId ? requestedTenantId : auth?.tenantId);
+  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
+  if (tenantId !== requestedTenantId && !isSupportOrAbove(c)) {
+    return c.json({ error: 'Forbidden: cannot view other tenants' }, 403);
+  }
+
+  try {
+    const [tenantRow, userTotals, usersByRole, lastLoginRow, clusterCount, recentActions, llmRow, entitlementsRow, erpRows] = await Promise.all([
+      c.env.DB.prepare('SELECT id, name, slug, plan, status, region, created_at FROM tenants WHERE id = ?').bind(tenantId).first(),
+      c.env.DB.prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active FROM users WHERE tenant_id = ?").bind(tenantId).first(),
+      c.env.DB.prepare('SELECT role, COUNT(*) as count FROM users WHERE tenant_id = ? GROUP BY role').bind(tenantId).all(),
+      c.env.DB.prepare('SELECT MAX(last_login) as last_login FROM users WHERE tenant_id = ? AND last_login IS NOT NULL').bind(tenantId).first(),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).first(),
+      c.env.DB.prepare("SELECT COUNT(*) as count FROM catalyst_actions WHERE tenant_id = ? AND created_at > datetime('now', '-30 days')").bind(tenantId).first(),
+      c.env.DB.prepare("SELECT COALESCE(SUM(total_tokens), 0) as tokens FROM tenant_llm_usage WHERE tenant_id = ? AND created_at > datetime('now', '-30 days')").bind(tenantId).first().catch(() => ({ tokens: 0 })),
+      c.env.DB.prepare('SELECT layers, catalyst_clusters, max_agents, max_users, autonomy_tiers, llm_tiers, features, sso_enabled, api_access, custom_branding, data_retention_days FROM tenant_entitlements WHERE tenant_id = ?').bind(tenantId).first(),
+      c.env.DB.prepare('SELECT id, name, status FROM erp_connections WHERE tenant_id = ?').bind(tenantId).all(),
+    ]);
+
+    if (!tenantRow) return c.json({ error: 'Tenant not found' }, 404);
+
+    const tokens30d = Number((llmRow as Record<string, unknown>)?.tokens || 0);
+    const byRole: Record<string, number> = {};
+    for (const row of (usersByRole.results || []) as Array<Record<string, unknown>>) {
+      byRole[String(row.role)] = Number(row.count) || 0;
+    }
+    const erpConnections = (erpRows.results || []) as Array<Record<string, unknown>>;
+    const connectedCount = erpConnections.filter((r) => r.status === 'connected' || r.status === 'active').length;
+
+    const ent = entitlementsRow as Record<string, unknown> | null;
+    const parseJson = (v: unknown, fallback: unknown): unknown => {
+      try { return v ? JSON.parse(String(v)) : fallback; } catch { return fallback; }
+    };
+    const entitlements = ent ? {
+      layers: parseJson(ent.layers, []),
+      catalystClusters: parseJson(ent.catalyst_clusters, []),
+      maxAgents: Number(ent.max_agents || 0),
+      maxUsers: Number(ent.max_users || 0),
+      autonomyTiers: parseJson(ent.autonomy_tiers, []),
+      llmTiers: parseJson(ent.llm_tiers, []),
+      features: parseJson(ent.features, []),
+      ssoEnabled: !!ent.sso_enabled,
+      apiAccess: !!ent.api_access,
+      customBranding: !!ent.custom_branding,
+      dataRetentionDays: Number(ent.data_retention_days || 0),
+    } : null;
+
+    return c.json({
+      success: true,
+      tenant: tenantRow,
+      users: {
+        total: Number((userTotals as Record<string, unknown>)?.total || 0),
+        active: Number((userTotals as Record<string, unknown>)?.active || 0),
+        byRole,
+        lastLoginAt: (lastLoginRow as Record<string, unknown>)?.last_login || null,
+      },
+      catalysts: {
+        clusters: Number((clusterCount as Record<string, unknown>)?.count || 0),
+        actionsLast30d: Number((recentActions as Record<string, unknown>)?.count || 0),
+      },
+      llm: {
+        tokens30d,
+        estCostUsd: Number((tokens30d * LLM_COST_PER_TOKEN_USD).toFixed(4)),
+        costIsEstimate: true,
+        costNote: `Estimated at $${LLM_COST_PER_TOKEN_USD} per token (blended rate). Real cost requires provider billing integration.`,
+      },
+      erp: {
+        connections: erpConnections.length,
+        connectedCount,
+      },
+      entitlements,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Company health v2 failed:', err);
     return c.json({ error: 'Failed', details: (err as Error).message }, 500);
   }
 });

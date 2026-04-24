@@ -1,220 +1,301 @@
 /**
  * ADMIN-010: Integration Health Monitoring
- * Per-connection health card, sync history, error log, data freshness, alerts.
+ * Per-connection sync status, error count, circuit breaker state, freshness.
  * Route: /integration-health | Role: admin, support_admin, superadmin
+ *
+ * Data: GET /api/v1/erp/connections/health — aggregates erp_connections,
+ * audit_log error counts, and KV-backed circuit breaker state. No mocks.
+ * Distinct from ConnectivityPage (adapter CRUD); this view is sync-health-focused.
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabPanel, useTabState } from '@/components/ui/tabs';
+import { api, ApiError } from '@/lib/api';
+import type { IntegrationHealthConnection } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 import {
   Wifi, CheckCircle, XCircle, AlertTriangle, Clock,
-  RefreshCw,
+  RefreshCw, Loader2, Zap, AlertCircle, Activity,
 } from 'lucide-react';
 
-interface IntegrationConnection {
-  id: string;
-  name: string;
-  type: string;
-  status: 'healthy' | 'degraded' | 'error' | 'disconnected';
-  lastSync: string;
-  nextSync: string;
-  recordsSynced: number;
-  errorCount: number;
-  dataFreshness: string;
-  avgSyncDuration: string;
+function statusVariant(status: string): 'success' | 'warning' | 'danger' | 'default' {
+  const s = status.toLowerCase();
+  if (s === 'connected' || s === 'active' || s === 'healthy') return 'success';
+  if (s === 'pending' || s === 'provisioning' || s === 'degraded') return 'warning';
+  if (s === 'disconnected' || s === 'error' || s === 'failed') return 'danger';
+  return 'default';
 }
 
-interface SyncEvent {
-  id: string;
-  connectionName: string;
-  status: 'success' | 'partial' | 'failed';
-  recordsProcessed: number;
-  errors: number;
-  duration: string;
-  timestamp: string;
+function statusIcon(status: string) {
+  const v = statusVariant(status);
+  if (v === 'success') return <CheckCircle size={14} className="text-emerald-400" />;
+  if (v === 'warning') return <AlertTriangle size={14} className="text-amber-400" />;
+  if (v === 'danger') return <XCircle size={14} className="text-red-400" />;
+  return <Activity size={14} className="t-muted" />;
 }
 
-interface ErrorLogEntry {
-  id: string;
-  connectionName: string;
-  errorType: string;
-  message: string;
-  timestamp: string;
-  resolved: boolean;
+function freshnessColor(freshness: 'fresh' | 'stale' | 'cold'): string {
+  if (freshness === 'fresh') return 'var(--accent)';
+  if (freshness === 'stale') return '#f59e0b';
+  return '#ef4444';
+}
+
+function freshnessLabel(conn: IntegrationHealthConnection): string {
+  if (conn.hoursSinceSync == null) return 'Never synced';
+  const h = conn.hoursSinceSync;
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))}m ago`;
+  if (h < 24) return `${Math.round(h)}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+function circuitVariant(state: string): 'success' | 'warning' | 'danger' {
+  if (state === 'CLOSED') return 'success';
+  if (state === 'HALF_OPEN') return 'warning';
+  return 'danger';
 }
 
 export function IntegrationHealthPage() {
   const { activeTab, setActiveTab } = useTabState('connections');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connections, setConnections] = useState<IntegrationHealthConnection[]>([]);
+  const toast = useToast();
 
-  const [connections] = useState<IntegrationConnection[]>([
-    { id: '1', name: 'SAP S/4HANA', type: 'ERP', status: 'healthy', lastSync: new Date(Date.now() - 900000).toISOString(), nextSync: new Date(Date.now() + 900000).toISOString(), recordsSynced: 45200, errorCount: 0, dataFreshness: '15 min', avgSyncDuration: '2m 34s' },
-    { id: '2', name: 'Sage 300', type: 'ERP', status: 'healthy', lastSync: new Date(Date.now() - 3600000).toISOString(), nextSync: new Date(Date.now() + 900000).toISOString(), recordsSynced: 12800, errorCount: 2, dataFreshness: '1 hr', avgSyncDuration: '1m 12s' },
-    { id: '3', name: 'Xero Accounting', type: 'Accounting', status: 'degraded', lastSync: new Date(Date.now() - 7200000).toISOString(), nextSync: new Date(Date.now() + 1800000).toISOString(), recordsSynced: 8400, errorCount: 15, dataFreshness: '2 hrs', avgSyncDuration: '45s' },
-    { id: '4', name: 'Salesforce CRM', type: 'CRM', status: 'error', lastSync: new Date(Date.now() - 86400000).toISOString(), nextSync: new Date(Date.now() + 900000).toISOString(), recordsSynced: 0, errorCount: 42, dataFreshness: '24 hrs', avgSyncDuration: 'N/A' },
-    { id: '5', name: 'Azure AD', type: 'Identity', status: 'healthy', lastSync: new Date(Date.now() - 300000).toISOString(), nextSync: new Date(Date.now() + 600000).toISOString(), recordsSynced: 245, errorCount: 0, dataFreshness: '5 min', avgSyncDuration: '12s' },
-  ]);
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.erp.connectionsHealth();
+      setConnections(res.connections);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error('Failed to load integration health', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [toast]);
 
-  const [syncHistory] = useState<SyncEvent[]>([
-    { id: '1', connectionName: 'SAP S/4HANA', status: 'success', recordsProcessed: 1240, errors: 0, duration: '2m 18s', timestamp: new Date(Date.now() - 900000).toISOString() },
-    { id: '2', connectionName: 'Sage 300', status: 'success', recordsProcessed: 560, errors: 2, duration: '1m 05s', timestamp: new Date(Date.now() - 3600000).toISOString() },
-    { id: '3', connectionName: 'Xero Accounting', status: 'partial', recordsProcessed: 320, errors: 15, duration: '52s', timestamp: new Date(Date.now() - 7200000).toISOString() },
-    { id: '4', connectionName: 'Salesforce CRM', status: 'failed', recordsProcessed: 0, errors: 42, duration: '5s', timestamp: new Date(Date.now() - 86400000).toISOString() },
-    { id: '5', connectionName: 'Azure AD', status: 'success', recordsProcessed: 245, errors: 0, duration: '11s', timestamp: new Date(Date.now() - 300000).toISOString() },
-  ]);
+  useEffect(() => { load(); }, [load]);
 
-  const [errorLog] = useState<ErrorLogEntry[]>([
-    { id: '1', connectionName: 'Salesforce CRM', errorType: 'AUTH_EXPIRED', message: 'OAuth token expired — refresh failed. Re-authentication required.', timestamp: new Date(Date.now() - 86400000).toISOString(), resolved: false },
-    { id: '2', connectionName: 'Xero Accounting', errorType: 'RATE_LIMIT', message: 'API rate limit exceeded (429). Backing off for 60s.', timestamp: new Date(Date.now() - 7200000).toISOString(), resolved: false },
-    { id: '3', connectionName: 'Sage 300', errorType: 'DATA_VALIDATION', message: 'Invalid currency code "ZZZ" in 2 invoice records.', timestamp: new Date(Date.now() - 3600000).toISOString(), resolved: true },
-  ]);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    load();
+  };
+
+  const summary = useMemo(() => {
+    return {
+      total: connections.length,
+      healthy: connections.filter((c) => statusVariant(c.status) === 'success' && c.freshness === 'fresh' && c.errorsLast30d === 0).length,
+      errored: connections.filter((c) => statusVariant(c.status) === 'danger' || c.circuitState === 'OPEN').length,
+      records: connections.reduce((s, c) => s + (c.recordsSynced || 0), 0),
+      errors: connections.reduce((s, c) => s + (c.errorsLast30d || 0), 0),
+    };
+  }, [connections]);
 
   const tabs = [
     { id: 'connections', label: 'Connections', icon: <Wifi size={14} />, count: connections.length },
-    { id: 'sync-history', label: 'Sync History', icon: <RefreshCw size={14} /> },
-    { id: 'errors', label: 'Error Log', icon: <AlertTriangle size={14} />, count: errorLog.filter(e => !e.resolved).length },
+    { id: 'errors', label: 'Errors', icon: <AlertTriangle size={14} />, count: summary.errors },
     { id: 'freshness', label: 'Data Freshness', icon: <Clock size={14} /> },
   ];
 
-  const statusColor = (s: string) => s === 'healthy' || s === 'success' ? 'success' : s === 'degraded' || s === 'partial' ? 'warning' : 'danger';
-  const statusIcon = (s: string) => {
-    if (s === 'healthy' || s === 'success') return <CheckCircle size={14} className="text-emerald-400" />;
-    if (s === 'degraded' || s === 'partial') return <AlertTriangle size={14} className="text-amber-400" />;
-    return <XCircle size={14} className="text-red-400" />;
-  };
+  if (loading && connections.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 text-accent animate-spin" />
+      </div>
+    );
+  }
+
+  if (error && connections.length === 0) {
+    return (
+      <Card className="p-6 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-medium t-primary">Failed to load integration health</p>
+          <p className="text-xs t-muted mt-1">{error}</p>
+          <button
+            onClick={handleRefresh}
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary"
+          >
+            Retry
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
+  const erroredConnections = connections.filter((c) => c.errorsLast30d > 0 || c.circuitState === 'OPEN' || c.circuitState === 'HALF_OPEN');
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-          <Wifi className="w-5 h-5 text-accent" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+            <Wifi className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold t-primary">Integration Health</h1>
+            <p className="text-xs t-muted">Per-connection sync status, circuit breakers, and data freshness</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-semibold t-primary">Integration Health</h1>
-          <p className="text-xs t-muted">Monitor connections, sync status, and data freshness</p>
-        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary hover:bg-[var(--bg-secondary)] transition-all"
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
-      {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="p-3">
           <p className="text-[10px] t-muted uppercase">Connections</p>
-          <p className="text-xl font-bold t-primary">{connections.length}</p>
+          <p className="text-xl font-bold t-primary">{summary.total}</p>
         </Card>
         <Card className="p-3">
           <p className="text-[10px] t-muted uppercase">Healthy</p>
-          <p className="text-xl font-bold text-emerald-400">{connections.filter(c => c.status === 'healthy').length}</p>
+          <p className="text-xl font-bold text-emerald-400">{summary.healthy}</p>
         </Card>
         <Card className="p-3">
-          <p className="text-[10px] t-muted uppercase">Errors</p>
-          <p className="text-xl font-bold text-red-400">{connections.filter(c => c.status === 'error').length}</p>
+          <p className="text-[10px] t-muted uppercase">Errored</p>
+          <p className="text-xl font-bold text-red-400">{summary.errored}</p>
         </Card>
         <Card className="p-3">
           <p className="text-[10px] t-muted uppercase">Records Synced</p>
-          <p className="text-xl font-bold t-primary">{(connections.reduce((s, c) => s + c.recordsSynced, 0) / 1000).toFixed(1)}k</p>
+          <p className="text-xl font-bold t-primary">
+            {summary.records >= 1000 ? `${(summary.records / 1000).toFixed(1)}k` : summary.records.toLocaleString()}
+          </p>
         </Card>
       </div>
 
-      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      {connections.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Wifi size={24} className="mx-auto t-muted mb-2" />
+          <p className="text-sm t-muted">No ERP connections configured for this tenant yet.</p>
+        </Card>
+      ) : (
+        <>
+          <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <TabPanel id="connections" activeTab={activeTab}>
-        <div className="space-y-2">
-          {connections.map((c) => (
-            <Card key={c.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  {statusIcon(c.status)}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium t-primary">{c.name}</p>
-                      <Badge variant="default" className="text-[10px]">{c.type}</Badge>
-                      <Badge variant={statusColor(c.status)} className="text-[10px]">{c.status}</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 text-[10px]">
-                      <div><span className="t-muted">Last Sync</span><p className="t-primary">{new Date(c.lastSync).toLocaleTimeString()}</p></div>
-                      <div><span className="t-muted">Freshness</span><p className="t-primary">{c.dataFreshness}</p></div>
-                      <div><span className="t-muted">Records</span><p className="t-primary">{c.recordsSynced.toLocaleString()}</p></div>
-                      <div><span className="t-muted">Avg Duration</span><p className="t-primary">{c.avgSyncDuration}</p></div>
+          <TabPanel id="connections" activeTab={activeTab}>
+            <div className="space-y-2">
+              {connections.map((c) => (
+                <Card key={c.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      {statusIcon(c.status)}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium t-primary truncate">{c.name}</p>
+                          {c.adapter_name && <Badge variant="default" className="text-[10px]">{c.adapter_name}</Badge>}
+                          <Badge variant={statusVariant(c.status)} className="text-[10px]">{c.status}</Badge>
+                          <Badge variant={circuitVariant(c.circuitState)} className="text-[10px]">
+                            <Zap size={9} className="inline mr-0.5" />
+                            {c.circuitState}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 text-[10px]">
+                          <div>
+                            <span className="t-muted">Last Sync</span>
+                            <p className="t-primary">{c.lastSync ? new Date(c.lastSync).toLocaleString() : 'Never'}</p>
+                          </div>
+                          <div>
+                            <span className="t-muted">Freshness</span>
+                            <p style={{ color: freshnessColor(c.freshness) }}>{freshnessLabel(c)} ({c.freshness})</p>
+                          </div>
+                          <div>
+                            <span className="t-muted">Records</span>
+                            <p className="t-primary">{c.recordsSynced.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <span className="t-muted">Errors (30d)</span>
+                            <p className={c.errorsLast30d > 0 ? 'text-red-400' : 't-primary'}>{c.errorsLast30d}</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-                {c.errorCount > 0 && (
-                  <Badge variant="danger" className="text-[10px]">{c.errorCount} errors</Badge>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-      </TabPanel>
+                </Card>
+              ))}
+            </div>
+          </TabPanel>
 
-      <TabPanel id="sync-history" activeTab={activeTab}>
-        <div className="space-y-2">
-          {syncHistory.map((s) => (
-            <Card key={s.id} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {statusIcon(s.status)}
-                <div>
-                  <p className="text-sm font-medium t-primary">{s.connectionName}</p>
-                  <p className="text-[10px] t-muted">
-                    {s.recordsProcessed.toLocaleString()} records · {s.duration} · {s.errors > 0 ? `${s.errors} errors` : 'No errors'}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <Badge variant={statusColor(s.status)} className="text-[10px]">{s.status}</Badge>
-                <p className="text-[10px] t-muted mt-1">{new Date(s.timestamp).toLocaleString()}</p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </TabPanel>
-
-      <TabPanel id="errors" activeTab={activeTab}>
-        <div className="space-y-2">
-          {errorLog.map((e) => (
-            <Card key={e.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <XCircle size={14} className={e.resolved ? 't-muted' : 'text-red-400'} />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium t-primary">{e.connectionName}</p>
-                      <Badge variant="danger" className="text-[10px] font-mono">{e.errorType}</Badge>
-                      {e.resolved && <Badge variant="success" className="text-[10px]">resolved</Badge>}
-                    </div>
-                    <p className="text-xs t-muted mt-0.5">{e.message}</p>
-                    <p className="text-[10px] t-muted mt-1">{new Date(e.timestamp).toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </TabPanel>
-
-      <TabPanel id="freshness" activeTab={activeTab}>
-        <div className="space-y-2">
-          {connections.map((c) => {
-            const freshnessMinutes = c.dataFreshness.includes('hr') ? parseInt(c.dataFreshness) * 60 : parseInt(c.dataFreshness);
-            const barColor = freshnessMinutes <= 15 ? 'var(--accent)' : freshnessMinutes <= 60 ? '#f59e0b' : '#ef4444';
-            const maxMin = 24 * 60;
-            return (
-              <Card key={c.id} className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium t-primary">{c.name}</span>
-                    <Badge variant="default" className="text-[10px]">{c.type}</Badge>
-                  </div>
-                  <span className="text-xs font-medium" style={{ color: barColor }}>{c.dataFreshness}</span>
-                </div>
-                <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((freshnessMinutes / maxMin) * 100, 100)}%`, background: barColor }} />
-                </div>
+          <TabPanel id="errors" activeTab={activeTab}>
+            {erroredConnections.length === 0 ? (
+              <Card className="p-8 text-center">
+                <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2" />
+                <p className="text-sm t-muted">No errors in the last 30 days.</p>
               </Card>
-            );
-          })}
-        </div>
-      </TabPanel>
+            ) : (
+              <div className="space-y-2">
+                {erroredConnections.map((c) => (
+                  <Card key={c.id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3">
+                        <XCircle size={14} className="text-red-400 mt-0.5" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium t-primary">{c.name}</p>
+                            {c.adapter_name && <Badge variant="default" className="text-[10px]">{c.adapter_name}</Badge>}
+                          </div>
+                          <p className="text-xs t-muted mt-0.5">
+                            {c.errorsLast30d} error{c.errorsLast30d === 1 ? '' : 's'} in the last 30 days
+                            {c.circuitState !== 'CLOSED' && ` · Circuit breaker: ${c.circuitState} (${c.circuitFailures} failures)`}
+                          </p>
+                          {c.lastSync && (
+                            <p className="text-[10px] t-muted mt-1 flex items-center gap-1">
+                              <Clock size={10} /> Last sync: {new Date(c.lastSync).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant="danger" className="text-[10px]">{c.errorsLast30d} errors</Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabPanel>
+
+          <TabPanel id="freshness" activeTab={activeTab}>
+            <div className="space-y-2">
+              {connections.map((c) => {
+                const hours = c.hoursSinceSync ?? 999;
+                const pct = Math.min(100, (hours / 24) * 100);
+                return (
+                  <Card key={c.id} className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium t-primary">{c.name}</span>
+                        {c.adapter_name && <Badge variant="default" className="text-[10px]">{c.adapter_name}</Badge>}
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: freshnessColor(c.freshness) }}>
+                        {freshnessLabel(c)}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: freshnessColor(c.freshness) }}
+                      />
+                    </div>
+                    <p className="text-[10px] t-muted mt-1">
+                      fresh ≤ 1h · stale ≤ 24h · cold &gt; 24h
+                    </p>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabPanel>
+        </>
+      )}
     </div>
   );
 }

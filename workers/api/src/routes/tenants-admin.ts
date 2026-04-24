@@ -613,4 +613,114 @@ tenants.put('/tenants/:id/llm-budget', async (c) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════
+// Revenue & Usage aggregation — superadmin only
+// GET /api/v1/admin/revenue-usage
+// ═══
+// Aggregates tenants + entitlements + LLM usage across the entire platform.
+// MRR is ESTIMATED from plan tier pricing (see PLAN_PRICING_USD). Real pricing
+// must come from a billing integration when that lands.
+// ══════════════════════════════════════════════════════════
+
+/** Estimated monthly pricing per plan tier in USD.
+ *  This is a placeholder — real pricing should come from the billing system
+ *  when it is integrated. Surfaced with `estMrrUsd` + `pricingIsEstimate`. */
+const PLAN_PRICING_USD: Record<string, number> = {
+  starter: 99,
+  professional: 499,
+  enterprise: 1999,
+};
+
+tenants.get('/revenue-usage', async (c) => {
+  if (!requireSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+
+  try {
+    const [byPlanRows, totalsRow, growthRows, llmTotalRow, topTenantsRows] = await Promise.all([
+      c.env.DB.prepare(
+        "SELECT plan, COUNT(*) as count FROM tenants WHERE status != 'deleted' GROUP BY plan ORDER BY count DESC",
+      ).all(),
+      c.env.DB.prepare(
+        "SELECT (SELECT COUNT(*) FROM tenants WHERE status != 'deleted') as tenants, (SELECT COUNT(*) FROM users) as users",
+      ).first(),
+      c.env.DB.prepare(
+        // New tenants per month (YYYY-MM) for the last 6 months
+        "SELECT substr(created_at, 1, 7) as month, COUNT(*) as count FROM tenants WHERE status != 'deleted' AND created_at > datetime('now', '-6 months') GROUP BY month ORDER BY month ASC",
+      ).all(),
+      c.env.DB.prepare(
+        "SELECT COALESCE(SUM(total_tokens), 0) as total_tokens, COUNT(*) as call_count FROM tenant_llm_usage WHERE created_at > datetime('now', '-30 days')",
+      ).first().catch(() => ({ total_tokens: 0, call_count: 0 })),
+      c.env.DB.prepare(
+        `SELECT u.tenant_id, t.name, t.plan, COALESCE(SUM(u.total_tokens), 0) as tokens
+         FROM tenant_llm_usage u
+         LEFT JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.created_at > datetime('now', '-30 days')
+         GROUP BY u.tenant_id, t.name, t.plan
+         ORDER BY tokens DESC
+         LIMIT 10`,
+      ).all().catch(() => ({ results: [] })),
+    ]);
+
+    const byPlan: Array<{ plan: string; count: number; estMrrUsd: number }> = [];
+    let estMrrUsd = 0;
+    for (const row of (byPlanRows.results || []) as Array<Record<string, unknown>>) {
+      const plan = String(row.plan || 'unknown');
+      const count = Number(row.count) || 0;
+      const pricePerMonth = PLAN_PRICING_USD[plan] || 0;
+      const revenue = count * pricePerMonth;
+      estMrrUsd += revenue;
+      byPlan.push({ plan, count, estMrrUsd: revenue });
+    }
+
+    const totalTenants = Number((totalsRow as Record<string, unknown>)?.tenants || 0);
+    const totalUsers = Number((totalsRow as Record<string, unknown>)?.users || 0);
+
+    // Fill in missing months with 0 so the UI can render a continuous 6-month axis.
+    const monthCounts = new Map<string, number>();
+    for (const row of (growthRows.results || []) as Array<Record<string, unknown>>) {
+      monthCounts.set(String(row.month), Number(row.count) || 0);
+    }
+    const newTenantsByMonth: Array<{ month: string; count: number }> = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      newTenantsByMonth.push({ month: key, count: monthCounts.get(key) || 0 });
+    }
+
+    const topTenants = ((topTenantsRows as { results?: Array<Record<string, unknown>> }).results || []).map((r) => ({
+      tenantId: String(r.tenant_id || ''),
+      name: r.name ? String(r.name) : '(deleted)',
+      plan: r.plan ? String(r.plan) : 'unknown',
+      tokens30d: Number(r.tokens) || 0,
+    }));
+
+    const totalTokens30d = Number((llmTotalRow as Record<string, unknown>)?.total_tokens || 0);
+
+    return c.json({
+      success: true,
+      summary: {
+        totalTenants,
+        totalUsers,
+        estMrrUsd,
+        estArrUsd: estMrrUsd * 12,
+        pricingIsEstimate: true,
+        pricingNote: 'MRR/ARR derived from plan-tier pricing lookup. Real pricing should come from billing integration when that lands.',
+      },
+      byPlan,
+      growth: { newTenantsByMonth },
+      llm: {
+        totalTokens30d,
+        callCount30d: Number((llmTotalRow as Record<string, unknown>)?.call_count || 0),
+        topTenants,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Revenue usage aggregation failed:', err);
+    return c.json({ error: 'Failed to aggregate revenue usage', details: (err as Error).message }, 500);
+  }
+});
+
 export default tenants;

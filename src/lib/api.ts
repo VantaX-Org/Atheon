@@ -618,6 +618,9 @@ export const api = {
     // Spec 7 CIRCUIT-3: circuit breaker state for a connection (CLOSED/OPEN/HALF_OPEN)
     circuitState: (connectionId: string) =>
       request<CircuitBreakerState>(`/api/erp/connections/${connectionId}/circuit`),
+    // Aggregation view: per-connection sync health (last sync, error counts, freshness).
+    connectionsHealth: () =>
+      request<IntegrationHealthResponse>('/api/v1/erp/connections/health'),
   },
 
   controlplane: {
@@ -1160,6 +1163,24 @@ export const api = {
       request<Record<string, unknown>>('/api/v1/admin-tooling/system-alerts/rules', { method: 'POST', body: JSON.stringify(rule) }),
     alertRuleUpdate: (id: string, update: Record<string, unknown>) =>
       request<Record<string, unknown>>(`/api/v1/admin-tooling/system-alerts/rules/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
+
+    // ── Aggregation views (read-only, over existing tables) ────────────
+    // Per-tenant company health roll-up (admin+).
+    companyHealthDetail: (tenantId: string) =>
+      request<CompanyHealthDetail>(`/api/v1/admin-tooling/company-health/${tenantId}`),
+  },
+
+  // ── Admin aggregation views (superadmin) ─────────────────────────────
+  adminAggregation: {
+    // Revenue & usage roll-up (superadmin only). MRR is estimated from plan tier.
+    revenueUsage: () =>
+      request<RevenueUsageResponse>('/api/v1/admin/revenue-usage'),
+  },
+
+  // ── Data governance roll-up (admin+ for own tenant; superadmin any) ──
+  governance: {
+    get: (tenantId: string) =>
+      request<GovernanceResponse>(`/api/v1/governance/${tenantId}`),
   },
 
   // ── Webhooks (PR #225): HMAC-signed outbound event delivery ─────────
@@ -3214,4 +3235,114 @@ export interface WebhookDelivery {
   created_at: string;
   delivered_at?: string | null;
   next_retry_at?: string | null;
+}
+
+// ── Aggregation view response types ───────────────────────────────────
+
+export interface CompanyHealthDetail {
+  success: boolean;
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    plan: string;
+    status: string;
+    region?: string | null;
+    created_at: string;
+  };
+  users: {
+    total: number;
+    active: number;
+    byRole: Record<string, number>;
+    lastLoginAt: string | null;
+  };
+  catalysts: {
+    clusters: number;
+    actionsLast30d: number;
+  };
+  llm: {
+    tokens30d: number;
+    estCostUsd: number;
+    costIsEstimate: boolean;
+    costNote: string;
+  };
+  erp: {
+    connections: number;
+    connectedCount: number;
+  };
+  entitlements: {
+    layers: string[];
+    catalystClusters: string[];
+    maxAgents: number;
+    maxUsers: number;
+    autonomyTiers: string[];
+    llmTiers: string[];
+    features: string[];
+    ssoEnabled: boolean;
+    apiAccess: boolean;
+    customBranding: boolean;
+    dataRetentionDays: number;
+  } | null;
+  timestamp: string;
+}
+
+export interface RevenueUsageResponse {
+  success: boolean;
+  summary: {
+    totalTenants: number;
+    totalUsers: number;
+    estMrrUsd: number;
+    estArrUsd: number;
+    pricingIsEstimate: boolean;
+    pricingNote: string;
+  };
+  byPlan: Array<{ plan: string; count: number; estMrrUsd: number }>;
+  growth: { newTenantsByMonth: Array<{ month: string; count: number }> };
+  llm: {
+    totalTokens30d: number;
+    callCount30d: number;
+    topTenants: Array<{ tenantId: string; name: string; plan: string; tokens30d: number }>;
+  };
+  timestamp: string;
+}
+
+export interface IntegrationHealthConnection {
+  id: string;
+  name: string;
+  adapter_name: string | null;
+  adapter_system: string | null;
+  status: string;
+  lastSync: string | null;
+  recordsSynced: number;
+  circuitState: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  circuitFailures: number;
+  errorsLast30d: number;
+  hoursSinceSync: number | null;
+  freshness: 'fresh' | 'stale' | 'cold';
+  connectedAt: string | null;
+}
+
+export interface IntegrationHealthResponse {
+  connections: IntegrationHealthConnection[];
+  timestamp: string;
+}
+
+export interface GovernanceResponse {
+  success: boolean;
+  tenantId: string;
+  dsar: {
+    exports30d: number;
+    erasures30d: number;
+    lastExportAt: string | null;
+  };
+  retention: {
+    retentionDays: number | null;
+    policy: string;
+  };
+  auditVolume30d: number;
+  encryption: {
+    erpEncrypted: number;
+    erpPlaintext: number;
+  };
+  timestamp: string;
 }
