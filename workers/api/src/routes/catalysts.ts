@@ -784,6 +784,16 @@ catalysts.post('/clusters', async (c) => {
 //   - `templates`: deprecated industry-grouped shape derived from the catalog,
 //                  kept for backwards compatibility with the existing frontend.
 catalysts.get('/templates', async (c) => {
+  const summarise = (subs: Array<{ implementation?: 'real' | 'generic' | 'stub' }>) => {
+    const real = subs.filter(s => s.implementation === 'real').length;
+    const generic = subs.filter(s => !s.implementation || s.implementation === 'generic').length;
+    const stub = subs.filter(s => s.implementation === 'stub').length;
+    const total = subs.length;
+    const realRatio = total > 0 ? real / total : 0;
+    const maturity: 'production' | 'partial' | 'planned' =
+      realRatio >= 0.5 ? 'production' : real > 0 ? 'partial' : 'planned';
+    return { real, generic, stub, total, maturity };
+  };
   const catalog = CATALYST_CATALOG.map(cl => ({
     name: cl.name,
     domain: cl.domain,
@@ -792,6 +802,7 @@ catalysts.get('/templates', async (c) => {
     tags: cl.tags,
     subCatalystCount: cl.sub_catalysts.length,
     sub_catalysts: cl.sub_catalysts,
+    implementationSummary: summarise(cl.sub_catalysts),
   }));
   const templates = INDUSTRY_TEMPLATES.map(t => ({
     industry: t.industry,
@@ -805,6 +816,7 @@ catalysts.get('/templates', async (c) => {
       autonomy_tier: cl.autonomy_tier,
       subCatalystCount: cl.sub_catalysts.length,
       sub_catalysts: cl.sub_catalysts,
+      implementationSummary: summarise(cl.sub_catalysts),
     })),
   }));
   return c.json({ catalog, templates });
