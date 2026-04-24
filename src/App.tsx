@@ -35,6 +35,7 @@ import { FeatureFlagsPage } from "@/pages/FeatureFlagsPage";
 import { DataGovernancePage } from "@/pages/DataGovernancePage";
 import { IntegrationHealthPage } from "@/pages/IntegrationHealthPage";
 import { SystemAlertsPage } from "@/pages/SystemAlertsPage";
+import { WebhooksPage } from "@/pages/WebhooksPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -111,6 +112,8 @@ export default function App() {
           <Route path="/data-governance" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><DataGovernancePage /></ProtectedRoute>} />
           <Route path="/integration-health" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IntegrationHealthPage /></ProtectedRoute>} />
           <Route path="/system-alerts" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SystemAlertsPage /></ProtectedRoute>} />
+          <Route path="/webhooks" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><WebhooksPage /></ProtectedRoute>} />
+          <Route path="/webhooks/:webhookId" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><WebhooksPage /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
