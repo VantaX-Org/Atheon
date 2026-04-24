@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { Assessment, AssessmentResults, CatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -17,6 +18,16 @@ export function AssessmentsPage() {
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  const reportError = useCallback((title: string, err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    setError(msg);
+    toast.error(title, {
+      message: msg,
+      requestId: err instanceof ApiError ? err.requestId : null,
+    });
+  }, [toast]);
 
   const loadAssessments = useCallback(async () => {
     try {
@@ -24,11 +35,11 @@ export function AssessmentsPage() {
       const data = await api.assessments.list();
       setAssessments(data.assessments);
     } catch (err) {
-      setError((err as Error).message);
+      reportError('Failed to load assessments', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [reportError]);
 
   useEffect(() => { loadAssessments(); }, [loadAssessments]);
 
@@ -43,7 +54,7 @@ export function AssessmentsPage() {
         setView('results');
       }
     } catch (err) {
-      setError((err as Error).message);
+      reportError('Failed to open assessment', err);
     }
   };
 
@@ -51,9 +62,10 @@ export function AssessmentsPage() {
     if (!confirm('Delete this assessment?')) return;
     try {
       await api.assessments.delete(id);
+      toast.success('Assessment deleted');
       loadAssessments();
     } catch (err) {
-      setError((err as Error).message);
+      reportError('Failed to delete assessment', err);
     }
   };
 
@@ -103,7 +115,8 @@ export function AssessmentsPage() {
       {view === 'new' && (
         <NewAssessmentWizard
           onCreated={(id) => { setSelectedId(id); setView('running'); }}
-          onError={setError}
+          onError={(msg) => { setError(msg); toast.error('Assessment error', msg); }}
+          reportError={reportError}
         />
       )}
       {view === 'running' && selectedId && (
@@ -226,9 +239,10 @@ function ListView({ assessments, loading, onView, onDelete }: {
 }
 
 // ── New Assessment Wizard ─────────────────────────────────────────────────
-function NewAssessmentWizard({ onCreated, onError }: {
+function NewAssessmentWizard({ onCreated, onError, reportError }: {
   onCreated: (id: string) => void;
   onError: (err: string) => void;
+  reportError: (title: string, err: unknown) => void;
 }) {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -281,7 +295,7 @@ function NewAssessmentWizard({ onCreated, onError }: {
       });
       onCreated(data.id);
     } catch (err) {
-      onError((err as Error).message);
+      reportError('Failed to start assessment', err);
     } finally {
       setSubmitting(false);
     }
@@ -592,6 +606,7 @@ function RunningView({ id, onComplete }: {
 
 // ── Results View (Value Assessment — 7 Sections) ─────────────────────────
 function ResultsView({ assessment }: { assessment: Assessment }) {
+  const toast = useToast();
   const [tab, setTab] = useState<'value' | 'legacy'>('value');
   const [findings, setFindings] = useState<ValueAssessmentFinding[]>([]);
   const [dataQuality, setDataQuality] = useState<DataQualityRecord[]>([]);
@@ -648,6 +663,11 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
           if (pollRef.current) clearInterval(pollRef.current);
           pollRef.current = null;
           setRunningVA(false);
+          if (status.status === 'failed') {
+            toast.error('Value assessment failed', 'The assessment engine reported an error.');
+            return;
+          }
+          toast.success('Value assessment complete');
           // Reload data
           const [fRes, dqRes, ptRes, vsRes] = await Promise.all([
             api.assessments.findings(assessment.id).catch(() => ({ findings: [], total: 0 })),
@@ -663,6 +683,10 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
       }, 3000);
     } catch (err) {
       console.error('Failed to run value assessment:', err);
+      toast.error('Failed to run value assessment', {
+        message: err instanceof Error ? err.message : undefined,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
       setRunningVA(false);
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
