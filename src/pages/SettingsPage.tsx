@@ -110,7 +110,12 @@ export function SettingsPage() {
        const k = res.keys[0];
        setApiKeyMeta({ id: k.id, name: k.name, prefix: k.prefix, createdAt: k.createdAt });
      }
-   } catch (err) { console.error('Failed to load API keys', err); }
+   } catch (err) {
+     console.error('Failed to load API keys', err);
+     // Silent load failure — the UI just shows the "Generate" CTA, which is
+     // the correct fallback. Surface an error only if the user tries to
+     // generate/regenerate a key.
+   }
  }, []);
 
  useEffect(() => { loadApiKeys(); }, [loadApiKeys]);
@@ -468,7 +473,13 @@ export function SettingsPage() {
          const a = document.createElement('a');
          a.href = url; a.download = `atheon-data-export-${new Date().toISOString().slice(0,10)}.json`;
          a.click(); URL.revokeObjectURL(url);
-       } catch (err) { alert(err instanceof Error ? err.message : 'Export failed'); }
+         toast.success('Data export ready', `${res.totalRecords} records across ${res.tableCount} tables downloaded`);
+       } catch (err) {
+         toast.error('Data export failed', {
+           message: err instanceof Error ? err.message : 'Unable to generate export',
+           requestId: err instanceof ApiError ? err.requestId : null,
+         });
+       }
      }}>
        <Download size={14} /> Request My Data
      </Button>
@@ -477,9 +488,14 @@ export function SettingsPage() {
        if (!confirm('Are you absolutely sure? All your data will be permanently deleted.')) return;
        try {
          await api.tenants.dataErasure();
-         alert('Your data has been erased. You will be redirected to the login page.');
-         window.location.href = '/login';
-       } catch (err) { alert(err instanceof Error ? err.message : 'Erasure failed'); }
+         toast.success('Your data has been erased', 'Redirecting to login…');
+         setTimeout(() => { window.location.href = '/login'; }, 1500);
+       } catch (err) {
+         toast.error('Data erasure failed', {
+           message: err instanceof Error ? err.message : 'Unable to erase data',
+           requestId: err instanceof ApiError ? err.requestId : null,
+         });
+       }
      }}>
        <Trash2 size={14} /> Delete My Data
      </Button>

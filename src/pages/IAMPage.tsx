@@ -203,9 +203,27 @@ export function IAMPage() {
      if (s.status === 'fulfilled') setSsoConfigs(s.value.configs);
      if (r.status === 'fulfilled') setRoles(r.value.roles);
      if (u.status === 'fulfilled') setUsers(u.value.users);
+     // Surface load failures so users know something is missing instead of
+     // just seeing a partial/empty page. Pick the first rejection's requestId
+     // so support can trace.
+     const rejections = [
+       { key: 'policies', result: p },
+       { key: 'SSO providers', result: s },
+       { key: 'roles', result: r },
+       { key: 'users', result: u },
+     ].filter((x): x is { key: string; result: PromiseRejectedResult } => x.result.status === 'rejected');
+     if (rejections.length > 0) {
+       const first = rejections[0];
+       const err = first.result.reason;
+       toast.error(`Failed to load ${rejections.map(r => r.key).join(', ')}`, {
+         message: err instanceof Error ? err.message : 'Some IAM data could not be loaded',
+         requestId: err instanceof ApiError ? err.requestId : null,
+       });
+     }
      setLoading(false);
    }
    load();
+   // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [tenantId]);
 
  const tabs = [
