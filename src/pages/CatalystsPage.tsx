@@ -17,7 +17,7 @@ import {
  Brain, TrendingUp, TrendingDown, GitBranch, RefreshCw, Target, MoreHorizontal
 } from "lucide-react";
 import type { AutonomyTier } from "@/types";
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
 import { SubCatalystOpsPanel } from "@/components/SubCatalystOpsPanel";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
@@ -49,6 +49,7 @@ const statusBadgeVariant = (status: string): 'success' | 'warning' | 'danger' | 
 
 export function CatalystsPage() {
  const user = useAppStore((s) => s.user);
+ const companyId = useSelectedCompanyId();
  const toast = useToast();
  const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin' || user?.role === 'executive';
  const { activeTab, setActiveTab } = useTabState('clusters');
@@ -413,8 +414,9 @@ export function CatalystsPage() {
  async function load() {
  setLoading(true);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
+ const co = companyId || undefined;
  const [c, a, g] = await Promise.allSettled([
- api.catalysts.clusters(undefined, ind), api.catalysts.actions(undefined, undefined, ind), api.catalysts.governance(undefined, ind),
+ api.catalysts.clusters(undefined, ind, co), api.catalysts.actions(undefined, undefined, ind, co), api.catalysts.governance(undefined, ind, co),
  ]);
  if (c.status === 'fulfilled') {
   setClusters(c.value.clusters);
@@ -424,7 +426,7 @@ export function CatalystsPage() {
  setLoading(false);
  }
  load();
- }, []); // Load once on mount — no industry filter needed, catalysts show all functional areas
+ }, [companyId]); // Reload when selected company scope changes
 
  // A4-1: Resolve ops panel cluster name once clusters are loaded
  useEffect(() => {
@@ -763,12 +765,12 @@ export function CatalystsPage() {
    if (subExecuting) return;
    setSubExecuting(key);
    try {
-     const result = await api.catalysts.executeSubCatalyst(clusterId, subName);
+     const result = await api.catalysts.executeSubCatalyst(clusterId, subName, undefined, companyId || undefined);
      setExecResult(result);
      setShowExecResult(true);
      // Refresh clusters to get updated last_execution
      const ind = undefined; // Catalysts page shows all functional areas regardless of industry
-     const c = await api.catalysts.clusters(undefined, ind);
+     const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
      setClusters(c.clusters);
    } catch (err) {
      setExecResult({

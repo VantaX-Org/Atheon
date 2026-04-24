@@ -6,6 +6,7 @@ import type { NotificationItem, Tenant } from "@/lib/api";
 import type { IndustryVertical } from "@/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { FreshnessDot } from "@/components/common/FreshnessIndicator";
+import { CompanySwitcher } from "@/components/CompanySwitcher";
 
 const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
@@ -278,6 +279,11 @@ export function Header() {
             <span className="text-[11px] font-medium t-secondary">{displayIndustry.label}</span>
           </div>
         ) : null}
+
+        {/* Multi-company switcher (PR #219/#220/#232) — self-hides when tenant has ≤1 company */}
+        <div className="hidden sm:block">
+          <CompanySwitcher />
+        </div>
 
         {/* §9.3 Global freshness indicator */}
         <FreshnessDot />

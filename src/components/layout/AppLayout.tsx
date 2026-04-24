@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 
 export function AppLayout() {
   const { user, setUser, theme, onboardingDismissed } = useAppStore();
+  const loadCompanies = useAppStore((s) => s.loadCompanies);
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
 
@@ -44,6 +45,15 @@ export function AppLayout() {
       })
       .finally(() => setChecking(false));
   }, [user, navigate, setUser]);
+
+  // Load the tenant's ERP companies once we have an authenticated user so the
+  // company-switcher has data. Also re-runs if the active tenant id changes
+  // (platform admin switched tenants).
+  const activeTenantId = useAppStore((s) => s.activeTenantId);
+  useEffect(() => {
+    if (!user) return;
+    loadCompanies();
+  }, [user, activeTenantId, loadCompanies]);
 
   // TASK-006: Global keyboard handlers
   useEffect(() => {
