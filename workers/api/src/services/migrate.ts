@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v45-alerts';
+export const MIGRATION_VERSION = 'v47-platform';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -122,6 +122,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS tenant_llm_budget (tenant_id TEXT PRIMARY KEY, monthly_token_budget INTEGER, tokens_used_this_month INTEGER NOT NULL DEFAULT 0, tokens_reset_at TEXT, llm_redaction_enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS tenant_llm_usage (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, endpoint TEXT, request_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS system_alert_rules (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, event_type TEXT NOT NULL, condition TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', channels TEXT NOT NULL DEFAULT '[]', recipients TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, silenced_until TEXT, triggered_count INTEGER NOT NULL DEFAULT 0, last_triggered_at TEXT, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS feature_flags (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, type TEXT NOT NULL DEFAULT 'boolean', default_enabled INTEGER NOT NULL DEFAULT 0, rollout_percent INTEGER NOT NULL DEFAULT 0, tenant_allowlist TEXT NOT NULL DEFAULT '[]', created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS iam_custom_roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, permissions TEXT NOT NULL DEFAULT '[]', inherits_from TEXT, user_count INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, name));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -291,6 +293,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // v45-alerts: system alert rules
     'CREATE INDEX IF NOT EXISTS idx_system_alert_rules_tenant ON system_alert_rules(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_system_alert_rules_enabled ON system_alert_rules(tenant_id, enabled)',
+    // v47-platform: Feature flags + custom roles
+    'CREATE INDEX IF NOT EXISTS idx_feature_flags_name ON feature_flags(name)',
+    'CREATE INDEX IF NOT EXISTS idx_iam_custom_roles_tenant ON iam_custom_roles(tenant_id)',
   ];
 
   for (const idx of indexes) {

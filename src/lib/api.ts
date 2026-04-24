@@ -345,6 +345,33 @@ export const api = {
       request<{ success: boolean }>(`/api/iam/users/${id}${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
     resendWelcome: (id: string, tenantId?: string) =>
       request<{ success: boolean }>(`/api/iam/users/${id}/resend-welcome${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    // v46-platform: Custom role builder
+    permissions: () =>
+      request<{ permissions: string[]; baseRoles: { id: string; name: string; permissions: string[] }[] }>(`/api/iam/permissions`),
+    customRoles: (tenantId?: string) =>
+      request<{ roles: CustomRole[]; total: number }>(`/api/iam/custom-roles${qs({ tenant_id: tenantId })}`),
+    createCustomRole: (data: { name: string; description?: string; permissions: string[]; inherits_from?: string | null }, tenantId?: string) =>
+      request<{ role: CustomRole }>(`/api/iam/custom-roles${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify(data) }),
+    updateCustomRole: (id: string, data: { name?: string; description?: string; permissions?: string[]; inherits_from?: string | null }, tenantId?: string) =>
+      request<{ role: CustomRole }>(`/api/iam/custom-roles/${id}${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteCustomRole: (id: string, tenantId?: string) =>
+      request<{ success: boolean }>(`/api/iam/custom-roles/${id}${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
+  },
+
+  // v46-platform: Feature Flags (superadmin CRUD, authenticated /evaluate)
+  featureFlags: {
+    list: () =>
+      request<{ flags: FeatureFlag[]; total: number }>(`/api/v1/admin/feature-flags`),
+    create: (data: { name: string; description?: string; type?: FeatureFlagType; default_enabled?: boolean; rollout_percent?: number; tenant_allowlist?: string[] }) =>
+      request<{ flag: FeatureFlag }>(`/api/v1/admin/feature-flags`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { description?: string; type?: FeatureFlagType; default_enabled?: boolean; rollout_percent?: number; tenant_allowlist?: string[] }) =>
+      request<{ flag: FeatureFlag }>(`/api/v1/admin/feature-flags/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/api/v1/admin/feature-flags/${id}`, { method: 'DELETE' }),
+    toggle: (id: string) =>
+      request<{ flag: FeatureFlag }>(`/api/v1/admin/feature-flags/${id}/toggle`, { method: 'POST' }),
+    evaluate: (tenantId?: string) =>
+      request<{ flags: Record<string, boolean>; tenantId: string }>(`/api/v1/feature-flags/evaluate${qs({ tenant_id: tenantId })}`),
   },
 
   // PR #219/#220/#232 multi-company: list ERP companies for the tenant so the
@@ -1354,6 +1381,37 @@ export interface SSOConfig {
   autoProvision: boolean;
   defaultRole: string;
   domainHint: string;
+}
+
+// ── v46-platform: Feature Flags + Custom Roles ─────────────────────────
+
+export type FeatureFlagType = 'boolean' | 'percent' | 'tenant_allowlist';
+
+export interface FeatureFlag {
+  id: string;
+  name: string;
+  description: string;
+  type: FeatureFlagType;
+  defaultEnabled: boolean;
+  rolloutPercent: number;
+  tenantAllowlist: string[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomRole {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  inheritsFrom: string | null;
+  inheritedPermissions: string[];
+  userCount: number;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HealthScore {
