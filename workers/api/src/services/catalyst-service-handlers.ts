@@ -7,21 +7,22 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
-import { taskText, anyWord as anyOf } from './catalyst-match-utils';
+import { taskText, anyWord as anyOf, companyFilter, scopeLabel } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
 
 // ── HEALTHCARE ──────────────────────────────────────────────────────────
 
 async function runHealthcareStaffingCoverage(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const byDept = await db.prepare(
     `SELECT department, position, COUNT(*) as active_count,
             SUM(CASE WHEN status != 'active' THEN 1 ELSE 0 END) as inactive_count,
             AVG(gross_salary) as avg_salary
      FROM erp_employees
-     WHERE tenant_id = ? AND department IS NOT NULL
+     WHERE tenant_id = ? AND department IS NOT NULL${clause}
      GROUP BY department, position
      ORDER BY active_count ASC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const shortStaffed = byDept.results.filter(r => {
     const row = r as { active_count: number };
@@ -32,9 +33,9 @@ async function runHealthcareStaffingCoverage(task: TaskDefinition, db: D1Databas
     `SELECT first_name, last_name, department, position, termination_date
      FROM erp_employees
      WHERE tenant_id = ? AND termination_date IS NOT NULL
-       AND termination_date >= date('now', '-60 days')
+       AND termination_date >= date('now', '-60 days')${clause}
      ORDER BY termination_date DESC LIMIT 10`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'healthcare_staffing_coverage',
@@ -46,26 +47,28 @@ async function runHealthcareStaffingCoverage(task: TaskDefinition, db: D1Databas
     recommendation: shortStaffed.length > 0
       ? `${shortStaffed.length} department/position line(s) with <3 active staff — review recruitment pipeline and agency cover`
       : 'Staffing coverage adequate across departments',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runHealthcareOverdueCollections(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
   // In the healthcare domain model, erp_customers stand in for patients/payers.
+  const { clause, params } = companyFilter(task.companyId);
   const overdue = await db.prepare(
     `SELECT invoice_number, customer_name, invoice_date, due_date, total, amount_due
      FROM erp_invoices
      WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')
-       AND due_date IS NOT NULL AND due_date < date('now')
+       AND due_date IS NOT NULL AND due_date < date('now')${clause}
      ORDER BY due_date ASC LIMIT 30`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const summary = await db.prepare(
     `SELECT payment_status, COUNT(*) as count, SUM(amount_due) as total_due
      FROM erp_invoices
-     WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')
+     WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')${clause}
      GROUP BY payment_status`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalOverdueValue = overdue.results.reduce((s, r) => s + ((r as { amount_due: number }).amount_due || 0), 0);
 
@@ -78,6 +81,7 @@ async function runHealthcareOverdueCollections(task: TaskDefinition, db: D1Datab
     recommendation: overdue.results.length > 0
       ? `${overdue.results.length} overdue payer invoice(s) totalling R${Math.round(totalOverdueValue).toLocaleString()} — initiate staged collection workflow`
       : 'No overdue payer invoices',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -113,6 +117,7 @@ async function runHealthcareComplianceRiskScan(task: TaskDefinition, db: D1Datab
     recommendation: risks.results.length > 0
       ? `${risks.results.length} active compliance risk(s) with total impact R${Math.round(impactTotal).toLocaleString()} — schedule compliance review`
       : 'No active compliance risks detected',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -145,11 +150,13 @@ async function runHealthcareReadmissionFlag(task: TaskDefinition, db: D1Database
       : metrics.results.length === 0
         ? 'No readmission metrics ingested — wire up encounter/episode data'
         : 'Readmission rates within target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runHealthcareSupplyShortages(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const critical = await db.prepare(
     `SELECT sku, name, category, stock_on_hand, reorder_level, warehouse
      FROM erp_products
@@ -157,18 +164,18 @@ async function runHealthcareSupplyShortages(task: TaskDefinition, db: D1Database
        AND (LOWER(category) LIKE '%med%' OR LOWER(category) LIKE '%pharma%' OR LOWER(category) LIKE '%consumable%'
             OR LOWER(category) LIKE '%ppe%' OR LOWER(category) LIKE '%surgical%' OR LOWER(category) LIKE '%diagnostic%'
             OR LOWER(category) LIKE '%dressing%' OR LOWER(category) LIKE '%reagent%')
-       AND (stock_on_hand <= 0 OR stock_on_hand < reorder_level * 0.25)
+       AND (stock_on_hand <= 0 OR stock_on_hand < reorder_level * 0.25)${clause}
      ORDER BY stock_on_hand ASC LIMIT 40`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const byCategory = await db.prepare(
     `SELECT category, COUNT(*) as count
      FROM erp_products
      WHERE tenant_id = ? AND is_active = 1
        AND (LOWER(category) LIKE '%med%' OR LOWER(category) LIKE '%consumable%' OR LOWER(category) LIKE '%ppe%')
-       AND stock_on_hand < reorder_level * 0.25
+       AND stock_on_hand < reorder_level * 0.25${clause}
      GROUP BY category ORDER BY count DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'healthcare_supply_shortages',
@@ -178,6 +185,7 @@ async function runHealthcareSupplyShortages(task: TaskDefinition, db: D1Database
     recommendation: critical.results.length > 0
       ? `${critical.results.length} clinical supply(ies) critically low — escalate to procurement for same-day reorder`
       : 'Clinical supply levels adequate',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -225,6 +233,7 @@ async function runTechnologyIncidentTrend(task: TaskDefinition, db: D1Database):
       : anomalies.results.length > 0
         ? `${anomalies.results.length} open technology anomalies — review during next standup`
         : 'No open technology anomalies',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -253,18 +262,20 @@ async function runTechnologySecurityAlerts(task: TaskDefinition, db: D1Database)
       : risks.results.length > 0
         ? `${risks.results.length} security alert(s) open — review and prioritise`
         : 'No active security alerts',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runTechnologyChurnSignal(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const inactive = await db.prepare(
     `SELECT name, customer_group, status, credit_limit, credit_balance
      FROM erp_customers
      WHERE tenant_id = ? AND (status IN ('inactive', 'churned', 'suspended')
-       OR (credit_limit > 0 AND credit_balance > credit_limit))
+       OR (credit_limit > 0 AND credit_balance > credit_limit))${clause}
      ORDER BY credit_balance DESC LIMIT 25`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const recentlyInactive = inactive.results.filter(c => (c as { status: string }).status === 'inactive');
   const creditExceeded = inactive.results.filter(c => {
@@ -280,6 +291,7 @@ async function runTechnologyChurnSignal(task: TaskDefinition, db: D1Database): P
     recommendation: inactive.results.length > 0
       ? `${inactive.results.length} account(s) flagged for churn risk — trigger customer success outreach`
       : 'No churn-risk signals detected',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -307,6 +319,7 @@ async function runTechnologySLOCompliance(task: TaskDefinition, db: D1Database):
       : warning.length > 0
         ? `${warning.length} SLO/SLA metric(s) amber — review error budget before next deploy`
         : 'SLO/SLA compliance on target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -355,6 +368,7 @@ async function runTechnologyFeatureAdoption(task: TaskDefinition, db: D1Database
       : trends.length === 0
         ? 'No adoption metrics ingested — instrument DAU/MAU/feature-flag metrics'
         : 'Adoption metrics trending positive',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -408,26 +422,28 @@ async function runFinServPortfolioRisk(task: TaskDefinition, db: D1Database): Pr
     recommendation: totalExposure > 0
       ? `Aggregate active risk exposure R${Math.round(totalExposure).toLocaleString()} across ${byCategory.results.length} categor(ies) — review risk appetite`
       : 'No active portfolio risk',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFinServCreditExposure(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const exposure = await db.prepare(
     `SELECT COUNT(*) as customer_count,
             SUM(credit_limit) as total_limit,
             SUM(credit_balance) as total_outstanding
      FROM erp_customers
-     WHERE tenant_id = ? AND status = 'active'`,
-  ).bind(task.tenantId).first<{ customer_count: number; total_limit: number; total_outstanding: number }>();
+     WHERE tenant_id = ? AND status = 'active'${clause}`,
+  ).bind(task.tenantId, ...params).first<{ customer_count: number; total_limit: number; total_outstanding: number }>();
 
   const overLimit = await db.prepare(
     `SELECT name, customer_group, credit_limit, credit_balance,
             ROUND((credit_balance / NULLIF(credit_limit, 0)) * 100, 1) as utilization_pct
      FROM erp_customers
-     WHERE tenant_id = ? AND status = 'active' AND credit_limit > 0 AND credit_balance > credit_limit
+     WHERE tenant_id = ? AND status = 'active' AND credit_limit > 0 AND credit_balance > credit_limit${clause}
      ORDER BY (credit_balance / NULLIF(credit_limit, 0)) DESC LIMIT 15`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalLimit = exposure?.total_limit || 0;
   const totalOutstanding = exposure?.total_outstanding || 0;
@@ -446,6 +462,7 @@ async function runFinServCreditExposure(task: TaskDefinition, db: D1Database): P
       : utilization > 80
         ? `Portfolio utilization at ${Math.round(utilization)}% — close to capacity, review limits`
         : `Portfolio utilization at ${Math.round(utilization)}% — within target`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -478,11 +495,13 @@ async function runFinServRegulatorySnapshot(task: TaskDefinition, db: D1Database
     recommendation: openCompliance.results.length > 0
       ? `${openCompliance.results.length} open regulatory risk(s) — escalate to compliance committee`
       : 'No open regulatory risks; audit trail continuous',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFinServCashFlowForecast(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const buckets = await db.prepare(
     `SELECT
        SUM(CASE WHEN due_date <= date('now', '+30 days') THEN amount_due ELSE 0 END) as due_30d,
@@ -491,8 +510,8 @@ async function runFinServCashFlowForecast(task: TaskDefinition, db: D1Database):
        SUM(CASE WHEN due_date > date('now', '+90 days') THEN amount_due ELSE 0 END) as due_90_plus,
        SUM(CASE WHEN due_date < date('now') THEN amount_due ELSE 0 END) as overdue
      FROM erp_invoices
-     WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')`,
-  ).bind(task.tenantId).first<{
+     WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')${clause}`,
+  ).bind(task.tenantId, ...params).first<{
     due_30d: number; due_31_60d: number; due_61_90d: number; due_90_plus: number; overdue: number;
   }>();
 
@@ -511,21 +530,24 @@ async function runFinServCashFlowForecast(task: TaskDefinition, db: D1Database):
       : next30 > 0
         ? `R${Math.round(next30).toLocaleString()} due in next 30 days — prepare treasury disbursement plan`
         : 'No material near-term receivables',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFinServConcentrationRisk(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
+  const custCompanyClause = clause.replace(' AND company_id', ' AND c.company_id');
   const byGroup = await db.prepare(
     `SELECT c.customer_group,
             COUNT(DISTINCT c.id) as customer_count,
             COALESCE(SUM(i.total), 0) as total_revenue
      FROM erp_customers c
      LEFT JOIN erp_invoices i ON i.customer_id = c.id AND i.tenant_id = c.tenant_id AND i.status != 'cancelled'
-     WHERE c.tenant_id = ? AND c.status = 'active'
+     WHERE c.tenant_id = ? AND c.status = 'active'${custCompanyClause}
      GROUP BY c.customer_group
      ORDER BY total_revenue DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalRevenue = byGroup.results.reduce((s, r) => s + ((r as { total_revenue: number }).total_revenue || 0), 0);
   const groups = byGroup.results.map(r => {
@@ -552,6 +574,7 @@ async function runFinServConcentrationRisk(task: TaskDefinition, db: D1Database)
       : totalRevenue === 0
         ? 'No invoice revenue to analyse'
         : 'Customer concentration within policy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }

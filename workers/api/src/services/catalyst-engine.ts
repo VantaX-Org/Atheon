@@ -32,6 +32,12 @@ export interface TaskDefinition {
   priority?: 'critical' | 'high' | 'medium' | 'low';
   requiredConfidence?: number;
   maxRetries?: number;
+  /**
+   * Optional: scope queries to a single company within the tenant.
+   * Null/undefined = consolidated across all companies (default, matches
+   * pre-multicompany behavior).
+   */
+  companyId?: string;
 }
 
 export interface TaskResult {
@@ -178,6 +184,8 @@ export async function executeTask(
     clusterId: string; tenantId: string; catalystName: string; action: string;
     inputData: Record<string, unknown>; riskLevel: 'high' | 'medium' | 'low';
     autonomyTier: string; trustScore: number;
+    /** Optional per-company scope. Undefined = consolidated. */
+    companyId?: string;
   },
   db: D1Database, cache: KVNamespace, ai: Ai, ollamaApiKey?: string,
   queue?: Queue<CatalystQueueMessage>,
@@ -194,6 +202,7 @@ export async function executeTask(
   const task: TaskDefinition = {
     id: actionId,
     ...taskInput,
+    companyId: taskInput.companyId,
     maxRetries: 3,
   };
 
@@ -278,18 +287,25 @@ export async function executeTask(
         'UPDATE catalyst_clusters SET tasks_completed = tasks_completed + 1, tasks_in_progress = MAX(0, tasks_in_progress - 1) WHERE id = ?'
       ).bind(task.clusterId).run();
 
-      // Audit log — include handler name for traceability of which handler ran.
+      // Audit log — include handler name + companyId scope so operators can
+      // trace a run back to the company it was scoped to (or 'all' for
+      // consolidated runs).
       await db.prepare(
         'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         crypto.randomUUID(), task.tenantId, `catalyst.${task.action}.executed`, 'catalysts',
-        task.clusterId, JSON.stringify({ actionId: task.id, catalyst: task.catalystName, handler, confidence }),
+        task.clusterId, JSON.stringify({
+          actionId: task.id, catalyst: task.catalystName, handler, confidence,
+          companyId: task.companyId || null,
+          scopedToCompany: task.companyId || 'all',
+        }),
         'success',
       ).run();
 
       // DAG: trigger any downstream sub-catalysts that depend on this one.
       // chainDepth comes from the enqueuer (0 when user/scheduler-triggered,
       // incremented when this run was itself triggered by an upstream).
+      // companyId propagates so a scoped upstream run stays in-company.
       const chainDepth = typeof task.inputData.chainDepth === 'number' ? task.inputData.chainDepth : 0;
       try {
         await triggerDownstream({
@@ -298,6 +314,7 @@ export async function executeTask(
           upstreamSubCatalystName: task.catalystName,
           chainDepth,
           parentContext: { actionId: task.id, handler, confidence },
+          companyId: task.companyId,
         }, db, queue);
       } catch (err) {
         console.error('[catalyst-engine] DAG trigger failed (non-fatal):', err);
@@ -699,18 +716,23 @@ export async function approveAction(
   const action = await db.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(actionId).first();
   if (!action) throw new Error('Action not found');
 
-  // Execute the approved action
+  // Execute the approved action. When the original pending action carried a
+  // company scope (via inputData.companyId on creation), honour it here so the
+  // approved re-execution reads the same data subset.
+  const inputData = action.input_data ? JSON.parse(action.input_data as string) : {};
+  const scopedCompanyId = typeof inputData.companyId === 'string' ? inputData.companyId : undefined;
   const task: TaskDefinition = {
     id: actionId,
     clusterId: action.cluster_id as string,
     tenantId: action.tenant_id as string,
     catalystName: action.catalyst_name as string,
     action: action.action as string,
-    inputData: action.input_data ? JSON.parse(action.input_data as string) : {},
+    inputData,
     riskLevel: 'medium',
     autonomyTier: 'transactional',
     trustScore: 50,
     maxRetries: 1,
+    companyId: scopedCompanyId,
   };
 
   const output = await performAction(task, db);

@@ -8,27 +8,28 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
-import { taskText, anyWord as anyOf } from './catalyst-match-utils';
+import { taskText, anyWord as anyOf, companyFilter, scopeLabel } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
 
 // ── HR TURNOVER ─────────────────────────────────────────────────────────
 
 async function runHRTurnover(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const departuresLast90 = await db.prepare(
     `SELECT first_name, last_name, department, position, hire_date, termination_date
      FROM erp_employees
      WHERE tenant_id = ? AND termination_date IS NOT NULL
-       AND termination_date >= date('now', '-90 days')
+       AND termination_date >= date('now', '-90 days')${clause}
      ORDER BY termination_date DESC LIMIT 50`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const headcountByDept = await db.prepare(
     `SELECT department, COUNT(*) as active_count,
             SUM(CASE WHEN termination_date >= date('now', '-90 days') THEN 1 ELSE 0 END) as departed_90d
      FROM erp_employees
-     WHERE tenant_id = ? AND department IS NOT NULL
+     WHERE tenant_id = ? AND department IS NOT NULL${clause}
      GROUP BY department`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const turnoverByDept = headcountByDept.results.map(r => {
     const row = r as { department: string; active_count: number; departed_90d: number };
@@ -52,6 +53,7 @@ async function runHRTurnover(task: TaskDefinition, db: D1Database): Promise<Reco
     recommendation: highTurnover.length > 0
       ? `${highTurnover.length} department(s) with >15% quarterly turnover — launch retention review`
       : 'Turnover within expected range across departments',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -97,6 +99,7 @@ async function runSalesPipelineRisk(task: TaskDefinition, db: D1Database): Promi
     recommendation: risks.results.length > 0
       ? `${risks.results.length} sales/revenue risk(s) with R${Math.round(totalRiskImpact).toLocaleString()} at stake — review in weekly sales review`
       : 'No active sales pipeline risks',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -114,6 +117,9 @@ const salesHandler: CatalystHandler = {
 // ── OPERATIONS RED METRICS ──────────────────────────────────────────────
 
 async function runOperationsRedMetrics(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only — this handler always returns the
+  // consolidated view regardless of task.companyId. Non-company tables ignore
+  // the filter by design; the test suite asserts this behaviour.
   const red = await db.prepare(
     `SELECT name, value, unit, threshold_red, source_system, measured_at
      FROM process_metrics
@@ -146,6 +152,7 @@ async function runOperationsRedMetrics(task: TaskDefinition, db: D1Database): Pr
     recommendation: red.results.length > 0
       ? `${red.results.length} metric(s) currently red — assign owners for top 5 by recency`
       : 'All operational metrics green/amber — healthy posture',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -163,16 +170,21 @@ const opsHandler: CatalystHandler = {
 // ── SUPPLIER CONCENTRATION ─────────────────────────────────────────────
 
 async function runSupplierConcentration(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
+  // Filter on the supplier side of the JOIN — both erp_suppliers and
+  // erp_purchase_orders carry company_id but one filter on s.company_id
+  // captures the correct supplier subset.
+  const supCompanyClause = clause.replace(' AND company_id', ' AND s.company_id');
   const byVolume = await db.prepare(
     `SELECT s.name, s.risk_score, s.supplier_group,
             COUNT(po.id) as po_count,
             COALESCE(SUM(po.total), 0) as total_spend
      FROM erp_suppliers s
      LEFT JOIN erp_purchase_orders po ON po.supplier_id = s.id AND po.tenant_id = s.tenant_id AND po.status != 'cancelled'
-     WHERE s.tenant_id = ? AND s.status = 'active'
+     WHERE s.tenant_id = ? AND s.status = 'active'${supCompanyClause}
      GROUP BY s.id, s.name, s.risk_score, s.supplier_group
      ORDER BY total_spend DESC LIMIT 25`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalSpend = byVolume.results.reduce((s, r) => s + ((r as { total_spend: number }).total_spend || 0), 0);
   const top5Spend = byVolume.results.slice(0, 5).reduce((s, r) => s + ((r as { total_spend: number }).total_spend || 0), 0);
@@ -196,6 +208,7 @@ async function runSupplierConcentration(task: TaskDefinition, db: D1Database): P
         : byVolume.results.length === 0
           ? 'No supplier activity'
           : 'Supplier spend diversified within policy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -244,6 +257,7 @@ async function runAnomalyTriage(task: TaskDefinition, db: D1Database): Promise<R
       : staleOpen.results.length > 0
         ? `${staleOpen.results.length} open anomaly(ies) older than 14 days — resolve or downgrade`
         : 'Anomaly backlog healthy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }

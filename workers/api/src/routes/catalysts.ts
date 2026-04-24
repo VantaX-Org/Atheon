@@ -19,6 +19,56 @@ import { logInfo, logWarn } from '../services/logger';
 const catalysts = new Hono<AppBindings>();
 
 /**
+ * Sentinel returned by resolveCompanyScope when a company_id was supplied but
+ * did not belong to the target tenant. Callers map this to a 404. Using a
+ * sentinel (rather than throwing) keeps the endpoints linear and lets each
+ * one return the company-scoped 404 in its own voice.
+ */
+const COMPANY_REJECTED = '__COMPANY_NOT_FOUND__';
+
+/**
+ * Read an optional per-company scope from the request (query param
+ * `?company_id=` or JSON body `company_id`). When present, verify the
+ * company belongs to `targetTenant`.
+ *
+ * Returns:
+ *  - `null` (or `undefined`) when no company_id was supplied → consolidated.
+ *  - The validated company_id string when it belongs to the tenant.
+ *  - `COMPANY_REJECTED` when a value was supplied but did not validate —
+ *    the caller must respond with 404 in this case.
+ */
+async function resolveCompanyScope(
+  c: { req: { query: (k: string) => string | undefined; header: (k: string) => string | undefined; json: <T = unknown>() => Promise<T> }; env: { DB: D1Database } },
+  targetTenant: string,
+): Promise<string | null | typeof COMPANY_REJECTED> {
+  let raw: string | undefined = c.req.query('company_id');
+
+  // Body fallback — only try JSON if Content-Type looks like JSON.
+  if (!raw) {
+    const contentType = (c.req.header('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      try {
+        const body = await c.req.json<{ company_id?: string }>();
+        if (body && typeof body.company_id === 'string') raw = body.company_id;
+      } catch {
+        // Body not parseable / not present — fall through to no-scope.
+      }
+    }
+  }
+
+  if (!raw) return null;
+  const companyId = raw.trim();
+  if (!companyId) return null;
+
+  const exists = await c.env.DB.prepare(
+    'SELECT id FROM erp_companies WHERE tenant_id = ? AND id = ?',
+  ).bind(targetTenant, companyId).first<{ id: string }>();
+
+  if (!exists) return COMPANY_REJECTED;
+  return companyId;
+}
+
+/**
  * Write an execution log entry.
  * When status is 'running', inserts a new row.
  * When status is 'completed'/'failed', updates the existing 'running' row for the same step
@@ -1567,6 +1617,16 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
 
   const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
+  // Optional per-company scope (superadmin cross-tenant style — accepted via
+  // ?company_id= query param or JSON body). If present it must belong to the
+  // target tenant; otherwise we reject with 404 so leaking/guessing IDs across
+  // tenants is impossible.
+  const companyId = await resolveCompanyScope(c, targetTenant);
+  if (companyId && companyId === COMPANY_REJECTED) {
+    return c.json({ error: 'Company not found', message: 'company_id does not belong to this tenant' }, 404);
+  }
+  const scopedCompanyId = companyId || undefined;
+
   const cluster = await c.env.DB.prepare('SELECT * FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<Record<string, unknown>>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
@@ -1589,14 +1649,14 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
 
   try {
     if (execConfig.mode === 'reconciliation' && sources.length >= 2 && mappings.length > 0) {
-      result = await performReconciliation(sub, sources, mappings, clusterId, targetTenant, c.env.DB);
+      result = await performReconciliation(sub, sources, mappings, clusterId, targetTenant, c.env.DB, scopedCompanyId);
     } else if (execConfig.mode === 'validation') {
-      result = await performValidation(sub, sources, clusterId, targetTenant, c.env.DB);
+      result = await performValidation(sub, sources, clusterId, targetTenant, c.env.DB, scopedCompanyId);
     } else if (execConfig.mode === 'compare' && sources.length >= 2) {
-      result = await performComparison(sub, sources, mappings, clusterId, targetTenant, c.env.DB);
+      result = await performComparison(sub, sources, mappings, clusterId, targetTenant, c.env.DB, scopedCompanyId);
     } else {
       // Default: extract/analyze mode — pull data from sources and report
-      result = await performExtraction(sub, sources, clusterId, targetTenant, c.env.DB);
+      result = await performExtraction(sub, sources, clusterId, targetTenant, c.env.DB, scopedCompanyId);
     }
 
     result.duration_ms = Date.now() - startTime;
@@ -1686,6 +1746,7 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
       upstreamSubCatalystName: subName,
       chainDepth: 0,
       parentContext: { runId, source: 'sub_catalyst_http' },
+      companyId: scopedCompanyId,
     }, c.env.DB, c.env.CATALYST_QUEUE as Queue<import('../services/scheduled').CatalystQueueMessage> | undefined);
   } catch (err) {
     console.error('[DAG] downstream trigger failed (non-fatal):', err);
@@ -1783,11 +1844,12 @@ async function performReconciliation(
   mappings: FieldMappingRecord[],
   clusterId: string,
   tenantId: string,
-  db: D1Database
+  db: D1Database,
+  companyId?: string,
 ): Promise<ExecutionResultRecord> {
   // Pull data from the first two data sources using ERP canonical tables
-  const sourceData = await fetchDataForSource(sources[0], tenantId, db);
-  const targetData = await fetchDataForSource(sources[1], tenantId, db);
+  const sourceData = await fetchDataForSource(sources[0], tenantId, db, companyId);
+  const targetData = await fetchDataForSource(sources[1], tenantId, db, companyId);
 
   // Fail fast if no data was returned — likely means ERP data hasn't been synced
   if (sourceData.length === 0 && targetData.length === 0) {
@@ -1938,9 +2000,10 @@ async function performValidation(
   sources: Array<{ type: string; config: Record<string, unknown> }>,
   clusterId: string,
   tenantId: string,
-  db: D1Database
+  db: D1Database,
+  companyId?: string,
 ): Promise<ExecutionResultRecord> {
-  const data = await fetchDataForSource(sources[0], tenantId, db);
+  const data = await fetchDataForSource(sources[0], tenantId, db, companyId);
 
   // Fail fast if no data was returned — likely means ERP data hasn't been synced
   if (data.length === 0) {
@@ -2249,10 +2312,11 @@ async function performComparison(
   mappings: FieldMappingRecord[],
   clusterId: string,
   tenantId: string,
-  db: D1Database
+  db: D1Database,
+  companyId?: string,
 ): Promise<ExecutionResultRecord> {
-  const sourceData = await fetchDataForSource(sources[0], tenantId, db);
-  const targetData = await fetchDataForSource(sources[1], tenantId, db);
+  const sourceData = await fetchDataForSource(sources[0], tenantId, db, companyId);
+  const targetData = await fetchDataForSource(sources[1], tenantId, db, companyId);
 
   // Fail fast if no data was returned — likely means ERP data hasn't been synced
   if (sourceData.length === 0 && targetData.length === 0) {
@@ -2413,13 +2477,14 @@ async function performExtraction(
   sources: Array<{ type: string; config: Record<string, unknown> }>,
   clusterId: string,
   tenantId: string,
-  db: D1Database
+  db: D1Database,
+  companyId?: string,
 ): Promise<ExecutionResultRecord> {
   // Extract data from all sources, validate each record, and report quality issues
   // Fetch all source data once upfront (avoids double-fetching for emptiness check)
   const allSourceData: Array<{ source: typeof sources[0]; data: Record<string, unknown>[] }> = [];
   for (const src of sources) {
-    const data = await fetchDataForSource(src, tenantId, db);
+    const data = await fetchDataForSource(src, tenantId, db, companyId);
     allSourceData.push({ source: src, data });
   }
   if (allSourceData.every(d => d.data.length === 0)) {
@@ -2495,12 +2560,17 @@ async function performExtraction(
 async function fetchDataForSource(
   source: { type: string; config: Record<string, unknown> },
   tenantId: string,
-  db: D1Database
+  db: D1Database,
+  companyId?: string,
 ): Promise<Record<string, unknown>[]> {
   try {
     // source_filter: when set, adds a WHERE source_system = ? clause to differentiate
     // datasets seeded for the same table (e.g., 'SAP' vs 'PHYSICAL_COUNT')
     const sourceFilter = source.config.source_filter ? String(source.config.source_filter) : null;
+    // Per-company scope (only applies to canonical erp_* tables which have a
+    // company_id column — SAP/Odoo/Sage/Xero/QB native tables don't).
+    const companyClause = companyId ? ' AND company_id = ?' : '';
+    const companyBind: unknown[] = companyId ? [companyId] : [];
 
     if (source.type === 'erp') {
       const module = String(source.config.module || '').toLowerCase();
@@ -2999,87 +3069,90 @@ async function fetchDataForSource(
       }
 
       // ── Legacy ERP Table Queries (backward compatibility) ──
+      // These hit canonical erp_* tables which all have a nullable company_id
+      // column. When companyId is provided we also filter by it; otherwise
+      // consolidated (original behaviour).
 
       if (module.includes('invoice') || module.includes('accounts_payable') || module.includes('ap')) {
         const q = sourceFilter
-          ? 'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT invoice_number, invoice_date, due_date, total, subtotal, vat_amount, amount_paid, amount_due, status, payment_status, customer_name, reference, notes FROM erp_invoices WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('customer') || module.includes('accounts_receivable') || module.includes('ar')) {
         const q = sourceFilter
-          ? 'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT id, name, registration_number, customer_group, credit_limit, credit_balance, payment_terms, contact_name, contact_email, contact_phone, status FROM erp_customers WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('product') || module.includes('inventory') || module.includes('stock')) {
         const q = sourceFilter
-          ? 'SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT sku, name, stock_on_hand, reorder_level, cost_price, selling_price, category FROM erp_products WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('supplier') || module.includes('vendor')) {
         const q = sourceFilter
-          ? 'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT id, name, vat_number, supplier_group, payment_terms, contact_name, contact_email, contact_phone, bank_name, bank_account, status FROM erp_suppliers WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('purchase_order') || module === 'po' || module.includes('procurement')) {
         const q = sourceFilter
-          ? 'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT po_number, supplier_name, order_date, delivery_date, subtotal, vat_amount, total, status, delivery_status, reference FROM erp_purchase_orders WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('bank') || module.includes('bank_statement') || module.includes('cash')) {
         const q = sourceFilter
-          ? 'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT bank_account, transaction_date, description, reference, debit, credit, balance, reconciled FROM erp_bank_transactions WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module === 'gl' || module.includes('general_ledger') || module.includes('journal')) {
         const q = sourceFilter
-          ? 'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-          : 'SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? LIMIT 500';
+          ? `SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+          : `SELECT journal_number, journal_date, description, total_debit, total_credit, status, posted_by FROM erp_journal_entries WHERE tenant_id = ?${companyClause} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       if (module.includes('goods_receipt') || module === 'gr' || module.includes('delivery')) {
         const baseWhere = sourceFilter
-          ? `tenant_id = ? AND source_system = ? AND delivery_status IN ('received', 'partial')`
-          : `tenant_id = ? AND delivery_status IN ('received', 'partial')`;
+          ? `tenant_id = ? AND source_system = ? AND delivery_status IN ('received', 'partial')${companyClause}`
+          : `tenant_id = ? AND delivery_status IN ('received', 'partial')${companyClause}`;
         const q = `SELECT po_number, supplier_name, delivery_date, total, delivery_status, reference FROM erp_purchase_orders WHERE ${baseWhere} LIMIT 500`;
         const rows = sourceFilter
-          ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-          : await db.prepare(q).bind(tenantId).all();
+          ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+          : await db.prepare(q).bind(tenantId, ...companyBind).all();
         return rows.results as Record<string, unknown>[];
       }
       // Default: try invoices as a common ERP data set
       const q = sourceFilter
-        ? 'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? AND source_system = ? LIMIT 500'
-        : 'SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? LIMIT 500';
+        ? `SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ? AND source_system = ?${companyClause} LIMIT 500`
+        : `SELECT invoice_number, invoice_date, total, status, customer_name, reference FROM erp_invoices WHERE tenant_id = ?${companyClause} LIMIT 500`;
       const rows = sourceFilter
-        ? await db.prepare(q).bind(tenantId, sourceFilter).all()
-        : await db.prepare(q).bind(tenantId).all();
+        ? await db.prepare(q).bind(tenantId, sourceFilter, ...companyBind).all()
+        : await db.prepare(q).bind(tenantId, ...companyBind).all();
       return rows.results as Record<string, unknown>[];
     }
 
@@ -3562,11 +3635,13 @@ catalysts.post('/actions', async (c) => {
     cluster_id: string; catalyst_name: string; action: string;
     confidence?: number; input_data?: Record<string, unknown>; reasoning?: string;
     risk_level?: string;
+    company_id?: string;
   }>(c, [
     { field: 'cluster_id', type: 'string', required: true, minLength: 1 },
     { field: 'catalyst_name', type: 'string', required: true, minLength: 1, maxLength: 100 },
     { field: 'action', type: 'string', required: true, minLength: 1, maxLength: 200 },
     { field: 'risk_level', type: 'string', required: false, maxLength: 32 },
+    { field: 'company_id', type: 'string', required: false, maxLength: 128 },
   ]);
   if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
 
@@ -3576,6 +3651,20 @@ catalysts.post('/actions', async (c) => {
   ).bind(body.cluster_id, tenantId).first();
 
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  // Optional per-company scope — validate via erp_companies lookup. Query
+  // string takes precedence over body so a superadmin can override on retry.
+  const rawCompanyId = c.req.query('company_id') || body.company_id;
+  let scopedCompanyId: string | undefined;
+  if (rawCompanyId && rawCompanyId.trim()) {
+    const companyRow = await c.env.DB.prepare(
+      'SELECT id FROM erp_companies WHERE tenant_id = ? AND id = ?',
+    ).bind(tenantId, rawCompanyId.trim()).first<{ id: string }>();
+    if (!companyRow) {
+      return c.json({ error: 'Company not found', message: 'company_id does not belong to this tenant' }, 404);
+    }
+    scopedCompanyId = companyRow.id;
+  }
 
   // Execute through the catalyst engine
   const result = await executeTask({
@@ -3587,6 +3676,7 @@ catalysts.post('/actions', async (c) => {
     riskLevel: (body.risk_level || 'medium') as 'high' | 'medium' | 'low',
     autonomyTier: (cluster.autonomy_tier as string) || 'read-only',
     trustScore: (cluster.trust_score as number) || 0.5,
+    companyId: scopedCompanyId,
   }, c.env.DB, c.env.CACHE, c.env.AI, c.env.OLLAMA_API_KEY, c.env.CATALYST_QUEUE);
 
   // Log audit

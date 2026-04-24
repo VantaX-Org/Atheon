@@ -893,4 +893,210 @@ describe('Domain catalyst handlers', () => {
       expect(row?.layer).toBe('catalysts');
     });
   });
+
+  // ── PER-COMPANY SCOPING ────────────────────────────────────────
+  //
+  // Multi-company schema landed in PR #219. Handlers now accept an optional
+  // `companyId` on the TaskDefinition. When provided, canonical erp_* queries
+  // get an extra `AND company_id = ?` filter; tenant-scoped tables
+  // (process_metrics, anomalies, risk_alerts) ignore it.
+
+  describe('Company scoping', () => {
+    const COMPANY_A = 'company-scope-a';
+    const COMPANY_B = 'company-scope-b';
+
+    // Seed fixtures once for the whole company-scoping suite. We use a separate
+    // tenant so we don't collide with the primary fixture set.
+    const SCOPE_TENANT = 'scope-test-tenant';
+
+    beforeAll(async () => {
+      // Tenant
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, 'Scope Test Corp', 'scope-test', 'enterprise', 'active')`,
+      ).bind(SCOPE_TENANT).run();
+
+      // Two companies under the same tenant
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO erp_companies (id, tenant_id, source_system, code, name, is_primary, status)
+         VALUES (?, ?, 'manual', 'A', 'Company A', 1, 'active')`,
+      ).bind(COMPANY_A, SCOPE_TENANT).run();
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO erp_companies (id, tenant_id, source_system, code, name, is_primary, status)
+         VALUES (?, ?, 'manual', 'B', 'Company B', 0, 'active')`,
+      ).bind(COMPANY_B, SCOPE_TENANT).run();
+
+      // Invoices — 3 in A (all overdue, unpaid), 2 in B (both paid).
+      const overdueDate = new Date(Date.now() - 40 * 86400 * 1000).toISOString().slice(0, 10);
+      const insertInvoice = async (id: string, companyId: string, total: number, paymentStatus: string, dueDate: string) => {
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, company_id, invoice_number, customer_name, invoice_date, due_date, total, amount_due, payment_status, status)
+           VALUES (?, ?, ?, ?, 'Cust', ?, ?, ?, ?, ?, 'issued')`,
+        ).bind(id, SCOPE_TENANT, companyId, id, overdueDate, dueDate, total, paymentStatus === 'paid' ? 0 : total, paymentStatus).run();
+      };
+      await insertInvoice('scope-inv-A1', COMPANY_A, 1000, 'unpaid', overdueDate);
+      await insertInvoice('scope-inv-A2', COMPANY_A, 2000, 'unpaid', overdueDate);
+      await insertInvoice('scope-inv-A3', COMPANY_A, 3000, 'unpaid', overdueDate);
+      await insertInvoice('scope-inv-B1', COMPANY_B, 5000, 'paid', overdueDate);
+      await insertInvoice('scope-inv-B2', COMPANY_B, 7000, 'paid', overdueDate);
+
+      // A red metric tenant-scoped (no company_id) — used to assert
+      // non-company tables ignore the filter.
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, source_system)
+         VALUES ('scope-metric-red', ?, 'Latency', 900, 'ms', 'red', 90, 80, 70, 'test')`,
+      ).bind(SCOPE_TENANT).run();
+
+      // An open critical anomaly tenant-scoped — used by operations_red_metrics
+      // smoke check.
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at)
+         VALUES ('scope-anom-1', ?, 'scope_metric', 'critical', 1, 0.5, 0.5, 'hypothesis', 'open', datetime('now', '-1 days'))`,
+      ).bind(SCOPE_TENANT).run();
+    });
+
+    function scopedTask(companyId: string | undefined): TaskDefinition {
+      return {
+        id: `scope-${crypto.randomUUID()}`,
+        clusterId: 'scope-cluster',
+        tenantId: SCOPE_TENANT,
+        catalystName: 'Retail POS Catalyst',
+        action: 'basket_analysis',
+        inputData: {},
+        riskLevel: 'low',
+        autonomyTier: 'read-only',
+        trustScore: 50,
+        companyId,
+      };
+    }
+
+    it('consolidated (no companyId) aggregates across both companies', async () => {
+      const out = await dispatchAction(scopedTask(undefined), env.DB);
+      expect(out.type).toBe('retail_basket_analysis');
+      // 5 invoices across both companies, total revenue 1000+2000+3000+5000+7000 = 18000
+      expect(out.invoiceCount).toBe(5);
+      expect(out.totalRevenue).toBe(18000);
+      expect(out.scopedToCompany).toBe('all');
+    });
+
+    it('scoped to company A only includes rows from A', async () => {
+      const out = await dispatchAction(scopedTask(COMPANY_A), env.DB);
+      expect(out.type).toBe('retail_basket_analysis');
+      expect(out.invoiceCount).toBe(3);
+      expect(out.totalRevenue).toBe(6000);
+      expect(out.scopedToCompany).toBe(COMPANY_A);
+    });
+
+    it('scoped to company B only includes rows from B', async () => {
+      const out = await dispatchAction(scopedTask(COMPANY_B), env.DB);
+      expect(out.type).toBe('retail_basket_analysis');
+      expect(out.invoiceCount).toBe(2);
+      expect(out.totalRevenue).toBe(12000);
+      expect(out.scopedToCompany).toBe(COMPANY_B);
+    });
+
+    it('invalid company_id returns empty result without crashing', async () => {
+      const out = await dispatchAction(scopedTask('does-not-exist'), env.DB);
+      expect(out.type).toBe('retail_basket_analysis');
+      expect(out.invoiceCount).toBe(0);
+      expect(out.totalRevenue).toBe(0);
+      expect(out.scopedToCompany).toBe('does-not-exist');
+    });
+
+    it("output includes scopedToCompany: 'all' when companyId is undefined", async () => {
+      const out = await dispatchAction(scopedTask(undefined), env.DB);
+      expect(out.scopedToCompany).toBe('all');
+    });
+
+    it('output includes scopedToCompany: <id> when companyId is set', async () => {
+      const out = await dispatchAction(scopedTask(COMPANY_A), env.DB);
+      expect(out.scopedToCompany).toBe(COMPANY_A);
+    });
+
+    it('non-company tables ignore the filter (operations_red_metrics)', async () => {
+      // process_metrics/anomalies/risk_alerts are tenant-scoped only. Passing
+      // a company_id must NOT filter them — we should still see the red
+      // metric regardless of scope.
+      const taskAll = {
+        id: `scope-red-all-${crypto.randomUUID()}`,
+        clusterId: 'scope-cluster',
+        tenantId: SCOPE_TENANT,
+        catalystName: 'Ops Red Metrics',
+        action: 'operations_red_metric_scan',
+        inputData: {},
+        riskLevel: 'low' as const,
+        autonomyTier: 'read-only',
+        trustScore: 50,
+      };
+      const outAll = await dispatchAction(taskAll, env.DB);
+      expect(outAll.type).toBe('operations_red_metrics');
+      expect(outAll.red).toBeGreaterThanOrEqual(1);
+
+      const outScoped = await dispatchAction({ ...taskAll, companyId: COMPANY_A }, env.DB);
+      expect(outScoped.type).toBe('operations_red_metrics');
+      expect(outScoped.red).toBe(outAll.red); // identical — filter did NOT apply
+      expect(outScoped.scopedToCompany).toBe(COMPANY_A); // label still reflects request
+    });
+
+    it('DAG triggerDownstream propagates upstream companyId to downstream payload', async () => {
+      const { triggerDownstream } = await import('../services/catalyst-dag');
+
+      const upstreamCluster = `scope-up-${crypto.randomUUID()}`;
+      const upstreamSub = 'Upstream Sub';
+      const downstreamCluster = `scope-down-${crypto.randomUUID()}`;
+      const downstreamSub = 'Downstream Sub';
+
+      // Seed clusters first (source_cluster_id and target_cluster_id are FKs).
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO catalyst_clusters (id, tenant_id, name, domain, status)
+         VALUES (?, ?, 'Upstream Cluster', 'test', 'active')`,
+      ).bind(upstreamCluster, SCOPE_TENANT).run();
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO catalyst_clusters (id, tenant_id, name, domain, status)
+         VALUES (?, ?, 'Downstream Cluster', 'test', 'active')`,
+      ).bind(downstreamCluster, SCOPE_TENANT).run();
+
+      // Seed a dependency edge upstream -> downstream. The table still has
+      // NOT NULL source_* columns (v1 schema) so we populate both sides.
+      // triggerDownstream reads the v2 upstream_*/downstream_* columns when
+      // present, falls back to source_*/target_*.
+      await env.DB.prepare(
+        `INSERT INTO catalyst_dependencies
+           (id, tenant_id,
+            source_cluster_id, source_sub_catalyst,
+            target_cluster_id, target_sub_catalyst,
+            upstream_cluster_id, upstream_sub_name,
+            downstream_cluster_id, downstream_sub_name,
+            dependency_type, strength)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'data_flow', 1.0)`,
+      ).bind(
+        `dep-${crypto.randomUUID()}`,
+        SCOPE_TENANT,
+        upstreamCluster, upstreamSub,
+        downstreamCluster, downstreamSub,
+        upstreamCluster, upstreamSub,
+        downstreamCluster, downstreamSub,
+      ).run();
+
+      // Fake queue that captures the sent message.
+      const sent: unknown[] = [];
+      const fakeQueue = {
+        send: async (msg: unknown) => { sent.push(msg); },
+      } as unknown as Queue<import('../services/scheduled').CatalystQueueMessage>;
+
+      const result = await triggerDownstream({
+        tenantId: SCOPE_TENANT,
+        upstreamClusterId: upstreamCluster,
+        upstreamSubCatalystName: upstreamSub,
+        chainDepth: 0,
+        parentContext: { source: 'test' },
+        companyId: COMPANY_A,
+      }, env.DB, fakeQueue);
+
+      expect(result.enqueued).toBe(1);
+      expect(sent).toHaveLength(1);
+      const msg = sent[0] as { payload: { companyId?: string; clusterId: string } };
+      expect(msg.payload.companyId).toBe(COMPANY_A);
+      expect(msg.payload.clusterId).toBe(downstreamCluster);
+    });
+  });
 });

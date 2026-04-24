@@ -1225,6 +1225,8 @@ export async function handleQueueMessage(
           const payload = msg.payload as {
             clusterId: string; catalystName: string; action: string;
             inputData: Record<string, unknown>; riskLevel: string; autonomyTier: string; trustScore: number;
+            /** Optional per-company scope propagated from upstream / HTTP caller. */
+            companyId?: string;
           };
           await executeTask({
             clusterId: payload.clusterId,
@@ -1235,6 +1237,7 @@ export async function handleQueueMessage(
             riskLevel: (payload.riskLevel || 'medium') as 'high' | 'medium' | 'low',
             autonomyTier: payload.autonomyTier || 'read-only',
             trustScore: payload.trustScore || 50,
+            companyId: payload.companyId,
           }, env.DB, env.CACHE, env.AI, env.OLLAMA_API_KEY, env.CATALYST_QUEUE);
           break;
         }

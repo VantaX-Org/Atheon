@@ -13,12 +13,14 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
-import { taskText, anyWord as anyOf } from './catalyst-match-utils';
+import { taskText, anyWord as anyOf, companyFilter, scopeLabel } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
 
 // ── MINING ──────────────────────────────────────────────────────────────
 
 async function runMiningSafetyIncidentTrend(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // anomalies + risk_alerts are tenant-scoped only (no company_id column) —
+  // results are the same regardless of task.companyId.
   const anomalies = await db.prepare(
     `SELECT severity, COUNT(*) as count, AVG(deviation) as avg_deviation
      FROM anomalies
@@ -50,11 +52,13 @@ async function runMiningSafetyIncidentTrend(task: TaskDefinition, db: D1Database
     recommendation: critical > 0
       ? `${critical} high-severity incidents in last 30 days — trigger safety review and increase inspection frequency`
       : 'No high-severity incidents detected — maintain current safety posture',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runMiningPPECompliance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, measured_at
      FROM process_metrics
@@ -77,6 +81,7 @@ async function runMiningPPECompliance(task: TaskDefinition, db: D1Database): Pro
       : warning.length > 0
         ? `${warning.length} metric(s) trending towards breach — proactive coaching recommended`
         : 'All PPE/compliance metrics within tolerance',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -84,15 +89,16 @@ async function runMiningPPECompliance(task: TaskDefinition, db: D1Database): Pro
 async function runMiningFatigueRisk(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
   // Proxy for fatigue in the absence of shift/hours tables: tenure concentration by department.
   // Long-tenured, small-headcount departments are a known fatigue proxy in operational workforces.
+  const { clause, params } = companyFilter(task.companyId);
   const byDept = await db.prepare(
     `SELECT department, COUNT(*) as headcount,
             AVG(JULIANDAY('now') - JULIANDAY(hire_date)) as avg_tenure_days,
             SUM(CASE WHEN termination_date IS NOT NULL THEN 1 ELSE 0 END) as departed_count
      FROM erp_employees
-     WHERE tenant_id = ? AND status = 'active' AND department IS NOT NULL
+     WHERE tenant_id = ? AND status = 'active' AND department IS NOT NULL${clause}
      GROUP BY department
      ORDER BY avg_tenure_days DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const atRisk = byDept.results.filter(r => {
     const row = r as { headcount: number; avg_tenure_days: number | null };
@@ -109,19 +115,21 @@ async function runMiningFatigueRisk(task: TaskDefinition, db: D1Database): Promi
       ? `${atRisk.length} department(s) show fatigue-risk indicators (small team + long avg tenure). Schedule rotation review.`
       : 'Workforce rotation patterns within healthy bounds',
     note: 'Fatigue-risk calculation uses tenure/headcount as a proxy. Hook up shift-hours data for higher accuracy.',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runMiningSparePartsForecast(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const critical = await db.prepare(
     `SELECT sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price
      FROM erp_products
      WHERE tenant_id = ? AND is_active = 1
        AND (LOWER(category) LIKE '%spare%' OR LOWER(category) LIKE '%part%' OR LOWER(category) LIKE '%consumable%' OR LOWER(category) LIKE '%bearing%' OR LOWER(category) LIKE '%belt%' OR LOWER(category) LIKE '%liner%')
-       AND stock_on_hand <= reorder_level
+       AND stock_on_hand <= reorder_level${clause}
      ORDER BY (stock_on_hand / NULLIF(reorder_level, 0)) ASC LIMIT 30`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const estCost = critical.results.reduce((s, r) => {
     const row = r as { reorder_quantity: number; cost_price: number };
@@ -136,11 +144,13 @@ async function runMiningSparePartsForecast(task: TaskDefinition, db: D1Database)
     recommendation: critical.results.length > 0
       ? `${critical.results.length} spare part(s) at/below reorder level — raise POs (est. R${Math.round(estCost).toLocaleString()}) to prevent equipment downtime`
       : 'Spare parts stock healthy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runMiningEnvironmentalCompliance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics + risk_alerts are tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT name, value, unit, status, threshold_red, measured_at
      FROM process_metrics
@@ -170,6 +180,7 @@ async function runMiningEnvironmentalCompliance(task: TaskDefinition, db: D1Data
     recommendation: breaches.length > 0
       ? `${breaches.length} environmental metric(s) in red — notify environmental officer and file required reports`
       : 'Environmental metrics within compliance thresholds',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -195,6 +206,7 @@ const miningHandler: CatalystHandler = {
 // ── MANUFACTURING ──────────────────────────────────────────────────────
 
 async function runManufacturingThroughput(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT name, value, unit, status, threshold_green, threshold_amber, threshold_red, measured_at
      FROM process_metrics
@@ -215,6 +227,7 @@ async function runManufacturingThroughput(task: TaskDefinition, db: D1Database):
     recommendation: red.length > 0
       ? `${red.length} production metric(s) below target — trigger bottleneck analysis and line-supervisor review`
       : 'Production metrics on target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -240,6 +253,7 @@ async function runManufacturingQualityDefects(task: TaskDefinition, db: D1Databa
     recommendation: anomalies.results.length > 3
       ? `${anomalies.results.length} open quality anomalies — initiate root-cause analysis for top ${Math.min(3, anomalies.results.length)}`
       : 'Quality anomaly count within acceptable range',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -272,6 +286,7 @@ async function runManufacturingMaintenanceDue(task: TaskDefinition, db: D1Databa
       : warning.results.length > 0
         ? `${warning.results.length} equipment metric(s) trending — schedule preventive maintenance`
         : 'No equipment maintenance actions required',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -299,25 +314,27 @@ async function runManufacturingEnergyEfficiency(task: TaskDefinition, db: D1Data
       : warning.length > 0
         ? `${warning.length} energy metric(s) trending — investigate before next billing cycle`
         : 'Energy consumption within target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runManufacturingCostVariance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
   // Compare PO cost trends by supplier over last 90 days vs prior 90 days.
+  const { clause, params } = companyFilter(task.companyId);
   const recent = await db.prepare(
     `SELECT supplier_name, AVG(total) as avg_po, COUNT(*) as po_count
      FROM erp_purchase_orders
-     WHERE tenant_id = ? AND order_date >= date('now', '-90 days') AND status != 'cancelled'
+     WHERE tenant_id = ? AND order_date >= date('now', '-90 days') AND status != 'cancelled'${clause}
      GROUP BY supplier_name`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const baseline = await db.prepare(
     `SELECT supplier_name, AVG(total) as avg_po
      FROM erp_purchase_orders
-     WHERE tenant_id = ? AND order_date >= date('now', '-180 days') AND order_date < date('now', '-90 days') AND status != 'cancelled'
+     WHERE tenant_id = ? AND order_date >= date('now', '-180 days') AND order_date < date('now', '-90 days') AND status != 'cancelled'${clause}
      GROUP BY supplier_name`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const baselineMap = new Map<string, number>();
   for (const b of baseline.results) {
@@ -349,6 +366,7 @@ async function runManufacturingCostVariance(task: TaskDefinition, db: D1Database
     recommendation: inflating.length > 0
       ? `${inflating.length} supplier(s) with >10% cost inflation — initiate sourcing review`
       : 'Supplier cost profile stable',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -375,6 +393,7 @@ const manufacturingHandler: CatalystHandler = {
 // ── LOGISTICS ───────────────────────────────────────────────────────────
 
 async function runLogisticsFleetUtilization(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT name, value, unit, status, threshold_red, measured_at
      FROM process_metrics
@@ -392,24 +411,26 @@ async function runLogisticsFleetUtilization(task: TaskDefinition, db: D1Database
     recommendation: underused.length > 0
       ? `${underused.length} fleet metric(s) in red — review route planning and consider fleet rebalancing`
       : 'Fleet utilization healthy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runLogisticsDeliveryCompliance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const delayed = await db.prepare(
     `SELECT po_number, supplier_name, order_date, delivery_date, delivery_status, total
      FROM erp_purchase_orders
      WHERE tenant_id = ?
-       AND (delivery_status = 'delayed' OR (delivery_date IS NOT NULL AND delivery_date < date('now') AND delivery_status != 'delivered'))
+       AND (delivery_status = 'delayed' OR (delivery_date IS NOT NULL AND delivery_date < date('now') AND delivery_status != 'delivered'))${clause}
      ORDER BY delivery_date ASC LIMIT 20`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const summary = await db.prepare(
     `SELECT delivery_status, COUNT(*) as count, SUM(total) as total_value
      FROM erp_purchase_orders
-     WHERE tenant_id = ? GROUP BY delivery_status`,
-  ).bind(task.tenantId).all();
+     WHERE tenant_id = ?${clause} GROUP BY delivery_status`,
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'logistics_delivery_compliance',
@@ -419,24 +440,26 @@ async function runLogisticsDeliveryCompliance(task: TaskDefinition, db: D1Databa
     recommendation: delayed.results.length > 0
       ? `${delayed.results.length} PO(s) overdue or delayed — escalate with supplier account managers`
       : 'All deliveries on track',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runLogisticsWarehouseStock(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const lowStock = await db.prepare(
     `SELECT sku, name, warehouse, stock_on_hand, reorder_level, reorder_quantity, cost_price
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= reorder_level
+     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= reorder_level${clause}
      ORDER BY stock_on_hand ASC LIMIT 25`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const byWarehouse = await db.prepare(
     `SELECT warehouse, COUNT(*) as sku_count, SUM(stock_on_hand * cost_price) as inventory_value
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1
+     WHERE tenant_id = ? AND is_active = 1${clause}
      GROUP BY warehouse`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const reorderValue = lowStock.results.reduce((s, r) => {
     const row = r as { reorder_quantity: number; cost_price: number };
@@ -452,11 +475,13 @@ async function runLogisticsWarehouseStock(task: TaskDefinition, db: D1Database):
     recommendation: lowStock.results.length > 0
       ? `${lowStock.results.length} SKU(s) at/below reorder level — raise POs (est. R${Math.round(reorderValue).toLocaleString()})`
       : 'All warehouse stock above reorder levels',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runLogisticsCarrierPerformance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const carriers = await db.prepare(
     `SELECT supplier_name,
             COUNT(*) as po_count,
@@ -465,10 +490,10 @@ async function runLogisticsCarrierPerformance(task: TaskDefinition, db: D1Databa
             SUM(CASE WHEN delivery_status = 'pending' AND delivery_date < date('now') THEN 1 ELSE 0 END) as overdue,
             AVG(total) as avg_value
      FROM erp_purchase_orders
-     WHERE tenant_id = ? AND order_date >= date('now', '-90 days')
+     WHERE tenant_id = ? AND order_date >= date('now', '-90 days')${clause}
      GROUP BY supplier_name
      ORDER BY po_count DESC LIMIT 20`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const ranked = carriers.results.map(c => {
     const row = c as { supplier_name: string; po_count: number; delivered: number; delayed: number; overdue: number; avg_value: number };
@@ -494,11 +519,13 @@ async function runLogisticsCarrierPerformance(task: TaskDefinition, db: D1Databa
     recommendation: underperforming.length > 0
       ? `${underperforming.length} carrier(s) below 80% reliability with meaningful volume — review service-level agreements`
       : ranked.length === 0 ? 'No carrier activity in last 90 days' : 'All carriers performing above threshold',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runLogisticsRouteEfficiency(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT name, value, unit, status, measured_at
      FROM process_metrics
@@ -519,6 +546,7 @@ async function runLogisticsRouteEfficiency(task: TaskDefinition, db: D1Database)
       : metrics.results.length === 0
         ? 'No route metrics ingested — connect telematics or dispatch data to enable'
         : 'Route efficiency within target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
