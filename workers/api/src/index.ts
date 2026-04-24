@@ -47,6 +47,7 @@ import baselineRoutes from './routes/baseline';
 import targetRoutes from './routes/targets';
 import executiveSummary from './routes/executive-summary';
 import adminTooling from './routes/admin-tooling';
+import webhooksRoutes from './routes/webhooks';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -299,7 +300,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -344,6 +345,7 @@ const routeModules: [string, typeof auth][] = [
   ['onboarding', onboarding], ['freshness', freshness],
   ['atheon-score', atheonScore], ['baseline', baselineRoutes],
   ['targets', targetRoutes], ['executive-summary', executiveSummary],
+  ['webhooks', webhooksRoutes],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
