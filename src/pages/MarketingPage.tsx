@@ -608,6 +608,59 @@ const marketingCSS = `
   font-size: 1.1rem; font-weight: 300; line-height: 1.8; color: var(--chalk);
   max-width: 480px; margin: 0 auto 3.5rem;
 }
+.mk5-cta-actions {
+  display: flex; gap: 2rem; justify-content: center; align-items: center;
+  margin-bottom: 4rem; flex-wrap: wrap;
+}
+
+/* CONTACT FORM */
+.mk5-contact {
+  display: flex; flex-direction: column; gap: 1.25rem;
+  max-width: 560px; margin: 0 auto; text-align: left;
+  padding: 2.5rem; background: var(--abyss); border: 1px solid var(--line);
+}
+.mk5-contact-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;
+}
+.mk5-contact-field { display: flex; flex-direction: column; gap: .5rem; }
+.mk5-contact-field > span {
+  font-family: 'IBM Plex Mono', monospace; font-size: .55rem;
+  letter-spacing: .3em; text-transform: uppercase; color: var(--sage);
+}
+.mk5-contact-field input,
+.mk5-contact-field textarea {
+  background: var(--void); border: 1px solid var(--line-b);
+  color: var(--cream); font-family: 'Outfit', sans-serif; font-size: .9rem;
+  padding: .75rem 1rem; outline: none; transition: border-color .2s;
+  font-weight: 300; resize: vertical;
+}
+.mk5-contact-field input:focus,
+.mk5-contact-field textarea:focus { border-color: var(--sage); }
+.mk5-contact-field textarea { min-height: 100px; }
+.mk5-contact-error {
+  font-size: .8rem; color: var(--bronze); padding: .5rem .75rem;
+  border-left: 2px solid var(--bronze); background: rgba(201,160,89,.05);
+}
+.mk5-contact button[type="submit"] {
+  align-self: flex-start; margin-top: .5rem;
+}
+.mk5-contact button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; }
+.mk5-contact-success {
+  max-width: 560px; margin: 0 auto; padding: 3rem 2rem; text-align: center;
+  background: var(--abyss); border: 1px solid var(--sage);
+}
+.mk5-contact-success-title {
+  font-family: 'Instrument Serif', serif; font-size: 1.8rem; color: var(--sage-b);
+  margin-bottom: .75rem;
+}
+.mk5-contact-success p {
+  font-size: .95rem; color: var(--chalk); line-height: 1.7;
+}
+@media(max-width: 640px) {
+  .mk5-contact { padding: 1.75rem; }
+  .mk5-contact-row { grid-template-columns: 1fr; }
+  .mk5-cta-actions { gap: 1.25rem; }
+}
 
 /* FOOTER */
 .mk5-footer {
@@ -901,6 +954,86 @@ function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
   }, [ref]);
 }
 
+/* ---- Contact Form (wired to POST /api/contact) ---- */
+
+function ContactForm() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim() || !message.trim()) {
+      setStatus("error");
+      setErrorMsg("Name, email and message are required.");
+      return;
+    }
+    setStatus("sending");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, company, message }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Could not send message.");
+      }
+      setStatus("success");
+      setName(""); setEmail(""); setCompany(""); setMessage("");
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg(err instanceof Error ? err.message : "Could not send message.");
+    }
+  }
+
+  if (status === "success") {
+    return (
+      <div className="mk5-contact-success mk5-reveal">
+        <div className="mk5-contact-success-title">Message received.</div>
+        <p>Thank you. A member of the Atheon team will be in touch shortly.</p>
+      </div>
+    );
+  }
+
+  return (
+    <form className="mk5-contact mk5-reveal" onSubmit={onSubmit} noValidate>
+      <div className="mk5-contact-row">
+        <label className="mk5-contact-field">
+          <span>Name</span>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+            autoComplete="name" required maxLength={120} />
+        </label>
+        <label className="mk5-contact-field">
+          <span>Work email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email" required maxLength={200} />
+        </label>
+      </div>
+      <label className="mk5-contact-field">
+        <span>Company</span>
+        <input type="text" value={company} onChange={(e) => setCompany(e.target.value)}
+          autoComplete="organization" maxLength={160} />
+      </label>
+      <label className="mk5-contact-field">
+        <span>How can we help?</span>
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)}
+          required maxLength={2000} rows={4} />
+      </label>
+      {status === "error" && errorMsg && (
+        <div className="mk5-contact-error" role="alert">{errorMsg}</div>
+      )}
+      <button type="submit" className="mk5-btn-main" disabled={status === "sending"}>
+        {status === "sending" ? "Sending..." : "Send message"}
+      </button>
+    </form>
+  );
+}
+
 /* ============================================================
    MARKETING PAGE COMPONENT
    ============================================================ */
@@ -939,16 +1072,16 @@ export function MarketingPage() {
     { icon: "\u2750", name: "Webhooks", type: "Custom" },
   ];
 
-  const industrySolutions = [
-    { icon: "\u25C6", name: "Mining & Steel", desc: "Equipment health, safety compliance, ore processing, and environmental monitoring", catalysts: "9 catalysts \u00B7 45 sub-catalysts" },
-    { icon: "\u25C7", name: "Healthcare", desc: "Patient flow, clinical compliance, medical billing, pharmacy, and staffing intelligence", catalysts: "8 catalysts \u00B7 42 sub-catalysts" },
-    { icon: "\u25C6", name: "FMCG", desc: "Trade promotion, distributor management, shelf intelligence, and product launch", catalysts: "7 catalysts \u00B7 35 sub-catalysts" },
-    { icon: "\u25C6", name: "Manufacturing", desc: "Production optimization, quality control, predictive maintenance, and energy management", catalysts: "7 catalysts \u00B7 36 sub-catalysts" },
-    { icon: "\u25C7", name: "Agriculture", desc: "Crop intelligence, irrigation, quality assurance, and fresh produce market access", catalysts: "8 catalysts \u00B7 38 sub-catalysts" },
-    { icon: "\u25C6", name: "Logistics", desc: "Route optimization, fleet maintenance, driver management, and customs compliance", catalysts: "7 catalysts \u00B7 35 sub-catalysts" },
-    { icon: "\u25C7", name: "Technology & SaaS", desc: "DevOps, security posture, product analytics, customer success, and revenue ops", catalysts: "8 catalysts \u00B7 40 sub-catalysts" },
-    { icon: "\u25C6", name: "Financial Services", desc: "Risk management, regulatory compliance, customer intelligence, and operations", catalysts: "5 catalysts \u00B7 28 sub-catalysts" },
-    { icon: "\u25CB", name: "General", desc: "Cross-industry baseline for finance, procurement, supply chain, HR, and sales", catalysts: "5 catalysts \u00B7 23 sub-catalysts" },
+  const coverageDomains = [
+    { icon: "\u25C6", name: "Finance & Controlling", desc: "AP, AR, reconciliation, cash flow, budget vs actual, cost allocation, and inventory valuation.", catalysts: "Finance \u00B7 Finance Ops \u00B7 Treasury \u00B7 Tax \u00B7 Audit \u00B7 GL Close" },
+    { icon: "\u25C7", name: "Supply Chain & Operations", desc: "Procurement, supplier risk, inventory optimisation, 3-way matching, and production scheduling.", catalysts: "Procurement \u00B7 Supplier \u00B7 Inventory \u00B7 Production \u00B7 Logistics" },
+    { icon: "\u25C6", name: "Commercial & Revenue", desc: "Pipeline hygiene, quote-to-cash, pricing intelligence, trade promotion, and revenue ops.", catalysts: "Sales \u00B7 Pricing \u00B7 Trade Promotion \u00B7 CDP \u00B7 Customer Success" },
+    { icon: "\u25C6", name: "People & Workforce", desc: "Recruitment funnel, engagement signals, payroll variance, and workforce planning.", catalysts: "HR \u00B7 Recruitment \u00B7 Engagement \u00B7 Payroll \u00B7 Workforce Planning" },
+    { icon: "\u25C7", name: "Governance, Risk & Compliance", desc: "Audit trails, tax compliance, regulatory reporting, policy monitoring, and DSAR handling.", catalysts: "Audit \u00B7 Tax \u00B7 Compliance \u00B7 ESG \u00B7 Risk" },
+    { icon: "\u25C6", name: "Data Quality & MDM", desc: "Master data hygiene, duplicate detection, entity resolution, and reference data governance.", catalysts: "DQ/MDM \u00B7 Reference Data \u00B7 Entity Resolution" },
+    { icon: "\u25C7", name: "Lean / Continuous Improvement", desc: "Process mining, bottleneck detection, cycle-time reduction, and waste elimination.", catalysts: "Lean/CI \u00B7 Process Mining \u00B7 Cycle Time" },
+    { icon: "\u25C6", name: "Sustainability & ESG", desc: "Scope 1/2/3 tracking, energy and water intensity, and sustainability disclosures.", catalysts: "ESG \u00B7 Energy \u00B7 Emissions \u00B7 Disclosures" },
+    { icon: "\u25CB", name: "IT, Platform & Security", desc: "Connectivity health, integration monitoring, and security posture across the estate.", catalysts: "Integration Health \u00B7 Security Posture \u00B7 Platform Health" },
   ];
 
   return (
@@ -964,8 +1097,9 @@ export function MarketingPage() {
         </a>
         <div className="mk5-nav-links">
           <a href="#layers">Architecture</a>
-          <a href="#industries">Industries</a>
+          <a href="#coverage">Coverage</a>
           <a href="#features">Features</a>
+          <a href="#security">Security</a>
           <a href="#compare">Compare</a>
           <a href="#ethos">Ethos</a>
           <a href="/login" className="mk5-nav-cta" style={{ marginRight: '0.5rem' }}>
@@ -983,8 +1117,9 @@ export function MarketingPage() {
       {/* MOBILE MENU */}
       <div className={`mk5-mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
         <a href="#layers" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
-        <a href="#industries" onClick={() => setMobileMenuOpen(false)}>Industries</a>
+        <a href="#coverage" onClick={() => setMobileMenuOpen(false)}>Coverage</a>
         <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+        <a href="#security" onClick={() => setMobileMenuOpen(false)}>Security</a>
         <a href="#compare" onClick={() => setMobileMenuOpen(false)}>Compare</a>
         <a href="#ethos" onClick={() => setMobileMenuOpen(false)}>Ethos</a>
         <a href="/login" className="mk5-nav-cta" onClick={() => setMobileMenuOpen(false)}>
@@ -1146,16 +1281,17 @@ export function MarketingPage() {
         <div className="mk5-layer-block">
           <div className="mk5-layer-num">03</div>
           <div>
-            <h3 className="mk5-layer-name">Autonomous Agents</h3>
+            <h3 className="mk5-layer-name">Autonomous Catalysts</h3>
             <div className="mk5-layer-role sage">The Foundation&nbsp;&mdash; Operations &amp; Execution</div>
             <p className="mk5-layer-desc">
-              Atheon includes pre-built and custom agents for finance, HR, sales, supply chain, and
-              IT&nbsp;&mdash; but inside a Catalyst, agents aren&rsquo;t standalone. Every action is governed,
-              every decision auditable, every escalation routed through the intelligence layers above.
-              Same concept, fundamentally evolved.
+              75 catalyst clusters and 445 sub-catalysts spanning finance, HR, sales, supply chain,
+              operations, tax, audit, treasury, ESG, data quality and more. Over 50 ship with real,
+              ERP-connected handlers&nbsp;&mdash; the rest are generic templates you can configure. Every
+              action is governed, every decision auditable, every escalation routed through the
+              intelligence layers above.
             </p>
             <div className="mk5-layer-tags">
-              {["12 Pre-Built Agents", "Custom Agent Builder", "Governance Framework", "Full Audit Trail", "ERP Integration"].map((t) => (
+              {["445 Sub-Catalysts", "50+ Real Handlers", "Tag-Based Matching", "Governance Framework", "Full Audit Trail", "ERP-Native"].map((t) => (
                 <span key={t} className="mk5-layer-tag">{t}</span>
               ))}
             </div>
@@ -1177,20 +1313,20 @@ export function MarketingPage() {
       {/* STATS */}
       <div className="mk5-stats">
         <div className="mk5-stat-item mk5-reveal">
-          <div className="mk5-stat-num"><span className="accent">3</span></div>
-          <div className="mk5-stat-label">Intelligence Layers</div>
+          <div className="mk5-stat-num">75<span className="accent">+</span></div>
+          <div className="mk5-stat-label">Catalyst Clusters</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd1">
-          <div className="mk5-stat-num">12<span className="accent">+</span></div>
-          <div className="mk5-stat-label">Pre-Built Agents</div>
+          <div className="mk5-stat-num">445<span className="accent">+</span></div>
+          <div className="mk5-stat-label">Sub-Catalysts</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd2">
-          <div className="mk5-stat-num"><span className="accent">12</span></div>
-          <div className="mk5-stat-label">ERP Connectors</div>
+          <div className="mk5-stat-num">50<span className="accent">+</span></div>
+          <div className="mk5-stat-label">Real Handlers Shipping</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd3">
-          <div className="mk5-stat-num"><span className="accent">1</span></div>
-          <div className="mk5-stat-label">Unified Platform</div>
+          <div className="mk5-stat-num"><span className="accent">3</span></div>
+          <div className="mk5-stat-label">Intelligence Layers</div>
         </div>
       </div>
 
@@ -1210,7 +1346,7 @@ export function MarketingPage() {
           <div className="mk5-ch">Standalone</div>
           <div className="mk5-ch ath">Atheon</div>
 
-          <div className="mk5-cc rl">Agent Execution</div>
+          <div className="mk5-cc rl">Catalyst Execution</div>
           <div className="mk5-cc cy">&#10003;</div>
           <div className="mk5-cc cy">&#10003;</div>
           <div className="mk5-cc cy">&#10003;</div>
@@ -1244,7 +1380,7 @@ export function MarketingPage() {
           <div className="mk5-cc cp">M365</div>
           <div className="mk5-cc cp">SFDC</div>
           <div className="mk5-cc cp">Custom</div>
-          <div className="mk5-cc ca">12 ERPs</div>
+          <div className="mk5-cc ca">SAP · Oracle · MS · NetSuite · Odoo · Xero · Workday +</div>
 
           <div className="mk5-cc rl">Organisation Health Score</div>
           <div className="mk5-cc cn">&mdash;</div>
@@ -1257,6 +1393,24 @@ export function MarketingPage() {
           <div className="mk5-cc cp">Generic</div>
           <div className="mk5-cc cp">Varies</div>
           <div className="mk5-cc ca">Tuned</div>
+
+          <div className="mk5-cc rl">Multicompany (Group Entities)</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc cp">Partial</div>
+          <div className="mk5-cc ca">&#10003;</div>
+
+          <div className="mk5-cc rl">Enforced MFA + Signed Webhooks</div>
+          <div className="mk5-cc cp">Partial</div>
+          <div className="mk5-cc cp">Partial</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc ca">&#10003;</div>
+
+          <div className="mk5-cc rl">Per-Tenant LLM Budget + PII Redaction</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc cn">&mdash;</div>
+          <div className="mk5-cc ca">&#10003;</div>
         </div>
       </section>
 
@@ -1276,42 +1430,43 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* INDUSTRY SOLUTIONS */}
-      <section className="mk5-ind" id="industries">
+      {/* COVERAGE (formerly INDUSTRIES) */}
+      <section className="mk5-ind" id="coverage">
         <div className="mk5-ind-header">
-          <h2 className="mk5-reveal">Purpose-built for<br />your industry.</h2>
+          <h2 className="mk5-reveal">Tag-matched across<br />every domain.</h2>
           <p className="mk5-reveal">
-            Every industry has unique operational DNA. Atheon ships with pre-configured
-            catalyst clusters, sub-catalysts, and domain models for each vertical&nbsp;&mdash;
-            so you deploy intelligence, not configuration.
+            Atheon&rsquo;s 75 catalyst clusters and 445 sub-catalysts aren&rsquo;t siloed by vertical&nbsp;&mdash;
+            they&rsquo;re matched to your tenant by function, maturity, and criticality tags. Turn on
+            Finance and Procurement for a mining operation; Sales, Inventory, and Trade Promotion
+            for FMCG. One catalog, one engine, your composition.
           </p>
         </div>
 
-        {/* FEATURED: RETAIL */}
+        {/* FEATURED: REAL HANDLERS */}
         <div className="mk5-ind-featured mk5-reveal">
           <div className="mk5-ind-featured-main">
-            <div className="mk5-ind-featured-badge">New &mdash; Retail Industry Solution</div>
-            <div className="mk5-ind-featured-title">Retail Intelligence,<br />End to End.</div>
+            <div className="mk5-ind-featured-badge">50+ Real Handlers Shipping</div>
+            <div className="mk5-ind-featured-title">Real code, not just<br />prompt templates.</div>
             <p className="mk5-ind-featured-desc">
-              From POS transaction analytics and basket analysis to inventory replenishment,
-              dynamic pricing, loyalty intelligence, and e-commerce conversion optimisation.
-              Nine catalyst clusters purpose-built for modern retail operations&nbsp;&mdash;
-              from single-store to multi-format enterprise.
+              Catalysts aren&rsquo;t scripted LLM prompts. Over fifty sub-catalysts ship with hand-written
+              handlers that pull data from your ERP, run domain logic, and persist governed output.
+              The rest are generic templates you can configure or replace. Every handler is typed,
+              tested, and auditable.
             </p>
             <div className="mk5-ind-featured-caps">
-              {["POS Intelligence", "Inventory & Merchandise", "Customer Experience", "Dynamic Pricing", "Store Operations", "E-Commerce", "Supply Chain", "Workforce", "Finance"].map((c) => (
+              {["Cash Flow Forecast", "Budget vs Actual", "Standard Cost Variance", "3-Way Matching", "Supplier Risk", "Inventory Optimisation", "Pipeline Hygiene", "AR Aging", "Payroll Variance"].map((c) => (
                 <span key={c} className="mk5-ind-featured-cap">{c}</span>
               ))}
             </div>
           </div>
           <div className="mk5-ind-featured-stats">
             <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num">9</div>
-              <div className="mk5-ind-stat-label">Catalyst clusters covering<br />every retail domain</div>
+              <div className="mk5-ind-stat-num">75</div>
+              <div className="mk5-ind-stat-label">Catalyst clusters in the<br />shared catalog</div>
             </div>
             <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num">45</div>
-              <div className="mk5-ind-stat-label">Pre-built sub-catalysts<br />ready to deploy</div>
+              <div className="mk5-ind-stat-num">445</div>
+              <div className="mk5-ind-stat-label">Sub-catalysts, each with<br />its own schedule and tier</div>
             </div>
             <div className="mk5-ind-stat-row">
               <div className="mk5-ind-stat-num">3</div>
@@ -1320,14 +1475,14 @@ export function MarketingPage() {
           </div>
         </div>
 
-        {/* OTHER INDUSTRIES */}
+        {/* DOMAIN COVERAGE */}
         <div className="mk5-ind-grid mk5-reveal">
-          {industrySolutions.map((ind) => (
-            <div key={ind.name} className="mk5-ind-card">
-              <div className="mk5-ind-card-icon">{ind.icon}</div>
-              <div className="mk5-ind-card-name">{ind.name}</div>
-              <p className="mk5-ind-card-desc">{ind.desc}</p>
-              <div className="mk5-ind-card-cats">{ind.catalysts}</div>
+          {coverageDomains.map((d) => (
+            <div key={d.name} className="mk5-ind-card">
+              <div className="mk5-ind-card-icon">{d.icon}</div>
+              <div className="mk5-ind-card-name">{d.name}</div>
+              <p className="mk5-ind-card-desc">{d.desc}</p>
+              <div className="mk5-ind-card-cats">{d.catalysts}</div>
             </div>
           ))}
         </div>
@@ -1345,11 +1500,12 @@ export function MarketingPage() {
         <div className="mk5-feat-grid">
           <div className="mk5-feat-item mk5-reveal">
             <div className="mk5-feat-item-label">ERP Integration</div>
-            <div className="mk5-feat-item-title">12 native ERP connectors</div>
+            <div className="mk5-feat-item-title">Native connectors for every major ERP, CRM and HCM</div>
             <p className="mk5-feat-item-desc">
-              Pre-built adapters for every major ERP system, updated to the latest API versions.
-              OAuth 2.0, JWT Bearer, and token-based authentication. Bi-directional sync with
-              configurable frequency.
+              Pre-built adapters across SAP, Oracle, Microsoft, Salesforce, NetSuite, Workday,
+              Odoo, Xero, QuickBooks, Sage and SYSPRO. OAuth 2.0, JWT Bearer, and token-based
+              authentication. Bi-directional sync with configurable frequency. ERP credentials
+              are stored AES-encrypted, per-tenant.
             </p>
             <ul className="mk5-feat-item-bullets">
               <li>SAP S/4HANA (OData V4, 2025 FPS01)</li>
@@ -1363,17 +1519,18 @@ export function MarketingPage() {
           </div>
           <div className="mk5-feat-item mk5-reveal">
             <div className="mk5-feat-item-label">Catalyst Engine</div>
-            <div className="mk5-feat-item-title">Industry-trained catalyst clusters</div>
+            <div className="mk5-feat-item-title">75 clusters, 445 sub-catalysts, 50+ real handlers</div>
             <p className="mk5-feat-item-desc">
-              Pre-configured catalyst templates for 10 industry verticals. Each cluster ships with
-              domain-specific sub-catalysts, scheduling options, and autonomy tier controls.
-              Deploy in minutes, not months.
+              A shared catalog of 75 catalyst clusters and 445 sub-catalysts, tag-matched to each
+              tenant by function and maturity. Over 50 sub-catalysts ship with real, ERP-connected
+              handlers&nbsp;&mdash; the rest are configurable generic templates. Deploy in minutes,
+              not months.
             </p>
             <ul className="mk5-feat-item-bullets">
-              <li>10 industry verticals with purpose-built templates</li>
-              <li>70+ catalyst clusters across all industries</li>
-              <li>350+ sub-catalysts with enable/disable control</li>
-              <li>Configurable schedules: manual, daily, weekly, monthly</li>
+              <li>75 clusters across Finance, Ops, Commercial, People, GRC, DQ, ESG and more</li>
+              <li>445 sub-catalysts with independent enable/disable and scheduling</li>
+              <li>50+ sub-catalysts with real, typed, tested handlers (not prompts)</li>
+              <li>Tag-based matching: function, vertical, maturity, criticality</li>
               <li>Three autonomy tiers: read-only, assisted, transactional</li>
             </ul>
           </div>
@@ -1395,18 +1552,20 @@ export function MarketingPage() {
           </div>
           <div className="mk5-feat-item mk5-reveal">
             <div className="mk5-feat-item-label">Governance & Trust</div>
-            <div className="mk5-feat-item-title">Full audit trail and RBAC</div>
+            <div className="mk5-feat-item-title">Enforced MFA, signed webhooks, encrypted exports</div>
             <p className="mk5-feat-item-desc">
-              Every agent action is logged. Every escalation is routed through governance layers.
-              Role-based access control, SSO integration, and tenant isolation ensure enterprise
-              security at every level.
+              Every catalyst action is logged. MFA is enforced for privileged roles. Outbound
+              webhooks are HMAC-SHA256 signed. DSAR exports are AES-encrypted. LLM calls run
+              under per-tenant budgets with automatic PII redaction before any prompt leaves
+              the platform.
             </p>
             <ul className="mk5-feat-item-bullets">
               <li>Immutable audit log for every action and decision</li>
-              <li>RBAC with 8 role levels from viewer to superadmin</li>
-              <li>Azure AD SSO and SAML 2.0 integration</li>
-              <li>Multi-tenant isolation with per-tenant encryption</li>
-              <li>SaaS, on-premise, and hybrid deployment models</li>
+              <li>RBAC with 8 role levels and short-TTL JWTs</li>
+              <li>Enforced MFA (TOTP) for admin and superadmin roles</li>
+              <li>HMAC-signed webhook delivery with per-subscription secrets</li>
+              <li>AES-encrypted DSAR exports and ERP credentials at rest</li>
+              <li>Multi-tenant isolation across every layer of the stack</li>
             </ul>
           </div>
           <div className="mk5-feat-item mk5-reveal">
@@ -1439,6 +1598,98 @@ export function MarketingPage() {
               <li>Citation tracking with source attribution</li>
               <li>Contextual memory across chat sessions</li>
               <li>RAG pipeline with enterprise data grounding</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Multicompany</div>
+            <div className="mk5-feat-item-title">Group companies, one Catalyst</div>
+            <p className="mk5-feat-item-desc">
+              Run Atheon across a portfolio of legal entities from a single tenant. Connect
+              multiple ERP instances, consolidate health scores, and correlate signals across
+              subsidiaries&nbsp;&mdash; while each company keeps its own data boundary, schedules,
+              and autonomy tiers.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Multiple ERP connections per tenant, one per legal entity</li>
+              <li>Per-company integration health and sync status</li>
+              <li>Cross-company correlation at the Executive layer</li>
+              <li>Independent autonomy tiers and schedules per company</li>
+              <li>Role scoping by company for segregated reviewers</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* SECURITY POSTURE */}
+      <section className="mk5-feat" id="security" style={{ borderTop: 'none' }}>
+        <div className="mk5-feat-header mk5-reveal">
+          <h2>Security, by default.<br />Not a checkbox.</h2>
+          <p>
+            Every Catalyst action touches regulated data. Atheon treats security as an architectural
+            layer, not a compliance afterthought. Here&rsquo;s what ships enabled on day one.
+          </p>
+        </div>
+        <div className="mk5-feat-grid">
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Identity</div>
+            <div className="mk5-feat-item-title">Enforced MFA and short-TTL JWTs</div>
+            <p className="mk5-feat-item-desc">
+              TOTP-based multi-factor authentication is enforced for admin, superadmin, and support
+              roles&nbsp;&mdash; no opt-out. Session tokens are short-lived JWTs with rotation on every
+              privileged action, and all login events are streamed to the immutable audit log.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>TOTP MFA (enforced for privileged roles)</li>
+              <li>Short-TTL access tokens, rotated on sensitive actions</li>
+              <li>Azure AD / SAML 2.0 SSO for centralised identity</li>
+              <li>Per-tenant session scoping and impersonation trail</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Data Protection</div>
+            <div className="mk5-feat-item-title">AES-encrypted at rest, HMAC-signed in motion</div>
+            <p className="mk5-feat-item-desc">
+              ERP credentials, DSAR exports, and sensitive payloads are AES-encrypted per tenant.
+              Outbound webhooks are HMAC-SHA256 signed with per-subscription secrets so downstream
+              systems can verify authenticity. Encryption keys are rotatable without downtime.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>AES-GCM encryption for ERP credentials at rest</li>
+              <li>Encrypted DSAR / data-subject exports</li>
+              <li>HMAC-SHA256 signed webhooks with rotating secrets</li>
+              <li>Key rotation without downtime</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">LLM Safety</div>
+            <div className="mk5-feat-item-title">Per-tenant budgets, automatic PII redaction</div>
+            <p className="mk5-feat-item-desc">
+              Every LLM call runs under a per-tenant spend budget with hard cut-off. Prompts are
+              scanned for personal data before leaving the platform, with emails, phone numbers,
+              national IDs, and credit card numbers redacted or tokenised. No prompt, no response,
+              no tenant data ever crosses tenant boundaries.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Hard per-tenant LLM spend budgets with alerting</li>
+              <li>Automatic PII redaction before egress</li>
+              <li>Model-agnostic provider abstraction</li>
+              <li>Full prompt/response audit with tenant attribution</li>
+            </ul>
+          </div>
+          <div className="mk5-feat-item mk5-reveal">
+            <div className="mk5-feat-item-label">Governance</div>
+            <div className="mk5-feat-item-title">Immutable audit, explicit autonomy tiers</div>
+            <p className="mk5-feat-item-desc">
+              Every catalyst action records inputs, outputs, handler, confidence, and the human
+              who reviewed it. Autonomy tiers&nbsp;&mdash; read-only, assisted, transactional&nbsp;&mdash;
+              are enforced at the engine layer, not the UI. Promotion between tiers is a governed
+              event with its own approval trail.
+            </p>
+            <ul className="mk5-feat-item-bullets">
+              <li>Append-only audit log across every layer</li>
+              <li>Explicit autonomy-tier enforcement in the engine</li>
+              <li>Governed tier promotion with approver record</li>
+              <li>Tenant-scoped data, jobs, and quota isolation</li>
             </ul>
           </div>
         </div>
@@ -1496,13 +1747,14 @@ export function MarketingPage() {
           <div className="mk5-cta-ey mk5-reveal">The Next Evolution in Enterprise AI</div>
           <h2 className="mk5-reveal">Meet the<br /><i>Catalyst.</i></h2>
           <p className="mk5-cta-sub mk5-reveal">
-            Atheon is the world&rsquo;s first Catalyst platform&nbsp;&mdash; the evolution beyond agents
-            and copilots. Three layers of intelligence. One platform. We&rsquo;re onboarding founding
-            partners now.
+            Three layers of intelligence, 75 clusters, 445 sub-catalysts, ERP-native. We&rsquo;re
+            onboarding founding partners now&nbsp;&mdash; start a trial or send us a note below.
           </p>
-          <a href="/trial" className="mk5-btn-main mk5-reveal">
-            Request Access
-          </a>
+          <div className="mk5-cta-actions mk5-reveal">
+            <a href="/trial" className="mk5-btn-main">Start Trial</a>
+            <a href="/login" className="mk5-btn-line">Customer Login</a>
+          </div>
+          <ContactForm />
         </div>
       </section>
 
