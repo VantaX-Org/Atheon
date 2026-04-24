@@ -48,6 +48,7 @@ import targetRoutes from './routes/targets';
 import executiveSummary from './routes/executive-summary';
 import adminTooling from './routes/admin-tooling';
 import webhooksRoutes from './routes/webhooks';
+import governance from './routes/governance';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -366,6 +367,8 @@ app.use('/api/v1/admin/tenants/*', tenantIsolation());
 app.use('/api/v1/admin/tenants/*', requireRole('superadmin'));
 // §8.3 encryption key rotation needs JWT-backed auth (superadmin role enforced inside handler)
 app.use('/api/v1/admin/rotate-encryption', tenantIsolation());
+// Revenue/usage aggregation — superadmin role enforced inside handler. JWT required.
+app.use('/api/v1/admin/revenue-usage', tenantIsolation());
 app.route('/api/v1/admin', tenantsAdmin);
 
 // Admin Tooling routes (ADMIN-001 to ADMIN-012)
@@ -373,6 +376,11 @@ app.use('/api/v1/admin-tooling/*', tenantIsolation());
 app.use('/api/admin-tooling/*', tenantIsolation());
 app.route('/api/v1/admin-tooling', adminTooling);
 app.route('/api/admin-tooling', adminTooling);
+
+// Data Governance aggregation (read-only). Admin+ role enforced inside handler;
+// tenantIsolation provides the JWT-backed auth context.
+app.use('/api/v1/governance/*', tenantIsolation());
+app.route('/api/v1/governance', governance);
 
 
 // Agent routes mounted separately — no tenantIsolation middleware

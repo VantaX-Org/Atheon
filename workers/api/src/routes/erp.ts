@@ -716,6 +716,73 @@ erp.get('/connections/:id/circuit', async (c) => {
   return c.json(state);
 });
 
+// GET /api/v1/erp/connections/health — per-connection sync health aggregation
+// ═══
+// Read-only aggregation over existing erp_connections + audit_log + circuit
+// breaker KV state. Admin+ only (enforced by the platform-admin route prefix
+// middleware in index.ts). Scoped to the caller's tenant (superadmin may cross
+// tenants via ?tenant_id=).
+erp.get('/connections/health', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
+
+  try {
+    const results = await c.env.DB.prepare(
+      'SELECT ec.id, ec.name, ec.status, ec.last_sync, ec.records_synced, ec.connected_at, ea.name as adapter_name, ea.system as adapter_system FROM erp_connections ec LEFT JOIN erp_adapters ea ON ec.adapter_id = ea.id WHERE ec.tenant_id = ? ORDER BY ec.name ASC',
+    ).bind(tenantId).all();
+
+    const connections = await Promise.all(((results.results || []) as Array<Record<string, unknown>>).map(async (conn) => {
+      const connId = String(conn.id);
+      // Circuit breaker state — from KV, per-connection.
+      const circuit = await getCircuitBreakerState(c.env.CACHE, connId).catch(() => ({ state: 'CLOSED', failures: 0, openedAt: null, lastAttempt: null }));
+
+      // Error count from audit_log over the last 30 days.
+      let errorsLast30d = 0;
+      try {
+        const errRow = await c.env.DB.prepare(
+          "SELECT COUNT(*) as count FROM audit_log WHERE tenant_id = ? AND action LIKE 'erp.sync.failed%' AND resource = ? AND created_at > datetime('now', '-30 days')",
+        ).bind(tenantId, connId).first();
+        errorsLast30d = Number((errRow as Record<string, unknown>)?.count || 0);
+      } catch { /* non-fatal */ }
+
+      // Freshness score from last_sync age in hours.
+      const lastSync = conn.last_sync ? String(conn.last_sync) : null;
+      let freshness: 'fresh' | 'stale' | 'cold' = 'cold';
+      let hoursSinceSync: number | null = null;
+      if (lastSync) {
+        const syncMs = new Date(lastSync).getTime();
+        if (!Number.isNaN(syncMs)) {
+          hoursSinceSync = (Date.now() - syncMs) / (1000 * 60 * 60);
+          if (hoursSinceSync <= 1) freshness = 'fresh';
+          else if (hoursSinceSync <= 24) freshness = 'stale';
+          else freshness = 'cold';
+        }
+      }
+
+      return {
+        id: connId,
+        name: conn.name ? String(conn.name) : '',
+        adapter_name: conn.adapter_name ? String(conn.adapter_name) : null,
+        adapter_system: conn.adapter_system ? String(conn.adapter_system) : null,
+        status: conn.status ? String(conn.status) : 'unknown',
+        lastSync,
+        recordsSynced: Number(conn.records_synced || 0),
+        circuitState: circuit.state,
+        circuitFailures: circuit.failures,
+        errorsLast30d,
+        hoursSinceSync,
+        freshness,
+        connectedAt: conn.connected_at ? String(conn.connected_at) : null,
+      };
+    }));
+
+    return c.json({ connections, timestamp: new Date().toISOString() });
+  } catch (err) {
+    logError('erp.connections.health', err as Error);
+    return c.json({ error: 'Failed to aggregate integration health', details: (err as Error).message }, 500);
+  }
+});
+
 // GET /api/erp/systems - List available ERP systems (from connector registry)
 erp.get('/systems', (c) => {
   const systems = listERPAdapters();

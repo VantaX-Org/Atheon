@@ -1,144 +1,221 @@
 /**
  * ADMIN-007: Revenue & Usage Dashboard
- * Superadmin /revenue route with MRR/ARR, plan distribution, usage heatmap, growth metrics.
+ * Superadmin /revenue route with MRR/ARR, plan distribution, growth trends,
+ * LLM usage aggregate. All data pulled from real aggregation endpoint:
+ *   GET /api/v1/admin/revenue-usage
+ * No client-side mock data. MRR is estimated from plan tier — labeled as such.
  * Route: /revenue | Role: superadmin only
  */
-import 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabPanel, useTabState } from '@/components/ui/tabs';
+import { api, ApiError } from '@/lib/api';
+import type { RevenueUsageResponse } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 import {
-  DollarSign, TrendingUp, TrendingDown,
-  PieChart, Activity,
-  Building2, CreditCard,
+  DollarSign, TrendingUp, PieChart, Activity,
+  Building2, CreditCard, Loader2, AlertCircle, RefreshCw, Users, Brain,
 } from 'lucide-react';
 
-interface RevenueMetric {
-  label: string;
-  value: string;
-  change: number;
-  period: string;
-}
+const PLAN_COLORS: Record<string, string> = {
+  enterprise: '#818cf8',
+  professional: '#3b82f6',
+  starter: '#10b981',
+  trial: '#6b7280',
+};
 
-interface PlanDistribution {
-  plan: string;
-  count: number;
-  revenue: number;
-  color: string;
-}
-
-interface GrowthMetric {
-  month: string;
-  mrr: number;
-  tenants: number;
-  users: number;
+function planColor(plan: string): string {
+  return PLAN_COLORS[plan.toLowerCase()] || '#6b7280';
 }
 
 export function RevenueUsagePage() {
   const { activeTab, setActiveTab } = useTabState('overview');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<RevenueUsageResponse | null>(null);
+  const toast = useToast();
 
-  const metrics: RevenueMetric[] = [
-    { label: 'Monthly Recurring Revenue', value: '$24,500', change: 12.4, period: 'vs last month' },
-    { label: 'Annual Run Rate', value: '$294,000', change: 18.2, period: 'vs last year' },
-    { label: 'Avg Revenue Per Tenant', value: '$3,500', change: 5.1, period: 'vs last month' },
-    { label: 'Churn Rate', value: '2.1%', change: -0.8, period: 'vs last month' },
-  ];
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await api.adminAggregation.revenueUsage();
+      setData(res);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      toast.error('Failed to load revenue & usage', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [toast]);
 
-  const plans: PlanDistribution[] = [
-    { plan: 'Enterprise', count: 3, revenue: 15000, color: '#818cf8' },
-    { plan: 'Professional', count: 5, revenue: 7500, color: '#3b82f6' },
-    { plan: 'Starter', count: 4, revenue: 2000, color: '#10b981' },
-    { plan: 'Trial', count: 2, revenue: 0, color: '#6b7280' },
-  ];
+  useEffect(() => { load(); }, [load]);
 
-  const growth: GrowthMetric[] = [
-    { month: 'Oct', mrr: 18200, tenants: 8, users: 45 },
-    { month: 'Nov', mrr: 19800, tenants: 9, users: 52 },
-    { month: 'Dec', mrr: 20500, tenants: 10, users: 58 },
-    { month: 'Jan', mrr: 21800, tenants: 11, users: 64 },
-    { month: 'Feb', mrr: 23100, tenants: 12, users: 72 },
-    { month: 'Mar', mrr: 24500, tenants: 14, users: 80 },
-  ];
-
-  const totalRevenue = plans.reduce((s, p) => s + p.revenue, 0);
+  const handleRefresh = () => {
+    setRefreshing(true);
+    load();
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: <DollarSign size={14} /> },
     { id: 'plans', label: 'Plan Distribution', icon: <PieChart size={14} /> },
     { id: 'growth', label: 'Growth Trends', icon: <TrendingUp size={14} /> },
-    { id: 'usage', label: 'Usage Heatmap', icon: <Activity size={14} /> },
+    { id: 'usage', label: 'LLM Usage', icon: <Activity size={14} /> },
   ];
+
+  if (loading && !data) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 text-accent animate-spin" />
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <Card className="p-6 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-medium t-primary">Failed to load revenue & usage</p>
+          <p className="text-xs t-muted mt-1">{error}</p>
+          <button
+            onClick={handleRefresh}
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary"
+          >
+            Retry
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const { summary, byPlan, growth, llm } = data;
+  const maxMonthCount = Math.max(...growth.newTenantsByMonth.map((g) => g.count), 1);
+  const totalByPlan = byPlan.reduce((s, p) => s + p.count, 0);
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-          <DollarSign className="w-5 h-5 text-accent" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+            <DollarSign className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold t-primary">Revenue & Usage</h1>
+            <p className="text-xs t-muted">Platform-wide metrics, plan distribution, and LLM usage</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-semibold t-primary">Revenue & Usage</h1>
-          <p className="text-xs t-muted">Platform revenue metrics, plan distribution, and growth analytics</p>
-        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-[var(--border-card)] t-secondary hover:t-primary hover:bg-[var(--bg-secondary)] transition-all"
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {metrics.map((m) => (
-          <Card key={m.label} className="p-3">
-            <p className="text-[10px] t-muted uppercase tracking-wider">{m.label}</p>
-            <p className="text-xl font-bold t-primary mt-1">{m.value}</p>
-            <p className={`text-[10px] flex items-center gap-0.5 mt-0.5 ${m.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {m.change >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-              {m.change >= 0 ? '+' : ''}{m.change}% {m.period}
-            </p>
-          </Card>
-        ))}
+        <Card className="p-3">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-[10px] t-muted uppercase tracking-wider">Estimated MRR</span>
+            {summary.pricingIsEstimate && <Badge variant="warning" className="text-[9px]">EST</Badge>}
+          </div>
+          <p className="text-xl font-bold t-primary mt-1">${summary.estMrrUsd.toLocaleString()}</p>
+          <p className="text-[10px] t-muted">Derived from plan tier</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-[10px] t-muted uppercase tracking-wider">Estimated ARR</span>
+            {summary.pricingIsEstimate && <Badge variant="warning" className="text-[9px]">EST</Badge>}
+          </div>
+          <p className="text-xl font-bold t-primary mt-1">${summary.estArrUsd.toLocaleString()}</p>
+          <p className="text-[10px] t-muted">MRR × 12</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 size={14} className="text-accent" />
+            <span className="text-[10px] t-muted uppercase tracking-wider">Total Tenants</span>
+          </div>
+          <p className="text-xl font-bold t-primary">{summary.totalTenants.toLocaleString()}</p>
+          <p className="text-[10px] t-muted">Active (not deleted)</p>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Users size={14} className="text-accent" />
+            <span className="text-[10px] t-muted uppercase tracking-wider">Total Users</span>
+          </div>
+          <p className="text-xl font-bold t-primary">{summary.totalUsers.toLocaleString()}</p>
+          <p className="text-[10px] t-muted">Across all tenants</p>
+        </Card>
       </div>
+
+      {summary.pricingIsEstimate && (
+        <Card className="p-3 border-l-2 border-amber-400/50">
+          <p className="text-[11px] t-muted flex items-start gap-1.5">
+            <AlertCircle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
+            <span>{summary.pricingNote}</span>
+          </p>
+        </Card>
+      )}
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <TabPanel id="overview" activeTab={activeTab}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card className="p-4">
-            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2"><CreditCard size={14} className="text-accent" /> Revenue Breakdown</h3>
+            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2">
+              <CreditCard size={14} className="text-accent" /> Estimated Revenue Breakdown
+            </h3>
             <div className="space-y-3">
-              {plans.map((p) => (
+              {byPlan.length === 0 ? (
+                <p className="text-xs t-muted">No plan data.</p>
+              ) : byPlan.map((p) => (
                 <div key={p.plan} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-                    <span className="text-xs t-primary">{p.plan}</span>
+                    <div className="w-2 h-2 rounded-full" style={{ background: planColor(p.plan) }} />
+                    <span className="text-xs t-primary capitalize">{p.plan}</span>
                     <Badge variant="default" className="text-[10px]">{p.count} tenants</Badge>
                   </div>
-                  <span className="text-xs font-medium t-primary">${p.revenue.toLocaleString()}/mo</span>
+                  <span className="text-xs font-medium t-primary">${p.estMrrUsd.toLocaleString()}/mo</span>
                 </div>
               ))}
               <div className="border-t border-[var(--border-card)] pt-2 flex justify-between">
-                <span className="text-xs font-medium t-primary">Total MRR</span>
-                <span className="text-sm font-bold text-accent">${totalRevenue.toLocaleString()}/mo</span>
+                <span className="text-xs font-medium t-primary">Total (est.)</span>
+                <span className="text-sm font-bold text-accent">${summary.estMrrUsd.toLocaleString()}/mo</span>
               </div>
             </div>
           </Card>
 
           <Card className="p-4">
-            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2"><Building2 size={14} className="text-accent" /> Top Tenants by Revenue</h3>
-            <div className="space-y-2">
-              {[
-                { name: 'Acme Corp', plan: 'Enterprise', mrr: 5000 },
-                { name: 'TechStart Inc', plan: 'Enterprise', mrr: 5000 },
-                { name: 'Global Logistics', plan: 'Enterprise', mrr: 5000 },
-                { name: 'HealthCo', plan: 'Professional', mrr: 1500 },
-                { name: 'VantaX Demo', plan: 'Professional', mrr: 1500 },
-              ].map((t, i) => (
-                <div key={t.name} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--bg-secondary)]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] t-muted w-4">{i + 1}.</span>
-                    <span className="text-xs t-primary">{t.name}</span>
-                    <Badge variant="default" className="text-[10px]">{t.plan}</Badge>
+            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2">
+              <Brain size={14} className="text-accent" /> Top Tenants by LLM Tokens (30d)
+            </h3>
+            {llm.topTenants.length === 0 ? (
+              <p className="text-xs t-muted">No LLM usage recorded in the last 30 days.</p>
+            ) : (
+              <div className="space-y-2">
+                {llm.topTenants.map((t, i) => (
+                  <div key={t.tenantId || i} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--bg-secondary)]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] t-muted w-4 flex-shrink-0">{i + 1}.</span>
+                      <span className="text-xs t-primary truncate">{t.name}</span>
+                      <Badge variant="default" className="text-[10px]">{t.plan}</Badge>
+                    </div>
+                    <span className="text-xs font-medium text-accent flex-shrink-0">{t.tokens30d.toLocaleString()} tok</span>
                   </div>
-                  <span className="text-xs font-medium text-accent">${t.mrr.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </TabPanel>
@@ -146,111 +223,92 @@ export function RevenueUsagePage() {
       <TabPanel id="plans" activeTab={activeTab}>
         <Card className="p-4">
           <h3 className="text-sm font-medium t-primary mb-4">Plan Distribution</h3>
-          <div className="flex items-center gap-6">
-            {/* Simple bar chart */}
-            <div className="flex-1 space-y-3">
-              {plans.map((p) => {
-                const totalTenants = plans.reduce((s, pl) => s + pl.count, 0);
-                const pct = (p.count / totalTenants) * 100;
+          {byPlan.length === 0 ? (
+            <p className="text-xs t-muted">No tenants yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {byPlan.map((p) => {
+                const pct = totalByPlan > 0 ? (p.count / totalByPlan) * 100 : 0;
                 return (
                   <div key={p.plan}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="t-primary font-medium">{p.plan}</span>
+                      <span className="t-primary font-medium capitalize">{p.plan}</span>
                       <span className="t-muted">{p.count} tenants ({pct.toFixed(0)}%)</span>
                     </div>
                     <div className="h-3 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: p.color }} />
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: planColor(p.plan) }}
+                      />
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          )}
         </Card>
       </TabPanel>
 
       <TabPanel id="growth" activeTab={activeTab}>
         <Card className="p-4">
-          <h3 className="text-sm font-medium t-primary mb-4">MRR Growth (Last 6 Months)</h3>
-          <div className="flex items-end gap-2 h-40">
-            {growth.map((g) => {
-              const maxMrr = Math.max(...growth.map(x => x.mrr));
-              const heightPct = (g.mrr / maxMrr) * 100;
-              return (
-                <div key={g.month} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[10px] font-medium t-primary">${(g.mrr / 1000).toFixed(1)}k</span>
-                  <div className="w-full rounded-t-md bg-accent/80 transition-all" style={{ height: `${heightPct}%` }} />
-                  <span className="text-[10px] t-muted">{g.month}</span>
-                </div>
-              );
-            })}
-          </div>
+          <h3 className="text-sm font-medium t-primary mb-4">New Tenants per Month (Last 6 Months)</h3>
+          {growth.newTenantsByMonth.length === 0 ? (
+            <p className="text-xs t-muted">No growth data.</p>
+          ) : (
+            <>
+              <div className="flex items-end gap-2 h-40">
+                {growth.newTenantsByMonth.map((g) => {
+                  const heightPct = (g.count / maxMonthCount) * 100;
+                  return (
+                    <div key={g.month} className="flex-1 flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-medium t-primary">{g.count}</span>
+                      <div
+                        className="w-full rounded-t-md bg-accent/80 transition-all"
+                        style={{ height: `${Math.max(heightPct, 2)}%`, minHeight: g.count > 0 ? 8 : 2 }}
+                      />
+                      <span className="text-[10px] t-muted">{g.month.slice(-2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] t-muted mt-3">Bars show number of new tenants signed up per month (YYYY-MM).</p>
+            </>
+          )}
         </Card>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-          <Card className="p-4">
-            <h4 className="text-xs font-medium t-primary mb-3">Tenant Growth</h4>
-            <div className="space-y-2">
-              {growth.map(g => (
-                <div key={g.month} className="flex justify-between text-xs">
-                  <span className="t-muted">{g.month}</span>
-                  <span className="t-primary font-medium">{g.tenants} tenants</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card className="p-4">
-            <h4 className="text-xs font-medium t-primary mb-3">User Growth</h4>
-            <div className="space-y-2">
-              {growth.map(g => (
-                <div key={g.month} className="flex justify-between text-xs">
-                  <span className="t-muted">{g.month}</span>
-                  <span className="t-primary font-medium">{g.users} users</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
       </TabPanel>
 
       <TabPanel id="usage" activeTab={activeTab}>
-        <Card className="p-4">
-          <h3 className="text-sm font-medium t-primary mb-4">Usage Heatmap (API Calls by Hour)</h3>
-          <div className="grid grid-cols-12 gap-1">
-            {Array.from({ length: 168 }, (_, i) => {
-              const hour = i % 24;
-              const day = Math.floor(i / 24);
-              const intensity = Math.random();
-              const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-              return (
-                <div key={i} className="relative group">
-                  {hour === 0 && <span className="absolute -left-8 text-[8px] t-muted">{dayLabels[day]}</span>}
-                  <div
-                    className="w-full aspect-square rounded-sm transition-colors"
-                    style={{
-                      background: intensity > 0.8 ? 'var(--accent)' :
-                                 intensity > 0.5 ? 'rgba(var(--accent-rgb), 0.6)' :
-                                 intensity > 0.2 ? 'rgba(var(--accent-rgb), 0.3)' :
-                                 'var(--bg-secondary)',
-                    }}
-                    title={`${dayLabels[day]} ${hour}:00 - ${Math.round(intensity * 1000)} calls`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2 mt-3 justify-end">
-            <span className="text-[10px] t-muted">Less</span>
-            {[0.1, 0.3, 0.5, 0.8, 1].map(v => (
-              <div key={v} className="w-3 h-3 rounded-sm" style={{
-                background: v > 0.8 ? 'var(--accent)' :
-                           v > 0.5 ? 'rgba(var(--accent-rgb), 0.6)' :
-                           v > 0.2 ? 'rgba(var(--accent-rgb), 0.3)' :
-                           'var(--bg-secondary)',
-              }} />
-            ))}
-            <span className="text-[10px] t-muted">More</span>
-          </div>
-        </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain size={14} className="text-accent" />
+              <span className="text-sm font-medium t-primary">Platform LLM Usage</span>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between"><span className="t-muted">Total Tokens (30d)</span><span className="t-primary font-medium">{llm.totalTokens30d.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="t-muted">LLM Calls (30d)</span><span className="t-primary font-medium">{llm.callCount30d.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="t-muted">Tenants Using LLM</span><span className="t-primary font-medium">{llm.topTenants.length}</span></div>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={14} className="text-accent" />
+              <span className="text-sm font-medium t-primary">Top 10 Tenants by Spend</span>
+            </div>
+            {llm.topTenants.length === 0 ? (
+              <p className="text-xs t-muted">No LLM usage to report.</p>
+            ) : (
+              <div className="space-y-1.5 text-xs">
+                {llm.topTenants.map((t, i) => (
+                  <div key={t.tenantId || i} className="flex items-center justify-between">
+                    <span className="t-primary truncate">{i + 1}. {t.name}</span>
+                    <span className="t-muted flex-shrink-0 ml-2">{t.tokens30d.toLocaleString()} tok</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       </TabPanel>
     </div>
   );
