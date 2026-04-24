@@ -7,12 +7,13 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
-import { taskText, anyWord as anyOf } from './catalyst-match-utils';
+import { taskText, anyWord as anyOf, companyFilter, scopeLabel } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
 
 // ── RETAIL ──────────────────────────────────────────────────────────────
 
 async function runRetailBasketAnalysis(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const summary = await db.prepare(
     `SELECT COUNT(*) as invoice_count,
             AVG(total) as avg_basket,
@@ -20,18 +21,18 @@ async function runRetailBasketAnalysis(task: TaskDefinition, db: D1Database): Pr
             MAX(total) as max_basket,
             SUM(total) as revenue
      FROM erp_invoices
-     WHERE tenant_id = ? AND status != 'cancelled'`,
-  ).bind(task.tenantId).first<{
+     WHERE tenant_id = ? AND status != 'cancelled'${clause}`,
+  ).bind(task.tenantId, ...params).first<{
     invoice_count: number; avg_basket: number; min_basket: number; max_basket: number; revenue: number;
   }>();
 
   const topCustomers = await db.prepare(
     `SELECT customer_name, COUNT(*) as invoices, SUM(total) as spend
      FROM erp_invoices
-     WHERE tenant_id = ? AND status != 'cancelled'
+     WHERE tenant_id = ? AND status != 'cancelled'${clause}
      GROUP BY customer_name
      ORDER BY spend DESC LIMIT 10`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'retail_basket_analysis',
@@ -44,25 +45,27 @@ async function runRetailBasketAnalysis(task: TaskDefinition, db: D1Database): Pr
     recommendation: (summary?.invoice_count || 0) < 10
       ? 'Insufficient invoice volume for reliable basket insights — ingest more POS data'
       : `Avg basket size R${Math.round(summary?.avg_basket || 0).toLocaleString()}. Target upsell to top 10 customers.`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runRetailOutOfStock(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const outOfStock = await db.prepare(
     `SELECT sku, name, category, warehouse, stock_on_hand, selling_price, cost_price
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= 0
+     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= 0${clause}
      ORDER BY selling_price DESC LIMIT 50`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const byCategory = await db.prepare(
     `SELECT category, COUNT(*) as out_count
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= 0
+     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand <= 0${clause}
      GROUP BY category
      ORDER BY out_count DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const lostRevenueDaily = outOfStock.results.reduce((s, r) => {
     const row = r as { selling_price: number };
@@ -78,27 +81,29 @@ async function runRetailOutOfStock(task: TaskDefinition, db: D1Database): Promis
     recommendation: outOfStock.results.length > 0
       ? `${outOfStock.results.length} SKU(s) out of stock — ~R${Math.round(lostRevenueDaily).toLocaleString()}/day lost revenue estimate. Expedite reorders.`
       : 'No SKUs currently out of stock',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runRetailCustomerSegmentation(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const segments = await db.prepare(
     `SELECT customer_group, status, COUNT(*) as count,
             AVG(credit_limit) as avg_credit_limit,
             SUM(credit_balance) as total_outstanding
      FROM erp_customers
-     WHERE tenant_id = ?
+     WHERE tenant_id = ?${clause}
      GROUP BY customer_group, status
      ORDER BY count DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const atRisk = await db.prepare(
     `SELECT name, customer_group, credit_limit, credit_balance
      FROM erp_customers
-     WHERE tenant_id = ? AND credit_limit > 0 AND credit_balance > credit_limit * 0.8
+     WHERE tenant_id = ? AND credit_limit > 0 AND credit_balance > credit_limit * 0.8${clause}
      ORDER BY (credit_balance / credit_limit) DESC LIMIT 10`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'retail_customer_segmentation',
@@ -108,11 +113,16 @@ async function runRetailCustomerSegmentation(task: TaskDefinition, db: D1Databas
     recommendation: atRisk.results.length > 0
       ? `${atRisk.results.length} customer(s) using >80% of credit limit — review credit policy and payment terms`
       : 'No customers at credit-limit risk',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runRetailTopCustomers(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // Filter on the customer side of the JOIN — invoices/customers are both
+  // company-scoped, so one filter on c.company_id captures the right subset.
+  const { clause, params } = companyFilter(task.companyId);
+  const custCompanyClause = clause.replace(' AND company_id', ' AND c.company_id');
   const top = await db.prepare(
     `SELECT c.name, c.customer_group,
             COUNT(i.id) as invoice_count,
@@ -120,10 +130,10 @@ async function runRetailTopCustomers(task: TaskDefinition, db: D1Database): Prom
             COALESCE(MAX(i.invoice_date), '') as last_purchase
      FROM erp_customers c
      LEFT JOIN erp_invoices i ON i.customer_id = c.id AND i.tenant_id = c.tenant_id AND i.status != 'cancelled'
-     WHERE c.tenant_id = ?
+     WHERE c.tenant_id = ?${custCompanyClause}
      GROUP BY c.id, c.name, c.customer_group
      ORDER BY lifetime_value DESC LIMIT 20`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalLtv = top.results.reduce((s, r) => s + ((r as { lifetime_value: number }).lifetime_value || 0), 0);
   const topTenLtv = top.results.slice(0, 10).reduce((s, r) => s + ((r as { lifetime_value: number }).lifetime_value || 0), 0);
@@ -140,27 +150,29 @@ async function runRetailTopCustomers(task: TaskDefinition, db: D1Database): Prom
       : top.results.length === 0
         ? 'No purchase history yet — ingest POS/invoice data'
         : `Top 10 customers account for ${Math.round(concentration)}% of revenue — healthy diversification`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runRetailPricingAdvice(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
   // Surface SKUs with weak margin (cost / selling < X%) and slow turnover (high stock).
+  const { clause, params } = companyFilter(task.companyId);
   const weakMargin = await db.prepare(
     `SELECT sku, name, category, cost_price, selling_price, stock_on_hand,
             CASE WHEN selling_price > 0 THEN ROUND((1 - cost_price/selling_price) * 100, 1) ELSE 0 END as margin_pct
      FROM erp_products
      WHERE tenant_id = ? AND is_active = 1 AND selling_price > 0 AND cost_price > 0
-       AND (cost_price / selling_price) > 0.75
+       AND (cost_price / selling_price) > 0.75${clause}
      ORDER BY margin_pct ASC LIMIT 25`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const overstocked = await db.prepare(
     `SELECT sku, name, category, stock_on_hand, reorder_level, selling_price
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1 AND reorder_level > 0 AND stock_on_hand > reorder_level * 5
+     WHERE tenant_id = ? AND is_active = 1 AND reorder_level > 0 AND stock_on_hand > reorder_level * 5${clause}
      ORDER BY (stock_on_hand * selling_price) DESC LIMIT 15`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'retail_pricing_advice',
@@ -171,6 +183,7 @@ async function runRetailPricingAdvice(task: TaskDefinition, db: D1Database): Pro
     recommendation: (weakMargin.results.length + overstocked.results.length) > 0
       ? `${weakMargin.results.length} SKU(s) under 25% margin, ${overstocked.results.length} overstocked — review pricing and clearance plans`
       : 'Margin and stock turnover within target',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -196,21 +209,22 @@ const retailHandler: CatalystHandler = {
 // ── FMCG ────────────────────────────────────────────────────────────────
 
 async function runFMCGShelfStockout(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const critical = await db.prepare(
     `SELECT sku, name, category, warehouse, stock_on_hand, reorder_level, selling_price
      FROM erp_products
      WHERE tenant_id = ? AND is_active = 1
-       AND (stock_on_hand <= 0 OR stock_on_hand < reorder_level * 0.25)
+       AND (stock_on_hand <= 0 OR stock_on_hand < reorder_level * 0.25)${clause}
      ORDER BY stock_on_hand ASC LIMIT 40`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const byCategory = await db.prepare(
     `SELECT category, COUNT(*) as critical_count
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand < reorder_level * 0.25
+     WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand < reorder_level * 0.25${clause}
      GROUP BY category
      ORDER BY critical_count DESC LIMIT 10`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'fmcg_shelf_stockout',
@@ -220,11 +234,14 @@ async function runFMCGShelfStockout(task: TaskDefinition, db: D1Database): Promi
     recommendation: critical.results.length > 0
       ? `${critical.results.length} SKU(s) at critical stock levels — expedite replenishment`
       : 'Shelf availability healthy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFMCGDistributorPerformance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
+  const custCompanyClause = clause.replace(' AND company_id', ' AND c.company_id');
   const perf = await db.prepare(
     `SELECT c.name as distributor, c.customer_group,
             COUNT(i.id) as invoice_count,
@@ -232,10 +249,10 @@ async function runFMCGDistributorPerformance(task: TaskDefinition, db: D1Databas
             COALESCE(SUM(CASE WHEN i.payment_status = 'unpaid' AND i.due_date < date('now') THEN i.amount_due ELSE 0 END), 0) as overdue_amount
      FROM erp_customers c
      LEFT JOIN erp_invoices i ON i.customer_id = c.id AND i.tenant_id = c.tenant_id
-     WHERE c.tenant_id = ? AND (LOWER(c.customer_group) LIKE '%distributor%' OR LOWER(c.customer_group) LIKE '%wholesale%' OR LOWER(c.customer_group) LIKE '%reseller%')
+     WHERE c.tenant_id = ? AND (LOWER(c.customer_group) LIKE '%distributor%' OR LOWER(c.customer_group) LIKE '%wholesale%' OR LOWER(c.customer_group) LIKE '%reseller%')${custCompanyClause}
      GROUP BY c.id, c.name, c.customer_group
      ORDER BY total_revenue DESC LIMIT 25`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const overdueDistributors = perf.results.filter(p => (p as { overdue_amount: number }).overdue_amount > 0);
 
@@ -249,6 +266,7 @@ async function runFMCGDistributorPerformance(task: TaskDefinition, db: D1Databas
       : perf.results.length === 0
         ? 'No distributor-group customers found — verify customer_group classification'
         : 'Distributor book in good health',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -289,11 +307,13 @@ async function runFMCGPromotionEffectiveness(task: TaskDefinition, db: D1Databas
     recommendation: promoMetrics.results.length === 0
       ? 'No promotion metrics found — tag process_metrics with promo/campaign/lift names to enable analysis'
       : `Analysed ${promoMetrics.results.length} promo metric(s). Review negative-lift metrics for discontinuation.`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFMCGCategoryPerformance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const byCategory = await db.prepare(
     `SELECT category,
             COUNT(*) as sku_count,
@@ -302,10 +322,10 @@ async function runFMCGCategoryPerformance(task: TaskDefinition, db: D1Database):
             AVG(CASE WHEN selling_price > 0 AND cost_price > 0 THEN (1 - cost_price/selling_price) * 100 ELSE NULL END) as avg_margin_pct,
             SUM(CASE WHEN stock_on_hand <= 0 THEN 1 ELSE 0 END) as oos_count
      FROM erp_products
-     WHERE tenant_id = ? AND is_active = 1
+     WHERE tenant_id = ? AND is_active = 1${clause}
      GROUP BY category
      ORDER BY inventory_value DESC LIMIT 20`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const totalValue = byCategory.results.reduce((s, r) => s + ((r as { inventory_value: number }).inventory_value || 0), 0);
 
@@ -317,28 +337,30 @@ async function runFMCGCategoryPerformance(task: TaskDefinition, db: D1Database):
     recommendation: byCategory.results.length === 0
       ? 'No categorised products — populate category field to enable analysis'
       : `Top category by value holds R${Math.round((byCategory.results[0] as { inventory_value: number }).inventory_value || 0).toLocaleString()} — review demand coverage`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runFMCGTradeSpend(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const tradeInvoices = await db.prepare(
     `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total_spend
      FROM erp_invoices
      WHERE tenant_id = ?
        AND invoice_date >= date('now', '-90 days')
-       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(reference) LIKE '%campaign%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')`,
-  ).bind(task.tenantId).first<{ count: number; total_spend: number }>();
+       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(reference) LIKE '%campaign%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')${clause}`,
+  ).bind(task.tenantId, ...params).first<{ count: number; total_spend: number }>();
 
   const topDistributors = await db.prepare(
     `SELECT customer_name, COUNT(*) as invoice_count, SUM(total) as total_spend
      FROM erp_invoices
      WHERE tenant_id = ?
        AND invoice_date >= date('now', '-90 days')
-       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')
+       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')${clause}
      GROUP BY customer_name
      ORDER BY total_spend DESC LIMIT 10`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   return {
     type: 'fmcg_trade_spend',
@@ -349,6 +371,7 @@ async function runFMCGTradeSpend(task: TaskDefinition, db: D1Database): Promise<
     recommendation: (tradeInvoices?.count || 0) === 0
       ? 'No trade/promo-tagged invoices found — tag invoice reference or notes to enable trade-spend analysis'
       : `Trade spend R${Math.round(tradeInvoices?.total_spend || 0).toLocaleString()} across ${tradeInvoices?.count || 0} invoice(s) — review ROI with top partners`,
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -374,14 +397,15 @@ const fmcgHandler: CatalystHandler = {
 // ── AGRICULTURE ─────────────────────────────────────────────────────────
 
 async function runAgricultureReorder(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const critical = await db.prepare(
     `SELECT sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price
      FROM erp_products
      WHERE tenant_id = ? AND is_active = 1
        AND (LOWER(category) LIKE '%seed%' OR LOWER(category) LIKE '%feed%' OR LOWER(category) LIKE '%fertil%' OR LOWER(category) LIKE '%chem%' OR LOWER(category) LIKE '%crop%')
-       AND stock_on_hand <= reorder_level
+       AND stock_on_hand <= reorder_level${clause}
      ORDER BY (stock_on_hand / NULLIF(reorder_level, 0)) ASC LIMIT 30`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const estCost = critical.results.reduce((s, r) => {
     const row = r as { reorder_quantity: number; cost_price: number };
@@ -396,11 +420,13 @@ async function runAgricultureReorder(task: TaskDefinition, db: D1Database): Prom
     recommendation: critical.results.length > 0
       ? `${critical.results.length} input(s) at/below reorder level — raise POs (est. R${Math.round(estCost).toLocaleString()})`
       : 'Agricultural input stocks healthy',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runAgricultureMarketMetrics(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // process_metrics is tenant-scoped only.
   const metrics = await db.prepare(
     `SELECT name, value, unit, status, threshold_red, measured_at, source_system
      FROM process_metrics
@@ -418,17 +444,19 @@ async function runAgricultureMarketMetrics(task: TaskDefinition, db: D1Database)
     recommendation: red.length > 0
       ? `${red.length} market metric(s) in red — review pricing and harvest timing`
       : 'Market metrics within expected range',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runAgricultureSupplierRisk(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const highRisk = await db.prepare(
     `SELECT name, supplier_group, risk_score, country, status
      FROM erp_suppliers
-     WHERE tenant_id = ? AND status = 'active'
+     WHERE tenant_id = ? AND status = 'active'${clause}
      ORDER BY risk_score DESC LIMIT 15`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const risky = highRisk.results.filter(s => (s as { risk_score: number }).risk_score > 0.5);
 
@@ -440,6 +468,7 @@ async function runAgricultureSupplierRisk(task: TaskDefinition, db: D1Database):
     recommendation: risky.length > 0
       ? `${risky.length} supplier(s) with risk_score > 0.5 — diversify and renegotiate terms`
       : 'Supplier book within acceptable risk thresholds',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
@@ -490,21 +519,23 @@ async function runAgricultureYieldVariance(task: TaskDefinition, db: D1Database)
       : analyses.length === 0
         ? 'No yield metrics ingested — wire up field/sensor data'
         : 'Yield stability within acceptable range',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }
 
 async function runAgricultureSeasonalDemand(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const { clause, params } = companyFilter(task.companyId);
   const monthly = await db.prepare(
     `SELECT strftime('%Y-%m', invoice_date) as month,
             COUNT(*) as invoice_count,
             COALESCE(SUM(total), 0) as revenue
      FROM erp_invoices
      WHERE tenant_id = ? AND invoice_date IS NOT NULL AND status != 'cancelled'
-       AND invoice_date >= date('now', '-12 months')
+       AND invoice_date >= date('now', '-12 months')${clause}
      GROUP BY month
      ORDER BY month DESC`,
-  ).bind(task.tenantId).all();
+  ).bind(task.tenantId, ...params).all();
 
   const revenues = monthly.results.map(r => (r as { revenue: number }).revenue || 0);
   const avg = revenues.length > 0 ? revenues.reduce((a, b) => a + b, 0) / revenues.length : 0;
@@ -525,6 +556,7 @@ async function runAgricultureSeasonalDemand(task: TaskDefinition, db: D1Database
       : monthly.results.length === 0
         ? 'No invoice history yet'
         : 'Demand pattern stable across the year',
+    scopedToCompany: scopeLabel(task.companyId),
     timestamp: new Date().toISOString(),
   };
 }

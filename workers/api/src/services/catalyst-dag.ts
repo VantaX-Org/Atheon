@@ -27,6 +27,14 @@ export interface TriggerDownstreamInput {
   chainDepth: number;
   /** Context carried from upstream, available to downstream runs. */
   parentContext?: Record<string, unknown>;
+  /**
+   * Optional: per-company scope inherited from the upstream run. When set,
+   * every downstream message enqueued by this trigger carries the same
+   * companyId so the chain stays in-company by default. If you need to break
+   * out of the scope (e.g., a consolidated roll-up after per-company runs),
+   * do that in a custom handler — the automatic DAG chain always inherits.
+   */
+  companyId?: string;
 }
 
 export interface TriggerDownstreamResult {
@@ -172,6 +180,9 @@ export async function triggerDownstream(
         riskLevel: 'medium',
         autonomyTier: 'assisted',
         trustScore: 60,
+        // Inherit upstream company scope so chained runs stay in-company.
+        // Undefined means consolidated (no filter) — matches default.
+        companyId: input.companyId,
       },
       scheduledAt: new Date().toISOString(),
     };
@@ -187,6 +198,7 @@ export async function triggerDownstream(
         downstreamSub,
         chainDepth: input.chainDepth + 1,
         dependencyType: dep.dependency_type,
+        companyId: input.companyId || null,
       }, 'success');
     } catch (err) {
       skipped++;
