@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v40';
+export const MIGRATION_VERSION = 'v41';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -289,8 +289,13 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
   }
 
   // ── Canonical ERP Tables ──
+  // Multi-company model: each tenant can have N companies (SAP BUKRS,
+  // Odoo companies, Xero organisations, NetSuite subsidiaries, Dynamics
+  // companies). Canonical *_company_id columns are added via self-heal
+  // below; backfill seeds a default __primary__ company per tenant.
   const erpTables = [
-    `CREATE TABLE IF NOT EXISTS erp_customers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', name TEXT NOT NULL, trading_name TEXT, registration_number TEXT, vat_number TEXT, customer_group TEXT, credit_limit REAL DEFAULT 0, credit_balance REAL DEFAULT 0, payment_terms TEXT DEFAULT 'Net 30', currency TEXT DEFAULT 'ZAR', address_line1 TEXT, address_line2 TEXT, city TEXT, province TEXT, postal_code TEXT, country TEXT DEFAULT 'ZA', contact_name TEXT, contact_email TEXT, contact_phone TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS erp_companies (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', code TEXT, name TEXT NOT NULL, legal_name TEXT, currency TEXT DEFAULT 'ZAR', country TEXT DEFAULT 'ZA', fiscal_year_start TEXT, tax_id TEXT, is_primary INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS erp_customers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), company_id TEXT REFERENCES erp_companies(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', name TEXT NOT NULL, trading_name TEXT, registration_number TEXT, vat_number TEXT, customer_group TEXT, credit_limit REAL DEFAULT 0, credit_balance REAL DEFAULT 0, payment_terms TEXT DEFAULT 'Net 30', currency TEXT DEFAULT 'ZAR', address_line1 TEXT, address_line2 TEXT, city TEXT, province TEXT, postal_code TEXT, country TEXT DEFAULT 'ZA', contact_name TEXT, contact_email TEXT, contact_phone TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
     `CREATE TABLE IF NOT EXISTS erp_suppliers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', name TEXT NOT NULL, trading_name TEXT, registration_number TEXT, vat_number TEXT, supplier_group TEXT, payment_terms TEXT DEFAULT 'Net 30', currency TEXT DEFAULT 'ZAR', address_line1 TEXT, city TEXT, province TEXT, postal_code TEXT, country TEXT DEFAULT 'ZA', contact_name TEXT, contact_email TEXT, contact_phone TEXT, bank_name TEXT, bank_account TEXT, bank_branch_code TEXT, status TEXT NOT NULL DEFAULT 'active', risk_score REAL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
     `CREATE TABLE IF NOT EXISTS erp_products (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', sku TEXT NOT NULL, name TEXT NOT NULL, description TEXT, category TEXT, product_group TEXT, uom TEXT DEFAULT 'EA', cost_price REAL DEFAULT 0, selling_price REAL DEFAULT 0, vat_rate REAL DEFAULT 15, stock_on_hand REAL DEFAULT 0, reorder_level REAL DEFAULT 0, reorder_quantity REAL DEFAULT 0, warehouse TEXT, weight_kg REAL, is_active INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
     `CREATE TABLE IF NOT EXISTS erp_invoices (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', invoice_number TEXT NOT NULL, customer_id TEXT REFERENCES erp_customers(id), customer_name TEXT, invoice_date TEXT NOT NULL, due_date TEXT, subtotal REAL NOT NULL DEFAULT 0, vat_amount REAL DEFAULT 0, total REAL NOT NULL DEFAULT 0, amount_paid REAL DEFAULT 0, amount_due REAL DEFAULT 0, currency TEXT DEFAULT 'ZAR', status TEXT NOT NULL DEFAULT 'draft', payment_status TEXT DEFAULT 'unpaid', reference TEXT, notes TEXT, line_items TEXT DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT)`,
@@ -621,6 +626,17 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_journal_upsert ON erp_journal_entries(tenant_id, external_id, source_system)',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_employees_upsert ON erp_employees(tenant_id, external_id, source_system)',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_bank_upsert ON erp_bank_transactions(tenant_id, external_id, source_system)',
+    // Multi-company indexes — (tenant, company) is the hot-path filter for
+    // company-scoped catalyst runs. Separate company-only upsert unique
+    // constraint prevents duplicate companies per tenant.
+    'CREATE INDEX IF NOT EXISTS idx_erp_companies_tenant ON erp_companies(tenant_id)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_companies_upsert ON erp_companies(tenant_id, external_id, source_system)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_customers_company ON erp_customers(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_suppliers_company ON erp_suppliers(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_products_company ON erp_products(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_invoices_company ON erp_invoices(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_po_company ON erp_purchase_orders(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_employees_company ON erp_employees(tenant_id, company_id)',
   ];
 
   for (const idx of erpIndexes) {
@@ -826,6 +842,19 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'industry_regulatory_seeds', column: 'default_body', definition: 'TEXT' },
     { table: 'industry_regulatory_seeds', column: 'authority', definition: 'TEXT' },
     { table: 'industry_regulatory_seeds', column: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+
+    // Multi-company ERP: per-entity company_id (nullable for back-compat;
+    // rows with null are implicitly scoped to the tenant's primary company
+    // after the backfill below runs).
+    { table: 'erp_customers',        column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_suppliers',        column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_invoices',         column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_purchase_orders',  column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_products',         column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_employees',        column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_gl_accounts',      column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_journal_entries',  column: 'company_id', definition: 'TEXT' },
+    { table: 'erp_bank_transactions',column: 'company_id', definition: 'TEXT' },
   ];
 
   for (const col of selfHealColumns) {
@@ -852,6 +881,64 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     } catch {
       // Column already removed or never existed — idempotent skip.
     }
+  }
+
+  // ── Multi-company backfill ──
+  // Every tenant that has any ERP data gets a synthetic __primary__ company
+  // so existing rows (which have company_id = NULL after the self-heal)
+  // can be linked. Idempotent: only inserts the primary company when none
+  // exists for the tenant, and only backfills NULL company_id rows.
+  try {
+    const tenantsWithData = await db.prepare(
+      `SELECT DISTINCT tenant_id FROM (
+         SELECT tenant_id FROM erp_customers
+         UNION SELECT tenant_id FROM erp_suppliers
+         UNION SELECT tenant_id FROM erp_products
+         UNION SELECT tenant_id FROM erp_invoices
+         UNION SELECT tenant_id FROM erp_purchase_orders
+         UNION SELECT tenant_id FROM erp_employees
+       )`,
+    ).all<{ tenant_id: string }>();
+
+    for (const row of tenantsWithData.results || []) {
+      const tenantId = row.tenant_id;
+      if (!tenantId) continue;
+
+      // Find or create the primary company for this tenant.
+      let primary = await db.prepare(
+        'SELECT id FROM erp_companies WHERE tenant_id = ? AND is_primary = 1 LIMIT 1',
+      ).bind(tenantId).first<{ id: string }>();
+
+      if (!primary) {
+        const companyId = crypto.randomUUID();
+        await db.prepare(
+          `INSERT INTO erp_companies (id, tenant_id, external_id, source_system, code, name, legal_name, currency, country, is_primary, status)
+           VALUES (?, ?, '__primary__', 'migration', 'PRIMARY', 'Primary Company', 'Primary Company', 'ZAR', 'ZA', 1, 'active')`,
+        ).bind(companyId, tenantId).run();
+        primary = { id: companyId };
+      }
+
+      const primaryId = primary.id;
+      // Backfill NULL company_id on each canonical table.
+      const tablesToBackfill = [
+        'erp_customers', 'erp_suppliers', 'erp_products',
+        'erp_invoices', 'erp_purchase_orders', 'erp_employees',
+      ];
+      for (const table of tablesToBackfill) {
+        try {
+          await db.prepare(
+            `UPDATE ${table} SET company_id = ? WHERE tenant_id = ? AND company_id IS NULL`,
+          ).bind(primaryId, tenantId).run();
+        } catch (err) {
+          result.errors.push(`Backfill ${table} for ${tenantId}: ${(err as Error).message}`);
+        }
+      }
+    }
+  } catch (err) {
+    // Backfill failures are non-fatal — log and continue. Individual row
+    // reads will still work (null company_id is valid); queries that WANT
+    // company scoping can re-run backfill via the ops endpoint.
+    result.errors.push(`Multi-company backfill: ${(err as Error).message}`);
   }
 
   // ── Role Upgrades ──
