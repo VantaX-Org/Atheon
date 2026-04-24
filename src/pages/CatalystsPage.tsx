@@ -148,7 +148,7 @@ export function CatalystsPage() {
 
  const result = await api.catalysts.manualExecute(formData);
  setQuickRunSuccess(result.message);
- const a = await api.catalysts.actions(undefined, undefined, undefined);
+ const a = await api.catalysts.actions(undefined, undefined, undefined, companyId || undefined);
  setActions(a.actions);
  setTimeout(() => {
  setShowQuickRun(false);
@@ -174,7 +174,7 @@ export function CatalystsPage() {
  try {
  await api.catalysts.approveAction(actionId);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, ind, companyId || undefined);
  setActions(a.actions);
  } catch (err) {
  const message = err instanceof Error ? err.message : 'Failed to approve action';
@@ -194,7 +194,7 @@ export function CatalystsPage() {
  try {
  await api.catalysts.rejectAction(actionId);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, ind, companyId || undefined);
  setActions(a.actions);
  } catch (err) {
  const message = err instanceof Error ? err.message : 'Failed to reject action';
@@ -228,7 +228,7 @@ export function CatalystsPage() {
  const result = await api.catalysts.manualExecute(formData);
  setExecSuccess(result.message);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, ind, companyId || undefined);
  setActions(a.actions);
  setTimeout(() => {
  setShowManualExec(false);
@@ -371,7 +371,7 @@ export function CatalystsPage() {
  }
  }
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const c = await api.catalysts.clusters(undefined, ind);
+ const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
  } catch (err) {
@@ -387,7 +387,7 @@ export function CatalystsPage() {
  try {
  await api.catalysts.removeDataSource(dsClusterId, dsSubName);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const c = await api.catalysts.clusters(undefined, ind);
+ const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
  setClusters(c.clusters);
  setShowDataSourceConfig(false);
  } catch (err) {
@@ -420,12 +420,26 @@ export function CatalystsPage() {
  ]);
  if (c.status === 'fulfilled') {
   setClusters(c.value.clusters);
+ } else if (c.status === 'rejected') {
+  const err = c.reason;
+  toast.error('Failed to load catalyst clusters', {
+    message: err instanceof Error ? err.message : 'Unknown error',
+    requestId: err instanceof ApiError ? err.requestId : null,
+  });
  }
  if (a.status === 'fulfilled') setActions(a.value.actions);
+ else if (a.status === 'rejected') {
+  const err = a.reason;
+  toast.error('Failed to load catalyst actions', {
+    message: err instanceof Error ? err.message : 'Unknown error',
+    requestId: err instanceof ApiError ? err.requestId : null,
+  });
+ }
  if (g.status === 'fulfilled') setGovernance(g.value);
  setLoading(false);
  }
  load();
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [companyId]); // Reload when selected company scope changes
 
  // A4-1: Resolve ops panel cluster name once clusters are loaded
@@ -445,10 +459,15 @@ export function CatalystsPage() {
  try {
  await api.catalysts.toggleSubCatalyst(clusterId, subName);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const c = await api.catalysts.clusters(undefined, ind);
+ const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
  setClusters(c.clusters);
  } catch (err) {
- setActionError(err instanceof Error ? err.message : 'Failed to toggle sub-catalyst');
+ const message = err instanceof Error ? err.message : 'Failed to toggle sub-catalyst';
+ setActionError(message);
+ toast.error('Toggle failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setTogglingSubCatalyst(null);
  };
@@ -465,6 +484,21 @@ export function CatalystsPage() {
  const [roiData, setRoiData] = useState<ROITrackingResponse | null>(null);
  const [prescriptions, setPrescriptions] = useState<CatalystPrescriptionItem[]>([]);
 
+ const loadSuccessStories = async () => {
+   setStoriesLoading(true);
+   try {
+     const res = await api.successStories.get();
+     setSuccessStories(res);
+   } catch (err) {
+     console.error('Failed to load success stories', err);
+     toast.error('Failed to load peer insights', {
+       message: err instanceof Error ? err.message : 'Unknown error',
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
+   }
+   setStoriesLoading(false);
+ };
+
  const loadIntelligence = async () => {
    setIntellLoading(true);
    try {
@@ -474,6 +508,13 @@ export function CatalystsPage() {
        api.catalystIntelligence.getPrescriptions(undefined, undefined),
      ]);
      if (overview.status === 'fulfilled') setIntellOverview(overview.value);
+     else if (overview.status === 'rejected') {
+       const err = overview.reason;
+       toast.error('Failed to load catalyst intelligence', {
+         message: err instanceof Error ? err.message : 'Unknown error',
+         requestId: err instanceof ApiError ? err.requestId : null,
+       });
+     }
      if (roiRes.status === 'fulfilled') setRoiData(roiRes.value);
      if (rxRes.status === 'fulfilled') setPrescriptions(rxRes.value.prescriptions ?? []);
    } catch (err) { console.error('Failed to load intelligence:', err); }
@@ -484,14 +525,26 @@ export function CatalystsPage() {
    try {
      await api.catalystIntelligence.analyse();
      loadIntelligence();
-   } catch (err) { console.error('Failed to discover patterns:', err); }
+   } catch (err) {
+     console.error('Failed to discover patterns:', err);
+     toast.error('Pattern discovery failed', {
+       message: err instanceof Error ? err.message : 'Unknown error',
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
+   }
  };
 
  const handleDiscoverDependencies = async () => {
    try {
      await api.catalystIntelligence.discoverDependencies();
      loadIntelligence();
-   } catch (err) { console.error('Failed to discover dependencies:', err); }
+   } catch (err) {
+     console.error('Failed to discover dependencies:', err);
+     toast.error('Dependency mapping failed', {
+       message: err instanceof Error ? err.message : 'Unknown error',
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
+   }
  };
 
  // HITL Permissions state
@@ -530,6 +583,12 @@ export function CatalystsPage() {
      if (configRes.status === 'fulfilled') {
        setHitlConfigs(configRes.value.configs || []);
        if (configRes.value.users) setHitlUsersMap(configRes.value.users);
+     } else if (configRes.status === 'rejected') {
+       const err = configRes.reason;
+       toast.error('Failed to load review assignments', {
+         message: err instanceof Error ? err.message : 'Unknown error',
+         requestId: err instanceof ApiError ? err.requestId : null,
+       });
      }
      if (usersRes.status === 'fulfilled') setHitlUsers(usersRes.value.users);
     } catch (err) { console.error('Failed to load HITL configs', err); }
@@ -543,7 +602,13 @@ export function CatalystsPage() {
      const res = await api.catalysts.runAnalytics(clusterParam, undefined, 50);
      setRunAnalytics(res.runs);
      setRunAggregate(res.aggregate);
-    } catch (err) { console.error('Failed to load run analytics', err); }
+    } catch (err) {
+     console.error('Failed to load run analytics', err);
+     toast.error('Failed to load run analytics', {
+       message: err instanceof Error ? err.message : 'Unknown error',
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
+    }
     setAnalyticsLoading(false);
  };
 
@@ -600,7 +665,13 @@ export function CatalystsPage() {
    try {
      await api.catalysts.deleteHitlConfig(clusterId, subName || undefined);
      await loadHitlConfigs();
-   } catch (err) { console.error('Failed to delete HITL config', err); }
+   } catch (err) {
+     console.error('Failed to delete HITL config', err);
+     toast.error('Failed to delete assignment', {
+       message: err instanceof Error ? err.message : 'Unknown error',
+       requestId: err instanceof ApiError ? err.requestId : null,
+     });
+   }
  };
 
  // Schedule configuration state
@@ -646,7 +717,7 @@ export function CatalystsPage() {
        ...(schedFrequency !== 'manual' ? { time_of_day: schedTimeOfDay } : {}),
      });
      const ind = undefined; // Catalysts page shows all functional areas regardless of industry
-     const c = await api.catalysts.clusters(undefined, ind);
+     const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
      setClusters(c.clusters);
      setShowScheduleConfig(false);
    } catch (err) {
@@ -662,7 +733,7 @@ export function CatalystsPage() {
    try {
      await api.catalysts.removeSchedule(schedClusterId, schedSubName);
      const ind = undefined; // Catalysts page shows all functional areas regardless of industry
-     const c = await api.catalysts.clusters(undefined, ind);
+     const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
      setClusters(c.clusters);
      setShowScheduleConfig(false);
    } catch (err) {
@@ -723,7 +794,7 @@ export function CatalystsPage() {
    try {
      await api.catalysts.setFieldMappings(fmClusterId, fmSubName, fmMappings);
      const ind = undefined; // Catalysts page shows all functional areas regardless of industry
-     const c = await api.catalysts.clusters(undefined, ind);
+     const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
      setClusters(c.clusters);
      setShowFieldMappingConfig(false);
    } catch (err) {
@@ -751,7 +822,7 @@ export function CatalystsPage() {
    try {
      await api.catalysts.setExecutionConfig(execClusterId, execSubName, { mode: execMode });
      const ind = undefined; // Catalysts page shows all functional areas regardless of industry
-     const c = await api.catalysts.clusters(undefined, ind);
+     const c = await api.catalysts.clusters(undefined, ind, companyId || undefined);
      setClusters(c.clusters);
      setShowExecutionConfig(false);
    } catch (err) {
@@ -795,7 +866,14 @@ export function CatalystsPage() {
  ? await api.catalysts.executionLogsForAction(actionId)
  : await api.catalysts.executionLogs();
  setExecutionLogs(result.logs);
- } catch (err) { console.error('Failed to load execution logs', err); setExecutionLogs([]); }
+ } catch (err) {
+ console.error('Failed to load execution logs', err);
+ setExecutionLogs([]);
+ toast.error('Failed to load execution logs', {
+ message: err instanceof Error ? err.message : 'Unknown error',
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
+ }
  setLogsLoading(false);
  };
 
@@ -804,11 +882,16 @@ export function CatalystsPage() {
  try {
  await api.catalysts.resolveException(actionId, (activeNotesAction === actionId ? resolveNotes : '') || undefined);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, ind, companyId || undefined);
  setActions(a.actions);
  setResolveNotes('');
  } catch (err) {
- setActionError(err instanceof Error ? err.message : 'Failed to resolve exception');
+ const message = err instanceof Error ? err.message : 'Failed to resolve exception';
+ setActionError(message);
+ toast.error('Resolve exception failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setResolvingAction(null);
  };
@@ -818,10 +901,15 @@ export function CatalystsPage() {
  try {
  await api.catalysts.escalateException(actionId);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
- const a = await api.catalysts.actions(undefined, undefined, ind);
+ const a = await api.catalysts.actions(undefined, undefined, ind, companyId || undefined);
  setActions(a.actions);
  } catch (err) {
- setActionError(err instanceof Error ? err.message : 'Failed to escalate exception');
+ const message = err instanceof Error ? err.message : 'Failed to escalate exception';
+ setActionError(message);
+ toast.error('Escalate exception failed', {
+ message,
+ requestId: err instanceof ApiError ? err.requestId : null,
+ });
  }
  setEscalatingAction(null);
  };
@@ -830,6 +918,8 @@ export function CatalystsPage() {
  useEffect(() => {
    if (activeTab === 'hitl-permissions') loadHitlConfigs();
    if (activeTab === 'run-analytics') loadRunAnalytics();
+   if (activeTab === 'intelligence' && !intellOverview && !intellLoading) loadIntelligence();
+   if (activeTab === 'success-stories' && !successStories && !storiesLoading) loadSuccessStories();
    // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [activeTab, analyticsCluster]);
 
@@ -1295,8 +1385,8 @@ export function CatalystsPage() {
  <option key={a.id} value={a.id}>{a.catalystName} — {a.action.slice(0, 40)}</option>
  ))}
  </select>
- <Button variant="secondary" size="sm" onClick={() => loadExecutionLogs(selectedLogAction || undefined)}>
- <Loader2 size={12} className={logsLoading ? 'animate-spin' : ''} /> Refresh
+ <Button variant="secondary" size="sm" onClick={() => loadExecutionLogs(selectedLogAction || undefined)} disabled={logsLoading}>
+ {logsLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
  </Button>
  </div>
  </div>
@@ -1591,8 +1681,8 @@ export function CatalystsPage() {
      <option value="all">All Clusters</option>
      {clusters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
    </select>
-   <Button variant="secondary" size="sm" onClick={loadRunAnalytics}>
-     <Loader2 size={12} className={analyticsLoading ? 'animate-spin' : ''} /> Refresh
+   <Button variant="secondary" size="sm" onClick={loadRunAnalytics} disabled={analyticsLoading}>
+     {analyticsLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
    </Button>
  </div>
  </div>
@@ -1704,7 +1794,13 @@ export function CatalystsPage() {
              try {
                const res = await api.catalysts.runAnalyticsDetail(run.runId);
                setRunDetailActions(prev => ({ ...prev, [run.runId]: res.actions }));
-              } catch (err) { console.error('Failed to load run detail', err); }
+              } catch (err) {
+               console.error('Failed to load run detail', err);
+               toast.error('Failed to load run items', {
+                 message: err instanceof Error ? err.message : 'Unknown error',
+                 requestId: err instanceof ApiError ? err.requestId : null,
+               });
+              }
               setRunDetailLoading(null);
            }}>
              {runDetailLoading === run.runId ? <Loader2 size={10} className="animate-spin" /> : <Eye size={10} />} Load Items
@@ -3028,10 +3124,7 @@ export function CatalystsPage() {
      <Sparkles className="w-10 h-10 t-muted mx-auto mb-3 opacity-30" />
      <p className="text-sm font-medium t-primary">Peer Insights</p>
      <p className="text-xs t-muted mt-1">See anonymised resolution patterns from peers in your industry.</p>
-     <Button variant="primary" size="sm" className="mt-4" onClick={() => {
-      setStoriesLoading(true);
-      api.successStories.get().then(setSuccessStories).catch(() => { /* non-critical — button stays visible */ }).finally(() => setStoriesLoading(false));
-     }}>Load Insights</Button>
+     <Button variant="primary" size="sm" className="mt-4" onClick={loadSuccessStories}>Load Insights</Button>
     </Card>
    )}
    {storiesLoading && (
@@ -3044,10 +3137,7 @@ export function CatalystsPage() {
        <h3 className="text-sm font-semibold t-primary">Industry: {successStories.industry}</h3>
        <p className="text-[10px] t-muted">{successStories.total} resolution pattern{successStories.total !== 1 ? 's' : ''} from peers</p>
       </div>
-      <Button variant="secondary" size="sm" onClick={() => {
-       setStoriesLoading(true);
-       api.successStories.get().then(setSuccessStories).catch(() => { /* non-critical — keep existing data */ }).finally(() => setStoriesLoading(false));
-      }}><RefreshCw size={12} /> Refresh</Button>
+      <Button variant="secondary" size="sm" onClick={loadSuccessStories}><RefreshCw size={12} /> Refresh</Button>
      </div>
      {successStories.stories.length === 0 ? (
       <Card className="text-center py-8">
