@@ -3,11 +3,16 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LayerBadge } from "@/components/ui/layer-badge";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { MindQueryResult } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import { MessageSquare, Send, Plus, User, Sparkles, Loader2, Trash2, ChevronDown } from "lucide-react";
 import { IconAttachment } from "@/components/icons/AtheonIcons";
 import type { AtheonLayer } from "@/types";
+
+/** PR #226: friendly message when tenant LLM budget is exhausted. */
+const BUDGET_EXCEEDED_MESSAGE =
+  "Your tenant's LLM budget has been reached for this month. Contact your admin to increase it.";
 
 interface ChatMessage {
  id: string;
@@ -48,6 +53,7 @@ interface ChatThread {
 }
 
 export function ChatPage() {
+ const toast = useToast();
  const [input, setInput] = useState('');
  const [threads, setThreads] = useState<ChatThread[]>([]);
  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -105,12 +111,19 @@ export function ChatPage() {
          setThreads([blankThread]);
        }
      })
-     .catch(() => {
+     .catch((err) => {
        setThreads([blankThread]);
+       // Non-fatal: a missing history shouldn't block the chat. Surface the
+       // request-ID for support debugging but keep the UI usable.
+       toast.error('Could not load chat history', {
+         message: err instanceof Error ? err.message : 'History service unavailable.',
+         requestId: err instanceof ApiError ? err.requestId : null,
+       });
      })
      .finally(() => setLoadingHistory(false));
 
    setActiveThreadId(blankId);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
  }, []);
 
  const suggestedQueries = [
@@ -164,8 +177,27 @@ export function ChatPage() {
   citations: result.citations.map((c, i) => ({ id: `c-${i}`, source: c, confidence: 0.9 }))};
  addMessageToThread(activeThreadId, assistantMsg);
   } catch (err) {
-  console.error('Chat query failed', err);
-  addMessageToThread(activeThreadId, { id: `e-${Date.now()}`, role: 'assistant', content: 'Sorry, I could not process that query. Please try again.' });
+  // PR #226: the tenant LLM token budget may be exhausted. Surface a specific,
+  // actionable message instead of a generic error.
+  if (err instanceof ApiError && err.status === 429) {
+    addMessageToThread(activeThreadId, {
+      id: `budget-${Date.now()}`,
+      role: 'assistant',
+      content: BUDGET_EXCEEDED_MESSAGE,
+    });
+    toast.warning('LLM budget reached', { message: BUDGET_EXCEEDED_MESSAGE });
+  } else {
+    const message = err instanceof Error ? err.message : 'Failed to process query';
+    addMessageToThread(activeThreadId, {
+      id: `e-${Date.now()}`,
+      role: 'assistant',
+      content: 'Sorry, I could not process that query. Please try again.',
+    });
+    toast.error('Chat query failed', {
+      message,
+      requestId: err instanceof ApiError ? err.requestId : null,
+    });
+  }
  }
  setSending(false);
  };

@@ -557,8 +557,20 @@ export const api = {
     entities: (tenantId?: string, type?: string, industry?: string) =>
       request<{ entities: GraphEntity[]; total: number }>(`/api/memory/entities${qs({ tenant_id: tenantId, type, industry: industry && industry !== 'general' ? industry : undefined })}`),
     entity: (id: string) => request<GraphEntityDetail>(`/api/memory/entities/${id}`),
+    /** Create a new graph entity. Backend expects: type, name, properties?, source?. */
+    createEntity: (body: { type: string; name: string; properties?: Record<string, unknown>; source?: string }) =>
+      request<{ id: string; type: string; name: string }>('/api/memory/entities', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     relationships: (tenantId?: string, industry?: string) =>
       request<{ relationships: GraphRelationship[]; total: number }>(`/api/memory/relationships${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    /** Create a new graph relationship. Backend expects: source_id, target_id, type, properties?. */
+    createRelationship: (body: { source_id: string; target_id: string; type: string; properties?: Record<string, unknown> }) =>
+      request<{ id: string }>('/api/memory/relationships', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     graph: (tenantId?: string, industry?: string) =>
       request<GraphData>(`/api/memory/graph${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
     query: (queryText: string, tenantId?: string) =>
