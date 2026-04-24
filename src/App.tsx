@@ -21,6 +21,7 @@ import { AssessmentsPage } from "@/pages/AssessmentsPage";
 import { CatalystRunDetailPage } from "@/pages/CatalystRunDetailPage";
 import { ERPOAuthCallbackPage } from "@/pages/ERPOAuthCallbackPage";
 import { TenantManagementPage } from "@/pages/TenantManagementPage";
+import { TenantLlmBudgetPage } from "@/pages/admin/TenantLlmBudgetPage";
 import { TrialPage } from "@/pages/TrialPage";
 import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
 import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />
+          <Route path="/admin/tenants/:id/llm" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantLlmBudgetPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
           <Route path="/iam" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IAMPage /></ProtectedRoute>} />
           <Route path="/control-plane" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ControlPlanePage /></ProtectedRoute>} />

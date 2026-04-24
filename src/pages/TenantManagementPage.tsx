@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   Users, Database, Trash2, RotateCcw, Download, Shield, AlertTriangle,
   CheckCircle, XCircle, Search, Eye, Activity, TrendingUp,
-  Building2, Calendar, HardDrive, FileJson, ArrowLeft
+  Building2, Calendar, HardDrive, FileJson, ArrowLeft, Zap
 } from "lucide-react";
 import { format } from 'date-fns';
 
@@ -48,6 +49,7 @@ interface TenantDetails extends Tenant {
 
 export function TenantManagementPage() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<TenantDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -389,6 +391,13 @@ export function TenantManagementPage() {
                 <Download size={14} className="mr-2" />
                 Export All Data
               </Button>
+
+              <Link to={`/admin/tenants/${selectedTenant.id}/llm`}>
+                <Button variant="ghost" disabled={!!actionLoading}>
+                  <Zap size={14} className="mr-2" />
+                  LLM Budget & Redaction
+                </Button>
+              </Link>
             </div>
 
             {selectedTenant.slug === 'vantax' && (
@@ -585,6 +594,15 @@ export function TenantManagementPage() {
                             title="View details"
                           >
                             <Eye size={14} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/admin/tenants/${tenant.id}/llm`)}
+                            disabled={!!actionLoading}
+                            title="LLM budget & redaction"
+                          >
+                            <Zap size={14} />
                           </Button>
                           <Button
                             variant="ghost"
