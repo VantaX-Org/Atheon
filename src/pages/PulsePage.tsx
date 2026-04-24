@@ -6,17 +6,21 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
 import { CostOfInactionTicker } from "@/components/ui/cost-of-inaction-ticker";
 import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
+import { useToast } from "@/components/ui/toast";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
+import { MetricFilterBar, type MetricStatus } from "@/components/MetricFilterBar";
+import { AnomalyDetectionControls, type AnomalySensitivity } from "@/components/AnomalyDetectionControls";
+import { CorrelationMatrix } from "@/components/CorrelationMatrix";
 import {
   Activity, AlertTriangle, GitBranch, Link2, ArrowRight, Loader2,
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
-  BarChart3, Gauge, Search, Filter, AlertCircle, Workflow, Play,
+  BarChart3, Gauge, Filter, AlertCircle, Workflow, Play,
   UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
@@ -248,6 +252,7 @@ function generateNarrative(metrics: Metric[], anomalies: AnomalyItem[], processe
 export function PulsePage() {
   const industry = useAppStore((s) => s.industry);
   const companyId = useSelectedCompanyId();
+  const toast = useToast();
   const { activeTab, setActiveTab } = useTabState('dashboard');
 
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -260,14 +265,16 @@ export function PulsePage() {
   // Expandable states
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
   const [expandedAnomaly, setExpandedAnomaly] = useState<string | null>(null);
-  const [mlDetectionRunning, setMlDetectionRunning] = useState(false);
+  // §2.2.2 Anomaly detection — which sensitivity button is currently running
+  const [detectingSensitivity, setDetectingSensitivity] = useState<AnomalySensitivity | null>(null);
   const [expandedProcess, setExpandedProcess] = useState<string | null>(null);
   const [expandedCorrelation, setExpandedCorrelation] = useState<string | null>(null);
 
-  // Filter states
-  const [metricFilter, setMetricFilter] = useState<'all' | 'green' | 'amber' | 'red'>('all');
+  // Filter states — §2.2.1 multi-select metric filtering
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<MetricStatus[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [anomalyFilter, setAnomalyFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
-  const [metricSearch, setMetricSearch] = useState('');
 
   // Catalyst runs state
   const [catalystRuns, setCatalystRuns] = useState<CatalystRunItem[]>([]);
@@ -401,24 +408,39 @@ export function PulsePage() {
   };
 
 
-  async function runMLDetection() {
-    setMlDetectionRunning(true);
+  /**
+   * §2.2.2 — Trigger ML anomaly re-detection at a chosen sensitivity.
+   * Uses the typed api client (threads companyId & X-Request-ID) and surfaces
+   * outcomes via toast, including the request-id on error for support.
+   */
+  async function handleDetectAnomalies(sensitivity: AnomalySensitivity) {
+    if (detectingSensitivity) return;
+    setDetectingSensitivity(sensitivity);
     try {
-      const response = await fetch(`/api/pulse/anomalies/detect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sensitivity: 'medium' }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        const ind = industry !== 'general' ? industry : undefined;
-        const a = await api.pulse.anomalies(undefined, ind, companyId || undefined);
-        setAnomalies(a.anomalies);
-      }
+      const result = await api.pulse.detectAnomalies(
+        undefined,
+        sensitivity,
+        undefined,
+        companyId || undefined,
+      );
+      const count = typeof result?.count === 'number' ? result.count : 0;
+      toast.success(
+        count === 0 ? 'No anomalies detected' : `Detected ${count} anomal${count === 1 ? 'y' : 'ies'}`,
+        count === 0
+          ? `No metrics exceeded the ${sensitivity}-sensitivity Z-score threshold.`
+          : `Sensitivity: ${sensitivity}. Reloading the anomaly list…`,
+      );
+      // Refresh the anomalies list after a successful detection run
+      const ind = industry !== 'general' ? industry : undefined;
+      const a = await api.pulse.anomalies(undefined, ind, companyId || undefined);
+      setAnomalies(a.anomalies);
     } catch (err) {
       console.error('ML detection failed:', err);
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Failed to detect anomalies', { message, requestId });
     } finally {
-      setMlDetectionRunning(false);
+      setDetectingSensitivity(null);
     }
   }
   useEffect(() => {
@@ -474,11 +496,20 @@ export function PulsePage() {
     sparkline: [],
   }));
 
-  // Filtered metrics — Dynamic Layout: red domains first, then amber, then green
+  // Derive available categories from metrics.sourceSystem for the category filter
+  const availableCategories = Array.from(
+    new Set(metrics.map(m => m.sourceSystem).filter((s): s is string => !!s && s.length > 0))
+  ).sort();
+
+  // Filtered metrics — §2.2.1: multi-select status + category + case-insensitive
+  // substring search. Empty filter arrays behave as "all".
+  // Dynamic Layout: red first, then amber, then green.
   const statusPriority: Record<string, number> = { red: 0, amber: 1, green: 2 };
+  const normalisedSearch = searchQuery.trim().toLowerCase();
   const filteredMetrics = metrics
-    .filter(m => metricFilter === 'all' || m.status === metricFilter)
-    .filter(m => !metricSearch || m.name.toLowerCase().includes(metricSearch.toLowerCase()))
+    .filter(m => statusFilter.length === 0 || statusFilter.includes(m.status as MetricStatus))
+    .filter(m => categoryFilter.length === 0 || (m.sourceSystem && categoryFilter.includes(m.sourceSystem)))
+    .filter(m => !normalisedSearch || m.name.toLowerCase().includes(normalisedSearch))
     .sort((a, b) => (statusPriority[a.status] ?? 3) - (statusPriority[b.status] ?? 3));
 
   // Filtered anomalies
@@ -875,40 +906,28 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'monitoring' && (
         <TabPanel>
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <div className="relative flex-1 min-w-48 max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary"
-                placeholder="Search metrics..."
-                value={metricSearch}
-                onChange={e => setMetricSearch(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Filter size={14} className="text-gray-400" />
-              {(['all', 'green', 'amber', 'red'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setMetricFilter(f)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                    metricFilter === f
-                      ? 'bg-accent/20 text-accent border border-accent/30'
-                      : 'bg-[var(--bg-secondary)] border border-[var(--border-card)] t-muted hover:border-gray-400'
-                  }`}
-                >
-                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* §2.2.1 Metric Filter Bar — search + multi-select status + category */}
+          <MetricFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+            availableCategories={availableCategories}
+            resultCount={filteredMetrics.length}
+            totalCount={metrics.length}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredMetrics.length === 0 && (
               <div className="col-span-full flex items-center gap-3 py-6 px-4">
                 <Activity className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
-                <p className="text-sm t-muted">No metrics {metricFilter !== 'all' ? `with ${metricFilter} status` : 'available yet'}</p>
+                <p className="text-sm t-muted">
+                  {metrics.length === 0
+                    ? 'No metrics available yet'
+                    : 'No metrics match the current filters'}
+                </p>
               </div>
             )}
             {filteredMetrics.map((metric) => {
@@ -1071,30 +1090,18 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'anomalies' && (
         <TabPanel>
+          {/* §2.2.2 Anomaly Detection Controls — Low / Medium / High sensitivity */}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold t-primary">Anomaly Detection</h3>
+          </div>
+          <AnomalyDetectionControls
+            onDetect={handleDetectAnomalies}
+            runningSensitivity={detectingSensitivity}
+          />
+
           {/* TASK-002: Decomposed AnomalyList sub-component for compact view */}
           <AnomalyList anomalies={filteredAnomalies} />
-          <div className="flex items-center justify-between mb-4 mt-6">
-            <h3 className="text-lg font-semibold t-primary">Anomaly Detection</h3>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={runMLDetection}
-              disabled={mlDetectionRunning}
-            >
-              {mlDetectionRunning ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Running ML Detection...
-                </>
-              ) : (
-                <>
-                  <TrendingUp size={14} className="mr-2" />
-                  Run ML Detection
-                </>
-              )}
-            </Button>
-          </div>
-          {/* Anomaly Severity Filter */}
+
           {/* Anomaly Severity Filter */}
           <div className="flex items-center gap-2 mb-4">
             <Filter size={14} className="text-gray-400" />
@@ -1572,6 +1579,13 @@ export function PulsePage() {
                 <p className="text-[10px] t-muted mt-1">Between events</p>
               </Card>
             </div>
+          )}
+
+          {/* §2.2.3 Correlation Matrix — heatmap visualisation (SVG/HTML, no deps) */}
+          {correlations.length > 0 && (
+            <Card className="mb-6">
+              <CorrelationMatrix correlations={correlations} />
+            </Card>
           )}
 
           <div className="space-y-4">
