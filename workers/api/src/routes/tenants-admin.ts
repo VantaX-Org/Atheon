@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AuthContext, AppBindings } from '../types';
 import { rotateErpConnectionEncryption } from '../services/encryption-rotation';
+import { setTenantTokenBudget, setTenantRedactionEnabled } from '../services/llm-provider';
 
 const tenants = new Hono<AppBindings>();
 tenants.use('/*', cors());
@@ -443,31 +444,21 @@ tenants.delete('/tenants/:id/hard-delete', async (c) => {
  * POST /api/v1/admin/rotate-encryption
  * Re-encrypt all erp_connections.encrypted_config rows under a new key.
  * Superadmin-only. Body: { old_key: string; new_key: string }.
- *
- * Operational procedure:
- *   1. Call this endpoint with { old_key = current ENCRYPTION_KEY, new_key = next key }
- *   2. Verify `rotated > 0 && failed === 0` in the response
- *   3. Swap the ENCRYPTION_KEY secret in Cloudflare Workers
- *   4. Deploy
- *
- * The rotation is idempotent: re-running with the same old_key after step 3 will
- * see 0 rotations (all rows now decrypt under the new key, which is the new current
- * key).
  */
 tenants.post('/rotate-encryption', async (c) => {
   if (!requireSuperadmin(c)) {
     return c.json({ error: 'Forbidden: Superadmin only' }, 403);
   }
 
-  let body: { old_key?: string; new_key?: string };
+  let rotBody: { old_key?: string; new_key?: string };
   try {
-    body = await c.req.json<{ old_key?: string; new_key?: string }>();
+    rotBody = await c.req.json<{ old_key?: string; new_key?: string }>();
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const oldKey = body.old_key;
-  const newKey = body.new_key;
+  const oldKey = rotBody.old_key;
+  const newKey = rotBody.new_key;
 
   if (typeof oldKey !== 'string' || typeof newKey !== 'string') {
     return c.json({ error: 'old_key and new_key are required strings' }, 400);
@@ -482,7 +473,6 @@ tenants.post('/rotate-encryption', async (c) => {
   try {
     const result = await rotateErpConnectionEncryption(c.env.DB, oldKey, newKey);
 
-    // Audit the rotation (without logging the keys themselves)
     try {
       const auth = c.get('auth') as AuthContext | undefined;
       await c.env.DB.prepare(
@@ -502,6 +492,124 @@ tenants.post('/rotate-encryption', async (c) => {
     return c.json({ success: result.failed === 0, ...result });
   } catch (err) {
     return c.json({ error: (err as Error).message || 'Rotation failed' }, 400);
+  }
+});
+
+/**
+ * GET /api/v1/admin/tenants/:id/llm-budget
+ * Read current LLM token budget + usage for a tenant (superadmin only).
+ */
+tenants.get('/tenants/:id/llm-budget', async (c) => {
+  if (!requireSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+  const tenantId = c.req.param('id');
+  try {
+    const row = await c.env.DB.prepare(
+      'SELECT tenant_id, monthly_token_budget, tokens_used_this_month, tokens_reset_at, llm_redaction_enabled, updated_at FROM tenant_llm_budget WHERE tenant_id = ?',
+    ).bind(tenantId).first<{
+      tenant_id: string;
+      monthly_token_budget: number | null;
+      tokens_used_this_month: number;
+      tokens_reset_at: string | null;
+      llm_redaction_enabled: number;
+      updated_at: string;
+    }>();
+    if (!row) {
+      return c.json({
+        tenantId,
+        monthlyTokenBudget: null,
+        tokensUsedThisMonth: 0,
+        tokensResetAt: null,
+        llmRedactionEnabled: true,
+        exists: false,
+      });
+    }
+    return c.json({
+      tenantId: row.tenant_id,
+      monthlyTokenBudget: row.monthly_token_budget,
+      tokensUsedThisMonth: row.tokens_used_this_month,
+      tokensResetAt: row.tokens_reset_at,
+      llmRedactionEnabled: row.llm_redaction_enabled !== 0,
+      updatedAt: row.updated_at,
+      exists: true,
+    });
+  } catch (err) {
+    console.error('Get LLM budget failed:', err);
+    return c.json({ error: 'Failed to fetch LLM budget', details: (err as Error).message }, 500);
+  }
+});
+
+/**
+ * PUT /api/v1/admin/tenants/:id/llm-budget
+ * Set LLM token budget and/or redaction opt-out for a tenant (superadmin only).
+ */
+tenants.put('/tenants/:id/llm-budget', async (c) => {
+  if (!requireSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+  const tenantId = c.req.param('id');
+  let body: { monthlyTokenBudget?: number | null; llmRedactionEnabled?: boolean };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const hasBudget = Object.prototype.hasOwnProperty.call(body, 'monthlyTokenBudget');
+  const hasRedaction = Object.prototype.hasOwnProperty.call(body, 'llmRedactionEnabled');
+  if (!hasBudget && !hasRedaction) {
+    return c.json({ error: 'Provide monthlyTokenBudget and/or llmRedactionEnabled' }, 400);
+  }
+
+  if (hasBudget) {
+    const b = body.monthlyTokenBudget;
+    if (b !== null && (typeof b !== 'number' || !Number.isFinite(b) || b < 0 || !Number.isInteger(b))) {
+      return c.json({ error: 'monthlyTokenBudget must be a non-negative integer or null' }, 400);
+    }
+  }
+  if (hasRedaction && typeof body.llmRedactionEnabled !== 'boolean') {
+    return c.json({ error: 'llmRedactionEnabled must be a boolean' }, 400);
+  }
+
+  const auth = c.get('auth') as AuthContext;
+  try {
+    if (hasBudget) {
+      await setTenantTokenBudget(c.env.DB, tenantId, body.monthlyTokenBudget ?? null);
+    }
+    if (hasRedaction) {
+      await setTenantRedactionEnabled(c.env.DB, tenantId, body.llmRedactionEnabled as boolean);
+    }
+
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(
+        crypto.randomUUID(),
+        tenantId,
+        auth?.userId ?? null,
+        'admin.llm_budget.update',
+        'security',
+        'tenant_llm_budget',
+        JSON.stringify({
+          ...(hasBudget ? { monthlyTokenBudget: body.monthlyTokenBudget ?? null } : {}),
+          ...(hasRedaction ? { llmRedactionEnabled: body.llmRedactionEnabled } : {}),
+        }),
+        'success',
+      ).run();
+    } catch (auditErr) {
+      console.error('LLM budget audit log failed (non-fatal):', auditErr);
+    }
+
+    return c.json({
+      success: true,
+      tenantId,
+      ...(hasBudget ? { monthlyTokenBudget: body.monthlyTokenBudget ?? null } : {}),
+      ...(hasRedaction ? { llmRedactionEnabled: body.llmRedactionEnabled } : {}),
+    });
+  } catch (err) {
+    console.error('Set LLM budget failed:', err);
+    return c.json({ error: 'Failed to set LLM budget', details: (err as Error).message }, 500);
   }
 });
 
