@@ -25,6 +25,7 @@ import { TenantManagementPage } from "@/pages/TenantManagementPage";
 import { TenantLlmBudgetPage } from "@/pages/admin/TenantLlmBudgetPage";
 import { TrialPage } from "@/pages/TrialPage";
 import { ExecutiveMobilePage } from "@/pages/ExecutiveMobilePage";
+import { ExecutiveSummaryPage } from "@/pages/ExecutiveSummaryPage";
 import { VerifyEmailPage } from "@/pages/VerifyEmailPage";
 import { PlatformHealthPage } from "@/pages/PlatformHealthPage";
 import { SupportConsolePage } from "@/pages/SupportConsolePage";
@@ -104,6 +105,7 @@ export default function App() {
           <Route path="/deployments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><DeploymentsPage /></ProtectedRoute>} />
           <Route path="/assessments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><AssessmentsPage /></ProtectedRoute>} />
           <Route path="/executive" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveMobilePage /></ProtectedRoute>} />
+          <Route path="/executive-summary" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveSummaryPage /></ProtectedRoute>} />
           {/* Admin Tooling Routes (ADMIN-001 to ADMIN-012) */}
           <Route path="/platform-health" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><PlatformHealthPage /></ProtectedRoute>} />
           <Route path="/support" element={<ProtectedRoute allowedRoles={SUPPORT_ROLES}><SupportConsolePage /></ProtectedRoute>} />

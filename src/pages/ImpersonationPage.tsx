@@ -1,13 +1,24 @@
 /**
  * ADMIN-004: User Impersonation
- * Support/superadmin can "View as [user]" with 15-min time-limited token.
+ * Support/superadmin can "View as [user]" with a 15-min time-limited session.
  * Route: /impersonate | Role: superadmin, support_admin
+ *
+ * Backend (verified):
+ *   - GET  /api/v1/admin-tooling/impersonate/users?q=…        — cross-tenant user search
+ *   - POST /api/v1/admin-tooling/impersonate/start            — starts a time-limited session
+ *   - POST /api/v1/admin-tooling/impersonate/end              — ends the session
+ *
+ * Privilege guards: the backend blocks impersonating equal/higher-role users;
+ * we reflect that with a clear error toast and disable the "View As" button
+ * for users who would be rejected server-side.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/appStore';
+import { useToast } from '@/components/ui/toast';
+import { api, ApiError, setTenantOverride } from '@/lib/api';
 import {
   Eye, Search, Clock, AlertTriangle, Loader2,
   User, LogOut,
@@ -18,10 +29,7 @@ interface ImpersonatableUser {
   name: string;
   email: string;
   role: string;
-  tenantName: string;
-  tenantId: string;
-  lastLogin: string;
-  status: 'active' | 'suspended' | 'invited';
+  tenant_id: string;
 }
 
 interface ImpersonationSession {
@@ -29,76 +37,159 @@ interface ImpersonationSession {
   userName: string;
   userEmail: string;
   userRole: string;
-  tenantName: string;
+  tenantId: string;
   expiresAt: string;
   startedAt: string;
 }
 
+// Must mirror backend ROLE_LEVELS in workers/api/src/lib/roles.ts. If a target
+// user's role is >= caller's role, the server will reject the impersonation —
+// we disable the button preemptively for UX clarity.
+const ROLE_LEVELS: Record<string, number> = {
+  superadmin: 100,
+  support_admin: 90,
+  admin: 80,
+  executive: 70,
+  manager: 60,
+  analyst: 50,
+  operator: 40,
+  viewer: 30,
+};
+
+const SESSION_STORAGE_KEY = 'atheon_impersonation_session';
+
+function loadSessionFromStorage(): ImpersonationSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ImpersonationSession;
+    // Discard if expired
+    if (new Date(parsed.expiresAt).getTime() < Date.now()) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function ImpersonationPage() {
+  const currentUser = useAppStore((s) => s.user);
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<ImpersonatableUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<ImpersonatableUser[]>([]);
-  const [activeSession, setActiveSession] = useState<ImpersonationSession | null>(null);
+  const [activeSession, setActiveSession] = useState<ImpersonationSession | null>(loadSessionFromStorage());
   const [confirmUser, setConfirmUser] = useState<ImpersonatableUser | null>(null);
   const [impersonating, setImpersonating] = useState(false);
-  useAppStore((s) => s.user);
+  const [ending, setEnding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  const callerLevel = ROLE_LEVELS[currentUser?.role || ''] ?? 0;
 
+  const loadUsers = useCallback(async (q?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.adminTooling.impersonateSearch(q);
+      const list = (res.users || []) as unknown as ImpersonatableUser[];
+      setUsers(list);
+      setFilteredUsers(list);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load users';
+      setError(message);
+      toast.error('Failed to load users', {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // Client-side filter on already-loaded list (avoids a round-trip per keystroke)
   useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredUsers(users);
     } else {
       const q = searchQuery.toLowerCase();
       setFilteredUsers(users.filter(u =>
-        u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) ||
-        u.tenantName.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.role || '').toLowerCase().includes(q)
       ));
     }
   }, [searchQuery, users]);
 
-  async function loadUsers() {
-    setLoading(true);
-    // Mock data — real API would fetch cross-tenant users
-    setUsers([
-      { id: '1', name: 'John Smith', email: 'john@acme.com', role: 'admin', tenantName: 'Acme Corp', tenantId: 't1', lastLogin: new Date(Date.now() - 3600000).toISOString(), status: 'active' },
-      { id: '2', name: 'Sarah Connor', email: 'sarah@acme.com', role: 'manager', tenantName: 'Acme Corp', tenantId: 't1', lastLogin: new Date(Date.now() - 86400000).toISOString(), status: 'active' },
-      { id: '3', name: 'Mike Davis', email: 'mike@techstart.io', role: 'analyst', tenantName: 'TechStart Inc', tenantId: 't2', lastLogin: new Date(Date.now() - 172800000).toISOString(), status: 'active' },
-      { id: '4', name: 'Emily Chen', email: 'emily@vantax.co.za', role: 'executive', tenantName: 'VantaX Demo', tenantId: 't3', lastLogin: new Date().toISOString(), status: 'active' },
-      { id: '5', name: 'James Wilson', email: 'james@acme.com', role: 'operator', tenantName: 'Acme Corp', tenantId: 't1', lastLogin: new Date(Date.now() - 604800000).toISOString(), status: 'suspended' },
-    ]);
-    setLoading(false);
-  }
-
-  const startImpersonation = async (user: ImpersonatableUser) => {
+  const startImpersonation = async (target: ImpersonatableUser) => {
     setImpersonating(true);
-    // Simulate API call to create impersonation token
-    await new Promise(r => setTimeout(r, 1000));
-    setActiveSession({
-      userId: user.id,
-      userName: user.name,
-      userEmail: user.email,
-      userRole: user.role,
-      tenantName: user.tenantName,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      startedAt: new Date().toISOString(),
-    });
-    setConfirmUser(null);
-    setImpersonating(false);
+    try {
+      const res = await api.adminTooling.impersonateStart(target.id);
+      const imp = (res as { impersonation?: Record<string, unknown> }).impersonation;
+      if (!imp) {
+        throw new Error('Impersonation response missing session data');
+      }
+      const session: ImpersonationSession = {
+        userId: String(imp.userId),
+        userName: String(imp.name),
+        userEmail: String(imp.email),
+        userRole: String(imp.role),
+        tenantId: String(imp.tenantId),
+        expiresAt: String(imp.expiresAt),
+        startedAt: new Date().toISOString(),
+      };
+      setActiveSession(session);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      // Scope subsequent API calls to the impersonated tenant so the admin sees
+      // that tenant's data, not their own.
+      setTenantOverride(session.tenantId);
+      setConfirmUser(null);
+      toast.success('Impersonation started', {
+        message: `Viewing as ${session.userName} (${session.userRole}). Session expires at ${new Date(session.expiresAt).toLocaleTimeString()}.`,
+      });
+    } catch (err) {
+      toast.error('Impersonation failed', {
+        message: err instanceof Error ? err.message : 'Could not start impersonation',
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setImpersonating(false);
+    }
   };
 
-  const endImpersonation = () => {
-    setActiveSession(null);
+  const endImpersonation = async () => {
+    setEnding(true);
+    try {
+      await api.adminTooling.impersonateEnd();
+    } catch (err) {
+      // Best-effort: even if the end call fails, we clear client state so the
+      // admin isn't stuck with a dead override. Surface the error as a warning.
+      toast.warning('Impersonation end may not have been logged', {
+        message: err instanceof Error ? err.message : 'Session cleared locally',
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setActiveSession(null);
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setTenantOverride(null);
+      setEnding(false);
+    }
   };
 
-  const roleColor = (r: string) => {
+  const roleColor = (r: string): 'danger' | 'warning' | 'info' | 'default' => {
     if (r === 'superadmin') return 'danger';
     if (r === 'support_admin') return 'warning';
     if (r === 'admin') return 'info';
     return 'default';
+  };
+
+  const canImpersonate = (u: ImpersonatableUser): boolean => {
+    const targetLevel = ROLE_LEVELS[u.role] ?? 0;
+    return targetLevel < callerLevel && u.id !== currentUser?.id;
   };
 
   if (loading) {
@@ -109,9 +200,19 @@ export function ImpersonationPage() {
     );
   }
 
+  if (error && users.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-3">
+        <AlertTriangle className="w-8 h-8 text-red-400" />
+        <p className="text-sm t-primary">{error}</p>
+        <button onClick={() => loadUsers()} className="px-3 py-1.5 rounded-lg bg-accent/10 text-accent text-xs hover:bg-accent/20 transition-colors">Retry</button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Impersonation Banner */}
+      {/* Active Impersonation Banner */}
       {activeSession && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -121,12 +222,13 @@ export function ImpersonationPage() {
                 Viewing as {activeSession.userName} ({activeSession.userRole})
               </p>
               <p className="text-[10px] t-muted">
-                {activeSession.tenantName} · Expires {new Date(activeSession.expiresAt).toLocaleTimeString()}
+                {activeSession.userEmail} · Expires {new Date(activeSession.expiresAt).toLocaleTimeString()}
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={endImpersonation} className="text-amber-400 border-amber-500/30">
-            <LogOut size={12} className="mr-1" /> End Session
+          <Button variant="outline" size="sm" onClick={endImpersonation} disabled={ending} className="text-amber-400 border-amber-500/30">
+            {ending ? <Loader2 size={12} className="animate-spin mr-1" /> : <LogOut size={12} className="mr-1" />}
+            End Session
           </Button>
         </div>
       )}
@@ -147,7 +249,7 @@ export function ImpersonationPage() {
           <AlertTriangle size={14} className="text-amber-400 mt-0.5" />
           <div className="text-xs">
             <p className="font-medium t-primary">Impersonation sessions are time-limited and fully audited</p>
-            <p className="t-muted mt-0.5">Sessions expire after 15 minutes. All actions taken while impersonating are logged in the audit trail with the impersonating admin&apos;s identity.</p>
+            <p className="t-muted mt-0.5">Sessions expire after 15 minutes. All actions taken while impersonating are logged in the audit trail with your identity as the actor. You cannot impersonate users with equal or higher privilege than your own.</p>
           </div>
         </div>
       </Card>
@@ -157,49 +259,62 @@ export function ImpersonationPage() {
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
         <input
           className="w-full pl-9 pr-3 py-2 rounded-lg border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
-          placeholder="Search users by name, email, role, or tenant..."
+          placeholder="Search users by name, email, or role..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
       {/* Users List */}
-      <div className="space-y-2">
-        {filteredUsers.map((u) => (
-          <Card key={u.id} className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                  <User size={14} className="text-accent" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium t-primary">{u.name}</p>
-                    <Badge variant={roleColor(u.role)} className="text-[10px]">{u.role}</Badge>
-                    {u.status === 'suspended' && <Badge variant="danger" className="text-[10px]">suspended</Badge>}
+      {filteredUsers.length === 0 ? (
+        <Card className="p-6 text-center">
+          <p className="text-sm t-muted">No users found.</p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredUsers.map((u) => {
+            const allowed = canImpersonate(u);
+            return (
+              <Card key={u.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                      <User size={14} className="text-accent" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium t-primary">{u.name}</p>
+                        <Badge variant={roleColor(u.role)} className="text-[10px]">{u.role}</Badge>
+                      </div>
+                      <p className="text-[10px] t-muted">{u.email}</p>
+                    </div>
                   </div>
-                  <p className="text-[10px] t-muted">{u.email} · {u.tenantName}</p>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmUser(u)}
+                      disabled={!allowed || activeSession !== null}
+                      className="text-xs"
+                      title={
+                        !allowed
+                          ? u.id === currentUser?.id
+                            ? 'You cannot impersonate yourself'
+                            : 'Cannot impersonate a user with equal or higher privilege'
+                          : activeSession
+                            ? 'End the current session first'
+                            : undefined
+                      }
+                    >
+                      <Eye size={12} className="mr-1" /> View As
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right text-[10px] t-muted">
-                  <p>Last login</p>
-                  <p>{new Date(u.lastLogin).toLocaleDateString()}</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConfirmUser(u)}
-                  disabled={u.status === 'suspended' || activeSession !== null}
-                  className="text-xs"
-                >
-                  <Eye size={12} className="mr-1" /> View As
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       {confirmUser && (
@@ -218,7 +333,6 @@ export function ImpersonationPage() {
               <div className="flex justify-between"><span className="t-muted">User:</span><span className="t-primary">{confirmUser.name}</span></div>
               <div className="flex justify-between"><span className="t-muted">Email:</span><span className="t-primary">{confirmUser.email}</span></div>
               <div className="flex justify-between"><span className="t-muted">Role:</span><Badge variant={roleColor(confirmUser.role)}>{confirmUser.role}</Badge></div>
-              <div className="flex justify-between"><span className="t-muted">Tenant:</span><span className="t-primary">{confirmUser.tenantName}</span></div>
               <div className="flex justify-between"><span className="t-muted">Duration:</span><span className="t-primary flex items-center gap-1"><Clock size={12} /> 15 minutes</span></div>
             </div>
             <div className="flex gap-2">
