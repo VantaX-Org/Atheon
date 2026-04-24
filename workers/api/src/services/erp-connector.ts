@@ -3,6 +3,135 @@
  * Real OAuth flows, connection testing, and data sync for SAP, Salesforce, Workday, Oracle, Xero, Sage, Pastel
  */
 
+// ── Multi-company capture (PR #20 follow-up) ──
+// Each canonical erp_* row must carry a company_id referencing erp_companies.id.
+// Adapters capture the vendor-specific company identifier (SAP BUKRS, Xero TenantId,
+// NetSuite subsidiary id, etc.) and resolve it through resolveCompanyId(), which
+// upserts a stub erp_companies row the first time a given vendor key is seen.
+// When the source record has no company identifier, rows land on the tenant's
+// '__primary__' company (matching the migrate.ts backfill convention).
+
+/**
+ * Metadata that may be known at capture time and should flow into the
+ * erp_companies row (populated via INSERT ... ON CONFLICT DO UPDATE).
+ */
+export interface CompanyCaptureMeta {
+  name?: string;
+  legalName?: string;
+  currency?: string;
+  country?: string;
+  taxId?: string;
+  code?: string;
+}
+
+/**
+ * Resolve the erp_companies.id for a given tenant + vendor company key.
+ * Upserts a new erp_companies row (with source_system and external_id set)
+ * if the combination has not been seen before; returns the internal UUID.
+ *
+ * vendorCompanyKey is the source-system identifier (SAP BUKRS, Odoo
+ * company_id, Xero TenantId, NetSuite subsidiary, Dynamics companyid,
+ * etc.). When null/undefined/empty, resolves to the tenant's '__primary__'
+ * company (creating it if the tenant has no companies yet), matching the
+ * backfill convention in migrate.ts.
+ *
+ * Caching: pass the same `cache` Map across calls in a single sync run
+ * to avoid repeated SELECT/INSERT round-trips. Keyed by
+ * `${tenantId}::${sourceSystem}::${externalId}`.
+ */
+export async function resolveCompanyId(
+  db: D1Database,
+  tenantId: string,
+  sourceSystem: string,
+  vendorCompanyKey: string | number | null | undefined,
+  meta?: CompanyCaptureMeta,
+  cache?: Map<string, string>,
+): Promise<string> {
+  // Normalise: null/undefined/empty → primary company (migration source).
+  const rawKey = vendorCompanyKey === null || vendorCompanyKey === undefined
+    ? ''
+    : String(vendorCompanyKey).trim();
+  const isPrimary = rawKey === '';
+  const externalId = isPrimary ? '__primary__' : rawKey;
+  const effectiveSource = isPrimary ? 'migration' : sourceSystem;
+
+  const cacheKey = `${tenantId}::${effectiveSource}::${externalId}`;
+  if (cache?.has(cacheKey)) return cache.get(cacheKey) as string;
+
+  const existing = await db.prepare(
+    'SELECT id FROM erp_companies WHERE tenant_id = ? AND external_id = ? AND source_system = ? LIMIT 1',
+  ).bind(tenantId, externalId, effectiveSource).first<{ id: string }>();
+
+  if (existing?.id) {
+    cache?.set(cacheKey, existing.id);
+    return existing.id;
+  }
+
+  const newId = crypto.randomUUID();
+  const code = meta?.code || (isPrimary ? 'PRIMARY' : rawKey.slice(0, 32));
+  const name = meta?.name || (isPrimary ? 'Primary Company' : rawKey);
+  const legalName = meta?.legalName || name;
+  const currency = meta?.currency || 'ZAR';
+  const country = meta?.country || 'ZA';
+  const isPrimaryFlag = isPrimary ? 1 : 0;
+
+  try {
+    await db.prepare(
+      `INSERT INTO erp_companies (id, tenant_id, external_id, source_system, code, name, legal_name, currency, country, tax_id, is_primary, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+    ).bind(
+      newId, tenantId, externalId, effectiveSource,
+      code, name, legalName, currency, country, meta?.taxId || null, isPrimaryFlag,
+    ).run();
+    cache?.set(cacheKey, newId);
+    return newId;
+  } catch {
+    // Race/duplicate: fall back to SELECT (unique index (tenant_id, external_id, source_system)).
+    const retry = await db.prepare(
+      'SELECT id FROM erp_companies WHERE tenant_id = ? AND external_id = ? AND source_system = ? LIMIT 1',
+    ).bind(tenantId, externalId, effectiveSource).first<{ id: string }>();
+    if (retry?.id) {
+      cache?.set(cacheKey, retry.id);
+      return retry.id;
+    }
+    throw new Error(`resolveCompanyId: could not resolve or create company for tenant=${tenantId} external_id=${externalId}`);
+  }
+}
+
+/**
+ * Upsert richer erp_companies metadata for vendors that expose a dedicated
+ * organisations/subsidiaries/companies listing endpoint (Xero Organisations,
+ * NetSuite Subsidiaries, Dynamics 365 /companies, SAP T001, etc.). Updates
+ * name, legal_name, currency, country, tax_id when provided on a subsequent
+ * call while preserving id/external_id/source_system as the conflict key.
+ */
+export async function upsertCompanyMetadata(
+  db: D1Database,
+  tenantId: string,
+  sourceSystem: string,
+  vendorCompanyKey: string | number,
+  meta: CompanyCaptureMeta,
+  cache?: Map<string, string>,
+): Promise<string> {
+  const companyId = await resolveCompanyId(db, tenantId, sourceSystem, vendorCompanyKey, meta, cache);
+  // Now enrich — only overwrite when caller provided a non-empty value.
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (meta.name) { sets.push('name = ?'); vals.push(meta.name); }
+  if (meta.legalName) { sets.push('legal_name = ?'); vals.push(meta.legalName); }
+  if (meta.currency) { sets.push('currency = ?'); vals.push(meta.currency); }
+  if (meta.country) { sets.push('country = ?'); vals.push(meta.country); }
+  if (meta.taxId) { sets.push('tax_id = ?'); vals.push(meta.taxId); }
+  if (meta.code) { sets.push('code = ?'); vals.push(meta.code); }
+  if (sets.length > 0) {
+    sets.push("synced_at = datetime('now')");
+    await db.prepare(
+      `UPDATE erp_companies SET ${sets.join(', ')} WHERE id = ?`,
+    ).bind(...vals, companyId).run();
+  }
+  return companyId;
+}
+
 export interface ERPCredentials {
   clientId: string;
   clientSecret: string;

@@ -8,9 +8,15 @@
  */
 
 // ═══ Canonical Interfaces ═══
+//
+// Every canonical record carries an optional `company_id` — the erp_companies.id
+// that the source record maps to (see resolveCompanyId in erp-connector.ts).
+// Callers should populate it via `mapRecord(..., { companyId })` so the generic
+// writer in routes/erp.ts picks it up through Object.keys(mappedObj).
 
 export interface CanonicalCustomer {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   name: string; email: string; phone: string; address: string;
   city: string; country: string; tax_number: string;
   customer_group: string; credit_limit: number; outstanding_balance: number;
@@ -20,6 +26,7 @@ export interface CanonicalCustomer {
 
 export interface CanonicalSupplier {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   name: string; email: string; phone: string; address: string;
   city: string; country: string; tax_number: string;
   supplier_group: string; payment_terms: string; currency: string;
@@ -28,6 +35,7 @@ export interface CanonicalSupplier {
 
 export interface CanonicalInvoice {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   invoice_number: string; customer_id: string; customer_name: string;
   invoice_date: string; due_date: string; currency: string;
   subtotal: number; tax: number; total: number;
@@ -38,6 +46,7 @@ export interface CanonicalInvoice {
 
 export interface CanonicalProduct {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   sku: string; name: string; description: string; category: string;
   unit_price: number; cost_price: number; currency: string;
   quantity_on_hand: number; reorder_level: number; warehouse: string;
@@ -46,6 +55,7 @@ export interface CanonicalProduct {
 
 export interface CanonicalPurchaseOrder {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   po_number: string; supplier_id: string; supplier_name: string;
   order_date: string; delivery_date: string; currency: string;
   subtotal: number; tax: number; total: number;
@@ -55,6 +65,7 @@ export interface CanonicalPurchaseOrder {
 
 export interface CanonicalGLAccount {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   account_code: string; account_name: string; account_type: string;
   balance: number; currency: string;
   created_at: string; updated_at: string;
@@ -62,6 +73,7 @@ export interface CanonicalGLAccount {
 
 export interface CanonicalEmployee {
   id: string; tenant_id: string; source_system: string; source_id: string;
+  company_id?: string;
   employee_number: string; first_name: string; last_name: string;
   email: string; department: string; job_title: string;
   hire_date: string; status: string;
@@ -572,83 +584,218 @@ type EntityType = 'customers' | 'contacts' | 'suppliers' | 'vendors'
   | 'employees';
 
 /**
+ * Extract the vendor-specific "company" identifier from a raw source record.
+ * Returns undefined when the record has no discernible company field, which
+ * callers should treat as "map to the tenant's __primary__ company" (see
+ * resolveCompanyId in erp-connector.ts).
+ *
+ * Per-vendor fields (matches PR spec):
+ *   SAP S/4HANA        → BUKRS (company code)
+ *   Odoo               → company_id (int or [id,name] tuple)
+ *   Xero               → TenantId / OrganisationID
+ *   Sage Business Cloud→ business_id / organisation_id
+ *   Sage Pastel        → CompanyDatabase / CompanyName
+ *   Salesforce         → (no native multi-company) → undefined
+ *   Workday            → Company_Reference.ID
+ *   Oracle Fusion      → BusinessUnitId / LedgerId
+ *   Oracle NetSuite    → subsidiary.id / subsidiary (internal id)
+ *   MS Dynamics 365    → companyid (GUID)
+ *   QuickBooks Online  → realm id is connection-level → undefined
+ */
+export function extractCompanyKey(
+  system: string,
+  raw: Record<string, unknown>,
+): string | undefined {
+  const sys = system.toLowerCase().replace(/[\s_-]/g, '');
+
+  const asKey = (v: unknown): string | undefined => {
+    if (v === null || v === undefined) return undefined;
+    const str = String(v).trim();
+    return str === '' || str === 'false' ? undefined : str;
+  };
+
+  // ── SAP S/4HANA ── BUKRS is the 4-char company code.
+  if (sys.includes('sap')) {
+    return asKey(raw.BUKRS)
+      ?? asKey(raw.CompanyCode)
+      ?? asKey(raw.CompanyCodeID)
+      ?? asKey((raw.CompanyCode as Record<string, unknown>)?.CompanyCode)
+      ?? undefined;
+  }
+
+  // ── Odoo ── company_id may be an int or a [id, name] tuple.
+  if (sys.includes('odoo')) {
+    const c = raw.company_id;
+    if (Array.isArray(c) && c.length > 0) return asKey(c[0]);
+    return asKey(c);
+  }
+
+  // ── Xero ── Xero returns records scoped to a TenantId header; some
+  // envelopes include it on the record itself.
+  if (sys.includes('xero')) {
+    return asKey(raw.TenantId)
+      ?? asKey(raw.OrganisationID)
+      ?? asKey(raw.OrganizationID)
+      ?? undefined;
+  }
+
+  // ── Dynamics 365 ── Business Central scopes by companyid GUID.
+  if (sys.includes('dynamics') || sys.includes('d365') || sys.includes('businesscentral')) {
+    return asKey(raw.companyId)
+      ?? asKey(raw.companyid)
+      ?? asKey(raw.company_id)
+      ?? asKey(raw.companyName)
+      ?? undefined;
+  }
+
+  // ── NetSuite ── subsidiary is the multi-company handle.
+  if (sys.includes('netsuite')) {
+    const sub = raw.subsidiary as Record<string, unknown> | string | number | undefined;
+    if (sub && typeof sub === 'object') {
+      return asKey((sub as Record<string, unknown>).id)
+        ?? asKey((sub as Record<string, unknown>).internalId)
+        ?? asKey((sub as Record<string, unknown>).refName);
+    }
+    return asKey(sub);
+  }
+
+  // ── Oracle Fusion ── BusinessUnit or Ledger is the multi-entity boundary.
+  if (sys.includes('oracle') && !sys.includes('netsuite')) {
+    return asKey(raw.BusinessUnitId)
+      ?? asKey(raw.BusinessUnit)
+      ?? asKey(raw.LedgerId)
+      ?? asKey(raw.Ledger)
+      ?? undefined;
+  }
+
+  // ── Workday ── Company_Reference → ID (nested object in REST responses).
+  if (sys.includes('workday')) {
+    const ref = raw.Company_Reference as Record<string, unknown> | undefined;
+    if (ref) return asKey(ref.ID) ?? asKey(ref.WID);
+    return asKey(raw.companyID) ?? asKey(raw.company);
+  }
+
+  // ── Sage Business Cloud ──
+  if (sys.includes('sage') && !sys.includes('pastel')) {
+    return asKey(raw.business_id)
+      ?? asKey(raw.organisation_id)
+      ?? asKey(raw.organization_id)
+      ?? asKey((raw.business as Record<string, unknown> | undefined)?.id)
+      ?? undefined;
+  }
+
+  // ── Sage Pastel ── Company database name, typically under CompanyDatabase
+  // or CompanyName on each record when the adapter queries a named company.
+  if (sys.includes('pastel')) {
+    return asKey(raw.CompanyDatabase)
+      ?? asKey(raw.CompanyName)
+      ?? asKey(raw.Company)
+      ?? undefined;
+  }
+
+  // ── Salesforce ── No native multi-company. Callers should fall back to
+  // the connection-level AccountId (if syncing a specific BU) or primary.
+  // ── QuickBooks ── realm id lives on the connection, not the record.
+  return undefined;
+}
+
+/**
+ * Optional resolution context passed to mapRecord when the caller has
+ * already resolved the canonical company_id (via resolveCompanyId).
+ */
+export interface MapRecordContext {
+  /** erp_companies.id; written straight onto the canonical row. */
+  companyId?: string;
+}
+
+/**
  * Map a single raw ERP record to a canonical record.
  * Returns null if the combination of system + entityType has no mapper.
+ *
+ * When `ctx.companyId` is provided it is stamped onto the output so the
+ * generic INSERT writer in routes/erp.ts picks `company_id` up via
+ * `Object.keys(mappedObj)`.
  */
 export function mapRecord(
   system: string, entityType: string, raw: Record<string, unknown>, tenantId: string,
+  ctx?: MapRecordContext,
 ): CanonicalRecord | null {
   const sys = system.toLowerCase().replace(/[\s_-]/g, '');
   const et = entityType.toLowerCase() as EntityType;
 
+  let mapped: CanonicalRecord | null = null;
+
   // ── SAP ──
-  if (sys.includes('sap')) {
-    if (['customers', 'contacts', 'business_partners', 'accounts'].includes(et)) return mapSAPCustomer(raw, tenantId);
-    if (['suppliers', 'vendors'].includes(et)) return mapSAPSupplier(raw, tenantId);
-    if (['invoices', 'sales_invoices', 'sales_orders'].includes(et)) return mapSAPInvoice(raw, tenantId);
-    if (['products', 'items', 'materials'].includes(et)) return mapSAPProduct(raw, tenantId);
-    if (['purchase_orders'].includes(et)) return mapSAPPurchaseOrder(raw, tenantId);
+  if (!mapped && sys.includes('sap')) {
+    if (['customers', 'contacts', 'business_partners', 'accounts'].includes(et)) mapped = mapSAPCustomer(raw, tenantId);
+    else if (['suppliers', 'vendors'].includes(et)) mapped = mapSAPSupplier(raw, tenantId);
+    else if (['invoices', 'sales_invoices', 'sales_orders'].includes(et)) mapped = mapSAPInvoice(raw, tenantId);
+    else if (['products', 'items', 'materials'].includes(et)) mapped = mapSAPProduct(raw, tenantId);
+    else if (['purchase_orders'].includes(et)) mapped = mapSAPPurchaseOrder(raw, tenantId);
   }
 
   // ── Xero ──
-  if (sys.includes('xero')) {
-    if (['customers', 'contacts'].includes(et)) return mapXeroCustomer(raw, tenantId);
-    if (['invoices', 'sales_invoices'].includes(et)) return mapXeroInvoice(raw, tenantId);
-    if (['products', 'items'].includes(et)) return mapXeroProduct(raw, tenantId);
+  if (!mapped && sys.includes('xero')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapXeroCustomer(raw, tenantId);
+    else if (['invoices', 'sales_invoices'].includes(et)) mapped = mapXeroInvoice(raw, tenantId);
+    else if (['products', 'items'].includes(et)) mapped = mapXeroProduct(raw, tenantId);
   }
 
   // ── Sage ──
-  if (sys.includes('sage') && !sys.includes('pastel')) {
-    if (['customers', 'contacts'].includes(et)) return mapSageCustomer(raw, tenantId);
-    if (['invoices', 'sales_invoices', 'purchase_invoices'].includes(et)) return mapSageInvoice(raw, tenantId);
+  if (!mapped && sys.includes('sage') && !sys.includes('pastel')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapSageCustomer(raw, tenantId);
+    else if (['invoices', 'sales_invoices', 'purchase_invoices'].includes(et)) mapped = mapSageInvoice(raw, tenantId);
   }
 
   // ── Dynamics 365 ──
-  if (sys.includes('dynamics') || sys.includes('d365') || sys.includes('businesscentral')) {
-    if (['customers', 'contacts'].includes(et)) return mapDynamicsCustomer(raw, tenantId);
+  if (!mapped && (sys.includes('dynamics') || sys.includes('d365') || sys.includes('businesscentral'))) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapDynamicsCustomer(raw, tenantId);
   }
 
   // ── NetSuite ──
-  if (sys.includes('netsuite')) {
-    if (['customers', 'contacts'].includes(et)) return mapNetSuiteCustomer(raw, tenantId);
+  if (!mapped && sys.includes('netsuite')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapNetSuiteCustomer(raw, tenantId);
   }
 
   // ── QuickBooks ──
-  if (sys.includes('quickbooks') || sys.includes('qbo')) {
-    if (['customers', 'contacts'].includes(et)) return mapQuickBooksCustomer(raw, tenantId);
-    if (['invoices', 'sales_invoices'].includes(et)) return mapQuickBooksInvoice(raw, tenantId);
+  if (!mapped && (sys.includes('quickbooks') || sys.includes('qbo'))) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapQuickBooksCustomer(raw, tenantId);
+    else if (['invoices', 'sales_invoices'].includes(et)) mapped = mapQuickBooksInvoice(raw, tenantId);
   }
 
   // ── Salesforce ──
-  if (sys.includes('salesforce') || sys.includes('sfdc')) {
-    if (['customers', 'contacts', 'accounts'].includes(et)) return mapSalesforceCustomer(raw, tenantId);
+  if (!mapped && (sys.includes('salesforce') || sys.includes('sfdc'))) {
+    if (['customers', 'contacts', 'accounts'].includes(et)) mapped = mapSalesforceCustomer(raw, tenantId);
   }
 
   // ── Oracle ──
-  if (sys.includes('oracle') && !sys.includes('netsuite')) {
-    if (['customers', 'contacts'].includes(et)) return mapOracleCustomer(raw, tenantId);
+  if (!mapped && sys.includes('oracle') && !sys.includes('netsuite')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapOracleCustomer(raw, tenantId);
   }
 
   // ── Workday ──
-  if (sys.includes('workday')) {
-    if (['customers', 'contacts'].includes(et)) return mapWorkdayCustomer(raw, tenantId);
+  if (!mapped && sys.includes('workday')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapWorkdayCustomer(raw, tenantId);
   }
 
   // ── Pastel ──
-  if (sys.includes('pastel')) {
-    if (['customers', 'contacts'].includes(et)) return mapPastelCustomer(raw, tenantId);
+  if (!mapped && sys.includes('pastel')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapPastelCustomer(raw, tenantId);
   }
 
   // ── Odoo ──
-  if (sys.includes('odoo')) {
-    if (['customers', 'contacts'].includes(et)) return mapOdooCustomer(raw, tenantId);
-    if (['suppliers', 'vendors'].includes(et)) return mapOdooSupplier(raw, tenantId);
-    if (['invoices', 'sales_invoices'].includes(et)) return mapOdooInvoice(raw, tenantId);
-    if (['products', 'items'].includes(et)) return mapOdooProduct(raw, tenantId);
-    if (['purchase_orders'].includes(et)) return mapOdooPurchaseOrder(raw, tenantId);
+  if (!mapped && sys.includes('odoo')) {
+    if (['customers', 'contacts'].includes(et)) mapped = mapOdooCustomer(raw, tenantId);
+    else if (['suppliers', 'vendors'].includes(et)) mapped = mapOdooSupplier(raw, tenantId);
+    else if (['invoices', 'sales_invoices'].includes(et)) mapped = mapOdooInvoice(raw, tenantId);
+    else if (['products', 'items'].includes(et)) mapped = mapOdooProduct(raw, tenantId);
+    else if (['purchase_orders'].includes(et)) mapped = mapOdooPurchaseOrder(raw, tenantId);
   }
 
-  return null;
+  if (mapped && ctx?.companyId) {
+    mapped.company_id = ctx.companyId;
+  }
+  return mapped;
 }
 
 /**
