@@ -5,10 +5,9 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-// v48-narrative: No new schema. Bumped alongside catalyst-narrative service so
-// callers can confirm the deployed worker carries the narrative endpoint (the
-// KV cache key + existing tenant_llm_usage counter are the only storage).
-export const MIGRATION_VERSION = 'v48-narrative';
+// v49-support: support_tickets + support_ticket_replies tables (additive).
+// Rebased over v48-narrative (catalyst-narrative service; no schema change).
+export const MIGRATION_VERSION = 'v49-support';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -127,6 +126,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS system_alert_rules (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, event_type TEXT NOT NULL, condition TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', channels TEXT NOT NULL DEFAULT '[]', recipients TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, silenced_until TEXT, triggered_count INTEGER NOT NULL DEFAULT 0, last_triggered_at TEXT, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS feature_flags (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, type TEXT NOT NULL DEFAULT 'boolean', default_enabled INTEGER NOT NULL DEFAULT 0, rollout_percent INTEGER NOT NULL DEFAULT 0, tenant_allowlist TEXT NOT NULL DEFAULT '[]', created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS iam_custom_roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, permissions TEXT NOT NULL DEFAULT '[]', inherits_from TEXT, user_count INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, name));
+    CREATE TABLE IF NOT EXISTS support_tickets (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), assignee_user_id TEXT REFERENCES users(id), subject TEXT NOT NULL, body TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'general', priority TEXT NOT NULL DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS support_ticket_replies (id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES support_tickets(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -299,6 +300,13 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // v47-platform: Feature flags + custom roles
     'CREATE INDEX IF NOT EXISTS idx_feature_flags_name ON feature_flags(name)',
     'CREATE INDEX IF NOT EXISTS idx_iam_custom_roles_tenant ON iam_custom_roles(tenant_id)',
+    // v49-support: Support tickets + replies
+    'CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant ON support_tickets(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(tenant_id, user_id)',
+    'CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(tenant_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_ticket ON support_ticket_replies(ticket_id)',
+    'CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_tenant ON support_ticket_replies(tenant_id)',
   ];
 
   for (const idx of indexes) {
