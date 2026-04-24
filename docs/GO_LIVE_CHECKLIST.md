@@ -1,6 +1,6 @@
 # Atheon Go-Live Checklist
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 This document tracks the gating items between the current production state and a clean go-live announcement. Items are grouped by tier: **Tier 1 (blockers)** must be resolved before the announcement; **Tier 2 (should-fix)** should be closed within the first week; **Tier 3 (deferred)** are known follow-ups tracked in the backlog.
 
@@ -17,20 +17,20 @@ This document tracks the gating items between the current production state and a
 
 ## Tier 2 — Should-fix in week 1
 
+- [ ] **CI flake: `@cloudflare/vitest-pool-workers` isolated storage**
+  The Backend Tests / Unit Tests jobs fail on `custom-roles.test.ts` and `feature-flags.test.ts` with `Failed to pop isolated storage stack frame ... AssertionError [ERR_ASSERTION]: Expected .sqlite, got .../miniflare-KVNamespaceObject/...sqlite-shm`. These tests **pass locally** (31/31 green). The failure is a known miniflare/vitest-pool-workers bug under CI parallelism — see https://developers.cloudflare.com/workers/testing/vitest-integration/known-issues/#isolated-storage. Workaround options: pin `@cloudflare/vitest-pool-workers` to the latest patch, reduce test-pool concurrency in `workers/api/vitest.config.ts`, or split the affected describe blocks into their own file. Not blocking code correctness — blocks clean CI signal.
+
 - [ ] **119 catalyst stubs**
   Post-sprint, the catalyst catalog has ~70 real handlers across 14 domains. 119 remain as registered stubs that return structured "not implemented" payloads. Prioritize by domain based on the first week of tenant activity; signal comes from `catalyst_runs` grouped by `catalyst_key`.
 
-- [ ] **LLM narrative reasoning layer**
-  The agent that was rate-limited during the sprint. Adds free-form summarization on top of deterministic catalyst output — valuable once 119 stubs are more populated, not a blocker for go-live.
+- [x] **LLM narrative reasoning layer** — shipped in PR #259 (`GET /catalysts/runs/:runId/narrative`, budget-aware, PII-redacted, KV-cached 24h, migration v48-narrative).
 
-- [ ] **Support ticket system**
-  Schema shipped (`support_tickets` table, v47-platform migration). UI and intake flow are not yet built — users currently file via email. Ship the minimal UI in week 1.
+- [x] **Support ticket system** — shipped in PR #261 (schema v49-support, API routes, user list + detail pages, admin triage page, 20 integration tests).
 
 - [ ] **Observability: Logpush destination**
   `wrangler tail` is the current story. Configure a Logpush destination (R2 or a log aggregator) so incident response has retention past the live tail window.
 
-- [ ] **CatalystRunDetailPage re-render loop**
-  A suspected dependency-array bug caused an occasional render storm on very long runs. Deeper E2E assertions were rate-limited during the sprint. Fix + add assertions once agent quota resets.
+- [x] **CatalystRunDetailPage re-render loop** — fixed in PR #258. Root cause: `useToast()` returned a new object each render, polluting the `useCallback` deps of the data loaders, which invalidated the callbacks on every render and re-fired the boot `useEffect`. Fix: read `toast` through a `useRef` that is refreshed each render, drop `toast` from the loader deps. E2E regression assertion added — network calls to the run endpoint are now bounded.
 
 ## Tier 3 — Deferred (tracked, not gating)
 
