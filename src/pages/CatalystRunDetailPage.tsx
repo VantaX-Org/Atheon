@@ -1,12 +1,21 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useParams, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import type { SubCatalystRunItem, SubCatalystRunItemsResponse, RunComment } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
+import {
+  RunItemsFilterBar,
+  type ItemStatus,
+  type ReviewStatus,
+  type Severity,
+} from "@/components/RunItemsFilterBar";
 import {
   ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle,
-  Activity, Database, BarChart3
+  Activity, Database, BarChart3, Download, FileText,
+  ThumbsUp, ThumbsDown, MessageCircle, Send, Loader2,
 } from "lucide-react";
 
 
@@ -27,28 +36,316 @@ interface RunDetail {
   sourceData: Array<{ id: string; sourceSystem: string; recordType: string; value: number; status: string }>;
 }
 
+// CSV-safe cell (mirrors AuditPage.csvSafe: prevents formula injection).
+function csvSafe(val: unknown): string {
+  if (val === null || val === undefined) return '""';
+  const s = String(val).replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(s)) return `"'${s}"`;
+  return `"${s}"`;
+}
+
+function triggerDownload(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Confirm dialog (portal-free, simple modal).
+function ConfirmDialog({
+  open, title, message, confirmLabel = 'Confirm', confirmVariant = 'primary',
+  onConfirm, onCancel, busy,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  confirmVariant?: 'primary' | 'danger';
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy?: boolean;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} className="max-w-md w-full">
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold t-primary mb-2">{title}</h3>
+        <p className="text-sm t-muted mb-6">{message}</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <Button
+            variant={confirmVariant === 'danger' ? 'ghost' : 'primary'}
+            className={confirmVariant === 'danger' ? 'text-red-400 hover:bg-red-400/10' : undefined}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+            {confirmLabel}
+          </Button>
+        </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export function CatalystRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<{ message: string; requestId: string | null } | null>(null);
+
+  // Items (server-paginated, client-filtered on top)
+  const [items, setItems] = useState<SubCatalystRunItemsResponse | null>(null);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [itemPage, setItemPage] = useState(0);
+
+  // Client-side filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ItemStatus[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<ReviewStatus[]>([]);
+  const [severityFilter, setSeverityFilter] = useState<Severity[]>([]);
+
+  // Approval workflow state
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [bulkReviewing, setBulkReviewing] = useState(false);
+  const [confirm, setConfirm] = useState<null | {
+    kind: 'single' | 'bulk';
+    action: ReviewStatus;
+    itemId?: string;
+    count: number;
+  }>(null);
+
+  // Comments
+  const [comments, setComments] = useState<RunComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+
+  const loadRun = useCallback(async () => {
+    if (!runId) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await api.catalysts.runDetail(runId);
+      setRun(data);
+    } catch (err) {
+      console.error('Failed to load run details:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load run details';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      setLoadError({ message, requestId });
+      toast.error('Failed to load run', { message, requestId });
+    } finally {
+      setLoading(false);
+    }
+  }, [runId, toast]);
+
+  const loadItems = useCallback(async (page = 0) => {
+    if (!runId) return;
+    setItemsLoading(true);
+    setItemsError(null);
+    try {
+      const res = await api.catalysts.getRunItems(runId, { limit: 50, offset: page * 50 });
+      setItems(res);
+      setItemPage(page);
+    } catch (err) {
+      console.error('Failed to load run items:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load items';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      setItemsError(message);
+      toast.error('Failed to load items', { message, requestId });
+    } finally {
+      setItemsLoading(false);
+    }
+  }, [runId, toast]);
+
+  const loadComments = useCallback(async () => {
+    if (!runId) return;
+    setCommentsLoading(true);
+    try {
+      const res = await api.catalysts.getRunComments(runId);
+      setComments(res.comments);
+    } catch (err) {
+      console.error('Failed to load comments:', err);
+      const message = err instanceof Error ? err.message : 'Failed to load comments';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Failed to load comments', { message, requestId });
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [runId, toast]);
 
   useEffect(() => {
     if (!runId) return;
     loadRun();
-  }, [runId]);
+    loadItems(0);
+    loadComments();
+  }, [runId, loadRun, loadItems, loadComments]);
 
-  async function loadRun() {
-    setLoading(true);
-    try {
-      const data = await api.catalysts.runDetail(runId!);
-      setRun(data);
-    } catch (err) {
-      console.error('Failed to load run details:', err);
-    } finally {
-      setLoading(false);
+  // ─ Client-side filtered items (for search, multi-status, severity) ─
+  const filteredItems = useMemo(() => {
+    const base = items?.items ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    return base.filter((it) => {
+      if (q) {
+        const hay = [
+          it.source_ref, it.target_ref, it.source_entity, it.target_entity,
+          it.discrepancy_reason, it.discrepancy_field, it.exception_type,
+          it.exception_detail, it.category, String(it.item_number),
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (statusFilter.length > 0 && !statusFilter.includes(it.item_status as ItemStatus)) return false;
+      if (reviewFilter.length > 0 && !reviewFilter.includes(it.review_status as ReviewStatus)) return false;
+      if (severityFilter.length > 0) {
+        if (!it.exception_severity) return false;
+        if (!severityFilter.includes(it.exception_severity as Severity)) return false;
+      }
+      return true;
+    });
+  }, [items, searchQuery, statusFilter, reviewFilter, severityFilter]);
+
+  // ─ Approval handlers ─
+  const askReview = (action: ReviewStatus, itemId?: string) => {
+    if (itemId) {
+      setConfirm({ kind: 'single', action, itemId, count: 1 });
+    } else {
+      setConfirm({ kind: 'bulk', action, count: selectedItemIds.size });
     }
-  }
+  };
+
+  const doReview = async () => {
+    if (!confirm || !runId) return;
+    const { kind, action, itemId } = confirm;
+    try {
+      if (kind === 'single' && itemId) {
+        setReviewingId(itemId);
+        const res = await api.catalysts.reviewRunItem(runId, itemId, { review_status: action });
+        toast.success(`Item ${action}`, `Review status updated (${res.review_status})`);
+      } else if (kind === 'bulk') {
+        setBulkReviewing(true);
+        const res = await api.catalysts.bulkReviewRunItems(runId, {
+          item_ids: Array.from(selectedItemIds),
+          review_status: action,
+        });
+        toast.success(`${res.updated} items ${action}`, 'Bulk review complete');
+        setSelectedItemIds(new Set());
+      }
+      setConfirm(null);
+      await loadItems(itemPage);
+    } catch (err) {
+      console.error('Review failed:', err);
+      const message = err instanceof Error ? err.message : 'Review failed';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Review failed', { message, requestId });
+    } finally {
+      setReviewingId(null);
+      setBulkReviewing(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!runId || !newComment.trim()) return;
+    setAddingComment(true);
+    try {
+      await api.catalysts.addRunComment(runId, { comment: newComment.trim() });
+      setNewComment('');
+      await loadComments();
+      toast.success('Comment added');
+    } catch (err) {
+      console.error('Add comment failed:', err);
+      const message = err instanceof Error ? err.message : 'Failed to add comment';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Failed to add comment', { message, requestId });
+    } finally {
+      setAddingComment(false);
+    }
+  };
+
+  // ─ Export ─
+  const handleExportCsv = async () => {
+    if (!runId) return;
+    if (!items || items.items.length === 0) {
+      toast.warning('Nothing to export', 'No items loaded for this run');
+      return;
+    }
+    setExporting(true);
+    try {
+      // Export the full dataset by paging through the backend.
+      const all: SubCatalystRunItem[] = [];
+      const pageSize = 200;
+      const total = items.total || items.items.length;
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const res = await api.catalysts.getRunItems(runId, { limit: pageSize, offset });
+        all.push(...res.items);
+        if (res.items.length < pageSize) break;
+      }
+      const headers = [
+        'item_number', 'item_status', 'category',
+        'source_ref', 'source_entity', 'source_amount', 'source_currency', 'source_date',
+        'target_ref', 'target_entity', 'target_amount', 'target_currency', 'target_date',
+        'match_confidence', 'match_method',
+        'discrepancy_field', 'discrepancy_amount', 'discrepancy_pct', 'discrepancy_reason',
+        'exception_type', 'exception_severity', 'exception_detail',
+        'review_status', 'reviewed_by', 'reviewed_at', 'review_notes', 'reclassified_to',
+      ];
+      const lines = [headers.join(',')];
+      for (const it of all) {
+        lines.push(headers.map((h) => csvSafe((it as unknown as Record<string, unknown>)[h])).join(','));
+      }
+      triggerDownload(lines.join('\n'), `catalyst-run-${runId}-items.csv`, 'text/csv');
+      toast.success('CSV exported', `${all.length} item${all.length === 1 ? '' : 's'} downloaded`);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+      const message = err instanceof Error ? err.message : 'Export failed';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Export failed', { message, requestId });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportJson = async () => {
+    if (!runId || !run) return;
+    setExporting(true);
+    try {
+      const all: SubCatalystRunItem[] = [];
+      const pageSize = 200;
+      const total = items?.total ?? items?.items.length ?? 0;
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const res = await api.catalysts.getRunItems(runId, { limit: pageSize, offset });
+        all.push(...res.items);
+        if (res.items.length < pageSize) break;
+      }
+      const payload = {
+        run,
+        totals: items?.totals,
+        review_progress: items?.review_progress,
+        items: all,
+        exported_at: new Date().toISOString(),
+      };
+      triggerDownload(JSON.stringify(payload, null, 2), `catalyst-run-${runId}.json`, 'application/json');
+      toast.success('JSON exported', `${all.length} item${all.length === 1 ? '' : 's'} downloaded`);
+    } catch (err) {
+      console.error('JSON export failed:', err);
+      const message = err instanceof Error ? err.message : 'Export failed';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Export failed', { message, requestId });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -68,11 +365,17 @@ export function CatalystRunDetailPage() {
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold t-primary mb-2">Run Not Found</h2>
           <p className="text-sm t-muted mb-4">
-            The catalyst run you're looking for doesn't exist or you don't have access to it.
+            {loadError?.message || "The catalyst run you're looking for doesn't exist or you don't have access to it."}
           </p>
-          <Button variant="primary" onClick={() => navigate('/catalysts')}>
-            <ArrowLeft size={14} className="mr-2" /> Back to Catalysts
-          </Button>
+          {loadError?.requestId && (
+            <p className="text-[11px] t-muted font-mono mb-4">Request ID: {loadError.requestId}</p>
+          )}
+          <div className="flex gap-2 justify-center">
+            <Button variant="ghost" onClick={loadRun}>Retry</Button>
+            <Button variant="primary" onClick={() => navigate('/catalysts')}>
+              <ArrowLeft size={14} className="mr-2" /> Back to Catalysts
+            </Button>
+          </div>
         </Card>
       </div>
     );
@@ -83,16 +386,22 @@ export function CatalystRunDetailPage() {
     : run.status === 'partial' ? AlertCircle
     : Clock;
 
+  const allFilteredSelected = filteredItems.length > 0 && filteredItems.every((it) => selectedItemIds.has(it.id));
+  const pendingSelectedCount = Array.from(selectedItemIds).filter((id) =>
+    (items?.items ?? []).find((it) => it.id === id)?.review_status === 'pending'
+  ).length;
+
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
       <div className="border-b border-[var(--border-card)] bg-[var(--bg-secondary)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/catalysts')}
                 className="p-2 hover:bg-[var(--bg-card-solid)] rounded-lg transition-colors"
+                aria-label="Back to Catalysts"
               >
                 <ArrowLeft size={20} className="t-muted" />
               </button>
@@ -107,9 +416,18 @@ export function CatalystRunDetailPage() {
                 <p className="text-sm t-muted mt-1">{run.subCatalystName} • {run.clusterName}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-sm t-muted">
-              <Clock size={14} />
-              <span>{new Date(run.startedAt).toLocaleString()}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-sm t-muted mr-2">
+                <Clock size={14} />
+                <span>{new Date(run.startedAt).toLocaleString()}</span>
+              </div>
+              <Button variant="ghost" onClick={handleExportCsv} disabled={exporting || !items}>
+                {exporting ? <Loader2 size={14} className="animate-spin mr-2" /> : <Download size={14} className="mr-2" />}
+                Export CSV
+              </Button>
+              <Button variant="ghost" onClick={handleExportJson} disabled={exporting || !items}>
+                <FileText size={14} className="mr-2" /> Export JSON
+              </Button>
             </div>
           </div>
         </div>
@@ -169,6 +487,288 @@ export function CatalystRunDetailPage() {
           </Card>
         </div>
 
+        {/* Run Items — filtering + approval workflow */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <div className="flex items-center gap-3">
+              <Activity className="w-5 h-5 text-accent" />
+              <h3 className="text-lg font-semibold t-primary">
+                Run Items {items && <span className="t-muted text-sm font-normal">({items.total})</span>}
+              </h3>
+            </div>
+            {items?.review_progress && (
+              <div className="flex gap-3 text-xs t-muted">
+                <span className="text-emerald-400">{items.review_progress.approved} approved</span>
+                <span className="text-red-400">{items.review_progress.rejected} rejected</span>
+                <span className="text-amber-400">{items.review_progress.deferred} deferred</span>
+                <span>{items.review_progress.pending} pending</span>
+              </div>
+            )}
+          </div>
+
+          <RunItemsFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            reviewFilter={reviewFilter}
+            onReviewFilterChange={setReviewFilter}
+            severityFilter={severityFilter}
+            onSeverityFilterChange={setSeverityFilter}
+            resultCount={filteredItems.length}
+            totalCount={items?.items.length ?? 0}
+          />
+
+          {/* Bulk actions bar */}
+          {selectedItemIds.size > 0 && (
+            <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-accent/5 border border-accent/20">
+              <span className="text-xs t-primary">{selectedItemIds.size} selected</span>
+              {pendingSelectedCount < selectedItemIds.size && (
+                <span className="text-[10px] t-muted">
+                  ({pendingSelectedCount} pending, {selectedItemIds.size - pendingSelectedCount} already reviewed)
+                </span>
+              )}
+              <div className="flex gap-1 ml-auto">
+                <Button
+                  size="sm" variant="ghost"
+                  className="text-xs text-emerald-400 hover:bg-emerald-400/10"
+                  onClick={() => askReview('approved')}
+                  disabled={bulkReviewing || selectedItemIds.size === 0}
+                >
+                  <ThumbsUp size={12} className="mr-1" /> Approve
+                </Button>
+                <Button
+                  size="sm" variant="ghost"
+                  className="text-xs text-red-400 hover:bg-red-400/10"
+                  onClick={() => askReview('rejected')}
+                  disabled={bulkReviewing || selectedItemIds.size === 0}
+                >
+                  <ThumbsDown size={12} className="mr-1" /> Reject
+                </Button>
+                <Button size="sm" variant="ghost" className="text-xs" onClick={() => setSelectedItemIds(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {itemsLoading ? (
+            <div className="flex items-center gap-2 justify-center p-8 t-muted text-sm">
+              <Loader2 size={14} className="animate-spin" /> Loading items...
+            </div>
+          ) : itemsError ? (
+            <div className="text-center py-8 text-sm text-red-400">
+              {itemsError}
+              <div className="mt-2">
+                <Button size="sm" variant="ghost" onClick={() => loadItems(itemPage)}>Retry</Button>
+              </div>
+            </div>
+          ) : !items || items.items.length === 0 ? (
+            <div className="text-center py-8 text-sm t-muted">
+              No items found for this run.
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-center py-8 text-sm t-muted">
+              No items match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-card)]">
+                    <th className="py-2 px-2 w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all filtered items"
+                        checked={allFilteredSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedItemIds(new Set([...selectedItemIds, ...filteredItems.map((it) => it.id)]));
+                          } else {
+                            const next = new Set(selectedItemIds);
+                            filteredItems.forEach((it) => next.delete(it.id));
+                            setSelectedItemIds(next);
+                          }
+                        }}
+                      />
+                    </th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">#</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Status</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Source</th>
+                    <th className="py-2 px-2 t-muted font-medium text-right">Source Amt</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Target</th>
+                    <th className="py-2 px-2 t-muted font-medium text-right">Target Amt</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Discrepancy</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Review</th>
+                    <th className="py-2 px-2 t-muted font-medium text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredItems.map((item) => {
+                    const selected = selectedItemIds.has(item.id);
+                    const isReviewing = reviewingId === item.id;
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)] ${selected ? 'bg-accent/5' : ''}`}
+                      >
+                        <td className="py-2 px-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select item ${item.item_number}`}
+                            checked={selected}
+                            onChange={(e) => {
+                              const next = new Set(selectedItemIds);
+                              if (e.target.checked) next.add(item.id);
+                              else next.delete(item.id);
+                              setSelectedItemIds(next);
+                            }}
+                          />
+                        </td>
+                        <td className="py-2 px-2 t-muted font-mono text-xs">{item.item_number}</td>
+                        <td className="py-2 px-2">
+                          <Badge
+                            variant={item.item_status === 'matched' ? 'success' : item.item_status === 'discrepancy' ? 'warning' : item.item_status === 'exception' ? 'danger' : 'info'}
+                            className="text-xs"
+                          >
+                            {item.item_status}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="t-primary truncate max-w-[160px]" title={item.source_ref}>{item.source_ref || '-'}</div>
+                          {item.source_entity && <div className="t-muted text-xs truncate max-w-[160px]" title={item.source_entity}>{item.source_entity}</div>}
+                        </td>
+                        <td className="py-2 px-2 text-right t-primary font-mono">
+                          {typeof item.source_amount === 'number' ? item.source_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="py-2 px-2">
+                          <div className="t-primary truncate max-w-[160px]" title={item.target_ref}>{item.target_ref || '-'}</div>
+                          {item.target_entity && <div className="t-muted text-xs truncate max-w-[160px]" title={item.target_entity}>{item.target_entity}</div>}
+                        </td>
+                        <td className="py-2 px-2 text-right t-primary font-mono">
+                          {typeof item.target_amount === 'number' ? item.target_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="py-2 px-2">
+                          {typeof item.discrepancy_amount === 'number' && item.discrepancy_amount !== 0 ? (
+                            <span className="text-amber-400">
+                              {item.discrepancy_amount.toFixed(2)}
+                              {typeof item.discrepancy_pct === 'number' ? ` (${item.discrepancy_pct.toFixed(1)}%)` : ''}
+                            </span>
+                          ) : item.exception_type ? (
+                            <span className="text-red-400">{item.exception_type}{item.exception_severity ? ` • ${item.exception_severity}` : ''}</span>
+                          ) : (
+                            <span className="t-muted">-</span>
+                          )}
+                          {item.discrepancy_reason && (
+                            <div className="text-xs t-muted truncate max-w-[200px]" title={item.discrepancy_reason}>{item.discrepancy_reason}</div>
+                          )}
+                        </td>
+                        <td className="py-2 px-2">
+                          <Badge
+                            variant={item.review_status === 'approved' ? 'success' : item.review_status === 'rejected' ? 'danger' : item.review_status === 'deferred' ? 'warning' : 'info'}
+                            className="text-xs"
+                          >
+                            {item.review_status}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2">
+                          {item.review_status === 'pending' ? (
+                            <div className="flex gap-1">
+                              <button
+                                className="p-1 rounded text-emerald-400 hover:bg-emerald-400/10 disabled:opacity-50"
+                                onClick={() => askReview('approved', item.id)}
+                                disabled={isReviewing}
+                                title="Approve"
+                                aria-label="Approve item"
+                              >
+                                {isReviewing ? <Loader2 size={12} className="animate-spin" /> : <ThumbsUp size={12} />}
+                              </button>
+                              <button
+                                className="p-1 rounded text-red-400 hover:bg-red-400/10 disabled:opacity-50"
+                                onClick={() => askReview('rejected', item.id)}
+                                disabled={isReviewing}
+                                title="Reject"
+                                aria-label="Reject item"
+                              >
+                                <ThumbsDown size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] t-muted">{item.reviewed_by ? `by ${item.reviewed_by}` : '-'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              {items.total > 50 && (
+                <div className="flex justify-center items-center gap-2 mt-3 pt-3 border-t border-[var(--border-card)]">
+                  <Button size="sm" variant="ghost" disabled={itemPage === 0 || itemsLoading} onClick={() => loadItems(itemPage - 1)}>
+                    Prev
+                  </Button>
+                  <span className="text-xs t-muted">
+                    Page {itemPage + 1} of {Math.ceil(items.total / 50)}
+                  </span>
+                  <Button size="sm" variant="ghost" disabled={(itemPage + 1) * 50 >= items.total || itemsLoading} onClick={() => loadItems(itemPage + 1)}>
+                    Next
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* Comments thread */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <MessageCircle className="w-5 h-5 text-accent" />
+            <h3 className="text-lg font-semibold t-primary">Comments ({comments.length})</h3>
+          </div>
+
+          <div className="space-y-3 max-h-80 overflow-y-auto mb-4">
+            {commentsLoading ? (
+              <div className="flex items-center gap-2 justify-center p-4 t-muted text-sm">
+                <Loader2 size={14} className="animate-spin" /> Loading comments...
+              </div>
+            ) : comments.length === 0 ? (
+              <p className="text-sm t-muted text-center py-4">No comments yet. Be the first to add one.</p>
+            ) : (
+              comments.map((c) => (
+                <div key={c.id} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium t-primary">{c.user_name || c.user_id}</span>
+                    <span className="text-xs t-muted">{new Date(c.created_at).toLocaleString()}</span>
+                    {c.item_id && (
+                      <Badge variant="info" className="text-[10px]">on item</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm t-primary whitespace-pre-wrap">{c.comment}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] text-sm t-primary focus:outline-none focus:border-accent/40"
+              placeholder="Add a comment..."
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && newComment.trim()) { e.preventDefault(); handleAddComment(); } }}
+              disabled={addingComment}
+            />
+            <Button variant="primary" onClick={handleAddComment} disabled={addingComment || !newComment.trim()}>
+              {addingComment ? <Loader2 size={14} className="animate-spin mr-2" /> : <Send size={14} className="mr-2" />}
+              Post
+            </Button>
+          </div>
+          {/* TODO: delete-comment endpoint does not exist yet on backend (/api/catalysts/runs/:runId/comments/:commentId DELETE). Wire up once added. */}
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* KPIs Generated */}
           <Card className="p-6">
@@ -178,7 +778,7 @@ export function CatalystRunDetailPage() {
             </div>
             {run.kpis && run.kpis.length > 0 ? (
               <div className="space-y-3">
-                {run.kpis.map((kpi: Record<string, unknown>, i: number) => (
+                {run.kpis.map((kpi, i) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium t-primary">{String(kpi.name)}</span>
@@ -208,7 +808,7 @@ export function CatalystRunDetailPage() {
             </div>
             {run.metrics && run.metrics.length > 0 ? (
               <div className="space-y-3">
-                {run.metrics.map((metric: Record<string, unknown>, i: number) => (
+                {run.metrics.map((metric, i) => (
                   <div key={i} className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium t-primary">{String(metric.name)}</span>
@@ -254,7 +854,7 @@ export function CatalystRunDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {run.sourceData.slice(0, 50).map((record: Record<string, unknown>, i: number) => (
+                    {run.sourceData.slice(0, 50).map((record, i) => (
                       <tr key={i} className="border-b border-[var(--border-card)]/50 hover:bg-[var(--bg-card-solid)]">
                         <td className="py-2 px-3 t-primary font-mono text-xs">{String(record.id)}</td>
                         <td className="py-2 px-3 t-muted">{String(record.sourceSystem)}</td>
@@ -326,6 +926,28 @@ export function CatalystRunDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={!!confirm}
+        title={
+          confirm?.kind === 'bulk'
+            ? `${confirm.action === 'approved' ? 'Approve' : confirm.action === 'rejected' ? 'Reject' : confirm.action === 'deferred' ? 'Defer' : 'Update'} ${confirm.count} items?`
+            : confirm
+              ? `${confirm.action === 'approved' ? 'Approve' : confirm.action === 'rejected' ? 'Reject' : 'Update'} this item?`
+              : ''
+        }
+        message={
+          confirm?.kind === 'bulk'
+            ? `This will mark ${confirm.count} selected item${confirm.count === 1 ? '' : 's'} as "${confirm.action}". Only pending items will be updated.`
+            : 'This action will update the review status for this item. Any downstream KPIs or metrics tied to this run will reflect the change on next refresh.'
+        }
+        confirmLabel={confirm?.action === 'approved' ? 'Approve' : confirm?.action === 'rejected' ? 'Reject' : 'Confirm'}
+        confirmVariant={confirm?.action === 'rejected' ? 'danger' : 'primary'}
+        onConfirm={doReview}
+        onCancel={() => setConfirm(null)}
+        busy={reviewingId !== null || bulkReviewing}
+      />
     </div>
   );
 }
