@@ -1097,6 +1097,24 @@ export const api = {
       request<Record<string, unknown>>(`/api/v1/admin-tooling/system-alerts/rules/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
   },
 
+  // ── Webhooks (PR #225): HMAC-signed outbound event delivery ─────────
+  webhooks: {
+    list: () =>
+      request<{ webhooks: Webhook[]; total: number }>('/api/v1/webhooks'),
+    get: (id: string) =>
+      request<Webhook>(`/api/v1/webhooks/${id}`),
+    create: (data: { url: string; event_types: string[]; description?: string }) =>
+      request<WebhookCreateResponse>('/api/v1/webhooks', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/api/v1/webhooks/${id}`, { method: 'DELETE' }),
+    test: (id: string) =>
+      request<{ success: boolean; delivery_id?: string; message?: string }>(`/api/v1/webhooks/${id}/test`, { method: 'POST' }),
+    deliveries: (id: string, limit = 25) =>
+      request<{ deliveries: WebhookDelivery[]; total: number }>(`/api/v1/webhooks/${id}/deliveries${qs({ limit: String(limit) })}`),
+    eventTypes: () =>
+      request<{ event_types: string[] }>('/api/v1/webhooks/event-types').catch(() => ({ event_types: [] as string[] })),
+  },
+
   // Generic HTTP helpers for pages that call arbitrary endpoints
   get: <T = Record<string, unknown>>(path: string) => request<T>(path),
   post: <T = Record<string, unknown>>(path: string, body?: unknown) =>
@@ -3020,4 +3038,47 @@ export interface ExecutiveSummaryResponse {
   targets: { targetType: string; targetName: string; targetValue: number; currentValue: number; status: string }[];
   trend: { score: number; date: string }[];
   journey: { baselineHealthScore: number | null; baselineDate: string | null; improvement: number | null };
+}
+
+// ── Webhooks (backend PR #225) ────────────────────────────────────────
+export type WebhookDeliveryStatus = 'delivered' | 'pending' | 'failed' | 'dead_letter';
+
+export interface Webhook {
+  id: string;
+  tenant_id?: string;
+  url: string;
+  description?: string | null;
+  event_types: string[];
+  /** Redacted as "***" on list/detail; only the create response returns the real secret. */
+  secret: string;
+  created_at: string;
+  updated_at?: string;
+  /** Optional aggregate health surfaced by the backend when available. */
+  success_rate?: number | null;
+  last_delivery_at?: string | null;
+  last_delivery_status?: WebhookDeliveryStatus | null;
+  disabled?: boolean;
+}
+
+export interface WebhookCreateResponse {
+  id: string;
+  url: string;
+  event_types: string[];
+  description?: string | null;
+  /** Shown ONCE — never returned again by any other endpoint. */
+  secret: string;
+  created_at?: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event_type: string;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  http_status?: number | null;
+  last_error?: string | null;
+  created_at: string;
+  delivered_at?: string | null;
+  next_retry_at?: string | null;
 }

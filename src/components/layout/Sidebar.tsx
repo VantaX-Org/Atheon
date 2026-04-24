@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
   { path: '/iam', label: 'IAM', icon: IconIAM, section: 'administration', sublabel: 'Users & Roles', roles: PLATFORM_ADMIN_ROLES },
   { path: '/tenants', label: 'Clients', icon: IconClients, section: 'administration', sublabel: 'Tenant Management', roles: SUPERADMIN_ROLES },
   { path: '/integrations', label: 'Integrations', icon: IconERPAdapters, section: 'administration', sublabel: 'Systems & Data Schema', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/webhooks', label: 'Webhooks', icon: IconBolt, section: 'administration', sublabel: 'Event Subscriptions', roles: PLATFORM_ADMIN_ROLES },
   { path: '/audit', label: 'Audit', icon: IconAudit, section: 'administration', sublabel: 'Governance', roles: PLATFORM_ADMIN_ROLES },
   // UX-14: Platform Ops — superadmin-only operational tools
   { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform-ops', sublabel: 'Agent Management', roles: SUPERADMIN_ROLES },
