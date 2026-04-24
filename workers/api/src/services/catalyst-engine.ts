@@ -10,6 +10,8 @@ import {
   dispatchAction,
   registerDefaultHandler,
 } from './catalyst-handler-registry';
+import { triggerDownstream } from './catalyst-dag';
+import type { CatalystQueueMessage } from './scheduled';
 // Domain handlers self-register on import. Importing them here ensures they
 // are wired into the dispatcher for any call path that uses executeTask.
 import './catalyst-operational-handlers';
@@ -178,6 +180,7 @@ export async function executeTask(
     autonomyTier: string; trustScore: number;
   },
   db: D1Database, cache: KVNamespace, ai: Ai, ollamaApiKey?: string,
+  queue?: Queue<CatalystQueueMessage>,
 ): Promise<TaskResult> {
   const startTime = Date.now();
   let retryCount = 0;
@@ -283,6 +286,22 @@ export async function executeTask(
         task.clusterId, JSON.stringify({ actionId: task.id, catalyst: task.catalystName, handler, confidence }),
         'success',
       ).run();
+
+      // DAG: trigger any downstream sub-catalysts that depend on this one.
+      // chainDepth comes from the enqueuer (0 when user/scheduler-triggered,
+      // incremented when this run was itself triggered by an upstream).
+      const chainDepth = typeof task.inputData.chainDepth === 'number' ? task.inputData.chainDepth : 0;
+      try {
+        await triggerDownstream({
+          tenantId: task.tenantId,
+          upstreamClusterId: task.clusterId,
+          upstreamSubCatalystName: task.catalystName,
+          chainDepth,
+          parentContext: { actionId: task.id, handler, confidence },
+        }, db, queue);
+      } catch (err) {
+        console.error('[catalyst-engine] DAG trigger failed (non-fatal):', err);
+      }
 
       return {
         actionId: task.id, status: 'completed', confidence, reasoning,

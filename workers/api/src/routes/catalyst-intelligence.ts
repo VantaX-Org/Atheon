@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { analysePatterns } from '../services/pattern-engine-v2';
 import { toCSV, csvResponse } from '../services/csv-export';
+import { wouldCreateCycle } from '../services/catalyst-dag';
 
 const catalystIntelligence = new Hono<AppBindings>();
 
@@ -225,6 +226,119 @@ catalystIntelligence.put('/prescriptions/:id/status', async (c) => {
   } catch { /* non-fatal */ }
 
   return c.json({ success: true });
+});
+
+// POST /api/catalyst-intelligence/dependencies — Manually create a dependency
+catalystIntelligence.post('/dependencies', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+
+  interface DepCreateBody {
+    upstream_cluster_id?: string; upstream_sub_name?: string;
+    downstream_cluster_id?: string; downstream_sub_name?: string;
+    // Legacy names also accepted.
+    source_cluster_id?: string; source_sub_catalyst?: string;
+    target_cluster_id?: string; target_sub_catalyst?: string;
+    dependency_type?: string; strength?: number; lag_hours?: number;
+    description?: string;
+  }
+  const body = await c.req.json<DepCreateBody>().catch(() => ({} as DepCreateBody));
+
+  const upstreamCluster = body.upstream_cluster_id || body.source_cluster_id;
+  const upstreamSub = body.upstream_sub_name || body.source_sub_catalyst;
+  const downstreamCluster = body.downstream_cluster_id || body.target_cluster_id;
+  const downstreamSub = body.downstream_sub_name || body.target_sub_catalyst;
+
+  if (!upstreamCluster || !upstreamSub || !downstreamCluster || !downstreamSub) {
+    return c.json({
+      error: 'Missing required fields',
+      required: ['upstream_cluster_id', 'upstream_sub_name', 'downstream_cluster_id', 'downstream_sub_name'],
+    }, 400);
+  }
+
+  // Verify both clusters belong to this tenant.
+  const clusters = await c.env.DB.prepare(
+    'SELECT id FROM catalyst_clusters WHERE tenant_id = ? AND id IN (?, ?)',
+  ).bind(tenantId, upstreamCluster, downstreamCluster).all<{ id: string }>();
+  const clusterIds = new Set((clusters.results || []).map(r => r.id));
+  if (!clusterIds.has(upstreamCluster) || !clusterIds.has(downstreamCluster)) {
+    return c.json({ error: 'One or both clusters not found in this tenant' }, 404);
+  }
+
+  // Cycle check — walk existing edges to see if downstream can already reach upstream.
+  const cycle = await wouldCreateCycle(tenantId, upstreamCluster, upstreamSub, downstreamCluster, downstreamSub, c.env.DB);
+  if (cycle) {
+    return c.json({ error: 'Dependency would create a cycle', detail: 'Downstream already reaches upstream via existing dependencies' }, 409);
+  }
+
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO catalyst_dependencies (
+       id, tenant_id,
+       upstream_cluster_id, upstream_sub_name,
+       downstream_cluster_id, downstream_sub_name,
+       source_cluster_id, source_sub_catalyst,
+       target_cluster_id, target_sub_catalyst,
+       dependency_type, strength, lag_hours, description, discovered_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).bind(
+    id, tenantId,
+    upstreamCluster, upstreamSub,
+    downstreamCluster, downstreamSub,
+    upstreamCluster, upstreamSub,
+    downstreamCluster, downstreamSub,
+    body.dependency_type || 'data_flow',
+    body.strength ?? 50,
+    body.lag_hours ?? 0,
+    body.description || null,
+  ).run();
+
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      crypto.randomUUID(), tenantId, 'catalyst.dependency.created', 'catalyst-intelligence', id,
+      JSON.stringify({ upstreamCluster, upstreamSub, downstreamCluster, downstreamSub }),
+      'success',
+    ).run();
+  } catch { /* non-fatal */ }
+
+  return c.json({
+    id, tenantId,
+    upstreamClusterId: upstreamCluster, upstreamSubName: upstreamSub,
+    downstreamClusterId: downstreamCluster, downstreamSubName: downstreamSub,
+    dependencyType: body.dependency_type || 'data_flow',
+    strength: body.strength ?? 50,
+    lagHours: body.lag_hours ?? 0,
+    description: body.description || null,
+  }, 201);
+});
+
+// DELETE /api/catalyst-intelligence/dependencies/:id
+catalystIntelligence.delete('/dependencies/:id', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  const id = c.req.param('id');
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM catalyst_dependencies WHERE id = ? AND tenant_id = ?',
+  ).bind(id, tenantId).first();
+  if (!existing) return c.json({ error: 'Dependency not found' }, 404);
+
+  await c.env.DB.prepare(
+    'DELETE FROM catalyst_dependencies WHERE id = ? AND tenant_id = ?',
+  ).bind(id, tenantId).run();
+
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      crypto.randomUUID(), tenantId, 'catalyst.dependency.deleted', 'catalyst-intelligence', id,
+      JSON.stringify({ id }), 'success',
+    ).run();
+  } catch { /* non-fatal */ }
+
+  return c.json({ success: true, id });
 });
 
 // POST /api/catalyst-intelligence/dependencies/discover — Trigger dependency discovery
