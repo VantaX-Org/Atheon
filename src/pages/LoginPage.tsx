@@ -362,17 +362,17 @@ export function LoginPage() {
               <div className="flex-1 h-px" style={{ background: 'var(--divider)' }} /><span className="text-[10px] t-muted">or sign in with email</span><div className="flex-1 h-px" style={{ background: 'var(--divider)' }} />
             </div>
           )}
-          {!tenantOptions && !mfaChallengeActive && <form onSubmit={handleLogin} className="space-y-3">
-            {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />}
-            <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />
+          {!tenantOptions && !mfaChallengeActive && <form onSubmit={handleLogin} className="space-y-3" data-testid="login-form">
+            {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} data-testid="name" />}
+            <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="email" />
+            <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} data-testid="password" />
             {mode === 'login' && (
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1.5 text-[10px] t-muted"><input type="checkbox" className="rounded" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-card)' }} />Remember me</label>
-                <button type="button" onClick={() => setShowForgotPw(true)} className="text-[10px] font-medium" style={{ color: 'var(--accent)' }}>Forgot password?</button>
+                <button type="button" onClick={() => setShowForgotPw(true)} className="text-[10px] font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
               </div>
             )}
-            <Button variant="primary" size="md" className="w-full mt-1" type="submit" disabled={loading}>
+            <Button variant="primary" size="md" className="w-full mt-1" type="submit" disabled={loading} data-testid="login-button">
               {loading ? <Loader2 size={14} className="animate-spin" /> : null}
               {mode === 'register' ? <><UserPlus size={14} /> Create Account</> : <>Sign In <ArrowRight size={14} /></>}
             </Button>
