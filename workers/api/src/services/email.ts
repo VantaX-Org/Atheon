@@ -299,6 +299,16 @@ export function getWeeklyDigestEmailTemplate(data: {
 
 // ── Email Sending Infrastructure ──
 
+/**
+ * Per-request timeout for outbound HTTP to Microsoft. Without this, a
+ * misconfigured AZURE_AD_TENANT_ID (e.g. literally "test") causes the fetch
+ * to hang at DNS/TLS for Cloudflare's full worker wall-clock budget,
+ * blocking the calling request for ~45 seconds before dying silently.
+ * 5s is plenty for Microsoft endpoints — token exchange and /sendMail both
+ * typically complete in <500ms.
+ */
+const MS_GRAPH_TIMEOUT_MS = 5000;
+
 async function getMsGraphToken(env: Env): Promise<string> {
   const tenantId = env.AZURE_AD_TENANT_ID;
   const clientId = env.AZURE_AD_CLIENT_ID;
@@ -320,6 +330,7 @@ async function getMsGraphToken(env: Env): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal: AbortSignal.timeout(MS_GRAPH_TIMEOUT_MS),
   });
 
   if (!resp.ok) {
@@ -363,6 +374,7 @@ export async function sendEmail(payload: EmailPayload, env: Env): Promise<EmailR
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(graphPayload),
+      signal: AbortSignal.timeout(MS_GRAPH_TIMEOUT_MS),
     });
 
     if (resp.ok || resp.status === 202) {
