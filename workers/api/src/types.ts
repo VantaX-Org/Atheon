@@ -23,6 +23,12 @@ export interface Env {
   /** One-time setup secret for initial admin provisioning. Must match wrangler secret. */
   SETUP_SECRET?: string;
   SENTRY_DSN?: string;
+  /**
+   * Queue binding for catalyst execution fan-out + DAG chaining.
+   * Optional so local/test environments without the binding still compile.
+   * Declared in wrangler.toml as [[queues.producers]] queue="catalyst-tasks".
+   */
+  CATALYST_QUEUE?: Queue<unknown>;
 }
 
 export interface AuthContext {

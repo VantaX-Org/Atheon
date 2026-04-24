@@ -1235,7 +1235,7 @@ export async function handleQueueMessage(
             riskLevel: (payload.riskLevel || 'medium') as 'high' | 'medium' | 'low',
             autonomyTier: payload.autonomyTier || 'read-only',
             trustScore: payload.trustScore || 50,
-          }, env.DB, env.CACHE, env.AI, env.OLLAMA_API_KEY);
+          }, env.DB, env.CACHE, env.AI, env.OLLAMA_API_KEY, env.CATALYST_QUEUE);
           break;
         }
         case 'health_recalc':

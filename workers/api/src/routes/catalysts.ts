@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext, Env } from '../types';
 import { executeTask, approveAction, rejectAction } from '../services/catalyst-engine';
+import { triggerDownstream } from '../services/catalyst-dag';
 import { getValidatedJsonBody } from '../middleware/validation';
 import {
   INDUSTRY_TEMPLATES,
@@ -1672,6 +1673,22 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
     (result as Record<string, unknown>).run_id = runId;
   } catch (err) {
     console.error('recordRun failed:', err);
+  }
+
+  // ── DAG: fire downstream dependents when the run completed successfully.
+  // This HTTP path is always user-initiated so chainDepth starts at 0; DAG
+  // hops thereafter go via the catalyst-tasks queue → executeTask and carry
+  // their own chainDepth. triggerDownstream caps at MAX_CHAIN_DEPTH.
+  try {
+    await triggerDownstream({
+      tenantId: targetTenant,
+      upstreamClusterId: clusterId,
+      upstreamSubCatalystName: subName,
+      chainDepth: 0,
+      parentContext: { runId, source: 'sub_catalyst_http' },
+    }, c.env.DB, c.env.CATALYST_QUEUE as Queue<import('../services/scheduled').CatalystQueueMessage> | undefined);
+  } catch (err) {
+    console.error('[DAG] downstream trigger failed (non-fatal):', err);
   }
 
   // ── Auto-populate catalyst_run_analytics from the execution result ──
@@ -3570,7 +3587,7 @@ catalysts.post('/actions', async (c) => {
     riskLevel: (body.risk_level || 'medium') as 'high' | 'medium' | 'low',
     autonomyTier: (cluster.autonomy_tier as string) || 'read-only',
     trustScore: (cluster.trust_score as number) || 0.5,
-  }, c.env.DB, c.env.CACHE, c.env.AI, c.env.OLLAMA_API_KEY);
+  }, c.env.DB, c.env.CACHE, c.env.AI, c.env.OLLAMA_API_KEY, c.env.CATALYST_QUEUE);
 
   // Log audit
   await c.env.DB.prepare(
