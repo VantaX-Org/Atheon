@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { cleanLlmText } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
 import { CostOfInactionTicker } from "@/components/ui/cost-of-inaction-ticker";
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   Activity, AlertTriangle, GitBranch, Link2, ArrowRight, Loader2,
@@ -247,6 +247,7 @@ function generateNarrative(metrics: Metric[], anomalies: AnomalyItem[], processe
    ════════════════════════════════════════════════════════════ */
 export function PulsePage() {
   const industry = useAppStore((s) => s.industry);
+  const companyId = useSelectedCompanyId();
   const { activeTab, setActiveTab } = useTabState('dashboard');
 
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -339,7 +340,7 @@ export function PulsePage() {
   const loadAiInsights = async (domain?: string) => {
     setAiInsightsLoading(true);
     try {
-      const result = await api.pulse.insights(domain && domain !== 'all' ? domain : undefined);
+      const result = await api.pulse.insights(domain && domain !== 'all' ? domain : undefined, undefined, companyId || undefined);
       setAiInsights(result);
     } catch (err) { console.error('Failed to load AI insights:', err); }
     setAiInsightsLoading(false);
@@ -356,7 +357,7 @@ export function PulsePage() {
   const handleOpenMetricTrace = async (metricId: string) => {
     setLoadingMetricTrace(true);
     try {
-      const data = await api.pulse.metricTrace(metricId);
+      const data = await api.pulse.metricTrace(metricId, undefined, companyId || undefined);
       if (!data || !data.metric) {
         console.warn('No traceability data available for metric:', metricId);
         setActionError('No traceability data available for this metric.');
@@ -384,7 +385,7 @@ export function PulsePage() {
     const apexDimension = pulseDimToApexDim[dimension] || dimension;
     setLoadingDimTrace(true);
     try {
-      const data = await api.apex.healthDimension(apexDimension);
+      const data = await api.apex.healthDimension(apexDimension, undefined, companyId || undefined);
       if (!data || data.score === null) {
         setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
         return;
@@ -411,7 +412,7 @@ export function PulsePage() {
       const data = await response.json();
       if (data.success) {
         const ind = industry !== 'general' ? industry : undefined;
-        const a = await api.pulse.anomalies(undefined, ind);
+        const a = await api.pulse.anomalies(undefined, ind, companyId || undefined);
         setAnomalies(a.anomalies);
       }
     } catch (err) {
@@ -424,16 +425,17 @@ export function PulsePage() {
     async function load() {
       setLoading(true);
       const ind = industry !== 'general' ? industry : undefined;
-      const [m, a, p, co, s] = await Promise.allSettled([
-        api.pulse.metrics(undefined, ind),
-        api.pulse.anomalies(undefined, ind),
-        api.pulse.processes(undefined, ind),
-        api.pulse.correlations(undefined, ind),
-        api.pulse.summary(undefined, ind),
+      const co = companyId || undefined;
+      const [m, a, p, cor, s] = await Promise.allSettled([
+        api.pulse.metrics(undefined, ind, co),
+        api.pulse.anomalies(undefined, ind, co),
+        api.pulse.processes(undefined, ind, co),
+        api.pulse.correlations(undefined, ind, co),
+        api.pulse.summary(undefined, ind, co),
       ]);
       if (m.status === 'fulfilled') setMetrics(m.value.metrics);
       if (a.status === 'fulfilled') setAnomalies(a.value.anomalies);
-      if (co.status === 'fulfilled') setCorrelations(co.value.correlations);
+      if (cor.status === 'fulfilled') setCorrelations(cor.value.correlations);
       if (s.status === 'fulfilled') setSummary(s.value);
 
       // Auto-refresh process mining from catalyst runs if no processes exist yet
@@ -442,13 +444,13 @@ export function PulsePage() {
         setProcesses(p.value.processes);
       } else {
         try {
-          const refreshResult = await api.pulse.refresh();
+          const refreshResult = await api.pulse.refresh(undefined, co);
           if (refreshResult.refreshed) {
             // Re-fetch processes and metrics after refresh
             const [newP, newM, newS] = await Promise.allSettled([
-              api.pulse.processes(undefined, ind),
-              api.pulse.metrics(undefined, ind),
-              api.pulse.summary(undefined, ind),
+              api.pulse.processes(undefined, ind, co),
+              api.pulse.metrics(undefined, ind, co),
+              api.pulse.summary(undefined, ind, co),
             ]);
             if (newP.status === 'fulfilled') setProcesses(newP.value.processes);
             if (newM.status === 'fulfilled') setMetrics(newM.value.metrics);
@@ -460,7 +462,7 @@ export function PulsePage() {
       setLoading(false);
     }
     load();
-  }, [industry]);
+  }, [industry, companyId]);
 
   const health = computeOperationalHealth(metrics, summary, anomalies, processes);
   const insights = generateInsights(metrics, anomalies, processes, summary);
@@ -490,24 +492,25 @@ export function PulsePage() {
       setRunsLoading(true);
       try {
         const filterParam = catalystFilter !== 'all' ? catalystFilter : undefined;
-        const data = await api.pulse.catalystRuns(undefined, filterParam);
+        const data = await api.pulse.catalystRuns(undefined, filterParam, companyId || undefined);
         setCatalystRuns(data.runs);
         setCatalystSummary(data.summary);
       } catch (err) { console.error('Failed to load catalyst runs', err); }
       setRunsLoading(false);
     }
     loadRuns();
-  }, [activeTab, catalystFilter]);
+  }, [activeTab, catalystFilter, companyId]);
 
   const handleManualRefresh = async () => {
     setRefreshing(true);
     try {
-      await api.pulse.refresh();
+      const co = companyId || undefined;
+      await api.pulse.refresh(undefined, co);
       const ind = industry !== 'general' ? industry : undefined;
       const [newP, newM, newS] = await Promise.allSettled([
-        api.pulse.processes(undefined, ind),
-        api.pulse.metrics(undefined, ind),
-        api.pulse.summary(undefined, ind),
+        api.pulse.processes(undefined, ind, co),
+        api.pulse.metrics(undefined, ind, co),
+        api.pulse.summary(undefined, ind, co),
       ]);
       if (newP.status === 'fulfilled') setProcesses(newP.value.processes);
       if (newM.status === 'fulfilled') setMetrics(newM.value.metrics);
@@ -515,7 +518,7 @@ export function PulsePage() {
       // Also refresh catalyst runs if on that tab
       if (activeTab === 'catalyst-runs') {
         const filterParam = catalystFilter !== 'all' ? catalystFilter : undefined;
-        const data = await api.pulse.catalystRuns(undefined, filterParam);
+        const data = await api.pulse.catalystRuns(undefined, filterParam, co);
         setCatalystRuns(data.runs);
         setCatalystSummary(data.summary);
       }

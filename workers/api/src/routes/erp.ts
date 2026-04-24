@@ -343,6 +343,16 @@ erp.delete('/connections/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// GET /api/erp/companies — list ERP companies for the authenticated tenant.
+// Used by the frontend company-switcher (PR #219/#220/#232). Read-only.
+erp.get('/companies', async (c) => {
+  const tenantId = getTenantId(c);
+  const result = await c.env.DB.prepare(
+    "SELECT id, external_id, source_system, code, name, legal_name, currency, country, is_primary, status FROM erp_companies WHERE tenant_id = ? AND status = 'active' ORDER BY is_primary DESC, name ASC"
+  ).bind(tenantId).all();
+  return c.json({ companies: result.results, total: result.results.length });
+});
+
 // GET /api/erp/canonical - list canonical API endpoints
 erp.get('/canonical', async (c) => {
   const domain = c.req.query('domain');

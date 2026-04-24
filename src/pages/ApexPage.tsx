@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 
 import { api } from "@/lib/api";
+import { useSelectedCompanyId } from "@/stores/appStore";
 import { cleanLlmText } from "@/lib/utils";
 import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse } from "@/lib/api";
 import { PeerComparisonBar } from "@/components/ui/peer-comparison-bar";
@@ -38,6 +39,7 @@ const riskImpactLabel = (probability: number) => probability >= 0.7 ? 'Very High
 const riskLikelihoodBar = (probability: number) => Math.round(probability * 100);
 
 export function ApexPage() {
+ const companyId = useSelectedCompanyId();
  const [activeTab, setActiveTab] = useState<string>('health');
  const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
  const [health, setHealth] = useState<HealthScore | null>(null);
@@ -122,7 +124,7 @@ export function ApexPage() {
  const loadExecInsights = async () => {
   setExecInsightsLoading(true);
   try {
-   const result = await api.apex.insights();
+   const result = await api.apex.insights(undefined, companyId || undefined);
    setExecInsights(result);
   } catch (err) { console.error('Failed to load executive insights:', err); }
   setExecInsightsLoading(false);
@@ -139,7 +141,7 @@ export function ApexPage() {
  
  const handleOpenDimensionTrace = async (dimension: string) => {
   try {
-   const data = await api.apex.healthDimension(dimension);
+   const data = await api.apex.healthDimension(dimension, undefined, companyId || undefined);
    if (!data || data.score === null) {
      console.warn('No traceability data available for dimension:', dimension);
      setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
@@ -156,7 +158,7 @@ export function ApexPage() {
  
  const handleOpenRiskTrace = async (riskId: string) => {
   try {
-   const data = await api.apex.riskTrace(riskId);
+   const data = await api.apex.riskTrace(riskId, undefined, companyId || undefined);
    if (!data || !data.riskAlert) {
      console.warn('No traceability data available for risk:', riskId);
      setActionError('No traceability data available for this risk.');
@@ -195,7 +197,7 @@ export function ApexPage() {
  base_values: Object.fromEntries(vars.map(v => [v.name, v.baseValue])),
  });
  if (result.id) {
- const s = await api.apex.scenarios();
+ const s = await api.apex.scenarios(undefined, undefined, companyId || undefined);
  setScenarios(s.scenarios);
  }
  setShowScenarioBuilder(false);
@@ -214,8 +216,9 @@ export function ApexPage() {
  useEffect(() => {
  async function load() {
  setLoading(true);
+ const co = companyId || undefined;
  const [h, b, r, s, hh, br] = await Promise.allSettled([
- api.apex.health(), api.apex.briefing(), api.apex.risks(), api.apex.scenarios(), api.apex.healthHistory(), api.boardReport.list(),
+ api.apex.health(undefined, undefined, co), api.apex.briefing(undefined, undefined, co), api.apex.risks(undefined, undefined, co), api.apex.scenarios(undefined, undefined, co), api.apex.healthHistory(undefined, undefined, co), api.boardReport.list(),
  ]);
  if (h.status === 'fulfilled') setHealth(h.value);
  if (b.status === 'fulfilled') setBriefing(b.value);
@@ -226,7 +229,7 @@ export function ApexPage() {
  setLoading(false);
  }
  load();
- }, []);
+ }, [companyId]);
 
  const overallScore = health?.overall ?? 0;
  const dimensions = health?.dimensions

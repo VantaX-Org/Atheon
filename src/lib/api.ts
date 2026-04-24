@@ -347,69 +347,75 @@ export const api = {
       request<{ success: boolean }>(`/api/iam/users/${id}/resend-welcome${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
   },
 
+  // PR #219/#220/#232 multi-company: list ERP companies for the tenant so the
+  // frontend switcher can scope catalyst/apex/pulse calls via ?company_id=.
+  companies: {
+    list: () => request<{ companies: ERPCompany[]; total: number }>('/api/erp/companies'),
+  },
+
   apex: {
-    health: (tenantId?: string, industry?: string) =>
-      request<HealthScore>(`/api/apex/health${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    briefing: (tenantId?: string, industry?: string) =>
-      request<Briefing>(`/api/apex/briefing${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    risks: (tenantId?: string, industry?: string) =>
-      request<{ risks: Risk[]; total: number }>(`/api/apex/risks${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    scenarios: (tenantId?: string, industry?: string) =>
-      request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    health: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<HealthScore>(`/api/apex/health${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    briefing: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<Briefing>(`/api/apex/briefing${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    risks: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ risks: Risk[]; total: number }>(`/api/apex/risks${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    scenarios: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     createScenario: (data: Record<string, unknown>) =>
       request<{ id: string; results: Record<string, unknown>; context?: Record<string, unknown> }>('/api/apex/scenarios', { method: 'POST', body: JSON.stringify(data) }),
     // A1-3: Health score history
-    healthHistory: (tenantId?: string, limit?: number) =>
-      request<HealthHistoryResponse>(`/api/apex/health/history${qs({ tenant_id: tenantId, limit: limit?.toString() })}`),
+    healthHistory: (tenantId?: string, limit?: number, companyId?: string) =>
+      request<HealthHistoryResponse>(`/api/apex/health/history${qs({ tenant_id: tenantId, limit: limit?.toString(), company_id: companyId })}`),
     // A1-4: Health dimension traceability
-    healthDimension: (dimension: string, tenantId?: string) =>
-      request<HealthDimensionTraceResponse>(`/api/apex/health/dimensions/${encodeURIComponent(dimension)}${qs({ tenant_id: tenantId })}`),
+    healthDimension: (dimension: string, tenantId?: string, companyId?: string) =>
+      request<HealthDimensionTraceResponse>(`/api/apex/health/dimensions/${encodeURIComponent(dimension)}${qs({ tenant_id: tenantId, company_id: companyId })}`),
     // A4-4: Risk traceability
-    riskTrace: (riskId: string, tenantId?: string) =>
-      request<RiskTraceResponse>(`/api/apex/risks/${riskId}/trace${qs({ tenant_id: tenantId })}`),
-    riskSuggestCauses: (riskId: string, tenantId?: string) =>
-      request<{ success: boolean; riskId: string; analysis: { rootCauses: Array<{ description: string; confidence: number; immediateAction: string; longTermFix: string; affectedSystems: string[] }>; generatedAt: string; model: string } }>(`/api/apex/risks/${riskId}/suggest-causes${qs({ tenant_id: tenantId })}`),
-    riskExport: (riskId: string, tenantId?: string) =>
-      fetch(`/api/apex/risks/${riskId}/export${qs({ tenant_id: tenantId })}`, { headers: { 'Content-Type': 'text/csv' } }).then(r => r.blob()),
+    riskTrace: (riskId: string, tenantId?: string, companyId?: string) =>
+      request<RiskTraceResponse>(`/api/apex/risks/${riskId}/trace${qs({ tenant_id: tenantId, company_id: companyId })}`),
+    riskSuggestCauses: (riskId: string, tenantId?: string, companyId?: string) =>
+      request<{ success: boolean; riskId: string; analysis: { rootCauses: Array<{ description: string; confidence: number; immediateAction: string; longTermFix: string; affectedSystems: string[] }>; generatedAt: string; model: string } }>(`/api/apex/risks/${riskId}/suggest-causes${qs({ tenant_id: tenantId, company_id: companyId })}`),
+    riskExport: (riskId: string, tenantId?: string, companyId?: string) =>
+      fetch(`/api/apex/risks/${riskId}/export${qs({ tenant_id: tenantId, company_id: companyId })}`, { headers: { 'Content-Type': 'text/csv' } }).then(r => r.blob()),
     // Insights engine: AI-powered executive insights
-    insights: (tenantId?: string) =>
-      request<ApexInsightsResponse>(`/api/apex/insights${qs({ tenant_id: tenantId })}`),
+    insights: (tenantId?: string, companyId?: string) =>
+      request<ApexInsightsResponse>(`/api/apex/insights${qs({ tenant_id: tenantId, company_id: companyId })}`),
     // Dashboard intelligence: unified summary
-    dashboardIntelligence: (tenantId?: string) =>
-      request<DashboardIntelligenceResponse>(`/api/apex/dashboard-intelligence${qs({ tenant_id: tenantId })}`),
+    dashboardIntelligence: (tenantId?: string, companyId?: string) =>
+      request<DashboardIntelligenceResponse>(`/api/apex/dashboard-intelligence${qs({ tenant_id: tenantId, company_id: companyId })}`),
   },
 
   pulse: {
-    metrics: (tenantId?: string, industry?: string) =>
-      request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    anomalies: (tenantId?: string, industry?: string) =>
-      request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    detectAnomalies: (metricId?: string, sensitivity?: 'low' | 'medium' | 'high', tenantId?: string) =>
-      request<{ success: boolean; statistics: { mean: number; stdDev: number; dataPoints: number; period: string }; detected: unknown[]; count: number }>(`/api/pulse/anomalies/detect${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify({ metric_id: metricId, sensitivity }) }),
-    processes: (tenantId?: string, industry?: string) =>
-      request<{ processes: ProcessItem[]; total: number }>(`/api/pulse/processes${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    correlations: (tenantId?: string, industry?: string) =>
-      request<{ correlations: CorrelationItem[]; total: number }>(`/api/pulse/correlations${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    summary: (tenantId?: string, industry?: string) =>
-      request<PulseSummary>(`/api/pulse/summary${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
-    refresh: (tenantId?: string) =>
-      request<{ refreshed: boolean; processFlows?: number; metricsGenerated?: number; catalystActions?: number; message?: string }>(`/api/pulse/refresh${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
-    catalystRuns: (tenantId?: string, catalyst?: string) =>
-      request<{ runs: CatalystRunItem[]; summary: CatalystRunSummary[]; total: number }>(`/api/pulse/catalyst-runs${qs({ tenant_id: tenantId, catalyst })}`),
+    metrics: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    anomalies: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    detectAnomalies: (metricId?: string, sensitivity?: 'low' | 'medium' | 'high', tenantId?: string, companyId?: string) =>
+      request<{ success: boolean; statistics: { mean: number; stdDev: number; dataPoints: number; period: string }; detected: unknown[]; count: number }>(`/api/pulse/anomalies/detect${qs({ tenant_id: tenantId, company_id: companyId })}`, { method: 'POST', body: JSON.stringify({ metric_id: metricId, sensitivity }) }),
+    processes: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ processes: ProcessItem[]; total: number }>(`/api/pulse/processes${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    correlations: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ correlations: CorrelationItem[]; total: number }>(`/api/pulse/correlations${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    summary: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<PulseSummary>(`/api/pulse/summary${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    refresh: (tenantId?: string, companyId?: string) =>
+      request<{ refreshed: boolean; processFlows?: number; metricsGenerated?: number; catalystActions?: number; message?: string }>(`/api/pulse/refresh${qs({ tenant_id: tenantId, company_id: companyId })}`, { method: 'POST' }),
+    catalystRuns: (tenantId?: string, catalyst?: string, companyId?: string) =>
+      request<{ runs: CatalystRunItem[]; summary: CatalystRunSummary[]; total: number }>(`/api/pulse/catalyst-runs${qs({ tenant_id: tenantId, catalyst, company_id: companyId })}`),
     // P1-4: Metric traceability
-    metricTrace: (metricId: string, tenantId?: string) =>
-      request<MetricTraceResponse>(`/api/pulse/metrics/${metricId}/trace${qs({ tenant_id: tenantId })}`),
+    metricTrace: (metricId: string, tenantId?: string, companyId?: string) =>
+      request<MetricTraceResponse>(`/api/pulse/metrics/${metricId}/trace${qs({ tenant_id: tenantId, company_id: companyId })}`),
     // Insights engine: AI-powered operational insights
-    insights: (domain?: string, tenantId?: string) =>
-      request<PulseInsightsResponse>(`/api/pulse/insights${qs({ tenant_id: tenantId, domain })}`),
+    insights: (domain?: string, tenantId?: string, companyId?: string) =>
+      request<PulseInsightsResponse>(`/api/pulse/insights${qs({ tenant_id: tenantId, domain, company_id: companyId })}`),
     // Department domains available for filtering
-    domains: (tenantId?: string) =>
-      request<{ domains: string[] }>(`/api/pulse/domains${qs({ tenant_id: tenantId })}`),
+    domains: (tenantId?: string, companyId?: string) =>
+      request<{ domains: string[] }>(`/api/pulse/domains${qs({ tenant_id: tenantId, company_id: companyId })}`),
   },
 
   catalysts: {
-    clusters: (tenantId?: string, industry?: string) =>
-      request<{ clusters: ClusterItem[]; total: number }>(`/api/catalysts/clusters${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    clusters: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<{ clusters: ClusterItem[]; total: number }>(`/api/catalysts/clusters${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     toggleSubCatalyst: (clusterId: string, subName: string, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/toggle${qs({ tenant_id: tenantId })}`, { method: 'PUT' }),
     setDataSource: (clusterId: string, subName: string, dataSource: { type: string; config: Record<string, unknown> }, tenantId?: string) =>
@@ -426,8 +432,8 @@ export const api = {
       request<{ suggestions: FieldMapping[] }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/field-mappings/suggest${qs({ tenant_id: tenantId })}`),
     setExecutionConfig: (clusterId: string, subName: string, config: ExecutionConfig, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/execution-config${qs({ tenant_id: tenantId })}`, { method: 'PUT', body: JSON.stringify(config) }),
-    executeSubCatalyst: (clusterId: string, subName: string, tenantId?: string) =>
-      request<ExecutionResult>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/execute${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
+    executeSubCatalyst: (clusterId: string, subName: string, tenantId?: string, companyId?: string) =>
+      request<ExecutionResult>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/execute${qs({ tenant_id: tenantId, company_id: companyId })}`, { method: 'POST' }),
     getExecutionHistory: (clusterId: string, subName: string, tenantId?: string) =>
       request<{ executions: ExecutionResult[]; total: number }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/executions${qs({ tenant_id: tenantId })}`),
     setSchedule:(clusterId: string, subName: string, schedule: { frequency: string; day_of_week?: number; day_of_month?: number; time_of_day?: string }, tenantId?: string) =>
@@ -435,16 +441,16 @@ export const api = {
     removeSchedule: (clusterId: string, subName: string, tenantId?: string) =>
       request<{ success: boolean; subCatalyst: SubCatalyst }>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/schedule${qs({ tenant_id: tenantId })}`, { method: 'DELETE' }),
     cluster: (id: string) => request<ClusterDetail>(`/api/catalysts/clusters/${id}`),
-    actions: (tenantId?: string, clusterId?: string, industry?: string) =>
-      request<{ actions: ActionItem[]; total: number }>(`/api/catalysts/actions${qs({ tenant_id: tenantId, cluster_id: clusterId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    actions: (tenantId?: string, clusterId?: string, industry?: string, companyId?: string) =>
+      request<{ actions: ActionItem[]; total: number }>(`/api/catalysts/actions${qs({ tenant_id: tenantId, cluster_id: clusterId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     createAction: (data: Record<string, unknown>) =>
       request<{ id: string }>('/api/catalysts/actions', { method: 'POST', body: JSON.stringify(data) }),
     approveAction: (id: string, approvedBy?: string) =>
       request<{ success: boolean }>(`/api/catalysts/actions/${id}/approve`, { method: 'PUT', body: JSON.stringify({ approved_by: approvedBy || 'ui' }) }),
     rejectAction: (id: string, rejectedBy?: string, reason?: string) =>
       request<{ success: boolean }>(`/api/catalysts/actions/${id}/reject`, { method: 'PUT', body: JSON.stringify({ approved_by: rejectedBy || 'ui', reason: reason || '' }) }),
-    governance: (tenantId?: string, industry?: string) =>
-      request<GovernanceData>(`/api/catalysts/governance${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    governance: (tenantId?: string, industry?: string, companyId?: string) =>
+      request<GovernanceData>(`/api/catalysts/governance${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     createCluster: (data: Record<string, unknown>) =>
       request<{ id: string; name: string; domain: string }>('/api/catalysts/clusters', { method: 'POST', body: JSON.stringify(data) }),
     deleteCluster: (id: string, tenantId?: string) =>
@@ -1868,6 +1874,19 @@ export interface MindStats {
   avgLatencyMs: number;
   totalTokens: number;
   tierBreakdown: { tier: string; count: number; avg_latency: number }[];
+}
+
+export interface ERPCompany {
+  id: string;
+  external_id: string | null;
+  source_system: string;
+  code: string | null;
+  name: string;
+  legal_name: string | null;
+  currency: string | null;
+  country: string | null;
+  is_primary: number;
+  status: string;
 }
 
 export interface ERPAdapter {

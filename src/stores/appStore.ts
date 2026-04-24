@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import type { User, AtheonLayer, IndustryVertical } from '@/types';
+import { api } from '@/lib/api';
+import type { ERPCompany } from '@/lib/api';
+
+const SELECTED_COMPANY_LS_KEY = 'atheon_selected_company_id';
 
 export type Theme = 'dark' | 'light';
 export type AccentColor = 'indigo' | 'blue' | 'violet' | 'emerald' | 'rose';
@@ -63,6 +67,10 @@ interface AppState {
   activeTenantIndustry: IndustryVertical | null;
   // MFA grace-period warning — captured from the last login response (PR #221).
   mfaEnforcementWarning: MfaEnforcementWarning | null;
+  // Multi-company scoping (PR #219/#220/#232) — null = consolidated across all companies
+  companies: ERPCompany[];
+  companiesLoaded: boolean;
+  selectedCompanyId: string | null;
   setUser: (user: User | null) => void;
   setCurrentLayer: (layer: AtheonLayer) => void;
   toggleSidebar: () => void;
@@ -74,6 +82,9 @@ interface AppState {
   dismissOnboarding: () => void;
   setActiveTenant: (tenantId: string | null, tenantName: string | null, tenantIndustry: IndustryVertical | null) => void;
   setMfaEnforcementWarning: (w: MfaEnforcementWarning | null) => void;
+  // Multi-company actions
+  loadCompanies: () => Promise<void>;
+  setSelectedCompanyId: (id: string | null) => void;
 }
 
 const systemPrefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -86,6 +97,7 @@ const migratedAccent = rawAccent && legacyMap[rawAccent] ? legacyMap[rawAccent] 
 if (rawAccent && legacyMap[rawAccent] && typeof window !== 'undefined') { localStorage.setItem('atheon-accent', legacyMap[rawAccent]); }
 const savedAccent = (migratedAccent && ACCENT_LIGHT[migratedAccent as AccentColor] ? migratedAccent : null) as AccentColor | null;
 const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('atheon-onboarding-dismissed') === 'true' : false;
+const savedSelectedCompanyId = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_COMPANY_LS_KEY) : null;
 
 // Apply saved theme to body on initial load
 if (typeof document !== 'undefined') {
@@ -97,7 +109,7 @@ if (typeof document !== 'undefined') {
   }
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   currentLayer: 'apex',
   sidebarOpen: true,
@@ -115,6 +127,9 @@ export const useAppStore = create<AppState>((set) => ({
       return raw ? (JSON.parse(raw) as MfaEnforcementWarning) : null;
     } catch { return null; }
   })(),
+  companies: [],
+  companiesLoaded: false,
+  selectedCompanyId: savedSelectedCompanyId,
   setUser: (user) => set({ user }),
   setCurrentLayer: (layer) => set({ currentLayer: layer }),
   mobileSidebarOpen: false,
@@ -164,6 +179,35 @@ export const useAppStore = create<AppState>((set) => ({
     if (tenantIndustry) {
       set({ industry: tenantIndustry });
     }
+    // Clear company selection when switching tenants — companies are tenant-scoped.
+    // Companies will be reloaded for the new tenant by loadCompanies().
+    if (typeof window !== 'undefined') localStorage.removeItem(SELECTED_COMPANY_LS_KEY);
+    set({ companies: [], companiesLoaded: false, selectedCompanyId: null });
+  },
+  loadCompanies: async () => {
+    try {
+      const data = await api.companies.list();
+      const companies = data.companies || [];
+      set({ companies, companiesLoaded: true });
+      // If the persisted selection is no longer present in the list (stale or
+      // different tenant), clear it silently.
+      const current = get().selectedCompanyId;
+      if (current && !companies.some((c) => c.id === current)) {
+        if (typeof window !== 'undefined') localStorage.removeItem(SELECTED_COMPANY_LS_KEY);
+        set({ selectedCompanyId: null });
+      }
+    } catch {
+      // Non-critical — tenants without any erp_companies rows will get [] via 200 here,
+      // and any other failure (404, network) falls through to consolidated view.
+      set({ companies: [], companiesLoaded: true });
+    }
+  },
+  setSelectedCompanyId: (id) => {
+    if (typeof window !== 'undefined') {
+      if (id) localStorage.setItem(SELECTED_COMPANY_LS_KEY, id);
+      else localStorage.removeItem(SELECTED_COMPANY_LS_KEY);
+    }
+    set({ selectedCompanyId: id });
   },
   setMfaEnforcementWarning: (w) => {
     if (typeof window !== 'undefined') {
@@ -173,3 +217,12 @@ export const useAppStore = create<AppState>((set) => ({
     set({ mfaEnforcementWarning: w });
   },
 }));
+
+/**
+ * Hook: the currently selected company id (null = consolidated across all
+ * companies). Catalyst/Apex/Pulse fetches should call this and pass the
+ * result into api.* calls as the `companyId` argument.
+ */
+export function useSelectedCompanyId(): string | null {
+  return useAppStore((s) => s.selectedCompanyId);
+}

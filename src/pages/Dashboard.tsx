@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 // cleanLlmText now used by IntelligencePanel sub-component
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
 import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse, BaselineComparisonResponse } from "@/lib/api";
 import { AtheonScoreRing } from "@/components/ui/atheon-score-ring";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
@@ -87,6 +87,7 @@ function TintedCard({ children, className = "" }: { children: React.ReactNode; c
 export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
   const user = useAppStore((s) => s.user);
+  const companyId = useSelectedCompanyId();
   const toast = useToast();
   const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
   const [health, setHealth] = useState<HealthScore | null>(null);
@@ -120,7 +121,7 @@ export function Dashboard() {
   const loadDashboardIntelligence = async () => {
     setDashIntelLoading(true);
     try {
-      const result = await api.apex.dashboardIntelligence();
+      const result = await api.apex.dashboardIntelligence(undefined, companyId || undefined);
       setDashIntel(result);
     } catch (err) { console.error('Failed to load dashboard intelligence:', err); }
     setDashIntelLoading(false);
@@ -135,7 +136,7 @@ export function Dashboard() {
   const handleOpenDimensionTrace = async (dimension: string) => {
     setLoadingTrace(true);
     try {
-      const data = await api.apex.healthDimension(dimension);
+      const data = await api.apex.healthDimension(dimension, undefined, companyId || undefined);
       if (!data || data.score === null) {
         setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
         return;
@@ -158,13 +159,14 @@ export function Dashboard() {
     setLoading(true);
     try {
       const ind = industry !== 'general' ? industry : undefined;
+      const co = companyId || undefined;
       const [h, r, m, a, c, act, cp] = await Promise.allSettled([
-        api.apex.health(undefined, ind),
-        api.apex.risks(undefined, ind),
-        api.pulse.metrics(undefined, ind),
-        api.pulse.anomalies(undefined, ind),
-        api.catalysts.clusters(undefined, ind),
-        api.catalysts.actions(undefined, undefined, ind),
+        api.apex.health(undefined, ind, co),
+        api.apex.risks(undefined, ind, co),
+        api.pulse.metrics(undefined, ind, co),
+        api.pulse.anomalies(undefined, ind, co),
+        api.catalysts.clusters(undefined, ind, co),
+        api.catalysts.actions(undefined, undefined, ind, co),
         api.controlplane.health(undefined, ind),
       ]);
       if (h.status === "fulfilled") setHealth(h.value);
@@ -179,7 +181,7 @@ export function Dashboard() {
     }
     setLoading(false);
     setLastRefreshed(new Date());
-  }, [industry]);
+  }, [industry, companyId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
