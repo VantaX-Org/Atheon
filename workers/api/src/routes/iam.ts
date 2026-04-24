@@ -383,6 +383,302 @@ iam.post('/users/:id/resend-welcome', async (c) => {
   return c.json({ success: true, email: user.email, tempPassword });
 });
 
+// ── Bulk User Management (v45) ────────────────────────────────────────
+// CSV import, bulk suspend/activate/change-role, import history from audit_log
+
+/**
+ * Simple inline CSV parser supporting quoted fields and commas/newlines inside quotes.
+ * Returns rows as arrays of strings. First row treated as header by the caller.
+ */
+function parseCSV(input: string): string[][] {
+  const rows: string[][] = [];
+  let cur: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (input[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ',') { cur.push(field); field = ''; i++; continue; }
+    if (ch === '\r') { i++; continue; }
+    if (ch === '\n') { cur.push(field); rows.push(cur); cur = []; field = ''; i++; continue; }
+    field += ch; i++;
+  }
+  // flush trailing field/row if present
+  if (field.length > 0 || cur.length > 0) { cur.push(field); rows.push(cur); }
+  // drop fully-empty trailing rows
+  return rows.filter(r => r.length > 1 || (r.length === 1 && r[0].trim().length > 0));
+}
+
+function isValidEmail(email: string): boolean {
+  // basic RFC-5322-lite validation; matches email format sufficient for user creation
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function generateTempPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+  let pw = '';
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < 12; i++) pw += chars[bytes[i] % chars.length];
+  return pw;
+}
+
+// POST /api/iam/users/bulk-import — CSV import (admin+)
+// Body: { csv: string, dryRun?: boolean }
+// CSV columns: email,name,role[,permissions]
+iam.post('/users/bulk-import', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+  if (callerLevel < ROLE_LEVELS['admin']) {
+    return c.json({ error: 'Forbidden', message: 'Admin role required' }, 403);
+  }
+  const tenantId = getTenantId(c);
+
+  let body: { csv?: string; dryRun?: boolean };
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+  const csv = (body.csv || '').trim();
+  const dryRun = body.dryRun === true;
+  if (!csv) return c.json({ error: 'Invalid input', message: 'csv is required' }, 400);
+
+  const importId = crypto.randomUUID();
+  const rows = parseCSV(csv);
+  if (rows.length < 2) {
+    return c.json({ error: 'Invalid CSV', message: 'CSV must have a header row plus at least one data row' }, 400);
+  }
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const emailIdx = header.indexOf('email');
+  const nameIdx = header.indexOf('name');
+  const roleIdx = header.indexOf('role');
+  const permsIdx = header.indexOf('permissions');
+  if (emailIdx === -1 || nameIdx === -1) {
+    return c.json({ error: 'Invalid CSV', message: 'Header must include email and name columns' }, 400);
+  }
+
+  const created: Array<{ row: number; id: string; email: string; name: string; role: string; tempPassword: string }> = [];
+  const skipped: Array<{ row: number; email: string; reason: string }> = [];
+  const errors: Array<{ row: number; email?: string; reason: string }> = [];
+
+  // Pre-fetch existing emails in one query for efficiency
+  const dataRows = rows.slice(1);
+  const candidateEmails = dataRows
+    .map(r => (r[emailIdx] || '').trim().toLowerCase())
+    .filter(e => e.length > 0);
+  const existingEmails = new Set<string>();
+  if (candidateEmails.length > 0) {
+    // D1 limits variadic bindings — chunk to 50 at a time
+    for (let i = 0; i < candidateEmails.length; i += 50) {
+      const chunk = candidateEmails.slice(i, i + 50);
+      const placeholders = chunk.map(() => '?').join(',');
+      const res = await c.env.DB.prepare(
+        `SELECT email FROM users WHERE tenant_id = ? AND lower(email) IN (${placeholders})`,
+      ).bind(tenantId, ...chunk).all<{ email: string }>();
+      for (const r of res.results || []) existingEmails.add((r.email || '').toLowerCase());
+    }
+  }
+  const seenInBatch = new Set<string>();
+
+  for (let r = 0; r < dataRows.length; r++) {
+    const rowNumber = r + 2; // 1-indexed, +1 for header
+    const row = dataRows[r];
+    const email = (row[emailIdx] || '').trim();
+    const name = (row[nameIdx] || '').trim();
+    const role = (roleIdx >= 0 ? (row[roleIdx] || '').trim() : '') || 'analyst';
+    let permissions: string[] = [];
+    if (permsIdx >= 0 && row[permsIdx]) {
+      // Support JSON-like or pipe-separated permissions
+      const raw = row[permsIdx].trim();
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) permissions = parsed.map(String);
+      } catch {
+        permissions = raw.split('|').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    if (!email) { skipped.push({ row: rowNumber, email: '', reason: 'Missing email' }); continue; }
+    if (!isValidEmail(email)) { skipped.push({ row: rowNumber, email, reason: 'Invalid email format' }); continue; }
+    if (!name) { skipped.push({ row: rowNumber, email, reason: 'Missing name' }); continue; }
+    if (!VALID_ROLES.has(role)) { skipped.push({ row: rowNumber, email, reason: `Invalid role "${role}"` }); continue; }
+    if ((ROLE_LEVELS[role] ?? 0) > callerLevel) {
+      skipped.push({ row: rowNumber, email, reason: `Role "${role}" exceeds your privilege level` }); continue;
+    }
+    const lowerEmail = email.toLowerCase();
+    if (existingEmails.has(lowerEmail)) { skipped.push({ row: rowNumber, email, reason: 'User already exists' }); continue; }
+    if (seenInBatch.has(lowerEmail)) { skipped.push({ row: rowNumber, email, reason: 'Duplicate email within CSV' }); continue; }
+    seenInBatch.add(lowerEmail);
+
+    if (permissions.length === 0) {
+      permissions = (role === 'superadmin' || role === 'support_admin' || role === 'admin') ? ['*'] : ['read'];
+    }
+
+    if (dryRun) {
+      created.push({ row: rowNumber, id: '(dry-run)', email, name, role, tempPassword: '(dry-run)' });
+      continue;
+    }
+
+    try {
+      const tempPassword = generateTempPassword();
+      const passwordHash = await hashPassword(tempPassword);
+      const id = crypto.randomUUID();
+      await c.env.DB.prepare(
+        'INSERT INTO users (id, tenant_id, email, name, role, password_hash, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(id, tenantId, email, name, role, passwordHash, JSON.stringify(permissions), 'active').run();
+
+      // Per-user audit entry
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null,
+        'bulk_user.import.created', 'iam', 'user',
+        JSON.stringify({ importId, email, role, row: rowNumber }), 'success',
+      ).run().catch(() => {});
+
+      created.push({ row: rowNumber, id, email, name, role, tempPassword });
+    } catch (err) {
+      errors.push({ row: rowNumber, email, reason: (err as Error).message });
+    }
+  }
+
+  // Batch-level audit entry for import history aggregation
+  if (!dryRun) {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(
+      importId, tenantId, auth?.userId || null,
+      'bulk_user.import.batch', 'iam', 'users',
+      JSON.stringify({
+        importId,
+        total: dataRows.length,
+        createdCount: created.length,
+        skippedCount: skipped.length,
+        errorCount: errors.length,
+      }),
+      errors.length > 0 ? 'partial' : 'success',
+    ).run().catch(() => {});
+  }
+
+  return c.json({
+    importId,
+    total: dataRows.length,
+    created: created.length,
+    createdUsers: created,
+    skipped,
+    errors,
+    dryRun,
+  });
+});
+
+// POST /api/iam/users/bulk-action — suspend/activate/change-role (admin+)
+// Body: { user_ids: string[], action: 'suspend'|'activate'|'change_role', role?: string }
+iam.post('/users/bulk-action', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+  if (callerLevel < ROLE_LEVELS['admin']) {
+    return c.json({ error: 'Forbidden', message: 'Admin role required' }, 403);
+  }
+  const tenantId = getTenantId(c);
+
+  let body: { user_ids?: string[]; action?: string; role?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+  const userIds = Array.isArray(body.user_ids) ? body.user_ids.filter(x => typeof x === 'string') : [];
+  const action = body.action;
+  if (userIds.length === 0) return c.json({ error: 'Invalid input', message: 'user_ids must be a non-empty array' }, 400);
+  if (!action || !['suspend', 'activate', 'change_role'].includes(action)) {
+    return c.json({ error: 'Invalid input', message: 'action must be suspend, activate, or change_role' }, 400);
+  }
+  if (action === 'change_role') {
+    if (!body.role) return c.json({ error: 'Invalid input', message: 'role is required for change_role action' }, 400);
+    if (!VALID_ROLES.has(body.role)) {
+      return c.json({ error: 'Invalid role', message: `Role "${body.role}" is not valid` }, 400);
+    }
+    if ((ROLE_LEVELS[body.role] ?? 0) > callerLevel) {
+      return c.json({ error: 'Forbidden', message: `Cannot assign role "${body.role}" — exceeds your privilege level` }, 403);
+    }
+  }
+
+  const applied: Array<{ user_id: string; email?: string }> = [];
+  const failed: Array<{ user_id: string; reason: string }> = [];
+
+  for (const id of userIds) {
+    if (id === auth?.userId) { failed.push({ user_id: id, reason: 'Cannot modify your own account' }); continue; }
+    const target = await c.env.DB.prepare(
+      'SELECT id, email, role FROM users WHERE id = ? AND tenant_id = ?',
+    ).bind(id, tenantId).first<{ id: string; email: string; role: string }>();
+    if (!target) { failed.push({ user_id: id, reason: 'User not found' }); continue; }
+    const targetLevel = ROLE_LEVELS[target.role] ?? 0;
+    if (targetLevel > callerLevel) { failed.push({ user_id: id, reason: 'Target has higher privilege' }); continue; }
+    if (auth?.role === 'admin' && targetLevel >= callerLevel) {
+      failed.push({ user_id: id, reason: 'Company admins cannot modify peer admins' }); continue;
+    }
+
+    try {
+      if (action === 'suspend') {
+        await c.env.DB.prepare("UPDATE users SET status = 'suspended' WHERE id = ? AND tenant_id = ?")
+          .bind(id, tenantId).run();
+      } else if (action === 'activate') {
+        await c.env.DB.prepare("UPDATE users SET status = 'active' WHERE id = ? AND tenant_id = ?")
+          .bind(id, tenantId).run();
+      } else if (action === 'change_role' && body.role) {
+        await c.env.DB.prepare('UPDATE users SET role = ? WHERE id = ? AND tenant_id = ?')
+          .bind(body.role, id, tenantId).run();
+      }
+      applied.push({ user_id: id, email: target.email });
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null,
+        `bulk_user.action.${action}`, 'iam', 'user',
+        JSON.stringify({ targetUserId: id, targetEmail: target.email, role: body.role }), 'success',
+      ).run().catch(() => {});
+    } catch (err) {
+      failed.push({ user_id: id, reason: (err as Error).message });
+    }
+  }
+
+  return c.json({ applied: applied.length, failed, appliedUsers: applied });
+});
+
+// GET /api/iam/users/import-history — list recent bulk imports (admin+)
+iam.get('/users/import-history', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
+  if (callerLevel < ROLE_LEVELS['admin']) {
+    return c.json({ error: 'Forbidden', message: 'Admin role required' }, 403);
+  }
+  const tenantId = getTenantId(c);
+
+  const results = await c.env.DB.prepare(
+    `SELECT id, user_id, action, details, outcome, created_at FROM audit_log
+     WHERE tenant_id = ? AND action = 'bulk_user.import.batch'
+     ORDER BY created_at DESC LIMIT 20`,
+  ).bind(tenantId).all<Record<string, unknown>>();
+
+  const imports = (results.results || []).map((row) => {
+    let details: Record<string, unknown> = {};
+    try { details = row.details ? JSON.parse(String(row.details)) : {}; } catch { details = {}; }
+    return {
+      id: String(row.id),
+      imported_by: row.user_id ? String(row.user_id) : null,
+      row_count: (details.total as number) ?? 0,
+      created_count: (details.createdCount as number) ?? 0,
+      skipped_count: (details.skippedCount as number) ?? 0,
+      error_count: (details.errorCount as number) ?? 0,
+      outcome: String(row.outcome || 'success'),
+      created_at: String(row.created_at),
+    };
+  });
+
+  return c.json({ imports });
+});
+
 // GET /api/iam/sso
 iam.get('/sso', async (c) => {
   const tenantId = getTenantId(c);

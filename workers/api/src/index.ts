@@ -49,6 +49,7 @@ import executiveSummary from './routes/executive-summary';
 import adminTooling from './routes/admin-tooling';
 import webhooksRoutes from './routes/webhooks';
 import governance from './routes/governance';
+import systemAlerts from './routes/system-alerts';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -301,7 +302,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks', 'system-alerts'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -328,6 +329,10 @@ for (const prefix of platformAdminRoutePrefixes) {
 for (const p of ['/api/board-report/*', '/api/v1/board-report/*']) {
   app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
 }
+// v45-alerts: system-alerts (admin+) — CRUD/silence/test on alert rules
+for (const p of ['/api/system-alerts/*', '/api/v1/system-alerts/*']) {
+  app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
+}
 // radar, diagnostics, catalyst-intelligence, roi: all authenticated users (read via tenantIsolation)
 // onboarding, freshness: all authenticated users (self-service)
 
@@ -347,6 +352,7 @@ const routeModules: [string, typeof auth][] = [
   ['atheon-score', atheonScore], ['baseline', baselineRoutes],
   ['targets', targetRoutes], ['executive-summary', executiveSummary],
   ['webhooks', webhooksRoutes],
+  ['system-alerts', systemAlerts],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
