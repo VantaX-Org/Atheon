@@ -1,7 +1,14 @@
 /**
  * Notifications & Webhooks Service
- * Email/webhook notification dispatch for alerts, approvals, and system events
+ * Email/webhook notification dispatch for alerts, approvals, and system events.
+ *
+ * Webhook delivery is routed through `services/webhook-delivery` so every
+ * outbound request is signed (HMAC-SHA256) and automatically retried with
+ * exponential backoff if the recipient is unavailable. See Audit §3.6 /
+ * Audit Top-20 #18.
  */
+
+import { enqueueWebhook } from './webhook-delivery';
 
 export interface NotificationPayload {
   tenantId: string;
@@ -51,53 +58,44 @@ export async function createNotification(
 
 // ── Dispatch webhook ──
 
-async function signWebhookPayload(payload: string, secret: string): Promise<string> {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
-  const bytes = new Uint8Array(sig);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
+/**
+ * Legacy helper retained for the `/api/notifications/webhooks/:id/test` route.
+ * Replaced the previous direct-`fetch` path — now enqueues a signed delivery
+ * onto `webhook_delivery_queue` so retries and dead-lettering are uniform.
+ *
+ * We deliberately do NOT wait for the outcome here: the scheduled cron picker
+ * will attempt it within 15 minutes, or callers can run `processDueWebhooks`
+ * explicitly. This keeps the notification fan-out fast.
+ */
 export async function dispatchWebhook(
   config: WebhookConfig,
   event: string,
   payload: Record<string, unknown>,
+  db?: D1Database,
 ): Promise<NotificationResult> {
-  const body = JSON.stringify({
-    event,
-    timestamp: new Date().toISOString(),
-    data: payload,
-  });
-
-  try {
-    const signature = await signWebhookPayload(body, config.secret);
-
-    const resp = await fetch(config.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Atheon-Signature': `sha256=${signature}`,
-        'X-Atheon-Event': event,
-        'X-Atheon-Delivery': crypto.randomUUID(),
-      },
-      body,
-    });
-
-    return {
-      id: crypto.randomUUID(),
-      delivered: resp.ok,
-      channel: 'webhook',
-      error: resp.ok ? undefined : `HTTP ${resp.status}: ${resp.statusText}`,
-    };
-  } catch {
+  if (!db) {
+    // No DB binding available — cannot enqueue. Surface a loud failure so
+    // callers update to pass `db` rather than silently dropping the event.
     return {
       id: crypto.randomUUID(),
       delivered: false,
       channel: 'webhook',
-      error: 'Webhook dispatch failed',
+      error: 'dispatchWebhook requires a D1Database binding — routed through webhook_delivery_queue',
+    };
+  }
+  try {
+    const queueId = await enqueueWebhook(db, config.tenantId, config.id, event, {
+      event,
+      timestamp: new Date().toISOString(),
+      data: payload,
+    });
+    return { id: queueId, delivered: true, channel: 'webhook_queued' };
+  } catch (err) {
+    return {
+      id: crypto.randomUUID(),
+      delivered: false,
+      channel: 'webhook',
+      error: (err as Error).message || 'Failed to enqueue webhook',
     };
   }
 }
@@ -141,10 +139,11 @@ export async function dispatchNotification(
           actionUrl: payload.actionUrl,
           metadata: payload.metadata,
         },
+        db,
       );
       results.push(whResult);
 
-      // Update last triggered
+      // Update last triggered — enqueued, actual send happens in cron.
       await db.prepare(
         'UPDATE webhooks SET last_triggered = datetime(\'now\') WHERE id = ?'
       ).bind(wh.id).run().catch(() => {});

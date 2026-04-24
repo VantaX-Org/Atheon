@@ -12,6 +12,7 @@ import { checkOverduePrescriptions } from './diagnostics-engine-v2';
 import { queueEmail } from './email';
 import { getWeeklyDigestEmailTemplate } from './email';
 import { logInfo, logError } from './logger';
+import { processDueWebhooks } from './webhook-delivery';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -115,6 +116,13 @@ export async function handleScheduled(
 
   // Phase 6.4: Email delivery with retry + fallback
   await processEmailQueue(db, env);
+
+  // Audit §3.6: Signed webhook delivery with exponential-backoff retry + DLQ
+  try {
+    await processDueWebhooks(db);
+  } catch (e) {
+    console.error('Webhook queue processing failed:', e);
+  }
 }
 
 /**

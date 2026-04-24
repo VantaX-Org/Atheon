@@ -259,6 +259,7 @@ notifications.post('/webhooks/:id/test', async (c) => {
     },
     'test',
     { message: 'This is a test webhook from Atheon', timestamp: new Date().toISOString() },
+    c.env.DB,
   );
 
   return c.json(result);
