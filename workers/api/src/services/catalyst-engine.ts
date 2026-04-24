@@ -5,6 +5,11 @@
 
 import { chatWithFallback } from './ollama';
 import { logError } from './logger';
+import {
+  type CatalystHandler,
+  dispatchAction,
+  registerDefaultHandler,
+} from './catalyst-handler-registry';
 
 export interface TaskDefinition {
   id: string;
@@ -313,44 +318,74 @@ export async function executeTask(
   };
 }
 
-// ── Perform Action (real execution with DB queries and mutations) ──
+// ── Perform Action (dispatches to registered handlers) ──
 
 async function performAction(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
-  const actionLower = task.action.toLowerCase();
-
-  // Read/query actions — query real data from canonical tables
-  if (['read', 'query', 'analyze', 'report', 'list', 'get', 'check', 'monitor'].some(a => actionLower.includes(a))) {
-    return await performReadAction(task, db);
-  }
-
-  // Notification/alerting actions — create real notifications
-  if (['notify', 'alert', 'email', 'remind'].some(a => actionLower.includes(a))) {
-    return await performNotifyAction(task, db);
-  }
-
-  // Investigation/analysis actions — run real data analysis
-  if (['investigate', 'diagnose', 'assess', 'evaluate', 'audit'].some(a => actionLower.includes(a))) {
-    return await performInvestigateAction(task, db);
-  }
-
-  // Create/update actions — modify real DB records
-  if (['create', 'update', 'modify', 'process', 'reconcile', 'sync'].some(a => actionLower.includes(a))) {
-    return await performMutationAction(task, db);
-  }
-
-  // Default action handler — still queries real data for context
-  const metricCount = await db.prepare(
-    'SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?'
-  ).bind(task.tenantId).first<{ count: number }>();
-
-  return {
-    type: 'generic_result',
-    action: task.action,
-    catalyst: task.catalystName,
-    tenantMetrics: metricCount?.count || 0,
-    timestamp: new Date().toISOString(),
-  };
+  return dispatchAction(task, db);
 }
+
+// Keyword predicates preserved from the original inline dispatcher so behaviour
+// is byte-identical. Domain handlers can register via registerHandler() in
+// catalyst-handler-registry to take precedence over these generic defaults.
+
+const READ_KEYWORDS = ['read', 'query', 'analyze', 'report', 'list', 'get', 'check', 'monitor'] as const;
+const NOTIFY_KEYWORDS = ['notify', 'alert', 'email', 'remind'] as const;
+const INVESTIGATE_KEYWORDS = ['investigate', 'diagnose', 'assess', 'evaluate', 'audit'] as const;
+const MUTATION_KEYWORDS = ['create', 'update', 'modify', 'process', 'reconcile', 'sync'] as const;
+
+function actionContainsAny(task: TaskDefinition, words: readonly string[]): boolean {
+  const actionLower = task.action.toLowerCase();
+  return words.some(w => actionLower.includes(w));
+}
+
+const readHandler: CatalystHandler = {
+  name: 'default:read',
+  match: t => actionContainsAny(t, READ_KEYWORDS),
+  execute: performReadAction,
+};
+
+const notifyHandler: CatalystHandler = {
+  name: 'default:notify',
+  match: t => actionContainsAny(t, NOTIFY_KEYWORDS),
+  execute: performNotifyAction,
+};
+
+const investigateHandler: CatalystHandler = {
+  name: 'default:investigate',
+  match: t => actionContainsAny(t, INVESTIGATE_KEYWORDS),
+  execute: performInvestigateAction,
+};
+
+const mutationHandler: CatalystHandler = {
+  name: 'default:mutation',
+  match: t => actionContainsAny(t, MUTATION_KEYWORDS),
+  execute: performMutationAction,
+};
+
+const genericHandler: CatalystHandler = {
+  name: 'default:generic',
+  // Catch-all — must always match, and must be registered last.
+  match: () => true,
+  execute: async (task, db) => {
+    const metricCount = await db.prepare(
+      'SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?'
+    ).bind(task.tenantId).first<{ count: number }>();
+
+    return {
+      type: 'generic_result',
+      action: task.action,
+      catalyst: task.catalystName,
+      tenantMetrics: metricCount?.count || 0,
+      timestamp: new Date().toISOString(),
+    };
+  },
+};
+
+registerDefaultHandler(readHandler);
+registerDefaultHandler(notifyHandler);
+registerDefaultHandler(investigateHandler);
+registerDefaultHandler(mutationHandler);
+registerDefaultHandler(genericHandler);
 
 /** Read/query actions: fetch real data from ERP canonical tables and process metrics */
 async function performReadAction(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
