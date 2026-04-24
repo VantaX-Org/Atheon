@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
-import { getERPAdapter, listERPAdapters, withCircuitBreaker, getCircuitBreakerState } from '../services/erp-connector';
+import { getERPAdapter, listERPAdapters, withCircuitBreaker, getCircuitBreakerState, resolveCompanyId } from '../services/erp-connector';
 import { getValidatedJsonBody } from '../middleware/validation';
 import type { ERPCredentials, SyncResult } from '../services/erp-connector';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
-import { mapRecord, canonicalTableName } from '../services/erp-data-mapper';
+import { mapRecord, canonicalTableName, extractCompanyKey } from '../services/erp-data-mapper';
 import { indexDocument } from '../services/vectorize';
 
 const erp = new Hono<AppBindings>();
@@ -28,12 +28,23 @@ async function writeToCanonicalTables(
   db: D1Database, tenantId: string, sourceSystem: string, result: SyncResult,
   vectorize?: VectorizeIndex, ai?: Ai,
 ): Promise<void> {
+  // Multi-company: cache resolved companyIds by vendor-company-key for the
+  // duration of this sync run so a 10k-record sync does one lookup per
+  // unique source company, not per record.
+  const companyCache = new Map<string, string>();
+
   for (const entity of result.entities) {
     if (entity.count === 0) continue;
     const records = entity.records || [];
     try {
       for (const raw of records) {
-        const mapped = mapRecord(sourceSystem, entity.type, raw, tenantId);
+        // Resolve the canonical company_id for this record from the vendor's
+        // company identifier (SAP BUKRS, Odoo company_id, Xero TenantId, …).
+        // resolveCompanyId falls back to the tenant's '__primary__' company
+        // when the source record carries no company key.
+        const companyKey = extractCompanyKey(sourceSystem, raw);
+        const companyId = await resolveCompanyId(db, tenantId, sourceSystem, companyKey, undefined, companyCache);
+        const mapped = mapRecord(sourceSystem, entity.type, raw, tenantId, { companyId });
         if (!mapped) continue;
         const table = canonicalTableName(entity.type);
         if (!table) continue;
