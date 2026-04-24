@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { cleanupTenantData } from '../services/tenant-cleanup';
+import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 
 const tenants = new Hono<AppBindings>();
 
@@ -80,22 +81,58 @@ tenants.get('/data-export', async (c) => {
 
   try {
     const key = `popia-export/${tenantId}/${Date.now()}.json`;
-    await c.env.STORAGE.put(key, exportPayload, {
-      httpMetadata: { contentType: 'application/json' },
-      customMetadata: { tenantId, exportedBy: auth?.email || '' },
+
+    // §1.3: Encrypt DSAR payload at rest in R2. The R2 body must be ciphertext so
+    // that a leaked bucket or misconfigured ACL does not expose PII. The caller
+    // still receives the plaintext inline — they're authenticated as the data
+    // subject's tenant and this is their own data.
+    const encryptionKey = c.env.ENCRYPTION_KEY;
+    let r2Body: string = exportPayload;
+    let encrypted = false;
+    let encryptionSkippedReason: string | undefined;
+
+    if (encryptionKey && encryptionKey.length >= 16) {
+      try {
+        r2Body = await encrypt(exportPayload, encryptionKey);
+        encrypted = true;
+      } catch (encErr) {
+        console.error('DSAR export encryption failed, falling back to plaintext:', encErr);
+        encryptionSkippedReason = 'encryption_error';
+      }
+    } else {
+      encryptionSkippedReason = 'no_encryption_key';
+      console.warn('DSAR export: ENCRYPTION_KEY not configured — storing plaintext (non-production safe only)');
+    }
+
+    await c.env.STORAGE.put(key, r2Body, {
+      httpMetadata: { contentType: encrypted ? 'application/octet-stream' : 'application/json' },
+      customMetadata: {
+        tenantId,
+        exportedBy: auth?.email || '',
+        encrypted: encrypted ? 'true' : 'false',
+        encryption: encrypted ? 'aes-256-gcm:v1' : 'none',
+      },
     });
 
-    // Audit log
+    // Audit log — record encryption status so auditors can verify POPIA §19 compliance
     await c.env.DB.prepare(
       'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), tenantId, 'popia.data_export.completed', 'compliance', 'data-export',
-      JSON.stringify({ exportedBy: auth?.email, r2Key: key, tableCount: Object.keys(piiTables).length }),
+      JSON.stringify({
+        exportedBy: auth?.email,
+        r2Key: key,
+        tableCount: Object.keys(piiTables).length,
+        encrypted,
+        encryptionSkippedReason,
+      }),
       'success'
     ).run();
 
     return c.json({
       success: true,
       exportedAt: new Date().toISOString(),
+      r2Key: key,
+      encrypted,
       tableCount: Object.keys(piiTables).length,
       totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
       data: piiTables,
@@ -109,6 +146,66 @@ tenants.get('/data-export', async (c) => {
       totalRecords: Object.values(piiTables).reduce((sum, arr) => sum + arr.length, 0),
       data: piiTables,
     });
+  }
+});
+
+// ── POPIA-1b: GET /api/tenants/data-export/:key — Retrieve a previously-exported DSAR ──
+// The :key here is the R2 object key (URL-encoded). Superadmins can retrieve any tenant's
+// export; tenant users can only retrieve their own tenant's exports.
+// NOTE: Must be registered BEFORE /:id route to avoid being captured by the param.
+tenants.get('/data-export/:key{.+}', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth) return c.json({ error: 'Unauthenticated' }, 401);
+
+  const rawKey = c.req.param('key');
+  const key = decodeURIComponent(rawKey);
+
+  // R2 keys have the shape `popia-export/<tenantId>/<timestamp>.json` — enforce that
+  // the requesting user's tenant matches the export's tenant unless they're superadmin.
+  if (!key.startsWith('popia-export/')) {
+    return c.json({ error: 'Invalid export key' }, 400);
+  }
+  const parts = key.split('/');
+  if (parts.length < 3) return c.json({ error: 'Invalid export key' }, 400);
+  const exportTenantId = parts[1];
+
+  const isSuperadmin = auth.role === 'superadmin' || auth.role === 'support_admin';
+  if (!isSuperadmin && auth.tenantId !== exportTenantId) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const obj = await c.env.STORAGE.get(key);
+  if (!obj) return c.json({ error: 'Export not found' }, 404);
+
+  const body = await obj.text();
+  const wasEncrypted = obj.customMetadata?.encrypted === 'true';
+
+  let payload = body;
+  if (wasEncrypted || isEncrypted(body)) {
+    const decrypted = await decrypt(body, c.env.ENCRYPTION_KEY);
+    if (decrypted === null) {
+      return c.json({ error: 'Decryption failed — encryption key may have been rotated' }, 500);
+    }
+    payload = decrypted;
+  }
+
+  // Audit log the retrieval
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), auth.tenantId, 'popia.data_export.retrieved', 'compliance', 'data-export',
+      JSON.stringify({ retrievedBy: auth.email, r2Key: key, wasEncrypted, crossTenant: auth.tenantId !== exportTenantId }),
+      'success',
+    ).run();
+  } catch { /* non-fatal */ }
+
+  try {
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    return c.json({ success: true, r2Key: key, wasEncrypted, export: parsed });
+  } catch {
+    // If it doesn't parse as JSON, return it raw (shouldn't normally happen)
+    return c.json({ success: true, r2Key: key, wasEncrypted, raw: payload });
   }
 });
 
