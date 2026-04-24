@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings } from '../types';
-import { generateToken, verifyToken, hashPassword, verifyPassword } from '../middleware/auth';
+import { generateToken, verifyToken, hashPassword, verifyPassword, ACCESS_TOKEN_TTL_SECONDS } from '../middleware/auth';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 import { sendOrQueueEmail, getPasswordResetEmailTemplate } from '../services/email';
@@ -273,7 +273,7 @@ auth.post('/login', async (c) => {
   return c.json({
     token,
     refreshToken,
-    expiresIn: 86400,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     user: {
       id: user.id,
       email: user.email,
@@ -322,7 +322,7 @@ auth.post('/refresh', async (c) => {
   const newRefreshToken = crypto.randomUUID();
   await c.env.CACHE.put(`refresh_token:${newRefreshToken}`, stored, { expirationTtl: 7 * 24 * 3600 });
 
-  return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: 86400 });
+  return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 });
 
 // POST /api/auth/demo-login (for demo access without password)
@@ -464,7 +464,7 @@ auth.post('/logout', async (c) => {
   // Bug #13 fix: Hash the token before using as KV key
   const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   const tokenHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  const exp = (payload.exp as number) || Math.floor(Date.now() / 1000) + 86400;
+  const exp = (payload.exp as number) || Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS;
   const ttl = Math.max(exp - Math.floor(Date.now() / 1000), 60);
   await c.env.CACHE.put(`token:blacklist:${tokenHash}`, 'revoked', { expirationTtl: ttl });
 
@@ -1204,7 +1204,7 @@ auth.post('/mfa/validate', async (c) => {
   return c.json({
     token,
     refreshToken,
-    expiresIn: 86400,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     user: {
       id: userData.userId,
       email: userData.email,

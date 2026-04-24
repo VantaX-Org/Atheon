@@ -72,13 +72,20 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 // ── JWT Token Generation (HMAC-SHA256, edge-compatible) ──
 
+/**
+ * Access token TTL in seconds. Kept short so a stolen token is only
+ * viable briefly; refresh tokens (7-day, stored in KV with rotation on use)
+ * handle long-lived sessions. See routes/auth.ts refresh flow.
+ */
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+
 export async function generateToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const now = Math.floor(Date.now() / 1000);
   const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify({
     ...payload,
     iat: now,
-    exp: now + 86400, // 24 hours
+    exp: now + ACCESS_TOKEN_TTL_SECONDS,
   })));
   const signature = await hmacSign(`${header}.${body}`, secret);
   return `${header}.${body}.${signature}`;
