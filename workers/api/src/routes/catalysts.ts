@@ -13,6 +13,7 @@ import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems
 import { generateKpiDefinitions } from '../services/kpi-definitions';
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from '../services/llm-provider';
 import type { LlmMessage } from '../services/llm-provider';
+import { logInfo, logWarn } from '../services/logger';
 
 const catalysts = new Hono<AppBindings>();
 
@@ -3558,6 +3559,24 @@ catalysts.post('/actions', async (c) => {
     JSON.stringify({ action_id: result.actionId, catalyst: body.catalyst_name, action: body.action, confidence: result.confidence, status: result.status }),
     result.status === 'failed' ? 'failure' : 'success',
   ).run();
+
+  // Structured observability log — support uses this to trace an action through a user report
+  const emit = result.status === 'failed' ? logWarn : logInfo;
+  emit('catalyst.action.executed', {
+    requestId: c.get('requestId'),
+    tenantId,
+    userId: auth?.userId,
+    layer: 'catalysts',
+    action: 'catalyst.action.executed',
+  }, {
+    actionId: result.actionId,
+    clusterId: body.cluster_id,
+    catalystName: body.catalyst_name,
+    actionName: body.action,
+    status: result.status,
+    confidence: result.confidence,
+    executionTimeMs: result.executionTimeMs,
+  });
 
   return c.json(result, 201);
 });

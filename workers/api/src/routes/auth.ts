@@ -14,6 +14,7 @@ import {
 import { getValidatedJsonBody } from '../middleware/validation';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 import { sendOrQueueEmail, getPasswordResetEmailTemplate } from '../services/email';
+import { logInfo, logWarn } from '../services/logger';
 
 // ── Backup Code helpers (v40) ──
 //
@@ -178,6 +179,14 @@ auth.post('/register', async (c) => {
     'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(crypto.randomUUID(), tenant.id, userId, 'register', 'auth', 'user', JSON.stringify({ email: body.email }), 'success').run();
 
+  logInfo('registration.success', {
+    requestId: c.get('requestId'),
+    tenantId: tenant.id as string,
+    userId,
+    layer: 'auth',
+    action: 'registration.success',
+  }, { email: body.email, tenantSlug: tenant.slug as string });
+
   return c.json({
     token,
     emailVerificationRequired: true,
@@ -262,6 +271,13 @@ auth.post('/login', async (c) => {
     await c.env.DB.prepare(
       'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'login_failed', 'auth', 'session', JSON.stringify({ email: body.email, reason: 'invalid_password' }), 'failure').run();
+    logWarn('login.failed', {
+      requestId: c.get('requestId'),
+      tenantId: user.tenant_id as string,
+      userId: user.id as string,
+      layer: 'auth',
+      action: 'login.failed',
+    }, { email: body.email, reason: 'invalid_password' });
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
@@ -1325,6 +1341,13 @@ auth.post('/mfa/validate', async (c) => {
   }
 
   if (!valid) {
+    logWarn('mfa.validate.failed', {
+      requestId: c.get('requestId'),
+      tenantId: userData.tenantId,
+      userId: userData.userId,
+      layer: 'auth',
+      action: 'mfa.validate.failed',
+    }, { email: userData.email });
     return c.json({ error: 'Invalid TOTP or backup code' }, 401);
   }
 

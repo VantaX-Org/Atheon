@@ -36,7 +36,11 @@ export interface AuthContext {
 
 export interface AppBindings {
   Bindings: Env;
-  Variables: { auth: AuthContext };
+  Variables: {
+    auth: AuthContext;
+    /** Set by requestIdMiddleware (workers/api/src/middleware/requestid.ts) on every request. */
+    requestId: string;
+  };
 }
 
 export interface JWTPayload {

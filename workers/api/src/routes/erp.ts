@@ -6,6 +6,7 @@ import type { ERPCredentials, SyncResult } from '../services/erp-connector';
 import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 import { mapRecord, canonicalTableName, extractCompanyKey } from '../services/erp-data-mapper';
 import { indexDocument } from '../services/vectorize';
+import { logError, logInfo } from '../services/logger';
 
 const erp = new Hono<AppBindings>();
 
@@ -436,11 +437,32 @@ erp.post('/sync/:connection_id', async (c) => {
       result = await withCircuitBreaker(c.env.CACHE, connectionId, () => adapter.syncData(credentials, decryptedToken, entities));
     } catch (err) {
       const msg = (err as Error).message;
+      logError('erp.sync.failed', err, {
+        requestId: c.get('requestId'),
+        tenantId,
+        layer: 'erp',
+        action: 'erp.sync.failed',
+      }, { connectionId, adapterSystem: conn.adapter_system, circuitBreakerOpen: msg.includes('Circuit breaker OPEN') });
       if (msg.includes('Circuit breaker OPEN')) {
         return c.json({ error: msg, circuitBreaker: 'OPEN' }, 503);
       }
       return c.json({ error: `Sync failed: ${msg}` }, 500);
     }
+
+    // Structured observability log for successful sync (partial or full)
+    logInfo('erp.sync.completed', {
+      requestId: c.get('requestId'),
+      tenantId,
+      layer: 'erp',
+      action: 'erp.sync.completed',
+    }, {
+      connectionId,
+      adapterSystem: conn.adapter_system,
+      recordsSynced: result.recordsSynced,
+      recordsFailed: result.recordsFailed,
+      errorCount: result.errors.length,
+      durationMs: result.duration,
+    });
 
     // 3.12: Write synced records to canonical tables (with Vectorize + AI for RAG embedding)
     await writeToCanonicalTables(c.env.DB, tenantId, conn.adapter_system as string, result, c.env.VECTORIZE, c.env.AI);
