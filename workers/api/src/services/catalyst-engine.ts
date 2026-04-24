@@ -263,6 +263,7 @@ export async function executeTask(
   while (retryCount < maxRetries) {
     try {
       const output = await performAction(task, db);
+      const handler = typeof output._handler === 'string' ? output._handler : 'unknown';
 
       // Update action as completed
       await db.prepare(
@@ -274,12 +275,12 @@ export async function executeTask(
         'UPDATE catalyst_clusters SET tasks_completed = tasks_completed + 1, tasks_in_progress = MAX(0, tasks_in_progress - 1) WHERE id = ?'
       ).bind(task.clusterId).run();
 
-      // Audit log
+      // Audit log — include handler name for traceability of which handler ran.
       await db.prepare(
         'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         crypto.randomUUID(), task.tenantId, `catalyst.${task.action}.executed`, 'catalysts',
-        task.clusterId, JSON.stringify({ actionId: task.id, catalyst: task.catalystName, confidence }),
+        task.clusterId, JSON.stringify({ actionId: task.id, catalyst: task.catalystName, handler, confidence }),
         'success',
       ).run();
 

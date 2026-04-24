@@ -1164,10 +1164,57 @@ async function cleanupExpiredTrials(db: D1Database): Promise<void> {
   }
 }
 
+/**
+ * Dead-letter queue handler. Messages that have exhausted retries on the
+ * main queue land here. Persist them to audit_log so operators can
+ * investigate, then ack so they don't loop.
+ */
+export async function handleDlqMessage(
+  batch: MessageBatch<unknown>,
+  env: ScheduledEnv,
+): Promise<void> {
+  for (const message of batch.messages) {
+    try {
+      const msg = message.body as Partial<CatalystQueueMessage> | null;
+      const tenantId = (msg && typeof msg.tenantId === 'string' && msg.tenantId) || 'unknown';
+      await env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(
+        crypto.randomUUID(),
+        tenantId,
+        'catalyst.queue.dead_letter',
+        'catalysts',
+        batch.queue,
+        JSON.stringify({
+          queue: batch.queue,
+          messageId: message.id,
+          timestamp: message.timestamp,
+          attempts: message.attempts,
+          type: msg?.type,
+          body: msg,
+        }),
+        'failure',
+      ).run();
+      console.error(`[DLQ] persisted dead-letter message ${message.id} from ${batch.queue} (tenant=${tenantId})`);
+    } catch (err) {
+      // Swallow — we always ack DLQ messages, otherwise they'd loop forever.
+      console.error(`[DLQ] failed to persist message ${message.id}:`, err);
+    } finally {
+      message.ack();
+    }
+  }
+}
+
 export async function handleQueueMessage(
   batch: MessageBatch<unknown>,
   env: ScheduledEnv,
 ): Promise<void> {
+  // Dead-letter queues end with '-dlq' (catalyst-dlq, catalyst-dlq-staging).
+  // Route them to the DLQ handler which records and terminates.
+  if (batch.queue.endsWith('-dlq')) {
+    return handleDlqMessage(batch, env);
+  }
+
   for (const message of batch.messages) {
     const msg = message.body as CatalystQueueMessage;
     try {

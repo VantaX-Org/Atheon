@@ -212,6 +212,79 @@ async function seedFixtures(): Promise<void> {
      VALUES (?, ?, 'popia.data_export.completed', 'compliance', 'data-export', 'success', datetime('now', '-3 days'))`,
     'audit-1', TENANT,
   );
+
+  // ── Extra fixtures for expanded sub-catalysts ──
+
+  // Mining spare parts + medical supplies + pricing/overstocked examples
+  await runSql(
+    `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price, selling_price, is_active, warehouse)
+     VALUES (?, ?, 'SPARE-01', 'Ball Bearing Set', 'spare parts', 2, 20, 50, 250, 400, 1, 'WH-1')`,
+    'prod-spare', TENANT,
+  );
+  await runSql(
+    `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price, selling_price, is_active, warehouse)
+     VALUES (?, ?, 'MED-01', 'Surgical Gloves', 'medical consumable', 0, 100, 500, 2, 5, 1, 'WH-MED')`,
+    'prod-med', TENANT,
+  );
+  await runSql(
+    `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price, selling_price, is_active, warehouse)
+     VALUES (?, ?, 'WEAK-MARGIN', 'Low-Margin Widget', 'general', 50, 10, 20, 80, 100, 1, 'WH-1')`,
+    'prod-weak', TENANT,
+  );
+  await runSql(
+    `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price, selling_price, is_active, warehouse)
+     VALUES (?, ?, 'OVERSTOCK', 'Slow Mover', 'general', 500, 10, 20, 5, 15, 1, 'WH-1')`,
+    'prod-over', TENANT,
+  );
+
+  // Extra metrics: env, energy, route, SLO, adoption, yield (with history)
+  const extraMetrics: [string, string, number, string, string][] = [
+    ['m-env', 'Dust Exposure Level', 150, 'mg/m3', 'red'],
+    ['m-eng', 'Energy Consumption Line A', 95, 'kWh', 'red'],
+    ['m-route', 'Route Efficiency Index', 62, '%', 'red'],
+    ['m-slo', 'API P99 Latency SLO', 1200, 'ms', 'red'],
+    ['m-adopt', 'Feature X Adoption Rate', 8, '%', 'amber'],
+    ['m-yield', 'Maize Yield per Ha', 7, 'tons', 'green'],
+  ];
+  for (const [id, name, value, unit, status] of extraMetrics) {
+    await runSql(
+      `INSERT OR REPLACE INTO process_metrics (id, tenant_id, name, value, unit, status, threshold_green, threshold_amber, threshold_red, source_system)
+       VALUES (?, ?, ?, ?, ?, ?, 90, 80, 70, 'test')`,
+      id, TENANT, name, value, unit, status,
+    );
+  }
+
+  // History for yield + adoption to enable variance/trend calcs.
+  const historyYields = [6.5, 7.0, 6.8, 8.5, 5.5, 9.0];
+  for (let i = 0; i < historyYields.length; i++) {
+    await runSql(
+      `INSERT OR REPLACE INTO process_metric_history (id, tenant_id, metric_id, value, recorded_at)
+       VALUES (?, ?, 'm-yield', ?, datetime('now', '-${(i + 1) * 30} days'))`,
+      `h-yield-${i}`, TENANT, historyYields[i],
+    );
+  }
+  const historyAdoption = [5, 6, 7, 8];
+  for (let i = 0; i < historyAdoption.length; i++) {
+    await runSql(
+      `INSERT OR REPLACE INTO process_metric_history (id, tenant_id, metric_id, value, recorded_at)
+       VALUES (?, ?, 'm-adopt', ?, datetime('now', '-${(i + 1) * 7} days'))`,
+      `h-adopt-${i}`, TENANT, historyAdoption[i],
+    );
+  }
+
+  // Readmission anomaly
+  await runSql(
+    `INSERT OR REPLACE INTO anomalies (id, tenant_id, metric, severity, expected_value, actual_value, deviation, hypothesis, status, detected_at)
+     VALUES (?, ?, '30-day readmission rate', 'high', 0.05, 0.12, 0.07, 'Post-discharge follow-up gap', 'open', datetime('now', '-3 days'))`,
+    'a-readmit', TENANT,
+  );
+
+  // Invoice with promo/trade tag
+  await runSql(
+    `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_id, customer_name, invoice_date, due_date, total, amount_due, payment_status, status, reference, notes)
+     VALUES (?, ?, 'INV-PROMO', ?, 'Big Distributor', ?, ?, 2500, 0, 'paid', 'issued', 'trade-promo-Q1', 'trade promotion')`,
+    'inv-promo', TENANT, 'cust-1', new Date().toISOString().slice(0, 10), new Date(Date.now() + 10 * 86400 * 1000).toISOString().slice(0, 10),
+  );
 }
 
 describe('Domain catalyst handlers', () => {
@@ -534,6 +607,290 @@ describe('Domain catalyst handlers', () => {
         action: 'xyzzy_zzz',
       }), env.DB);
       expect(out.type).toBe('generic_result');
+    });
+  });
+
+  // ── EXPANDED SUB-CATALYSTS (Phase 3, PR #11) ────────────────────────
+
+  describe('Mining (expanded)', () => {
+    it('routes spare parts forecast', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Mining Supply',
+        action: 'mining_spare_parts_forecast',
+      }), env.DB);
+      expect(out.type).toBe('mining_spare_parts_forecast');
+      expect(out.criticalItems).toBeGreaterThanOrEqual(1);
+    });
+
+    it('routes environmental compliance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Mining Environmental',
+        action: 'environmental_compliance_scan',
+      }), env.DB);
+      expect(out.type).toBe('mining_environmental_compliance');
+    });
+  });
+
+  describe('Manufacturing (expanded)', () => {
+    it('routes energy efficiency', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Energy Catalyst',
+        action: 'energy_consumption_check',
+      }), env.DB);
+      expect(out.type).toBe('manufacturing_energy_efficiency');
+    });
+
+    it('routes cost variance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Production Cost Review',
+        action: 'supplier_cost_variance_check',
+      }), env.DB);
+      expect(out.type).toBe('manufacturing_cost_variance');
+    });
+  });
+
+  describe('Logistics (expanded)', () => {
+    it('routes carrier performance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Carrier Review',
+        action: 'carrier_performance_scan',
+      }), env.DB);
+      expect(out.type).toBe('logistics_carrier_performance');
+    });
+
+    it('routes route efficiency', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Route Optimiser',
+        action: 'route_efficiency_check',
+      }), env.DB);
+      expect(out.type).toBe('logistics_route_efficiency');
+    });
+  });
+
+  describe('Retail (expanded)', () => {
+    it('routes top customers / LTV', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Retail CX',
+        action: 'customer_lifetime_value',
+      }), env.DB);
+      expect(out.type).toBe('retail_top_customers');
+    });
+
+    it('routes pricing advice', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Retail Pricing',
+        action: 'pricing_margin_review',
+      }), env.DB);
+      expect(out.type).toBe('retail_pricing_advice');
+    });
+  });
+
+  describe('FMCG (expanded)', () => {
+    it('routes category performance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'FMCG Category',
+        action: 'category_performance_review',
+      }), env.DB);
+      expect(out.type).toBe('fmcg_category_performance');
+    });
+
+    it('routes trade spend', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'FMCG Trade Spend',
+        action: 'trade_spend_analysis',
+      }), env.DB);
+      expect(out.type).toBe('fmcg_trade_spend');
+    });
+  });
+
+  describe('Agriculture (expanded)', () => {
+    it('routes yield variance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Agri Yield',
+        action: 'yield_variance_check',
+      }), env.DB);
+      expect(out.type).toBe('agriculture_yield_variance');
+    });
+
+    it('routes seasonal demand', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Agri Seasonal',
+        action: 'seasonal_demand_forecast',
+      }), env.DB);
+      expect(out.type).toBe('agriculture_seasonal_demand');
+    });
+  });
+
+  describe('Healthcare (expanded)', () => {
+    it('routes readmission flag', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Clinical Readmission',
+        action: 'readmission_flag_check',
+      }), env.DB);
+      expect(out.type).toBe('healthcare_readmission_flag');
+    });
+
+    it('routes supply shortages', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Clinical Supply',
+        action: 'medical_supply_shortage_scan',
+      }), env.DB);
+      expect(out.type).toBe('healthcare_supply_shortages');
+    });
+  });
+
+  describe('Technology (expanded)', () => {
+    it('routes SLO compliance', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'SRE SLO Catalyst',
+        action: 'slo_compliance_scan',
+      }), env.DB);
+      expect(out.type).toBe('technology_slo_compliance');
+    });
+
+    it('routes feature adoption', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Product Adoption',
+        action: 'feature_adoption_check',
+      }), env.DB);
+      expect(out.type).toBe('technology_feature_adoption');
+    });
+  });
+
+  describe('Financial Services (expanded)', () => {
+    it('routes cash flow forecast', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'FinServ Treasury',
+        action: 'cash_flow_forecast_30d',
+      }), env.DB);
+      expect(out.type).toBe('finserv_cash_flow_forecast');
+    });
+
+    it('routes concentration risk', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'FinServ Concentration',
+        action: 'customer_concentration_risk_check',
+      }), env.DB);
+      expect(out.type).toBe('finserv_concentration_risk');
+    });
+  });
+
+  describe('General (expanded)', () => {
+    it('routes supplier concentration', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Supplier Concentration Review',
+        action: 'supplier_concentration_check',
+      }), env.DB);
+      expect(out.type).toBe('general_supplier_concentration');
+    });
+
+    it('routes anomaly triage', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Anomaly Ops',
+        action: 'anomaly_triage_scan',
+      }), env.DB);
+      expect(out.type).toBe('general_anomaly_triage');
+    });
+  });
+
+  // ── OBSERVABILITY & ROBUSTNESS ──────────────────────
+
+  describe('Observability', () => {
+    it('dispatch output includes _handler for domain match', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Mining Safety',
+        action: 'check_safety_incidents',
+      }), env.DB);
+      expect(out._handler).toBe('domain:mining');
+    });
+
+    it('dispatch output includes _handler for generic fallback', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Mystery',
+        action: 'zzz_unknown',
+      }), env.DB);
+      expect(out._handler).toBe('default:generic');
+    });
+  });
+
+  describe('Word-boundary match (regression)', () => {
+    // Regression for the PR #10 bug where 'pos' matched inside "exposure"
+    // and routed finserv credit-exposure tasks to retail basket analysis.
+    it('does not match "pos" inside "exposure"', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'FinServ Credit',
+        action: 'credit_exposure_check',
+      }), env.DB);
+      expect(out.type).toBe('finserv_credit_exposure');
+      expect(out._handler).toBe('domain:financial-services');
+    });
+
+    it('does not match "ore" inside "store"', async () => {
+      // Task text contains 'store' but no mining keywords — mining must not match.
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Storefront Review',
+        action: 'generic_store_scan',
+      }), env.DB);
+      expect(out._handler).not.toBe('domain:mining');
+    });
+
+    it('does not match "hr" inside "chrome"', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'Chrome Browser Usage',
+        action: 'chrome_adoption_check',
+      }), env.DB);
+      expect(out._handler).not.toBe('general:hr');
+    });
+
+    it('still matches hr_ prefix via word-boundary', async () => {
+      const out = await dispatchAction(makeTask({
+        catalystName: 'HR Catalyst',
+        action: 'hr_turnover_scan',
+      }), env.DB);
+      expect(out.type).toBe('hr_turnover');
+      expect(out._handler).toBe('general:hr');
+    });
+  });
+
+  // ── DLQ HANDLER ─────────────────────────────────────
+
+  describe('Dead-letter queue handler', () => {
+    it('persists a dead-letter message to audit_log and acks it', async () => {
+      const { handleDlqMessage } = await import('../services/scheduled');
+
+      let ackCalled = false;
+      const fakeMessage = {
+        id: 'dlq-test-msg-1',
+        timestamp: new Date(),
+        attempts: 4,
+        body: {
+          type: 'catalyst_execution',
+          tenantId: TENANT,
+          payload: { catalystName: 'Broken Catalyst', action: 'broken_action' },
+        },
+        ack: () => { ackCalled = true; },
+        retry: () => { throw new Error('retry should not be called from DLQ'); },
+      } as unknown as Parameters<typeof handleDlqMessage>[0]['messages'][number];
+
+      const fakeBatch = {
+        queue: 'catalyst-dlq',
+        messages: [fakeMessage],
+        ackAll: () => undefined,
+        retryAll: () => undefined,
+      } as unknown as Parameters<typeof handleDlqMessage>[0];
+
+      await handleDlqMessage(fakeBatch, env);
+
+      expect(ackCalled).toBe(true);
+
+      const row = await env.DB.prepare(
+        `SELECT tenant_id, action, layer, outcome FROM audit_log
+         WHERE tenant_id = ? AND action = 'catalyst.queue.dead_letter'
+         ORDER BY created_at DESC LIMIT 1`,
+      ).bind(TENANT).first<{ tenant_id: string; action: string; layer: string; outcome: string }>();
+      expect(row).not.toBeNull();
+      expect(row?.outcome).toBe('failure');
+      expect(row?.layer).toBe('catalysts');
     });
   });
 });

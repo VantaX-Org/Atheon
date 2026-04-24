@@ -36,16 +36,29 @@ export function registerDefaultHandler(handler: CatalystHandler): void {
   defaultHandlers.push(handler);
 }
 
-/** Dispatch a task to the first handler whose match() returns true. */
+/**
+ * Dispatch a task to the first handler whose match() returns true.
+ *
+ * The returned object is the handler's own output with a `_handler` field
+ * attached for observability — callers that persist the output (audit_log,
+ * catalyst_actions.output_data) get free tracing of which handler ran.
+ * The `_handler` key is reserved; handlers should not produce it themselves.
+ */
 export async function dispatchAction(
   task: TaskDefinition,
   db: D1Database,
 ): Promise<Record<string, unknown>> {
   for (const h of customHandlers) {
-    if (h.match(task)) return h.execute(task, db);
+    if (h.match(task)) {
+      const output = await h.execute(task, db);
+      return { ...output, _handler: h.name };
+    }
   }
   for (const h of defaultHandlers) {
-    if (h.match(task)) return h.execute(task, db);
+    if (h.match(task)) {
+      const output = await h.execute(task, db);
+      return { ...output, _handler: h.name };
+    }
   }
   throw new Error(`catalyst-engine: no handler matched action "${task.action}"`);
 }
