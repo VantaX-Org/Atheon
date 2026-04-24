@@ -132,6 +132,196 @@ export async function upsertCompanyMetadata(
   return companyId;
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Per-request resilience: timeout + retry with exponential backoff + jitter.
+// Every vendor adapter fetch in this file routes through `fetchWithRetry` so
+// that a hung ERP endpoint or a transient network blip does not silently
+// drop an entity from the sync (or hang the whole Worker).
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface FetchResilienceConfig {
+  /** Max total attempts (including the first). Default 3. */
+  maxAttempts?: number;
+  /** Initial backoff in ms. Default 500. */
+  initialBackoffMs?: number;
+  /** Cap on backoff. Default 8000. */
+  maxBackoffMs?: number;
+  /** Per-request timeout in ms. Default 20000. */
+  timeoutMs?: number;
+  /** HTTP status codes to retry on. Default [429, 500, 502, 503, 504]. */
+  retryOnStatus?: number[];
+  /** Logical label for observability (e.g. 'sap.customers'). */
+  label?: string;
+}
+
+const DEFAULT_RETRY_STATUS = [429, 500, 502, 503, 504];
+// 4xx that must NEVER be retried — retrying a client error just makes it worse.
+const NON_RETRYABLE_STATUS = new Set([400, 401, 403, 404, 409]);
+const RETRY_AFTER_CAP_SECONDS = 60;
+
+export class FetchResilienceError extends Error {
+  constructor(
+    message: string,
+    public readonly attempts: number,
+    public readonly lastStatus?: number,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'FetchResilienceError';
+  }
+}
+
+function computeBackoffMs(attempt: number, initialMs: number, maxMs: number): number {
+  // attempt is 1-based for the *completed* attempt; next wait uses attempt as the exponent.
+  const base = initialMs * Math.pow(2, Math.max(0, attempt - 1));
+  const jitter = Math.random() * 500;
+  return Math.min(base + jitter, maxMs);
+}
+
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = parseInt(header, 10);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds, RETRY_AFTER_CAP_SECONDS) * 1000;
+  }
+  // HTTP-date form — convert to delta. If in the past or unparseable, ignore.
+  const dateMs = Date.parse(header);
+  if (!Number.isNaN(dateMs)) {
+    const delta = dateMs - Date.now();
+    if (delta > 0) return Math.min(delta, RETRY_AFTER_CAP_SECONDS * 1000);
+  }
+  return null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch with:
+ *  - AbortSignal timeout (Workers-compatible — uses AbortController)
+ *  - Exponential backoff with jitter on transient failures (network errors, retryable HTTP codes)
+ *  - Respects Retry-After header on 429 responses (capped at 60s)
+ *  - Does NOT retry on 400/401/403/404/409 (client errors — retrying makes it worse)
+ *  - Returns the successful Response, or throws a FetchResilienceError after exhausted attempts
+ */
+export async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  config?: FetchResilienceConfig,
+): Promise<Response> {
+  const maxAttempts = config?.maxAttempts ?? 3;
+  const initialBackoffMs = config?.initialBackoffMs ?? 500;
+  const maxBackoffMs = config?.maxBackoffMs ?? 8000;
+  const timeoutMs = config?.timeoutMs ?? 20000;
+  const retryOnStatus = config?.retryOnStatus ?? DEFAULT_RETRY_STATUS;
+  const label = config?.label ?? 'fetch';
+
+  let lastError: unknown = undefined;
+  let lastStatus: number | undefined = undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // Preserve a caller-supplied signal by aborting our controller if it fires.
+    const callerSignal = init?.signal;
+    const onCallerAbort = () => controller.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) controller.abort();
+      else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
+    try {
+      const resp = await fetch(url, { ...init, signal: controller.signal });
+      lastStatus = resp.status;
+
+      // Success or non-retryable response → return as-is (caller checks resp.ok).
+      if (resp.ok) {
+        return resp;
+      }
+
+      // Never retry these client errors — bubble the Response up so the caller
+      // can handle the HTTP status its own way.
+      if (NON_RETRYABLE_STATUS.has(resp.status)) {
+        return resp;
+      }
+
+      // Retryable status? If not, hand the Response back to the caller.
+      if (!retryOnStatus.includes(resp.status)) {
+        return resp;
+      }
+
+      // Out of attempts → throw with the last status captured.
+      if (attempt >= maxAttempts) {
+        console.warn(
+          `[fetchWithRetry:${label}] attempt ${attempt}/${maxAttempts} failed with HTTP ${resp.status} — giving up`,
+        );
+        throw new FetchResilienceError(
+          `fetchWithRetry[${label}]: exhausted ${maxAttempts} attempts, last status ${resp.status}`,
+          attempt,
+          resp.status,
+        );
+      }
+
+      // Compute wait — honour Retry-After on 429 (and any retryable code that sends it).
+      let waitMs = computeBackoffMs(attempt, initialBackoffMs, maxBackoffMs);
+      const retryAfter = parseRetryAfterMs(resp.headers.get('retry-after'));
+      if (retryAfter !== null) waitMs = Math.max(waitMs, retryAfter);
+
+      console.warn(
+        `[fetchWithRetry:${label}] attempt ${attempt}/${maxAttempts} got HTTP ${resp.status}, retrying in ${waitMs}ms`,
+      );
+      await sleep(waitMs);
+      continue;
+    } catch (err) {
+      lastError = err;
+      // If the caller's signal was the cause, don't retry — the caller asked to abort.
+      if (callerSignal?.aborted) {
+        throw new FetchResilienceError(
+          `fetchWithRetry[${label}]: aborted by caller`,
+          attempt,
+          lastStatus,
+          err,
+        );
+      }
+
+      const isAbort =
+        (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) ||
+        (err as { name?: string } | undefined)?.name === 'AbortError';
+
+      if (attempt >= maxAttempts) {
+        console.warn(
+          `[fetchWithRetry:${label}] attempt ${attempt}/${maxAttempts} threw ${isAbort ? 'timeout/abort' : 'network error'} — giving up: ${(err as Error)?.message ?? err}`,
+        );
+        throw new FetchResilienceError(
+          `fetchWithRetry[${label}]: exhausted ${maxAttempts} attempts — ${isAbort ? 'timeout' : 'network error'}: ${(err as Error)?.message ?? err}`,
+          attempt,
+          lastStatus,
+          err,
+        );
+      }
+
+      const waitMs = computeBackoffMs(attempt, initialBackoffMs, maxBackoffMs);
+      console.warn(
+        `[fetchWithRetry:${label}] attempt ${attempt}/${maxAttempts} threw ${isAbort ? 'timeout/abort' : 'network error'}, retrying in ${waitMs}ms: ${(err as Error)?.message ?? err}`,
+      );
+      await sleep(waitMs);
+      continue;
+    } finally {
+      clearTimeout(timer);
+      if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+    }
+  }
+
+  // Unreachable — loop either returns or throws.
+  throw new FetchResilienceError(
+    `fetchWithRetry[${label}]: exhausted ${maxAttempts} attempts`,
+    maxAttempts,
+    lastStatus,
+    lastError,
+  );
+}
+
 export interface ERPCredentials {
   clientId: string;
   clientSecret: string;
@@ -186,7 +376,7 @@ const sapAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || `${credentials.baseUrl}/sap/bc/sec/oauth2/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -197,16 +387,16 @@ const sapAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'sap.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`SAP token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/sap/opu/odata/sap/API_BUSINESS_PARTNER/$metadata`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/sap/opu/odata/sap/API_BUSINESS_PARTNER/$metadata`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/xml' },
-      });
+      }, { label: 'sap.testConnection', timeoutMs: 15000 });
       return {
         connected: resp.ok,
         version: resp.headers.get('sap-metadata-version') || '2.0',
@@ -232,7 +422,7 @@ const sapAdapter: ERPAdapter = {
           'gl_accounts': '/sap/opu/odata/sap/API_JOURNALENTRYITEMBASIC_SRV/A_JournalEntryItemBasic?$top=1000',
         };
         const path = apiMap[entity] || `/sap/opu/odata/sap/${entity}?$top=1000`;
-        const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
+        const resp = await fetchWithRetry(`${credentials.baseUrl}${path}`, { headers }, { label: `sap.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { d?: { results?: Record<string, unknown>[] }; value?: Record<string, unknown>[] };
           const rawRecords = data.d?.results || data.value || [];
@@ -272,7 +462,7 @@ const salesforceAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || 'https://login.salesforce.com/services/oauth2/token';
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -282,16 +472,16 @@ const salesforceAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'salesforce.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Salesforce token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/services/data/v59.0/`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/services/data/v59.0/`, {
         headers: { 'Authorization': `Bearer ${token}` },
-      });
+      }, { label: 'salesforce.testConnection', timeoutMs: 15000 });
       if (resp.ok) {
         const data = await resp.json() as { version?: string };
         return { connected: true, version: data.version || 'v59.0', message: 'Connected to Salesforce REST API' };
@@ -317,9 +507,10 @@ const salesforceAdapter: ERPAdapter = {
           'cases': 'SELECT Id,Subject,Status,Priority FROM Case LIMIT 1000',
         };
         const soql = soqlMap[entity] || `SELECT Id,Name FROM ${entity} LIMIT 1000`;
-        const resp = await fetch(
+        const resp = await fetchWithRetry(
           `${credentials.baseUrl}/services/data/v59.0/query?q=${encodeURIComponent(soql)}`,
           { headers },
+          { label: `salesforce.${entity}`, timeoutMs: 20000 },
         );
         if (resp.ok) {
           const data = await resp.json() as { totalSize?: number; records?: Record<string, unknown>[] };
@@ -360,23 +551,23 @@ const workdayAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || `${credentials.baseUrl}/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${btoa(`${credentials.clientId}:${credentials.clientSecret}`)}`,
       },
       body: new URLSearchParams({ grant_type: 'authorization_code', code }),
-    });
+    }, { label: 'workday.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Workday token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/api/v1/workers?limit=1`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/api/v1/workers?limit=1`, {
         headers: { 'Authorization': `Bearer ${token}` },
-      });
+      }, { label: 'workday.testConnection', timeoutMs: 15000 });
       return {
         connected: resp.ok,
         version: 'v40.1',
@@ -401,9 +592,9 @@ const workdayAdapter: ERPAdapter = {
           'payroll': '/api/v1/payrollResults?limit=1000',
         };
         const path = apiMap[entity] || `/api/v1/${entity}?limit=1000`;
-        const resp = await fetch(`${credentials.baseUrl}${path}`, {
+        const resp = await fetchWithRetry(`${credentials.baseUrl}${path}`, {
           headers: { 'Authorization': `Bearer ${token}` },
-        });
+        }, { label: `workday.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { total?: number; data?: Record<string, unknown>[] };
           const rawRecords = data.data || [];
@@ -443,23 +634,23 @@ const oracleAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || `${credentials.baseUrl}/oauth2/v1/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${btoa(`${credentials.clientId}:${credentials.clientSecret}`)}`,
       },
       body: new URLSearchParams({ grant_type: 'authorization_code', code }),
-    });
+    }, { label: 'oracle.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Oracle token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/fscmRestApi/resources/v1`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/fscmRestApi/resources/v1`, {
         headers: { 'Authorization': `Bearer ${token}` },
-      });
+      }, { label: 'oracle.testConnection', timeoutMs: 15000 });
       return {
         connected: resp.ok,
         version: 'v1',
@@ -484,9 +675,9 @@ const oracleAdapter: ERPAdapter = {
           'items': '/fscmRestApi/resources/v1/items?limit=1000',
         };
         const path = apiMap[entity] || `/fscmRestApi/resources/v1/${entity}?limit=1000`;
-        const resp = await fetch(`${credentials.baseUrl}${path}`, {
+        const resp = await fetchWithRetry(`${credentials.baseUrl}${path}`, {
           headers: { 'Authorization': `Bearer ${token}` },
-        });
+        }, { label: `oracle.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { count?: number; items?: Record<string, unknown>[] };
           const rawRecords = data.items || [];
@@ -524,7 +715,7 @@ const xeroAdapter: ERPAdapter = {
   },
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
-    const resp = await fetch('https://identity.xero.com/connect/token', {
+    const resp = await fetchWithRetry('https://identity.xero.com/connect/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -535,16 +726,16 @@ const xeroAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'xero.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Xero token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch('https://api.xero.com/connections', {
+      const resp = await fetchWithRetry('https://api.xero.com/connections', {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
+      }, { label: 'xero.testConnection', timeoutMs: 15000 });
       if (resp.ok) {
         const connections = await resp.json() as { tenantId?: string; tenantName?: string }[];
         return {
@@ -582,7 +773,7 @@ const xeroAdapter: ERPAdapter = {
           'tracking_categories': '/api.xro/2.0/TrackingCategories',
         };
         const path = apiMap[entity] || `/api.xro/2.0/${entity}`;
-        const resp = await fetch(`https://api.xero.com${path}`, { headers });
+        const resp = await fetchWithRetry(`https://api.xero.com${path}`, { headers }, { label: `xero.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as Record<string, unknown[]>;
           const key = Object.keys(data).find(k => Array.isArray(data[k]));
@@ -623,7 +814,7 @@ const sageAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || 'https://oauth.accounting.sage.com/token';
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -633,7 +824,7 @@ const sageAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'sage.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Sage token exchange failed: ${resp.status}`);
     return resp.json();
   },
@@ -641,9 +832,9 @@ const sageAdapter: ERPAdapter = {
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
       const baseApi = credentials.baseUrl || 'https://api.accounting.sage.com/v3.1';
-      const resp = await fetch(`${baseApi}/me`, {
+      const resp = await fetchWithRetry(`${baseApi}/me`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
-      });
+      }, { label: 'sage.testConnection', timeoutMs: 15000 });
       if (resp.ok) {
         const data = await resp.json() as { displayed_as?: string };
         return { connected: true, version: 'v3.1', message: `Connected to Sage: ${data.displayed_as || 'OK'}` };
@@ -677,7 +868,7 @@ const sageAdapter: ERPAdapter = {
           'stock_items': '/stock_items?items_per_page=200',
         };
         const path = apiMap[entity] || `/${entity}?items_per_page=200`;
-        const resp = await fetch(`${baseApi}${path}`, { headers });
+        const resp = await fetchWithRetry(`${baseApi}${path}`, { headers }, { label: `sage.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { $total?: number; $items?: Record<string, unknown>[] };
           const rawRecords = data.$items || [];
@@ -717,7 +908,7 @@ const pastelAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     // Pastel SDK uses API key; this returns a session-based token
-    const resp = await fetch(`${credentials.baseUrl}/api/auth/token`, {
+    const resp = await fetchWithRetry(`${credentials.baseUrl}/api/auth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -726,20 +917,20 @@ const pastelAdapter: ERPAdapter = {
         password: credentials.password,
         code,
       }),
-    });
+    }, { label: 'pastel.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Pastel auth failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/api/v1/company`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/api/v1/company`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-API-Key': credentials.apiKey || '',
           'Accept': 'application/json',
         },
-      });
+      }, { label: 'pastel.testConnection', timeoutMs: 15000 });
       if (resp.ok) {
         const data = await resp.json() as { CompanyName?: string; Version?: string };
         return {
@@ -780,7 +971,7 @@ const pastelAdapter: ERPAdapter = {
           'credit_notes': '/api/v1/credit-notes?limit=500',
         };
         const path = apiMap[entity] || `/api/v1/${entity}?limit=500`;
-        const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
+        const resp = await fetchWithRetry(`${credentials.baseUrl}${path}`, { headers }, { label: `pastel.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { TotalResults?: number; Results?: Record<string, unknown>[] };
           const rawRecords = data.Results || [];
@@ -822,7 +1013,7 @@ const dynamics365Adapter: ERPAdapter = {
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tenant = credentials.apiKey || 'common';
     const tokenUrl = credentials.tokenUrl || `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -833,16 +1024,16 @@ const dynamics365Adapter: ERPAdapter = {
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
         scope: credentials.scope || 'https://api.businesscentral.dynamics.com/.default offline_access',
       }),
-    });
+    }, { label: 'dynamics365.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`Dynamics 365 token exchange failed: ${resp.status}`);
     return resp.json();
   },
 
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
-      const resp = await fetch(`${credentials.baseUrl}/api/v2.0/companies`, {
+      const resp = await fetchWithRetry(`${credentials.baseUrl}/api/v2.0/companies`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
-      });
+      }, { label: 'dynamics365.testConnection', timeoutMs: 15000 });
       if (resp.ok) {
         const data = await resp.json() as { value?: Array<{ displayName?: string }> };
         const companyCount = data.value?.length || 0;
@@ -866,7 +1057,7 @@ const dynamics365Adapter: ERPAdapter = {
     // Resolve companyId by fetching the first company from Business Central
     let companyId = '';
     try {
-      const companiesResp = await fetch(`${credentials.baseUrl}/api/v2.0/companies`, { headers });
+      const companiesResp = await fetchWithRetry(`${credentials.baseUrl}/api/v2.0/companies`, { headers }, { label: 'dynamics365.companies', timeoutMs: 15000 });
       if (companiesResp.ok) {
         const companiesData = await companiesResp.json() as { value?: Array<{ id?: string }> };
         companyId = companiesData.value?.[0]?.id || '';
@@ -894,7 +1085,7 @@ const dynamics365Adapter: ERPAdapter = {
           'employees': `/api/v2.0/companies(${companyId})/employees?$top=1000`,
         };
         const path = apiMap[entity] || `/api/v2.0/companies(${companyId})/${entity}?$top=1000`;
-        const resp = await fetch(`${credentials.baseUrl}${path}`, { headers });
+        const resp = await fetchWithRetry(`${credentials.baseUrl}${path}`, { headers }, { label: `dynamics365.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { value?: Record<string, unknown>[] };
           const rawRecords = data.value || [];
@@ -936,7 +1127,7 @@ const netsuiteAdapter: ERPAdapter = {
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const accountId = credentials.apiKey || '';
     const tokenUrl = credentials.tokenUrl || `https://${accountId}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token`;
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -947,7 +1138,7 @@ const netsuiteAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'netsuite.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`NetSuite token exchange failed: ${resp.status}`);
     return resp.json();
   },
@@ -955,9 +1146,10 @@ const netsuiteAdapter: ERPAdapter = {
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
       const accountId = credentials.apiKey || '';
-      const resp = await fetch(
+      const resp = await fetchWithRetry(
         `https://${accountId}.suitetalk.api.netsuite.com/services/rest/record/v1/metadata-catalog/`,
         { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } },
+        { label: 'netsuite.testConnection', timeoutMs: 15000 },
       );
       return {
         connected: resp.ok,
@@ -990,7 +1182,7 @@ const netsuiteAdapter: ERPAdapter = {
           'contacts': '/contact?limit=1000',
         };
         const path = apiMap[entity] || `/${entity}?limit=1000`;
-        const resp = await fetch(`${baseApi}${path}`, { headers });
+        const resp = await fetchWithRetry(`${baseApi}${path}`, { headers }, { label: `netsuite.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as { totalResults?: number; items?: Record<string, unknown>[] };
           const rawRecords = data.items || [];
@@ -1030,7 +1222,7 @@ const quickbooksAdapter: ERPAdapter = {
 
   async exchangeToken(credentials: ERPCredentials, code: string): Promise<ERPTokenResponse> {
     const tokenUrl = credentials.tokenUrl || 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetchWithRetry(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -1042,7 +1234,7 @@ const quickbooksAdapter: ERPAdapter = {
         code,
         redirect_uri: `${credentials.baseUrl}/oauth/callback`,
       }),
-    });
+    }, { label: 'quickbooks.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) throw new Error(`QuickBooks token exchange failed: ${resp.status}`);
     return resp.json();
   },
@@ -1050,7 +1242,7 @@ const quickbooksAdapter: ERPAdapter = {
   async testConnection(credentials: ERPCredentials, token: string) {
     try {
       const realmId = credentials.apiKey || '';
-      const resp = await fetch(
+      const resp = await fetchWithRetry(
         `https://quickbooks.api.intuit.com/v3/company/${realmId}/companyinfo/${realmId}`,
         {
           headers: {
@@ -1058,6 +1250,7 @@ const quickbooksAdapter: ERPAdapter = {
             'Accept': 'application/json',
           },
         },
+        { label: 'quickbooks.testConnection', timeoutMs: 15000 },
       );
       if (resp.ok) {
         const data = await resp.json() as { CompanyInfo?: { CompanyName?: string } };
@@ -1095,9 +1288,10 @@ const quickbooksAdapter: ERPAdapter = {
           'estimates': 'SELECT * FROM Estimate MAXRESULTS 1000',
         };
         const query = queryMap[entity] || `SELECT * FROM ${entity} MAXRESULTS 1000`;
-        const resp = await fetch(
+        const resp = await fetchWithRetry(
           `${baseApi}/query?query=${encodeURIComponent(query)}`,
           { headers },
+          { label: `quickbooks.${entity}`, timeoutMs: 20000 },
         );
         if (resp.ok) {
           const data = await resp.json() as { QueryResponse?: { totalCount?: number; Customer?: Record<string, unknown>[]; Vendor?: Record<string, unknown>[]; Invoice?: Record<string, unknown>[]; Item?: Record<string, unknown>[]; Account?: Record<string, unknown>[]; Employee?: Record<string, unknown>[]; PurchaseOrder?: Record<string, unknown>[]; Bill?: Record<string, unknown>[]; Payment?: Record<string, unknown>[]; Estimate?: Record<string, unknown>[] } };
@@ -1328,16 +1522,18 @@ function decodeChunked(raw: string): string {
 async function cfFetch(
   url: string,
   init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+  resilience?: FetchResilienceConfig,
 ): Promise<TcpFetchResponse> {
   if (isRawIpUrl(url)) {
     return tcpFetch(url, init);
   }
-  // For domain-based URLs, use the standard fetch API
-  const resp = await fetch(url, {
+  // For domain-based URLs, use the standard fetch API via fetchWithRetry so
+  // Odoo (the only caller) gets per-request timeout + transient-error retry.
+  const resp = await fetchWithRetry(url, {
     method: init.method,
     headers: init.headers,
     body: init.body,
-  });
+  }, resilience ?? { label: 'odoo.cfFetch', timeoutMs: 20000 });
   const respText = await resp.text();
   const respHeaders: Record<string, string> = {};
   resp.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -1377,7 +1573,7 @@ const odooAdapter: ERPAdapter = {
           args: [credentials.apiKey, credentials.username, credentials.password, {}],
         },
       }),
-    });
+    }, { label: 'odoo.oauth.token', timeoutMs: 10000 });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
       throw new Error(`Odoo auth failed: HTTP ${resp.status} — ${body.slice(0, 200) || 'no response body'}`);
@@ -1406,7 +1602,7 @@ const odooAdapter: ERPAdapter = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
-      });
+      }, { label: 'odoo.testConnection.version', timeoutMs: 15000 });
       if (!versionResp.ok) {
         const body = await versionResp.text().catch(() => '');
         return { connected: false, message: `Connection failed: HTTP ${versionResp.status} — ${body.slice(0, 200) || 'no response body'}` };
@@ -1425,7 +1621,7 @@ const odooAdapter: ERPAdapter = {
             args: [credentials.apiKey, credentials.username, credentials.password, {}],
           },
         }),
-      });
+      }, { label: 'odoo.testConnection.auth', timeoutMs: 15000 });
       if (!authResp.ok) {
         const body = await authResp.text().catch(() => '');
         return { connected: false, message: `Auth check failed: HTTP ${authResp.status} — ${body.slice(0, 200) || 'no response body'}` };
@@ -1529,7 +1725,7 @@ const odooAdapter: ERPAdapter = {
               ],
             },
           }),
-        });
+        }, { label: `odoo.${entity}`, timeoutMs: 20000 });
         if (resp.ok) {
           const data = await resp.json() as {
             result?: Record<string, unknown>[];
