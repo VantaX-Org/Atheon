@@ -58,7 +58,7 @@ const navItems: NavItem[] = [
   { path: '/deployments', label: 'Deployments', icon: IconNetwork, section: 'platform-ops', sublabel: 'Hybrid & On-Premise', roles: SUPERADMIN_ROLES },
   { path: '/assessments', label: 'Assessments', icon: IconBarChart, section: 'platform-ops', sublabel: 'Pre-Sale Analysis', roles: SUPERADMIN_ROLES },
   { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'Protocols', roles: SUPERADMIN_ROLES },
-  { path: '/executive', label: 'Executive', icon: IconBarChart, section: 'intelligence', sublabel: 'Mobile Summary', roles: EXECUTIVE_ROLES },
+  // /executive retired: ExecutiveMobilePage consolidated into responsive ApexPage.
   { path: '/executive-summary', label: 'Exec Briefing', icon: IconBarChart, section: 'intelligence', sublabel: 'One-Page Summary', roles: EXECUTIVE_ROLES },
   // Admin Tooling (ADMIN-001 to ADMIN-012)
   { path: '/platform-health', label: 'Platform Health', icon: IconPulse, section: 'admin-tooling', sublabel: 'Infrastructure Status', roles: SUPERADMIN_ROLES },
