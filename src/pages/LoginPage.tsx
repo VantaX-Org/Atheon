@@ -4,11 +4,24 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAppStore } from "@/stores/appStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, Building2, Loader2, UserPlus } from "lucide-react";
+import { ArrowRight, Building2, Loader2, ShieldCheck, UserPlus } from "lucide-react";
 import { api, setToken, getToken, setTenantOverride } from "@/lib/api";
 import type { IndustryVertical, UserRole } from "@/types";
 
 type AuthMode= 'login' | 'register';
+
+/**
+ * The MFA challenge input accepts either a 6-digit TOTP or a backup code in xxxx-xxxx format.
+ * Returns the parsed code (normalized) plus its format type, or null if invalid.
+ */
+function parseMfaInput(raw: string): { code: string; kind: 'totp' | 'backup' } | null {
+  const trimmed = raw.trim();
+  if (/^\d{6}$/.test(trimmed)) return { code: trimmed, kind: 'totp' };
+  // Backup code: 4 alphanumeric + dash + 4 alphanumeric (case-insensitive).
+  const backupMatch = trimmed.match(/^([a-zA-Z0-9]{4})-?([a-zA-Z0-9]{4})$/);
+  if (backupMatch) return { code: `${backupMatch[1].toLowerCase()}-${backupMatch[2].toLowerCase()}`, kind: 'backup' };
+  return null;
+}
 
 export function LoginPage() {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -24,9 +37,23 @@ export function LoginPage() {
   const setUser = useAppStore((s) => s.setUser);
   const setIndustry = useAppStore((s) => s.setIndustry);
   const setActiveTenant = useAppStore((s) => s.setActiveTenant);
+  const setMfaEnforcementWarning = useAppStore((s) => s.setMfaEnforcementWarning);
   const existingUser = useAppStore((s) => s.user);
 
-  const handleAuthResult = (res: { token: string; refreshToken?: string; user: { id: string; email: string; name: string; role: string; tenantId: string; tenantName?: string; tenantIndustry?: string; permissions: string[] } }) => {
+  // MFA challenge state — shown after primary credentials succeed but before session is issued.
+  const [mfaChallengeActive, setMfaChallengeActive] = useState(false);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [mfaInput, setMfaInput] = useState('');
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [backupCodesRemaining, setBackupCodesRemaining] = useState<number | null>(null);
+
+  const handleAuthResult = (res: {
+    token: string;
+    refreshToken?: string;
+    user: { id: string; email: string; name: string; role: string; tenantId: string; tenantName?: string; tenantIndustry?: string; permissions: string[] };
+    mfaEnforcementWarning?: { daysRemaining: number; reason?: string; mfaSetupUrl?: string };
+    backupCodesRemaining?: number;
+  }) => {
     setToken(res.token, res.refreshToken || null);
     // Clear any stale tenant override from a previous session
     setTenantOverride(null);
@@ -34,6 +61,8 @@ export function LoginPage() {
     setUser({ id: res.user.id, email: res.user.email, name: res.user.name, role: res.user.role as UserRole, tenantId: res.user.tenantId, tenantName: res.user.tenantName, permissions: res.user.permissions });
     // Set industry from the user's tenant (default to 'general' if not provided)
     setIndustry((res.user.tenantIndustry || 'general') as IndustryVertical);
+    // Persist MFA grace-period warning (if any) so the Dashboard / Settings pages can surface it.
+    setMfaEnforcementWarning(res.mfaEnforcementWarning ?? null);
     navigate('/dashboard');
   };
 
@@ -77,6 +106,15 @@ export function LoginPage() {
       } else {
         try {
           const res = await api.auth.login(email, password, selectedTenant || undefined);
+          const mfaRequired = res.mfaRequired ?? res.mfa_required ?? false;
+          if (mfaRequired) {
+            // Session is not issued until the MFA challenge is satisfied.
+            setMfaChallengeActive(true);
+            setMfaChallengeToken(res.challengeToken ?? res.challenge_token ?? null);
+            setMfaError(null);
+            setLoading(false);
+            return;
+          }
           handleAuthResult(res);
         } catch (loginErr: unknown) {
           // Check if this is a tenant selection required response
@@ -100,6 +138,35 @@ export function LoginPage() {
       }
     } catch (err) { setError(err instanceof Error ? err.message : 'Authentication failed'); }
     finally { setLoading(false); }
+  };
+
+  const submitMfaChallenge = async () => {
+    const parsed = parseMfaInput(mfaInput);
+    if (!parsed) {
+      setMfaError('Enter a 6-digit code or a backup code in xxxx-xxxx format');
+      return;
+    }
+    setLoading(true);
+    setMfaError(null);
+    try {
+      const res = await api.auth.mfaValidate(parsed.code, mfaChallengeToken ?? undefined);
+      if (typeof res.backupCodesRemaining === 'number') {
+        setBackupCodesRemaining(res.backupCodesRemaining);
+      }
+      handleAuthResult(res);
+    } catch (err) {
+      setMfaError(err instanceof Error ? err.message : 'Invalid code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelMfaChallenge = () => {
+    setMfaChallengeActive(false);
+    setMfaChallengeToken(null);
+    setMfaInput('');
+    setMfaError(null);
+    setBackupCodesRemaining(null);
   };
 
   const [showForgotPw, setShowForgotPw] = useState(false);
@@ -198,7 +265,44 @@ export function LoginPage() {
           <h2 className="text-xl font-semibold t-primary mb-1">{mode === 'register' ? 'Create your account' : 'Welcome back'}</h2>
           <p className="text-xs t-muted mb-6">{mode === 'register' ? 'Register for your Atheon workspace' : 'Sign in to your Atheon workspace'}</p>
           {error && <div className="mb-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500">{error}</div>}
-          {tenantOptions && (
+          {mfaChallengeActive && (
+            <div className="mb-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} style={{ color: 'var(--accent)' }} />
+                <h3 className="text-sm font-semibold t-primary">Two-factor authentication</h3>
+              </div>
+              <p className="text-xs t-secondary">
+                Enter the 6-digit code from your authenticator app, or a backup code in <code className="text-[11px]">xxxx-xxxx</code> format.
+              </p>
+              <input
+                type="text"
+                inputMode="text"
+                autoComplete="one-time-code"
+                aria-label="Authenticator code or backup code"
+                value={mfaInput}
+                onChange={(e) => setMfaInput(e.target.value.slice(0, 12))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !loading) submitMfaChallenge(); }}
+                placeholder="123456 or xxxx-xxxx"
+                className="w-full px-3 py-2.5 rounded-lg text-center font-mono text-lg tracking-widest outline-none"
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
+                autoFocus
+              />
+              {mfaError && <p className="text-xs text-red-400">{mfaError}</p>}
+              {backupCodesRemaining !== null && backupCodesRemaining < 3 && (
+                <p className="text-[11px] text-amber-500">
+                  You have {backupCodesRemaining} backup code{backupCodesRemaining === 1 ? '' : 's'} left. Consider regenerating them from Settings &rarr; MFA after you sign in.
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button variant="ghost" size="sm" onClick={cancelMfaChallenge} type="button">Back to sign in</Button>
+                <Button variant="primary" size="sm" onClick={submitMfaChallenge} disabled={loading || parseMfaInput(mfaInput) === null} type="button">
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                  Verify
+                </Button>
+              </div>
+            </div>
+          )}
+          {tenantOptions && !mfaChallengeActive && (
             <div className="mb-5 space-y-3">
               <p className="text-xs t-secondary">This email exists in multiple workspaces. Please select one:</p>
               <div className="space-y-2">
@@ -213,6 +317,14 @@ export function LoginPage() {
                       setError(null);
                       try {
                         const res = await api.auth.login(email, password, t.slug);
+                        const mfaRequired = res.mfaRequired ?? res.mfa_required ?? false;
+                        if (mfaRequired) {
+                          setMfaChallengeActive(true);
+                          setMfaChallengeToken(res.challengeToken ?? res.challenge_token ?? null);
+                          setMfaError(null);
+                          setLoading(false);
+                          return;
+                        }
                         handleAuthResult(res);
                       } catch (err) {
                         setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -238,19 +350,19 @@ export function LoginPage() {
               <button type="button" onClick={() => setSelectedTenant(null)} className="ml-auto text-[10px] t-muted hover:t-primary">&times;</button>
             </div>
           )}
-          {!tenantOptions && mode === 'login' && (
+          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
             <div className="space-y-2 mb-5">
               <button onClick={() => handleSSO('azure')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium t-secondary transition-all hover:bg-[var(--bg-secondary)]" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
                 <div className="w-4 h-4 rounded bg-sky-600 flex items-center justify-center text-[8px] font-bold text-white">M</div>Continue with Azure AD
               </button>
             </div>
           )}
-          {!tenantOptions && mode === 'login' && (
+          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
             <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px" style={{ background: 'var(--divider)' }} /><span className="text-[10px] t-muted">or sign in with email</span><div className="flex-1 h-px" style={{ background: 'var(--divider)' }} />
             </div>
           )}
-          {!tenantOptions && <form onSubmit={handleLogin} className="space-y-3">
+          {!tenantOptions && !mfaChallengeActive && <form onSubmit={handleLogin} className="space-y-3">
             {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />}
             <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} />

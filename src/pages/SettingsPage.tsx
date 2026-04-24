@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import type { LlmConfigResponse } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import {
- Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2, Brain
+ Settings, User, Bell, Palette, Cpu, Loader2, Check, Sun, Moon, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle
 } from "lucide-react";
 
 interface NotificationPref {
@@ -83,48 +84,17 @@ export function SettingsPage() {
  setChangingPw(false);
  };
 
- // Phase 4.4: MFA/TOTP setup state
- const [mfaSetupLoading, setMfaSetupLoading] = useState(false);
- const [mfaSecret, setMfaSecret] = useState<string | null>(null);
- const [mfaQrUri, setMfaQrUri] = useState<string | null>(null);
- const [mfaCode, setMfaCode] = useState('');
- const [mfaMsg, setMfaMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
- const [mfaEnabled, setMfaEnabled] = useState(false);
+ // MFA status — full enrollment/management UX lives on /settings/mfa.
+ const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
+ const [mfaStatus, setMfaStatus] = useState<{ enabled: boolean; backupCodesRemaining?: number } | null>(null);
 
- const handleMfaSetup = async () => {
-   setMfaSetupLoading(true);
-   setMfaMsg(null);
-   try {
-     const res = await api.auth.mfaSetup();
-     setMfaSecret(res.secret);
-     setMfaQrUri(res.otpauthUri);
-   } catch (err) {
-     const text = err instanceof Error ? err.message : 'Failed to setup MFA';
-     setMfaMsg({ type: 'error', text });
-     toast.error('Failed to setup MFA', {
-       message: text,
-       requestId: err instanceof ApiError ? err.requestId : null,
-     });
-   }
-   setMfaSetupLoading(false);
- };
-
- const handleMfaVerify = async () => {
-   if (mfaCode.length !== 6) { setMfaMsg({ type: 'error', text: 'Enter a 6-digit code' }); return; }
-   try {
-     await api.auth.mfaVerify(mfaCode);
-     setMfaEnabled(true);
-     setMfaMsg({ type: 'success', text: 'MFA enabled successfully!' });
-     setMfaSecret(null); setMfaQrUri(null); setMfaCode('');
-   } catch (err) {
-     const text = err instanceof Error ? err.message : 'Invalid code';
-     setMfaMsg({ type: 'error', text });
-     toast.error('MFA verification failed', {
-       message: text,
-       requestId: err instanceof ApiError ? err.requestId : null,
-     });
-   }
- };
+ useEffect(() => {
+   let cancelled = false;
+   api.auth.mfaStatus()
+     .then((res) => { if (!cancelled) setMfaStatus({ enabled: !!res.enabled, backupCodesRemaining: res.backupCodesRemaining }); })
+     .catch(() => { if (!cancelled) setMfaStatus({ enabled: false }); });
+   return () => { cancelled = true; };
+ }, []);
 
  // Phase 4.4: API key — server-side generation
  const [apiKeyVisible, setApiKeyVisible] = useState(false);
@@ -381,37 +351,57 @@ export function SettingsPage() {
  </div>
  </Card>
 
- {/* Phase 4.4: MFA / Two-Factor Authentication */}
+ {/* Phase 4.4: MFA / Two-Factor Authentication — summary card; full UX at /settings/mfa */}
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
  <Shield className="w-4 h-4 text-accent" /> Two-Factor Authentication
  </h3>
- {mfaEnabled ? (
-   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-     <Shield className="w-5 h-5 text-emerald-500" />
-     <div>
-       <p className="text-sm font-medium text-emerald-500">MFA Enabled</p>
-       <p className="text-xs t-muted">Your account is protected with TOTP two-factor authentication</p>
-     </div>
+ {mfaEnforcementWarning && !mfaStatus?.enabled && (
+   <div
+     role="alert"
+     className="flex items-start gap-2 p-3 rounded-lg mb-3"
+     style={{
+       background: mfaEnforcementWarning.daysRemaining <= 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+       border: mfaEnforcementWarning.daysRemaining <= 0 ? '1px solid rgba(239, 68, 68, 0.30)' : '1px solid rgba(245, 158, 11, 0.30)',
+     }}
+   >
+     <AlertTriangle size={14} className={`flex-shrink-0 mt-0.5 ${mfaEnforcementWarning.daysRemaining <= 0 ? 'text-red-500' : 'text-amber-500'}`} />
+     <p className={`text-[11px] ${mfaEnforcementWarning.daysRemaining <= 0 ? 'text-red-500' : 'text-amber-500'}`}>
+       {mfaEnforcementWarning.daysRemaining <= 0
+         ? 'MFA is required for your role — enable it now to retain access.'
+         : `MFA required for your role — enable within ${mfaEnforcementWarning.daysRemaining} day${mfaEnforcementWarning.daysRemaining === 1 ? '' : 's'} to keep access.`}
+     </p>
    </div>
- ) : mfaSecret ? (
+ )}
+ {mfaStatus?.enabled ? (
    <div className="space-y-3">
-     <p className="text-xs t-muted">Scan this secret in your authenticator app (Google Authenticator, Authy, etc.):</p>
-     <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-card)] font-mono text-xs break-all t-primary">
-       {mfaSecret}
+     <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+       <Shield className="w-5 h-5 text-emerald-500" />
+       <div className="flex-1">
+         <p className="text-sm font-medium text-emerald-500">MFA enabled</p>
+         <p className="text-xs t-muted">
+           {typeof mfaStatus.backupCodesRemaining === 'number'
+             ? `${mfaStatus.backupCodesRemaining} of 8 recovery codes remaining`
+             : 'Your account is protected with TOTP two-factor authentication'}
+         </p>
+       </div>
      </div>
-     {mfaQrUri && <p className="text-[10px] text-gray-400 break-all">otpauth URI: {mfaQrUri}</p>}
-     <Input label="Enter 6-digit code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" />
-     {mfaMsg && <div className={`text-xs p-2 rounded ${mfaMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-400'}`}>{mfaMsg.text}</div>}
-     <Button variant="primary" size="sm" onClick={handleMfaVerify} title="Verify and enable MFA">Verify & Enable</Button>
+     <Link
+       to="/settings/mfa"
+       className="inline-flex items-center gap-1.5 text-xs font-medium"
+       style={{ color: 'var(--accent)' }}
+     >
+       Manage MFA <ArrowRight size={12} />
+     </Link>
    </div>
  ) : (
    <div className="space-y-3">
-     <p className="text-xs t-muted">Add an extra layer of security to your account with TOTP-based two-factor authentication.</p>
-     {mfaMsg && <div className={`text-xs p-2 rounded ${mfaMsg.type === 'error' ? 'bg-red-500/10 text-red-400' : ''}`}>{mfaMsg.text}</div>}
-     <Button variant="primary" size="sm" onClick={handleMfaSetup} disabled={mfaSetupLoading} title="Setup two-factor authentication">
-       {mfaSetupLoading ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} Setup MFA
-     </Button>
+     <p className="text-xs t-muted">Add an extra layer of security with a TOTP authenticator app plus 8 single-use recovery codes.</p>
+     <Link to="/settings/mfa">
+       <Button variant="primary" size="sm" title="Open MFA setup">
+         <Shield size={14} /> Enable MFA
+       </Button>
+     </Link>
    </div>
  )}
  </Card>

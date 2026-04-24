@@ -88,6 +88,7 @@ export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
   const user = useAppStore((s) => s.user);
   const toast = useToast();
+  const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -293,6 +294,39 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {mfaEnforcementWarning && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 p-3 rounded-xl"
+          style={{
+            background: mfaEnforcementWarning.daysRemaining <= 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+            border: mfaEnforcementWarning.daysRemaining <= 0 ? '1px solid rgba(239, 68, 68, 0.30)' : '1px solid rgba(245, 158, 11, 0.30)',
+          }}
+        >
+          <AlertTriangle
+            size={16}
+            className={`flex-shrink-0 mt-0.5 ${mfaEnforcementWarning.daysRemaining <= 0 ? 'text-red-500' : 'text-amber-500'}`}
+          />
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${mfaEnforcementWarning.daysRemaining <= 0 ? 'text-red-500' : 'text-amber-500'}`}>
+              {mfaEnforcementWarning.daysRemaining <= 0
+                ? 'MFA is now required for your role'
+                : `MFA required for your role — enable within ${mfaEnforcementWarning.daysRemaining} day${mfaEnforcementWarning.daysRemaining === 1 ? '' : 's'} to keep access.`}
+            </p>
+            {mfaEnforcementWarning.reason && (
+              <p className="text-xs t-muted mt-0.5">{mfaEnforcementWarning.reason}</p>
+            )}
+          </div>
+          <Link
+            to={mfaEnforcementWarning.mfaSetupUrl || '/settings/mfa'}
+            className="text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >
+            Enable MFA now
+          </Link>
+        </div>
+      )}
 
       {actionError && (
         <div className="flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">

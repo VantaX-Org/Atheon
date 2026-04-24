@@ -42,6 +42,12 @@ function applyAccentColor(color: AccentColor, theme?: Theme) {
   root.style.setProperty('--ring-focus', vars.glow);
 }
 
+export interface MfaEnforcementWarning {
+  daysRemaining: number;
+  reason?: string;
+  mfaSetupUrl?: string;
+}
+
 interface AppState {
   user: User | null;
   currentLayer: AtheonLayer;
@@ -55,6 +61,8 @@ interface AppState {
   activeTenantId: string | null;
   activeTenantName: string | null;
   activeTenantIndustry: IndustryVertical | null;
+  // MFA grace-period warning — captured from the last login response (PR #221).
+  mfaEnforcementWarning: MfaEnforcementWarning | null;
   setUser: (user: User | null) => void;
   setCurrentLayer: (layer: AtheonLayer) => void;
   toggleSidebar: () => void;
@@ -65,6 +73,7 @@ interface AppState {
   setAccentColor: (color: AccentColor) => void;
   dismissOnboarding: () => void;
   setActiveTenant: (tenantId: string | null, tenantName: string | null, tenantIndustry: IndustryVertical | null) => void;
+  setMfaEnforcementWarning: (w: MfaEnforcementWarning | null) => void;
 }
 
 const systemPrefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -99,6 +108,13 @@ export const useAppStore = create<AppState>((set) => ({
   activeTenantId: typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-id') : null,
   activeTenantName: typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-name') : null,
   activeTenantIndustry: (typeof window !== 'undefined' ? localStorage.getItem('atheon-active-tenant-industry') : null) as IndustryVertical | null,
+  mfaEnforcementWarning: (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('atheon-mfa-warning');
+      return raw ? (JSON.parse(raw) as MfaEnforcementWarning) : null;
+    } catch { return null; }
+  })(),
   setUser: (user) => set({ user }),
   setCurrentLayer: (layer) => set({ currentLayer: layer }),
   mobileSidebarOpen: false,
@@ -148,5 +164,12 @@ export const useAppStore = create<AppState>((set) => ({
     if (tenantIndustry) {
       set({ industry: tenantIndustry });
     }
+  },
+  setMfaEnforcementWarning: (w) => {
+    if (typeof window !== 'undefined') {
+      if (w) localStorage.setItem('atheon-mfa-warning', JSON.stringify(w));
+      else localStorage.removeItem('atheon-mfa-warning');
+    }
+    set({ mfaEnforcementWarning: w });
   },
 }));
