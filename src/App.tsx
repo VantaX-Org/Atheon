@@ -38,6 +38,9 @@ import { DataGovernancePage } from "@/pages/DataGovernancePage";
 import { IntegrationHealthPage } from "@/pages/IntegrationHealthPage";
 import { SystemAlertsPage } from "@/pages/SystemAlertsPage";
 import { WebhooksPage } from "@/pages/WebhooksPage";
+import { SupportPage } from "@/pages/SupportPage";
+import { SupportTicketDetailPage } from "@/pages/SupportTicketDetailPage";
+import { SupportTriagePage } from "@/pages/admin/SupportTriagePage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -122,6 +125,11 @@ export default function App() {
           <Route path="/system-alerts" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SystemAlertsPage /></ProtectedRoute>} />
           <Route path="/webhooks" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><WebhooksPage /></ProtectedRoute>} />
           <Route path="/webhooks/:webhookId" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><WebhooksPage /></ProtectedRoute>} />
+          {/* v48: Support ticket system — all authenticated users can file tickets;
+              admins use the triage view for tenant-wide management. */}
+          <Route path="/support-tickets" element={<SupportPage />} />
+          <Route path="/support-tickets/:id" element={<SupportTicketDetailPage />} />
+          <Route path="/support-triage" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SupportTriagePage /></ProtectedRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>

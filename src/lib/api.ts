@@ -1272,6 +1272,44 @@ export const api = {
       }>(`/api/v1/system-alerts/rules/${id}/test`, { method: 'POST', body: JSON.stringify({ payload }) }),
   },
 
+  // ── v48: Support tickets (support.ts) ───────────────────────────────
+  support: {
+    list: (params: { limit?: number; cursor?: string; status?: string } = {}) => {
+      const query = qs({
+        limit: params.limit !== undefined ? String(params.limit) : undefined,
+        cursor: params.cursor,
+        status: params.status,
+      });
+      return request<{ tickets: SupportTicket[]; next_cursor: string | null }>(`/api/v1/support/tickets${query}`);
+    },
+    create: (data: {
+      subject: string;
+      body: string;
+      category?: string;
+      priority?: string;
+    }) =>
+      request<{ ticket: SupportTicket }>('/api/v1/support/tickets', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    get: (id: string) =>
+      request<{ ticket: SupportTicket; replies: SupportTicketReply[] }>(`/api/v1/support/tickets/${id}`),
+    addReply: (id: string, body: string) =>
+      request<{ reply: SupportTicketReply }>(`/api/v1/support/tickets/${id}/replies`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      }),
+    update: (id: string, patch: {
+      status?: string;
+      priority?: string;
+      assignee_user_id?: string | null;
+    }) =>
+      request<{ ticket: SupportTicket }>(`/api/v1/support/tickets/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+  },
+
   // ── Webhooks (PR #225): HMAC-signed outbound event delivery ─────────
   webhooks: {
     list: () =>
@@ -3465,4 +3503,31 @@ export interface GovernanceResponse {
     erpPlaintext: number;
   };
   timestamp: string;
+}
+
+// ── Support tickets (backend v48) ─────────────────────────────────────
+export type SupportTicketStatus = 'open' | 'in_progress' | 'waiting_customer' | 'resolved' | 'closed';
+export type SupportTicketPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type SupportTicketCategory = 'general' | 'bug' | 'billing' | 'feature_request' | 'access' | 'other';
+
+export interface SupportTicket {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  assignee_user_id: string | null;
+  subject: string;
+  body: string;
+  category: SupportTicketCategory | string;
+  priority: SupportTicketPriority | string;
+  status: SupportTicketStatus | string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportTicketReply {
+  id: string;
+  ticket_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
 }

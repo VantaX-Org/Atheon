@@ -51,6 +51,7 @@ import webhooksRoutes from './routes/webhooks';
 import governance from './routes/governance';
 import systemAlerts from './routes/system-alerts';
 import featureFlagsRoutes from './routes/feature-flags';
+import supportRoutes from './routes/support';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -226,6 +227,7 @@ app.get('/', (c) => {
       baseline: '/api/v1/baseline',
       targets: '/api/v1/targets',
       'executive-summary': '/api/v1/executive-summary',
+      support: '/api/v1/support',
     },
     protocols: {
       mcp: '/api/v1/connectivity/mcp',
@@ -303,7 +305,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks', 'system-alerts'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks', 'system-alerts', 'support'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -354,6 +356,7 @@ const routeModules: [string, typeof auth][] = [
   ['targets', targetRoutes], ['executive-summary', executiveSummary],
   ['webhooks', webhooksRoutes],
   ['system-alerts', systemAlerts],
+  ['support', supportRoutes],
 ];
 for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
