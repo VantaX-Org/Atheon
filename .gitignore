@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 workers/api/tsconfig.tsbuildinfo
+
+# Claude Agent worktree sidecars — local-only, never commit
+.claude/worktrees/
+.claude/projects/
