@@ -309,13 +309,14 @@ export async function mockLlmBudget(page: Page, tenantId: string) {
 /**
  * Helper: mock the catalyst run detail + items + comments endpoints.
  *
- * The CatalystRunDetailPage has a useEffect dep-chain bug where `toast`
- * returned from useToast is a fresh object every render, which re-creates
- * the memoized callbacks and re-fires the effect that loads data. This
- * causes an infinite render loop when data load succeeds. We work around
- * it by fulfilling the FIRST request deterministically and then ABORTING
- * subsequent ones — the React state settles with the valid data on first
- * load and subsequent calls fail silently (caught by try/catch in loader).
+ * Historical note: the CatalystRunDetailPage used to have a useEffect
+ * dep-chain bug where `toast` returned from useToast was a fresh object
+ * every render, which re-created the memoised callbacks and re-fired the
+ * boot effect in a loop. That has been fixed (toast is now read through a
+ * ref in the page). This helper still fulfils only the first request of
+ * each kind to keep historical smoke tests deterministic; the re-render-
+ * loop regression test in e2e/tests/catalyst-run-detail.spec.ts installs
+ * its OWN count-and-fulfil handlers instead of using this helper.
  */
 export async function mockCatalystRun(page: Page, runId: string) {
   const fulfilled = { detail: 0, items: 0, comments: 0 };
