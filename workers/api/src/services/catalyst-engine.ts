@@ -10,6 +10,12 @@ import {
   dispatchAction,
   registerDefaultHandler,
 } from './catalyst-handler-registry';
+// Domain handlers self-register on import. Importing them here ensures they
+// are wired into the dispatcher for any call path that uses executeTask.
+import './catalyst-operational-handlers';
+import './catalyst-commercial-handlers';
+import './catalyst-service-handlers';
+import './catalyst-general-handlers';
 
 export interface TaskDefinition {
   id: string;
