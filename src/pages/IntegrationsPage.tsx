@@ -11,12 +11,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabPanel, useTabState } from "@/components/ui/tabs";
-import { api, getTenantOverride, API_URL } from "@/lib/api";
-import type { ERPAdapter, ERPConnection, CanonicalEndpoint } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import type { ERPAdapter, ERPConnection, CanonicalEndpoint, CircuitBreakerState } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import {
   Plug, CheckCircle, XCircle, RefreshCw, Plus, Database,
   Activity, Loader2, X, AlertCircle, Code, Layers, Globe, Play,
-  Settings, Trash2, Wifi, Eye, EyeOff, Shield, Key,
+  Settings, Trash2, Wifi, Eye, EyeOff, Shield, Key, ShieldAlert, ShieldCheck,
 } from "lucide-react";
 import { IconERP_SAP, IconERP_Cloud, IconERP_Generic, IconERP_Odoo } from "@/components/icons/AtheonIcons";
 import { useAppStore } from "@/stores/appStore";
@@ -172,9 +173,11 @@ export function IntegrationsPage() {
   const { activeTab, setActiveTab } = useTabState('connections');
   const user = useAppStore((s) => s.user);
   const activeTenantId = useAppStore((s) => s.activeTenantId);
+  const toast = useToast();
   const [adapters, setAdapters] = useState<ERPAdapter[]>([]);
   const [connections, setConnections] = useState<ERPConnection[]>([]);
   const [endpoints, setEndpoints] = useState<CanonicalEndpoint[]>([]);
+  const [circuitStates, setCircuitStates] = useState<Record<string, CircuitBreakerState>>({});
   const [loading, setLoading] = useState(true);
   const [showConnect, setShowConnect] = useState(false);
   const [connectForm, setConnectForm] = useState({ adapterId: '', name: '', syncFrequency: 'daily' });
@@ -206,21 +209,51 @@ export function IntegrationsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  const refreshCircuitStates = useCallback(async (conns: ERPConnection[]) => {
+    if (conns.length === 0) return;
+    const entries = await Promise.all(
+      conns.map(async (c) => {
+        try {
+          const s = await api.erp.circuitState(c.id);
+          return [c.id, s] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const next: Record<string, CircuitBreakerState> = {};
+    for (const e of entries) if (e) next[e[0]] = e[1];
+    setCircuitStates(next);
+  }, []);
+
   const refreshConnections = useCallback(async () => {
     try {
       const c = await api.erp.connections();
       setConnections(c.connections);
-    } catch (err) { console.error('Failed to refresh connections', err); }
-  }, []);
+      refreshCircuitStates(c.connections);
+    } catch (err) {
+      console.error('Failed to refresh connections', err);
+      toast.error('Failed to refresh connections', {
+        message: err instanceof Error ? err.message : undefined,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    }
+  }, [refreshCircuitStates, toast]);
 
   const handleSync = async (connectionId: string) => {
     setSyncing(connectionId);
     setActionError(null);
     try {
-      await api.erp.sync(connectionId);
+      const r = await api.erp.sync(connectionId);
       await refreshConnections();
+      toast.success('Sync complete', `${r.recordsSynced.toLocaleString()} records synced`);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Sync failed');
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      setActionError(msg);
+      toast.error('Sync failed', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
     setSyncing(null);
   };
@@ -249,12 +282,18 @@ export function IntegrationsPage() {
         config,
       });
       await refreshConnections();
+      toast.success('Connection created', connectForm.name.trim());
       setShowConnect(false);
       setConnectForm({ adapterId: '', name: '', syncFrequency: 'daily' });
       setCredentialValues({});
       setSelectedAuth('');
     } catch (err) {
-      setConnectError(err instanceof Error ? err.message : 'Connection failed');
+      const msg = err instanceof Error ? err.message : 'Connection failed';
+      setConnectError(msg);
+      toast.error('Failed to create connection', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
     setConnecting(false);
   };
@@ -274,8 +313,17 @@ export function IntegrationsPage() {
     try {
       const result = await api.erp.testConnection(connectionId);
       setTestResult({ id: connectionId, ...result });
+      // Refresh circuit state — test goes through the breaker
+      try {
+        const cs = await api.erp.circuitState(connectionId);
+        setCircuitStates(prev => ({ ...prev, [connectionId]: cs }));
+      } catch { /* ignore */ }
     } catch (err) {
       setTestResult({ id: connectionId, connected: false, message: err instanceof Error ? err.message : 'Test failed' });
+      toast.error('Test failed', {
+        message: err instanceof Error ? err.message : undefined,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
     setTesting(null);
   };
@@ -286,8 +334,14 @@ export function IntegrationsPage() {
       await api.erp.deleteConnection(connectionId);
       await refreshConnections();
       setConfirmDelete(null);
+      toast.success('Connection deleted');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Delete failed');
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      setActionError(msg);
+      toast.error('Delete failed', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
     setDeleting(null);
   };
@@ -319,10 +373,16 @@ export function IntegrationsPage() {
       if (Object.keys(updates).length > 0) {
         await api.erp.updateConnection(configureConn.id, updates);
         await refreshConnections();
+        toast.success('Connection updated', configureConn.name);
       }
       setConfigureConn(null);
     } catch (err) {
-      setConfigError(err instanceof Error ? err.message : 'Save failed');
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setConfigError(msg);
+      toast.error('Failed to save configuration', {
+        message: msg,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
     }
     setConfigSaving(false);
   };
@@ -336,11 +396,35 @@ export function IntegrationsPage() {
         api.erp.canonical(),
       ]);
       if (a.status === 'fulfilled') setAdapters(a.value.adapters);
-      if (c.status === 'fulfilled') setConnections(c.value.connections);
+      else {
+        const err = a.reason;
+        toast.error('Failed to load adapters', {
+          message: err instanceof Error ? err.message : undefined,
+          requestId: err instanceof ApiError ? err.requestId : null,
+        });
+      }
+      if (c.status === 'fulfilled') {
+        setConnections(c.value.connections);
+        refreshCircuitStates(c.value.connections);
+      } else {
+        const err = c.reason;
+        toast.error('Failed to load connections', {
+          message: err instanceof Error ? err.message : undefined,
+          requestId: err instanceof ApiError ? err.requestId : null,
+        });
+      }
       if (e.status === 'fulfilled') setEndpoints(e.value.endpoints);
+      else {
+        const err = e.reason;
+        toast.error('Failed to load canonical schema', {
+          message: err instanceof Error ? err.message : undefined,
+          requestId: err instanceof ApiError ? err.requestId : null,
+        });
+      }
       setLoading(false);
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
@@ -628,12 +712,29 @@ export function IntegrationsPage() {
                         </div>
                       </div>
                     </div>
-                    <Badge variant={conn.status === 'connected' ? 'success' : conn.status === 'syncing' ? 'info' : conn.status === 'error' ? 'danger' : 'default'}>
-                      {conn.status === 'connected' && <CheckCircle size={10} className="mr-1" />}
-                      {conn.status === 'syncing' && <RefreshCw size={10} className="mr-1 animate-spin" />}
-                      {conn.status === 'error' && <XCircle size={10} className="mr-1" />}
-                      {conn.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const cb = circuitStates[conn.id];
+                        if (!cb || cb.state === 'CLOSED') return null;
+                        const openedStr = cb.openedAt ? new Date(cb.openedAt).toLocaleTimeString() : '—';
+                        const title = `Circuit ${cb.state} — ${cb.failures} failure(s)${cb.openedAt ? `, opened ${openedStr}` : ''}. Adapter is ${cb.state === 'OPEN' ? 'blocking' : 'probing'} calls.`;
+                        const variant: 'danger' | 'warning' = cb.state === 'OPEN' ? 'danger' : 'warning';
+                        const Icon = cb.state === 'OPEN' ? ShieldAlert : ShieldCheck;
+                        return (
+                          <span title={title} className="inline-flex">
+                            <Badge variant={variant}>
+                              <Icon size={10} className="mr-1" /> Circuit {cb.state}
+                            </Badge>
+                          </span>
+                        );
+                      })()}
+                      <Badge variant={conn.status === 'connected' ? 'success' : conn.status === 'syncing' ? 'info' : conn.status === 'error' ? 'danger' : 'default'}>
+                        {conn.status === 'connected' && <CheckCircle size={10} className="mr-1" />}
+                        {conn.status === 'syncing' && <RefreshCw size={10} className="mr-1 animate-spin" />}
+                        {conn.status === 'error' && <XCircle size={10} className="mr-1" />}
+                        {conn.status}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
@@ -811,16 +912,16 @@ export function IntegrationsPage() {
                                   setTryingEndpoint(ep.id);
                                   setTryLoading(true);
                                   setTryResult(null);
-                                  const apiUrl = API_URL;
-                                  fetch(`${apiUrl}${ep.path}?tenant_id=${encodeURIComponent(getTenantOverride() || activeTenantId || user?.tenantId || '')}`, {
-                                    headers: { 'Authorization': `Bearer ${localStorage.getItem('atheon_token') || ''}` },
-                                  })
-                                    .then(async (res) => {
-                                      const data = await res.json().catch(() => ({}));
-                                      setTryResult({ endpointId: ep.id, status: res.status, data });
+                                  const tenantQs = activeTenantId || user?.tenantId;
+                                  const url = tenantQs ? `${ep.path}?tenant_id=${encodeURIComponent(tenantQs)}` : ep.path;
+                                  api.get(url)
+                                    .then((data) => {
+                                      setTryResult({ endpointId: ep.id, status: 200, data });
                                     })
-                                    .catch(() => {
-                                      setTryResult({ endpointId: ep.id, status: 0, data: { error: 'Network error' } });
+                                    .catch((err) => {
+                                      const status = err instanceof ApiError ? err.status : 0;
+                                      const message = err instanceof Error ? err.message : 'Network error';
+                                      setTryResult({ endpointId: ep.id, status, data: { error: message } });
                                     })
                                     .finally(() => setTryLoading(false));
                                 }

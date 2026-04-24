@@ -603,6 +603,9 @@ export const api = {
     },
     sync: (connectionId: string) =>
       request<{ recordsSynced: number; syncedAt: string }>(`/api/erp/sync/${connectionId}`, { method: 'POST' }),
+    // Spec 7 CIRCUIT-3: circuit breaker state for a connection (CLOSED/OPEN/HALF_OPEN)
+    circuitState: (connectionId: string) =>
+      request<CircuitBreakerState>(`/api/erp/connections/${connectionId}/circuit`),
   },
 
   controlplane: {
@@ -1917,6 +1920,14 @@ export interface ERPConnection {
   syncFrequency: string;
   recordsSynced: number;
   connectedAt: string | null;
+}
+
+// Spec 7 CIRCUIT-3: returned by GET /api/erp/connections/:id/circuit
+export interface CircuitBreakerState {
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  failures: number;
+  openedAt: number | null;
+  lastAttempt: number | null;
 }
 
 export interface CanonicalEndpoint {
