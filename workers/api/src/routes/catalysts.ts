@@ -11,7 +11,7 @@ import {
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
-import { loadLlmConfig, llmChatWithFallback, stripCodeFences } from '../services/llm-provider';
+import { loadLlmConfig, llmChatWithFallback, stripCodeFences, checkAndReserveBudget, recordLlmUsage, estimateTokensFor } from '../services/llm-provider';
 import type { LlmMessage } from '../services/llm-provider';
 import { logInfo, logWarn } from '../services/logger';
 
@@ -3155,11 +3155,32 @@ Provide your analysis as JSON.`;
     { role: 'user', content: userPrompt },
   ];
 
+  // ── Budget: reserve an estimate before the call; deny if over monthly cap.
+  const estimatedTokens = estimateTokensFor(messages) + 1024;
+  const budget = await checkAndReserveBudget(db, tenantId, estimatedTokens);
+  if (!budget.allowed) {
+    console.warn(`catalyst.reasoning LLM blocked for tenant ${tenantId}: ${budget.reason}`);
+    return null;
+  }
+
   const llmResponse = await llmChatWithFallback(config, ai, messages, {
     maxTokens: 1024,
     temperature: 0.3,
     timeoutMs: 12000,
   });
+
+  // ── Record actual usage + reconcile.
+  await recordLlmUsage(
+    db,
+    tenantId,
+    config.provider,
+    config.model_id || 'default',
+    'catalyst.reasoning',
+    llmResponse.tokensIn,
+    llmResponse.tokensOut,
+    undefined,
+    estimatedTokens,
+  );
 
   const cleaned = stripCodeFences(llmResponse.text);
   const parsed = JSON.parse(cleaned) as {

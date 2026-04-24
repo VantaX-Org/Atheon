@@ -3,6 +3,13 @@ import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { optimizedChat } from '../services/ai-cost-optimizer';
 import { ragQuery } from '../services/vectorize';
+import { redactPII } from '../services/pii-redaction';
+import {
+  checkAndReserveBudget,
+  recordLlmUsage,
+  isRedactionEnabled,
+  estimateTokensFor,
+} from '../services/llm-provider';
 
 const mind = new Hono<AppBindings>();
 
@@ -160,6 +167,45 @@ mind.post('/query', async (c) => {
 
   const tenantId = getTenantId(c);
 
+  // ── PII redaction — run BEFORE we ever send user text to the LLM provider.
+  // Tenants can opt out via tenant_llm_budget.llm_redaction_enabled (default ON).
+  const redactionEnabled = await isRedactionEnabled(c.env.DB, tenantId);
+  let originalQuery = body.query;
+  let originalContext = body.context;
+  if (redactionEnabled) {
+    const qRedaction = redactPII(body.query);
+    const cRedaction = body.context ? redactPII(body.context) : null;
+    const anyRedactions = qRedaction.anyRedactions || (cRedaction?.anyRedactions ?? false);
+    if (anyRedactions) {
+      const rulesFired = new Set<string>([
+        ...qRedaction.matches.map(m => m.rule),
+        ...(cRedaction?.matches.map(m => m.rule) ?? []),
+      ]);
+      const auth = c.get('auth') as AuthContext | undefined;
+      try {
+        await c.env.DB.prepare(
+          'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        ).bind(
+          crypto.randomUUID(),
+          tenantId,
+          auth?.userId ?? null,
+          'pii.redacted',
+          'llm',
+          'mind.query',
+          JSON.stringify({ rules: Array.from(rulesFired), endpoint: 'mind.query' }),
+          'success',
+        ).run();
+      } catch (auditErr) {
+        console.error('PII redaction audit log failed (non-fatal):', auditErr);
+      }
+    }
+    originalQuery = qRedaction.redacted;
+    if (cRedaction) originalContext = cRedaction.redacted;
+  }
+  // From here on, use originalQuery / originalContext — never body.query / body.context.
+  body.query = originalQuery;
+  body.context = originalContext;
+
   // Check sub-catalyst restrictions — if query references a disabled sub-catalyst, restrict the response
   const restriction = await checkSubCatalystRestriction(c.env.DB, tenantId, body.query);
   if (restriction.restricted) {
@@ -238,6 +284,22 @@ mind.post('/query', async (c) => {
   let tokensOut = 0;
   let costMeta: { cached: boolean; complexity: string; estimatedCostUSD: number; monthlyTotalUSD: number } | undefined;
 
+  // ── Budget check: reserve estimated tokens before the call.
+  // We estimate from prompt length + tier's maxTokens ceiling for the completion.
+  const estimatedTokens = estimateTokensFor(systemPrompt + '\n' + body.query + '\n' + (body.context || ''))
+    + (tierConfig.maxTokens || 2048);
+  const budget = await checkAndReserveBudget(c.env.DB, tenantId, estimatedTokens);
+  if (!budget.allowed) {
+    return c.json(
+      {
+        error: 'LLM token budget exceeded',
+        message: budget.reason || 'Monthly LLM token budget exceeded for this tenant.',
+        remaining: budget.remaining,
+      },
+      429,
+    );
+  }
+
   try {
     // Step 1: RAG retrieval for real citations from Vectorize
     let ragContext = '';
@@ -292,6 +354,19 @@ mind.post('/query', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO mind_queries (id, tenant_id, query, response, tier, tokens_in, tokens_out, latency_ms, citations) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(queryId, tenantId, body.query, response, tierKey, tokensIn, tokensOut, latency, JSON.stringify(citations)).run();
+
+  // ── Record actual usage + reconcile reservation.
+  await recordLlmUsage(
+    c.env.DB,
+    tenantId,
+    'workers-ai', // optimizedChat currently routes through Ollama/Workers AI internally
+    tierConfig.model || tierKey,
+    'mind.query',
+    tokensIn,
+    tokensOut,
+    queryId,
+    estimatedTokens,
+  );
 
   return c.json({
     id: queryId,

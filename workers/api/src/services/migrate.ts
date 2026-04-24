@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v43-webhooks';
+export const MIGRATION_VERSION = 'v44-llm';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -119,6 +119,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS assessment_data_quality (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, table_name TEXT NOT NULL, total_records INTEGER NOT NULL DEFAULT 0, complete_records INTEGER NOT NULL DEFAULT 0, completeness_pct REAL NOT NULL DEFAULT 0, field_scores TEXT NOT NULL DEFAULT '{}', referential_issues INTEGER NOT NULL DEFAULT 0, duplicate_records INTEGER NOT NULL DEFAULT 0, orphan_records INTEGER NOT NULL DEFAULT 0, stale_records INTEGER NOT NULL DEFAULT 0, overall_quality_score REAL NOT NULL DEFAULT 0, issues TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessment_process_timing (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, process_name TEXT NOT NULL, avg_cycle_time_days REAL NOT NULL DEFAULT 0, median_cycle_time_days REAL NOT NULL DEFAULT 0, p90_cycle_time_days REAL NOT NULL DEFAULT 0, benchmark_cycle_time_days REAL NOT NULL DEFAULT 0, bottleneck_step TEXT, bottleneck_avg_days REAL NOT NULL DEFAULT 0, records_analysed INTEGER NOT NULL DEFAULT 0, records_exceeding_benchmark INTEGER NOT NULL DEFAULT 0, financial_impact_of_delay REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessment_value_summary (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, total_immediate_value REAL NOT NULL DEFAULT 0, total_ongoing_monthly_value REAL NOT NULL DEFAULT 0, total_ongoing_annual_value REAL NOT NULL DEFAULT 0, total_data_quality_issues INTEGER NOT NULL DEFAULT 0, total_process_delays INTEGER NOT NULL DEFAULT 0, total_findings INTEGER NOT NULL DEFAULT 0, total_critical_findings INTEGER NOT NULL DEFAULT 0, outcome_based_monthly_fee REAL NOT NULL DEFAULT 0, outcome_based_fee_pct REAL NOT NULL DEFAULT 0, payback_days INTEGER NOT NULL DEFAULT 0, value_by_domain TEXT NOT NULL DEFAULT '{}', value_by_category TEXT NOT NULL DEFAULT '{}', executive_narrative TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS tenant_llm_budget (tenant_id TEXT PRIMARY KEY, monthly_token_budget INTEGER, tokens_used_this_month INTEGER NOT NULL DEFAULT 0, tokens_reset_at TEXT, llm_redaction_enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS tenant_llm_usage (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, endpoint TEXT, request_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -282,6 +284,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_assessment_timing_tenant ON assessment_process_timing(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_assessment_value_summary ON assessment_value_summary(assessment_id)',
     'CREATE INDEX IF NOT EXISTS idx_assessment_value_summary_tenant ON assessment_value_summary(tenant_id)',
+    // LLM budget + PII redaction (v40)
+    'CREATE INDEX IF NOT EXISTS idx_tenant_llm_usage_tenant ON tenant_llm_usage(tenant_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_tenant_llm_usage_provider ON tenant_llm_usage(tenant_id, provider)',
   ];
 
   for (const idx of indexes) {
