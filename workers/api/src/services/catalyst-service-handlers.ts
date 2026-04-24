@@ -7,16 +7,8 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
+import { taskText, anyWord as anyOf } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
-
-function taskText(task: TaskDefinition): string {
-  const domain = typeof task.inputData.domain === 'string' ? task.inputData.domain : '';
-  return `${task.catalystName} ${task.action} ${domain}`.toLowerCase();
-}
-
-function anyOf(s: string, ...terms: string[]): boolean {
-  return terms.some(t => s.includes(t));
-}
 
 // ── HEALTHCARE ──────────────────────────────────────────────────────────
 
@@ -125,15 +117,84 @@ async function runHealthcareComplianceRiskScan(task: TaskDefinition, db: D1Datab
   };
 }
 
+async function runHealthcareReadmissionFlag(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const anomalies = await db.prepare(
+    `SELECT metric, severity, expected_value, actual_value, deviation, hypothesis, detected_at
+     FROM anomalies
+     WHERE tenant_id = ? AND status = 'open'
+       AND (LOWER(metric) LIKE '%readmission%' OR LOWER(metric) LIKE '%bounce%' OR LOWER(metric) LIKE '%return visit%' OR LOWER(metric) LIKE '%30-day%')
+     ORDER BY deviation DESC LIMIT 15`,
+  ).bind(task.tenantId).all();
+
+  const metrics = await db.prepare(
+    `SELECT name, value, unit, status, threshold_red FROM process_metrics
+     WHERE tenant_id = ? AND (LOWER(name) LIKE '%readmission%' OR LOWER(name) LIKE '%30-day%')
+     ORDER BY measured_at DESC LIMIT 10`,
+  ).bind(task.tenantId).all();
+
+  const breaches = metrics.results.filter(m => (m as { status: string }).status === 'red');
+
+  return {
+    type: 'healthcare_readmission_flag',
+    openAnomalies: anomalies.results.length,
+    redMetrics: breaches.length,
+    anomalies: anomalies.results,
+    metrics: metrics.results,
+    recommendation: anomalies.results.length > 0 || breaches.length > 0
+      ? `${anomalies.results.length + breaches.length} readmission signal(s) elevated — trigger case-management review for affected service lines`
+      : metrics.results.length === 0
+        ? 'No readmission metrics ingested — wire up encounter/episode data'
+        : 'Readmission rates within target',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runHealthcareSupplyShortages(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const critical = await db.prepare(
+    `SELECT sku, name, category, stock_on_hand, reorder_level, warehouse
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1
+       AND (LOWER(category) LIKE '%med%' OR LOWER(category) LIKE '%pharma%' OR LOWER(category) LIKE '%consumable%'
+            OR LOWER(category) LIKE '%ppe%' OR LOWER(category) LIKE '%surgical%' OR LOWER(category) LIKE '%diagnostic%'
+            OR LOWER(category) LIKE '%dressing%' OR LOWER(category) LIKE '%reagent%')
+       AND (stock_on_hand <= 0 OR stock_on_hand < reorder_level * 0.25)
+     ORDER BY stock_on_hand ASC LIMIT 40`,
+  ).bind(task.tenantId).all();
+
+  const byCategory = await db.prepare(
+    `SELECT category, COUNT(*) as count
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1
+       AND (LOWER(category) LIKE '%med%' OR LOWER(category) LIKE '%consumable%' OR LOWER(category) LIKE '%ppe%')
+       AND stock_on_hand < reorder_level * 0.25
+     GROUP BY category ORDER BY count DESC`,
+  ).bind(task.tenantId).all();
+
+  return {
+    type: 'healthcare_supply_shortages',
+    criticalSupplies: critical.results.length,
+    items: critical.results,
+    byCategory: byCategory.results,
+    recommendation: critical.results.length > 0
+      ? `${critical.results.length} clinical supply(ies) critically low — escalate to procurement for same-day reorder`
+      : 'Clinical supply levels adequate',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const healthcareHandler: CatalystHandler = {
   name: 'domain:healthcare',
   match: t => {
     const s = taskText(t);
-    return anyOf(s, 'healthcare', 'clinical', 'patient', 'hospital', 'ndoh')
-      || (anyOf(s, 'staffing') && anyOf(s, 'coverage', 'rotation'));
+    return anyOf(s, 'healthcare', 'clinical', 'patient', 'hospital', 'ndoh', 'readmission')
+      || (anyOf(s, 'staffing') && anyOf(s, 'coverage', 'rotation'))
+      || (anyOf(s, 'supply', 'supplies') && anyOf(s, 'shortage', 'shortages', 'clinical', 'medical'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'readmission', 'bounce', '30-day')) return runHealthcareReadmissionFlag(task, db);
+    if (anyOf(s, 'supply', 'supplies', 'shortage', 'shortages') && anyOf(s, 'clinical', 'medical', 'healthcare', 'supply'))
+      return runHealthcareSupplyShortages(task, db);
     if (anyOf(s, 'compliance', 'clinical audit', 'popia', 'ndoh', 'privacy', 'regulatory')) return runHealthcareComplianceRiskScan(task, db);
     if (anyOf(s, 'collection', 'overdue', 'payer', 'receivable', 'billing')) return runHealthcareOverdueCollections(task, db);
     return runHealthcareStaffingCoverage(task, db);
@@ -223,16 +284,93 @@ async function runTechnologyChurnSignal(task: TaskDefinition, db: D1Database): P
   };
 }
 
+async function runTechnologySLOCompliance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const metrics = await db.prepare(
+    `SELECT name, value, unit, status, threshold_green, threshold_amber, threshold_red, measured_at
+     FROM process_metrics
+     WHERE tenant_id = ?
+       AND (LOWER(name) LIKE '%slo%' OR LOWER(name) LIKE '%sla%' OR LOWER(name) LIKE '%uptime%' OR LOWER(name) LIKE '%availability%' OR LOWER(name) LIKE '%p95%' OR LOWER(name) LIKE '%p99%')
+     ORDER BY measured_at DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const breaches = metrics.results.filter(m => (m as { status: string }).status === 'red');
+  const warning = metrics.results.filter(m => (m as { status: string }).status === 'amber');
+
+  return {
+    type: 'technology_slo_compliance',
+    metricCount: metrics.results.length,
+    burning: breaches.length,
+    warning: warning.length,
+    metrics: metrics.results,
+    recommendation: breaches.length > 0
+      ? `${breaches.length} SLO/SLA metric(s) burning — declare incident and freeze non-critical deploys`
+      : warning.length > 0
+        ? `${warning.length} SLO/SLA metric(s) amber — review error budget before next deploy`
+        : 'SLO/SLA compliance on target',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runTechnologyFeatureAdoption(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const metrics = await db.prepare(
+    `SELECT id, name, value, unit, status, measured_at FROM process_metrics
+     WHERE tenant_id = ?
+       AND (LOWER(name) LIKE '%adoption%' OR LOWER(name) LIKE '%activation%' OR LOWER(name) LIKE '%dau%' OR LOWER(name) LIKE '%mau%' OR LOWER(name) LIKE '%feature%')
+     ORDER BY measured_at DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const trends: Record<string, unknown>[] = [];
+  for (const m of metrics.results) {
+    const metric = m as { id: string; name: string; value: number };
+    const history = await db.prepare(
+      `SELECT value FROM process_metric_history
+       WHERE tenant_id = ? AND metric_id = ?
+       ORDER BY recorded_at DESC LIMIT 8`,
+    ).bind(task.tenantId, metric.id).all();
+    const values = history.results.map(h => (h as { value: number }).value || 0);
+    if (values.length < 2) {
+      trends.push({ metric: metric.name, currentValue: metric.value, note: 'insufficient history' });
+      continue;
+    }
+    const first = values[values.length - 1];
+    const last = values[0];
+    const changePct = first !== 0 ? ((last - first) / first) * 100 : 0;
+    trends.push({
+      metric: metric.name,
+      currentValue: metric.value,
+      trendPct: Math.round(changePct * 10) / 10,
+      sampleSize: values.length,
+    });
+  }
+
+  const stagnant = trends.filter(t => typeof t.trendPct === 'number' && (t.trendPct as number) < 1);
+
+  return {
+    type: 'technology_feature_adoption',
+    metricsAnalysed: trends.length,
+    stagnant: stagnant.length,
+    trends,
+    recommendation: stagnant.length > 0
+      ? `${stagnant.length} adoption metric(s) flat/declining — review onboarding and in-product nudges`
+      : trends.length === 0
+        ? 'No adoption metrics ingested — instrument DAU/MAU/feature-flag metrics'
+        : 'Adoption metrics trending positive',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const technologyHandler: CatalystHandler = {
   name: 'domain:technology',
   match: t => {
     const s = taskText(t);
-    return anyOf(s, 'technology', 'devops', 'sre', 'software', 'product')
+    return anyOf(s, 'technology', 'devops', 'sre', 'software', 'product', 'slo', 'sla', 'uptime', 'adoption')
       || (anyOf(s, 'security') && anyOf(s, 'alert', 'vuln', 'cve'))
       || (anyOf(s, 'customer') && anyOf(s, 'churn', 'retention'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'slo', 'sla', 'uptime', 'availability')) return runTechnologySLOCompliance(task, db);
+    if (anyOf(s, 'adoption', 'activation', 'dau', 'mau', 'feature adoption')) return runTechnologyFeatureAdoption(task, db);
     if (anyOf(s, 'security', 'vuln', 'cve', 'breach', 'threat')) return runTechnologySecurityAlerts(task, db);
     if (anyOf(s, 'churn', 'retention', 'customer success')) return runTechnologyChurnSignal(task, db);
     return runTechnologyIncidentTrend(task, db);
@@ -344,16 +482,94 @@ async function runFinServRegulatorySnapshot(task: TaskDefinition, db: D1Database
   };
 }
 
+async function runFinServCashFlowForecast(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const buckets = await db.prepare(
+    `SELECT
+       SUM(CASE WHEN due_date <= date('now', '+30 days') THEN amount_due ELSE 0 END) as due_30d,
+       SUM(CASE WHEN due_date > date('now', '+30 days') AND due_date <= date('now', '+60 days') THEN amount_due ELSE 0 END) as due_31_60d,
+       SUM(CASE WHEN due_date > date('now', '+60 days') AND due_date <= date('now', '+90 days') THEN amount_due ELSE 0 END) as due_61_90d,
+       SUM(CASE WHEN due_date > date('now', '+90 days') THEN amount_due ELSE 0 END) as due_90_plus,
+       SUM(CASE WHEN due_date < date('now') THEN amount_due ELSE 0 END) as overdue
+     FROM erp_invoices
+     WHERE tenant_id = ? AND payment_status IN ('unpaid', 'partial')`,
+  ).bind(task.tenantId).first<{
+    due_30d: number; due_31_60d: number; due_61_90d: number; due_90_plus: number; overdue: number;
+  }>();
+
+  const next30 = buckets?.due_30d || 0;
+  const overdue = buckets?.overdue || 0;
+
+  return {
+    type: 'finserv_cash_flow_forecast',
+    overdueReceivable: Math.round(overdue * 100) / 100,
+    next30Days: Math.round(next30 * 100) / 100,
+    next31To60Days: Math.round((buckets?.due_31_60d || 0) * 100) / 100,
+    next61To90Days: Math.round((buckets?.due_61_90d || 0) * 100) / 100,
+    beyond90Days: Math.round((buckets?.due_90_plus || 0) * 100) / 100,
+    recommendation: overdue > next30
+      ? `Overdue (R${Math.round(overdue).toLocaleString()}) exceeds next-30d expected inflows — accelerate collections`
+      : next30 > 0
+        ? `R${Math.round(next30).toLocaleString()} due in next 30 days — prepare treasury disbursement plan`
+        : 'No material near-term receivables',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runFinServConcentrationRisk(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const byGroup = await db.prepare(
+    `SELECT c.customer_group,
+            COUNT(DISTINCT c.id) as customer_count,
+            COALESCE(SUM(i.total), 0) as total_revenue
+     FROM erp_customers c
+     LEFT JOIN erp_invoices i ON i.customer_id = c.id AND i.tenant_id = c.tenant_id AND i.status != 'cancelled'
+     WHERE c.tenant_id = ? AND c.status = 'active'
+     GROUP BY c.customer_group
+     ORDER BY total_revenue DESC`,
+  ).bind(task.tenantId).all();
+
+  const totalRevenue = byGroup.results.reduce((s, r) => s + ((r as { total_revenue: number }).total_revenue || 0), 0);
+  const groups = byGroup.results.map(r => {
+    const row = r as { customer_group: string; customer_count: number; total_revenue: number };
+    const pct = totalRevenue > 0 ? (row.total_revenue / totalRevenue) * 100 : 0;
+    return {
+      group: row.customer_group,
+      customers: row.customer_count,
+      revenue: Math.round((row.total_revenue || 0) * 100) / 100,
+      sharePct: Math.round(pct * 10) / 10,
+    };
+  });
+
+  const dominant = groups.filter(g => g.sharePct > 40);
+
+  return {
+    type: 'finserv_concentration_risk',
+    totalRevenue: Math.round(totalRevenue * 100) / 100,
+    groupCount: groups.length,
+    dominantSegments: dominant.length,
+    groups,
+    recommendation: dominant.length > 0
+      ? `${dominant.length} customer segment(s) exceed 40% revenue share — concentration risk elevated, diversify`
+      : totalRevenue === 0
+        ? 'No invoice revenue to analyse'
+        : 'Customer concentration within policy',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const finServHandler: CatalystHandler = {
   name: 'domain:financial-services',
   match: t => {
     const s = taskText(t);
     return anyOf(s, 'finserv', 'financial-services', 'banking', 'insurance', 'portfolio')
       || (anyOf(s, 'credit') && anyOf(s, 'exposure', 'limit', 'utilization'))
-      || (anyOf(s, 'regulatory') && anyOf(s, 'snapshot', 'report'));
+      || (anyOf(s, 'regulatory') && anyOf(s, 'snapshot', 'report'))
+      || (anyOf(s, 'cash') && anyOf(s, 'flow', 'forecast'))
+      || (anyOf(s, 'concentration') && anyOf(s, 'risk', 'segment'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'cash') && anyOf(s, 'flow', 'forecast')) return runFinServCashFlowForecast(task, db);
+    if (anyOf(s, 'concentration', 'diversification')) return runFinServConcentrationRisk(task, db);
     if (anyOf(s, 'credit', 'exposure', 'limit', 'utilization')) return runFinServCreditExposure(task, db);
     if (anyOf(s, 'regulatory', 'snapshot', 'audit trail')) return runFinServRegulatorySnapshot(task, db);
     return runFinServPortfolioRisk(task, db);

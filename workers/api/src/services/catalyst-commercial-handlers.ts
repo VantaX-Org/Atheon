@@ -7,16 +7,8 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
+import { taskText, anyWord as anyOf } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
-
-function taskText(task: TaskDefinition): string {
-  const domain = typeof task.inputData.domain === 'string' ? task.inputData.domain : '';
-  return `${task.catalystName} ${task.action} ${domain}`.toLowerCase();
-}
-
-function anyOf(s: string, ...terms: string[]): boolean {
-  return terms.some(t => s.includes(t));
-}
 
 // ── RETAIL ──────────────────────────────────────────────────────────────
 
@@ -120,19 +112,82 @@ async function runRetailCustomerSegmentation(task: TaskDefinition, db: D1Databas
   };
 }
 
+async function runRetailTopCustomers(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const top = await db.prepare(
+    `SELECT c.name, c.customer_group,
+            COUNT(i.id) as invoice_count,
+            COALESCE(SUM(i.total), 0) as lifetime_value,
+            COALESCE(MAX(i.invoice_date), '') as last_purchase
+     FROM erp_customers c
+     LEFT JOIN erp_invoices i ON i.customer_id = c.id AND i.tenant_id = c.tenant_id AND i.status != 'cancelled'
+     WHERE c.tenant_id = ?
+     GROUP BY c.id, c.name, c.customer_group
+     ORDER BY lifetime_value DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const totalLtv = top.results.reduce((s, r) => s + ((r as { lifetime_value: number }).lifetime_value || 0), 0);
+  const topTenLtv = top.results.slice(0, 10).reduce((s, r) => s + ((r as { lifetime_value: number }).lifetime_value || 0), 0);
+  const concentration = totalLtv > 0 ? (topTenLtv / totalLtv) * 100 : 0;
+
+  return {
+    type: 'retail_top_customers',
+    customersAnalysed: top.results.length,
+    top10Concentration: Math.round(concentration * 10) / 10,
+    totalLifetimeValue: Math.round(totalLtv * 100) / 100,
+    customers: top.results,
+    recommendation: concentration > 60
+      ? `Top 10 customers account for ${Math.round(concentration)}% of revenue — diversify with mid-tier retention plays`
+      : top.results.length === 0
+        ? 'No purchase history yet — ingest POS/invoice data'
+        : `Top 10 customers account for ${Math.round(concentration)}% of revenue — healthy diversification`,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runRetailPricingAdvice(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // Surface SKUs with weak margin (cost / selling < X%) and slow turnover (high stock).
+  const weakMargin = await db.prepare(
+    `SELECT sku, name, category, cost_price, selling_price, stock_on_hand,
+            CASE WHEN selling_price > 0 THEN ROUND((1 - cost_price/selling_price) * 100, 1) ELSE 0 END as margin_pct
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1 AND selling_price > 0 AND cost_price > 0
+       AND (cost_price / selling_price) > 0.75
+     ORDER BY margin_pct ASC LIMIT 25`,
+  ).bind(task.tenantId).all();
+
+  const overstocked = await db.prepare(
+    `SELECT sku, name, category, stock_on_hand, reorder_level, selling_price
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1 AND reorder_level > 0 AND stock_on_hand > reorder_level * 5
+     ORDER BY (stock_on_hand * selling_price) DESC LIMIT 15`,
+  ).bind(task.tenantId).all();
+
+  return {
+    type: 'retail_pricing_advice',
+    weakMarginSkus: weakMargin.results.length,
+    overstockedSkus: overstocked.results.length,
+    weakMargin: weakMargin.results,
+    overstocked: overstocked.results,
+    recommendation: (weakMargin.results.length + overstocked.results.length) > 0
+      ? `${weakMargin.results.length} SKU(s) under 25% margin, ${overstocked.results.length} overstocked — review pricing and clearance plans`
+      : 'Margin and stock turnover within target',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const retailHandler: CatalystHandler = {
   name: 'domain:retail',
   match: t => {
     const s = taskText(t);
-    // 'pos' intentionally excluded — it's a common substring (e.g. "exposure")
-    // and causes cross-domain false positives. Retail POS tasks should set
-    // catalystName containing "retail" or an explicit inputData.domain.
-    return anyOf(s, 'retail', 'basket', 'storefront')
-      || (anyOf(s, 'customer') && anyOf(s, 'segment'));
+    return anyOf(s, 'retail', 'pos', 'basket', 'storefront')
+      || (anyOf(s, 'customer') && anyOf(s, 'segment', 'lifetime', 'ltv', 'top'))
+      || (anyOf(s, 'pricing') && anyOf(s, 'advice', 'margin', 'review'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
     if (anyOf(s, 'stock', 'oos', 'out-of-stock', 'out of stock')) return runRetailOutOfStock(task, db);
+    if (anyOf(s, 'lifetime', 'ltv', 'top customer', 'top-customer')) return runRetailTopCustomers(task, db);
+    if (anyOf(s, 'pricing', 'margin', 'markup')) return runRetailPricingAdvice(task, db);
     if (anyOf(s, 'customer', 'segment')) return runRetailCustomerSegmentation(task, db);
     return runRetailBasketAnalysis(task, db);
   },
@@ -238,15 +293,78 @@ async function runFMCGPromotionEffectiveness(task: TaskDefinition, db: D1Databas
   };
 }
 
+async function runFMCGCategoryPerformance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const byCategory = await db.prepare(
+    `SELECT category,
+            COUNT(*) as sku_count,
+            SUM(stock_on_hand) as total_units,
+            SUM(stock_on_hand * cost_price) as inventory_value,
+            AVG(CASE WHEN selling_price > 0 AND cost_price > 0 THEN (1 - cost_price/selling_price) * 100 ELSE NULL END) as avg_margin_pct,
+            SUM(CASE WHEN stock_on_hand <= 0 THEN 1 ELSE 0 END) as oos_count
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1
+     GROUP BY category
+     ORDER BY inventory_value DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const totalValue = byCategory.results.reduce((s, r) => s + ((r as { inventory_value: number }).inventory_value || 0), 0);
+
+  return {
+    type: 'fmcg_category_performance',
+    categoryCount: byCategory.results.length,
+    totalInventoryValue: Math.round(totalValue * 100) / 100,
+    categories: byCategory.results,
+    recommendation: byCategory.results.length === 0
+      ? 'No categorised products — populate category field to enable analysis'
+      : `Top category by value holds R${Math.round((byCategory.results[0] as { inventory_value: number }).inventory_value || 0).toLocaleString()} — review demand coverage`,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runFMCGTradeSpend(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const tradeInvoices = await db.prepare(
+    `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as total_spend
+     FROM erp_invoices
+     WHERE tenant_id = ?
+       AND invoice_date >= date('now', '-90 days')
+       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(reference) LIKE '%campaign%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')`,
+  ).bind(task.tenantId).first<{ count: number; total_spend: number }>();
+
+  const topDistributors = await db.prepare(
+    `SELECT customer_name, COUNT(*) as invoice_count, SUM(total) as total_spend
+     FROM erp_invoices
+     WHERE tenant_id = ?
+       AND invoice_date >= date('now', '-90 days')
+       AND (LOWER(reference) LIKE '%promo%' OR LOWER(reference) LIKE '%trade%' OR LOWER(notes) LIKE '%promo%' OR LOWER(notes) LIKE '%trade%')
+     GROUP BY customer_name
+     ORDER BY total_spend DESC LIMIT 10`,
+  ).bind(task.tenantId).all();
+
+  return {
+    type: 'fmcg_trade_spend',
+    window: 'last_90_days',
+    tradeInvoiceCount: tradeInvoices?.count || 0,
+    totalTradeSpend: Math.round((tradeInvoices?.total_spend || 0) * 100) / 100,
+    topDistributors: topDistributors.results,
+    recommendation: (tradeInvoices?.count || 0) === 0
+      ? 'No trade/promo-tagged invoices found — tag invoice reference or notes to enable trade-spend analysis'
+      : `Trade spend R${Math.round(tradeInvoices?.total_spend || 0).toLocaleString()} across ${tradeInvoices?.count || 0} invoice(s) — review ROI with top partners`,
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const fmcgHandler: CatalystHandler = {
   name: 'domain:fmcg',
   match: t => {
     const s = taskText(t);
     return anyOf(s, 'fmcg', 'distributor', 'shelf', 'promotion', 'promo')
-      || (anyOf(s, 'trade') && anyOf(s, 'promotion', 'promo', 'campaign'));
+      || (anyOf(s, 'trade') && anyOf(s, 'promotion', 'promo', 'campaign', 'spend'))
+      || (anyOf(s, 'category') && anyOf(s, 'performance', 'review', 'mix'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'category') && anyOf(s, 'performance', 'review', 'mix')) return runFMCGCategoryPerformance(task, db);
+    if (anyOf(s, 'trade spend') || (anyOf(s, 'trade') && anyOf(s, 'spend'))) return runFMCGTradeSpend(task, db);
     if (anyOf(s, 'distributor', 'wholesale', 'reseller')) return runFMCGDistributorPerformance(task, db);
     if (anyOf(s, 'promotion', 'promo', 'campaign', 'lift')) return runFMCGPromotionEffectiveness(task, db);
     return runFMCGShelfStockout(task, db);
@@ -326,6 +444,91 @@ async function runAgricultureSupplierRisk(task: TaskDefinition, db: D1Database):
   };
 }
 
+async function runAgricultureYieldVariance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const yieldMetrics = await db.prepare(
+    `SELECT id, name, value, unit, status FROM process_metrics
+     WHERE tenant_id = ? AND LOWER(name) LIKE '%yield%'
+     ORDER BY measured_at DESC LIMIT 10`,
+  ).bind(task.tenantId).all();
+
+  const analyses: Record<string, unknown>[] = [];
+  for (const m of yieldMetrics.results) {
+    const metric = m as { id: string; name: string; value: number; unit: string };
+    const history = await db.prepare(
+      `SELECT value FROM process_metric_history
+       WHERE tenant_id = ? AND metric_id = ?
+       ORDER BY recorded_at DESC LIMIT 12`,
+    ).bind(task.tenantId, metric.id).all();
+    const values = history.results.map(h => (h as { value: number }).value || 0);
+    if (values.length < 2) {
+      analyses.push({ metric: metric.name, currentValue: metric.value, note: 'Insufficient history', sampleSize: values.length });
+      continue;
+    }
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+    const stdev = Math.sqrt(variance);
+    const cv = mean !== 0 ? (stdev / Math.abs(mean)) * 100 : 0;
+    analyses.push({
+      metric: metric.name,
+      currentValue: metric.value,
+      mean: Math.round(mean * 100) / 100,
+      stdev: Math.round(stdev * 100) / 100,
+      coefficientOfVariationPct: Math.round(cv * 10) / 10,
+      sampleSize: values.length,
+    });
+  }
+
+  const volatile = analyses.filter(a => typeof a.coefficientOfVariationPct === 'number' && (a.coefficientOfVariationPct as number) > 20);
+
+  return {
+    type: 'agriculture_yield_variance',
+    metricsAnalysed: analyses.length,
+    volatile: volatile.length,
+    analyses,
+    recommendation: volatile.length > 0
+      ? `${volatile.length} yield metric(s) with CV >20% — investigate agronomy inputs and planting rotation`
+      : analyses.length === 0
+        ? 'No yield metrics ingested — wire up field/sensor data'
+        : 'Yield stability within acceptable range',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runAgricultureSeasonalDemand(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const monthly = await db.prepare(
+    `SELECT strftime('%Y-%m', invoice_date) as month,
+            COUNT(*) as invoice_count,
+            COALESCE(SUM(total), 0) as revenue
+     FROM erp_invoices
+     WHERE tenant_id = ? AND invoice_date IS NOT NULL AND status != 'cancelled'
+       AND invoice_date >= date('now', '-12 months')
+     GROUP BY month
+     ORDER BY month DESC`,
+  ).bind(task.tenantId).all();
+
+  const revenues = monthly.results.map(r => (r as { revenue: number }).revenue || 0);
+  const avg = revenues.length > 0 ? revenues.reduce((a, b) => a + b, 0) / revenues.length : 0;
+  const peak = revenues.length > 0 ? Math.max(...revenues) : 0;
+  const trough = revenues.length > 0 ? Math.min(...revenues) : 0;
+  const amplitude = avg > 0 ? ((peak - trough) / avg) * 100 : 0;
+
+  return {
+    type: 'agriculture_seasonal_demand',
+    monthsAnalysed: monthly.results.length,
+    avgMonthlyRevenue: Math.round(avg * 100) / 100,
+    peakMonthlyRevenue: Math.round(peak * 100) / 100,
+    troughMonthlyRevenue: Math.round(trough * 100) / 100,
+    seasonalAmplitudePct: Math.round(amplitude * 10) / 10,
+    monthly: monthly.results,
+    recommendation: amplitude > 50
+      ? `Seasonal amplitude ${Math.round(amplitude)}% — plan working capital + crew rotation around peaks`
+      : monthly.results.length === 0
+        ? 'No invoice history yet'
+        : 'Demand pattern stable across the year',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const agricultureHandler: CatalystHandler = {
   name: 'domain:agriculture',
   match: t => {
@@ -334,6 +537,8 @@ const agricultureHandler: CatalystHandler = {
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'yield') && anyOf(s, 'variance', 'stability', 'volatility')) return runAgricultureYieldVariance(task, db);
+    if (anyOf(s, 'seasonal', 'demand', 'monthly')) return runAgricultureSeasonalDemand(task, db);
     if (anyOf(s, 'market', 'yield', 'price', 'harvest')) return runAgricultureMarketMetrics(task, db);
     if (anyOf(s, 'supplier', 'risk')) return runAgricultureSupplierRisk(task, db);
     return runAgricultureReorder(task, db);

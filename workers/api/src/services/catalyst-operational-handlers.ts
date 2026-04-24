@@ -13,18 +13,8 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
+import { taskText, anyWord as anyOf } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
-
-// ── Shared helpers ──────────────────────────────────────────────────────
-
-function taskText(task: TaskDefinition): string {
-  const domain = typeof task.inputData?.domain === 'string' ? task.inputData.domain : '';
-  return `${task.catalystName} ${task.action} ${domain}`.toLowerCase();
-}
-
-function anyOf(s: string, ...terms: string[]): boolean {
-  return terms.some(t => s.includes(t));
-}
 
 // ── MINING ──────────────────────────────────────────────────────────────
 
@@ -123,17 +113,79 @@ async function runMiningFatigueRisk(task: TaskDefinition, db: D1Database): Promi
   };
 }
 
+async function runMiningSparePartsForecast(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const critical = await db.prepare(
+    `SELECT sku, name, category, stock_on_hand, reorder_level, reorder_quantity, cost_price
+     FROM erp_products
+     WHERE tenant_id = ? AND is_active = 1
+       AND (LOWER(category) LIKE '%spare%' OR LOWER(category) LIKE '%part%' OR LOWER(category) LIKE '%consumable%' OR LOWER(category) LIKE '%bearing%' OR LOWER(category) LIKE '%belt%' OR LOWER(category) LIKE '%liner%')
+       AND stock_on_hand <= reorder_level
+     ORDER BY (stock_on_hand / NULLIF(reorder_level, 0)) ASC LIMIT 30`,
+  ).bind(task.tenantId).all();
+
+  const estCost = critical.results.reduce((s, r) => {
+    const row = r as { reorder_quantity: number; cost_price: number };
+    return s + (row.reorder_quantity || 0) * (row.cost_price || 0);
+  }, 0);
+
+  return {
+    type: 'mining_spare_parts_forecast',
+    criticalItems: critical.results.length,
+    estimatedReorderCost: Math.round(estCost * 100) / 100,
+    items: critical.results,
+    recommendation: critical.results.length > 0
+      ? `${critical.results.length} spare part(s) at/below reorder level — raise POs (est. R${Math.round(estCost).toLocaleString()}) to prevent equipment downtime`
+      : 'Spare parts stock healthy',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runMiningEnvironmentalCompliance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const metrics = await db.prepare(
+    `SELECT name, value, unit, status, threshold_red, measured_at
+     FROM process_metrics
+     WHERE tenant_id = ?
+       AND (LOWER(name) LIKE '%gas%' OR LOWER(name) LIKE '%dust%' OR LOWER(name) LIKE '%emission%'
+            OR LOWER(name) LIKE '%noise%' OR LOWER(name) LIKE '%air quality%' OR LOWER(name) LIKE '%water%'
+            OR LOWER(name) LIKE '%pollut%' OR LOWER(name) LIKE '%environment%')
+     ORDER BY measured_at DESC LIMIT 30`,
+  ).bind(task.tenantId).all();
+
+  const breaches = metrics.results.filter(m => (m as { status: string }).status === 'red');
+
+  const risks = await db.prepare(
+    `SELECT title, severity, impact_value, detected_at
+     FROM risk_alerts
+     WHERE tenant_id = ? AND status = 'active'
+       AND (LOWER(category) LIKE '%environment%' OR LOWER(category) LIKE '%pollut%')
+     ORDER BY impact_value DESC LIMIT 10`,
+  ).bind(task.tenantId).all();
+
+  return {
+    type: 'mining_environmental_compliance',
+    metricCount: metrics.results.length,
+    breachCount: breaches.length,
+    breaches,
+    activeEnvRisks: risks.results,
+    recommendation: breaches.length > 0
+      ? `${breaches.length} environmental metric(s) in red — notify environmental officer and file required reports`
+      : 'Environmental metrics within compliance thresholds',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const miningHandler: CatalystHandler = {
   name: 'domain:mining',
   match: t => {
     const s = taskText(t);
-    // 'ore' excluded to avoid matching "store", "before", "core" etc. Mining
-    // tasks should set catalystName containing "mining"/"steel" or an
-    // inputData.domain of 'mining'/'mining-*'.
-    return anyOf(s, 'mining', 'steel') || (anyOf(s, 'safety') && anyOf(s, 'incident', 'ppe', 'fatigue'));
+    return anyOf(s, 'mining', 'steel', 'ore') || (anyOf(s, 'safety') && anyOf(s, 'incident', 'ppe', 'fatigue'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    // Listing singular + plural/adjective forms explicitly — word-boundary
+    // matching is strict (it won't match 'environment' inside 'environmental').
+    if (anyOf(s, 'environment', 'environmental', 'emission', 'emissions', 'pollution', 'pollutant', 'dust', 'gas')) return runMiningEnvironmentalCompliance(task, db);
+    if (anyOf(s, 'spare', 'parts', 'consumable', 'consumables', 'forecast')) return runMiningSparePartsForecast(task, db);
     if (anyOf(s, 'fatigue', 'rotation', 'shift')) return runMiningFatigueRisk(task, db);
     if (anyOf(s, 'ppe', 'compliance')) return runMiningPPECompliance(task, db);
     return runMiningSafetyIncidentTrend(task, db);
@@ -224,16 +276,96 @@ async function runManufacturingMaintenanceDue(task: TaskDefinition, db: D1Databa
   };
 }
 
+async function runManufacturingEnergyEfficiency(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const metrics = await db.prepare(
+    `SELECT name, value, unit, status, threshold_amber, threshold_red, measured_at
+     FROM process_metrics
+     WHERE tenant_id = ?
+       AND (LOWER(name) LIKE '%energy%' OR LOWER(name) LIKE '%power%' OR LOWER(name) LIKE '%kwh%' OR LOWER(name) LIKE '%consumption%' OR LOWER(name) LIKE '%efficiency%')
+     ORDER BY measured_at DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const breaches = metrics.results.filter(m => (m as { status: string }).status === 'red');
+  const warning = metrics.results.filter(m => (m as { status: string }).status === 'amber');
+
+  return {
+    type: 'manufacturing_energy_efficiency',
+    metricCount: metrics.results.length,
+    overConsumption: breaches.length,
+    warning: warning.length,
+    metrics: metrics.results,
+    recommendation: breaches.length > 0
+      ? `${breaches.length} energy metric(s) over threshold — schedule load audit on affected lines`
+      : warning.length > 0
+        ? `${warning.length} energy metric(s) trending — investigate before next billing cycle`
+        : 'Energy consumption within target',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runManufacturingCostVariance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  // Compare PO cost trends by supplier over last 90 days vs prior 90 days.
+  const recent = await db.prepare(
+    `SELECT supplier_name, AVG(total) as avg_po, COUNT(*) as po_count
+     FROM erp_purchase_orders
+     WHERE tenant_id = ? AND order_date >= date('now', '-90 days') AND status != 'cancelled'
+     GROUP BY supplier_name`,
+  ).bind(task.tenantId).all();
+
+  const baseline = await db.prepare(
+    `SELECT supplier_name, AVG(total) as avg_po
+     FROM erp_purchase_orders
+     WHERE tenant_id = ? AND order_date >= date('now', '-180 days') AND order_date < date('now', '-90 days') AND status != 'cancelled'
+     GROUP BY supplier_name`,
+  ).bind(task.tenantId).all();
+
+  const baselineMap = new Map<string, number>();
+  for (const b of baseline.results) {
+    const row = b as { supplier_name: string; avg_po: number };
+    baselineMap.set(row.supplier_name, row.avg_po);
+  }
+
+  const variances = recent.results.map(r => {
+    const row = r as { supplier_name: string; avg_po: number; po_count: number };
+    const prior = baselineMap.get(row.supplier_name);
+    const variancePct = prior && prior > 0 ? ((row.avg_po - prior) / prior) * 100 : null;
+    return {
+      supplier: row.supplier_name,
+      recentAvg: Math.round((row.avg_po || 0) * 100) / 100,
+      priorAvg: prior ? Math.round(prior * 100) / 100 : null,
+      variancePct: variancePct !== null ? Math.round(variancePct * 10) / 10 : null,
+      poCount: row.po_count,
+    };
+  });
+
+  const inflating = variances.filter(v => v.variancePct !== null && v.variancePct > 10);
+
+  return {
+    type: 'manufacturing_cost_variance',
+    window: 'recent_90d_vs_prior_90d',
+    suppliersAnalysed: variances.length,
+    suppliersInflating: inflating.length,
+    variances,
+    recommendation: inflating.length > 0
+      ? `${inflating.length} supplier(s) with >10% cost inflation — initiate sourcing review`
+      : 'Supplier cost profile stable',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const manufacturingHandler: CatalystHandler = {
   name: 'domain:manufacturing',
   match: t => {
     const s = taskText(t);
     return anyOf(s, 'manufacturing', 'factory', 'production', 'oee', 'throughput')
       || (anyOf(s, 'quality') && anyOf(s, 'defect', 'reject'))
-      || (anyOf(s, 'equipment', 'machine') && anyOf(s, 'maintenance'));
+      || (anyOf(s, 'equipment', 'machine') && anyOf(s, 'maintenance'))
+      || (anyOf(s, 'energy', 'power', 'kwh') && !anyOf(s, 'portfolio'));
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'energy', 'power', 'kwh', 'consumption')) return runManufacturingEnergyEfficiency(task, db);
+    if (anyOf(s, 'cost', 'variance', 'supplier cost', 'inflation')) return runManufacturingCostVariance(task, db);
     if (anyOf(s, 'quality', 'defect', 'reject', 'rework')) return runManufacturingQualityDefects(task, db);
     if (anyOf(s, 'maintenance', 'equipment', 'machine')) return runManufacturingMaintenanceDue(task, db);
     return runManufacturingThroughput(task, db);
@@ -324,14 +456,83 @@ async function runLogisticsWarehouseStock(task: TaskDefinition, db: D1Database):
   };
 }
 
+async function runLogisticsCarrierPerformance(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const carriers = await db.prepare(
+    `SELECT supplier_name,
+            COUNT(*) as po_count,
+            SUM(CASE WHEN delivery_status = 'delivered' THEN 1 ELSE 0 END) as delivered,
+            SUM(CASE WHEN delivery_status = 'delayed' THEN 1 ELSE 0 END) as delayed,
+            SUM(CASE WHEN delivery_status = 'pending' AND delivery_date < date('now') THEN 1 ELSE 0 END) as overdue,
+            AVG(total) as avg_value
+     FROM erp_purchase_orders
+     WHERE tenant_id = ? AND order_date >= date('now', '-90 days')
+     GROUP BY supplier_name
+     ORDER BY po_count DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const ranked = carriers.results.map(c => {
+    const row = c as { supplier_name: string; po_count: number; delivered: number; delayed: number; overdue: number; avg_value: number };
+    const reliability = row.po_count > 0 ? ((row.delivered || 0) / row.po_count) * 100 : 0;
+    return {
+      carrier: row.supplier_name,
+      poCount: row.po_count,
+      delivered: row.delivered || 0,
+      delayed: row.delayed || 0,
+      overdue: row.overdue || 0,
+      reliabilityPct: Math.round(reliability * 10) / 10,
+      avgOrderValue: Math.round((row.avg_value || 0) * 100) / 100,
+    };
+  }).sort((a, b) => a.reliabilityPct - b.reliabilityPct);
+
+  const underperforming = ranked.filter(c => c.reliabilityPct < 80 && c.poCount >= 3);
+
+  return {
+    type: 'logistics_carrier_performance',
+    carrierCount: ranked.length,
+    underperforming: underperforming.length,
+    carriers: ranked,
+    recommendation: underperforming.length > 0
+      ? `${underperforming.length} carrier(s) below 80% reliability with meaningful volume — review service-level agreements`
+      : ranked.length === 0 ? 'No carrier activity in last 90 days' : 'All carriers performing above threshold',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function runLogisticsRouteEfficiency(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const metrics = await db.prepare(
+    `SELECT name, value, unit, status, measured_at
+     FROM process_metrics
+     WHERE tenant_id = ?
+       AND (LOWER(name) LIKE '%route%' OR LOWER(name) LIKE '%mileage%' OR LOWER(name) LIKE '%km %' OR LOWER(name) LIKE '%fuel%' OR LOWER(name) LIKE '%stops per%')
+     ORDER BY measured_at DESC LIMIT 20`,
+  ).bind(task.tenantId).all();
+
+  const red = metrics.results.filter(m => (m as { status: string }).status === 'red');
+
+  return {
+    type: 'logistics_route_efficiency',
+    metricCount: metrics.results.length,
+    alerts: red.length,
+    metrics: metrics.results,
+    recommendation: red.length > 0
+      ? `${red.length} route metric(s) in red — run route optimisation pass and review fuel logs`
+      : metrics.results.length === 0
+        ? 'No route metrics ingested — connect telematics or dispatch data to enable'
+        : 'Route efficiency within target',
+    timestamp: new Date().toISOString(),
+  };
+}
+
 const logisticsHandler: CatalystHandler = {
   name: 'domain:logistics',
   match: t => {
     const s = taskText(t);
-    return anyOf(s, 'logistics', 'fleet', 'delivery', 'warehouse', 'transport', 'shipping');
+    return anyOf(s, 'logistics', 'fleet', 'delivery', 'warehouse', 'transport', 'shipping', 'carrier', 'route');
   },
   execute: async (task, db) => {
     const s = taskText(task);
+    if (anyOf(s, 'carrier', 'sla')) return runLogisticsCarrierPerformance(task, db);
+    if (anyOf(s, 'route', 'mileage', 'fuel')) return runLogisticsRouteEfficiency(task, db);
     if (anyOf(s, 'delivery', 'shipment', 'shipping')) return runLogisticsDeliveryCompliance(task, db);
     if (anyOf(s, 'warehouse', 'stock', 'inventory')) return runLogisticsWarehouseStock(task, db);
     return runLogisticsFleetUtilization(task, db);

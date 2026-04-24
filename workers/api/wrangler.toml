@@ -54,6 +54,14 @@ max_batch_size = 10
 max_retries = 3
 dead_letter_queue = "catalyst-dlq"
 
+# DLQ consumer — persists dead-lettered messages to audit_log instead of
+# letting them silently vanish (audit §8.6). Single retry because the
+# handler should never throw; if it does we ack anyway.
+[[queues.consumers]]
+queue = "catalyst-dlq"
+max_batch_size = 10
+max_retries = 1
+
 # ── Staging Environment ──
 # Deploy with: wrangler deploy --env staging
 # Secrets: wrangler secret put JWT_SECRET --env staging
@@ -102,3 +110,8 @@ queue = "catalyst-tasks-staging"
 max_batch_size = 10
 max_retries = 3
 dead_letter_queue = "catalyst-dlq-staging"
+
+[[env.staging.queues.consumers]]
+queue = "catalyst-dlq-staging"
+max_batch_size = 10
+max_retries = 1

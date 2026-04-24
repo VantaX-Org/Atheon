@@ -8,16 +8,8 @@ import {
   type CatalystHandler,
   registerHandler,
 } from './catalyst-handler-registry';
+import { taskText, anyWord as anyOf } from './catalyst-match-utils';
 import type { TaskDefinition } from './catalyst-engine';
-
-function taskText(task: TaskDefinition): string {
-  const domain = typeof task.inputData.domain === 'string' ? task.inputData.domain : '';
-  return `${task.catalystName} ${task.action} ${domain}`.toLowerCase();
-}
-
-function anyOf(s: string, ...terms: string[]): boolean {
-  return terms.some(t => s.includes(t));
-}
 
 // ── HR TURNOVER ─────────────────────────────────────────────────────────
 
@@ -68,9 +60,7 @@ const hrHandler: CatalystHandler = {
   name: 'general:hr',
   match: t => {
     const s = taskText(t);
-    // 'hr' excluded — 2-char substring false-positives on words like
-    // "chrome", "three". Rely on the longer, more specific keywords.
-    return anyOf(s, 'turnover', 'attrition', 'retention', 'workforce', 'headcount', 'human resources', 'hr_');
+    return anyOf(s, 'hr', 'turnover', 'attrition', 'retention', 'workforce', 'headcount', 'people');
   },
   execute: runHRTurnover,
 };
@@ -170,12 +160,111 @@ const opsHandler: CatalystHandler = {
   execute: runOperationsRedMetrics,
 };
 
+// ── SUPPLIER CONCENTRATION ─────────────────────────────────────────────
+
+async function runSupplierConcentration(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const byVolume = await db.prepare(
+    `SELECT s.name, s.risk_score, s.supplier_group,
+            COUNT(po.id) as po_count,
+            COALESCE(SUM(po.total), 0) as total_spend
+     FROM erp_suppliers s
+     LEFT JOIN erp_purchase_orders po ON po.supplier_id = s.id AND po.tenant_id = s.tenant_id AND po.status != 'cancelled'
+     WHERE s.tenant_id = ? AND s.status = 'active'
+     GROUP BY s.id, s.name, s.risk_score, s.supplier_group
+     ORDER BY total_spend DESC LIMIT 25`,
+  ).bind(task.tenantId).all();
+
+  const totalSpend = byVolume.results.reduce((s, r) => s + ((r as { total_spend: number }).total_spend || 0), 0);
+  const top5Spend = byVolume.results.slice(0, 5).reduce((s, r) => s + ((r as { total_spend: number }).total_spend || 0), 0);
+  const concentration = totalSpend > 0 ? (top5Spend / totalSpend) * 100 : 0;
+  const risky = byVolume.results.filter(r => {
+    const row = r as { risk_score: number; total_spend: number };
+    return (row.risk_score || 0) > 0.6 && (row.total_spend || 0) > 0;
+  });
+
+  return {
+    type: 'general_supplier_concentration',
+    supplierCount: byVolume.results.length,
+    totalSpend: Math.round(totalSpend * 100) / 100,
+    top5ConcentrationPct: Math.round(concentration * 10) / 10,
+    riskySuppliersWithSpend: risky.length,
+    suppliers: byVolume.results,
+    recommendation: concentration > 70
+      ? `Top 5 suppliers hold ${Math.round(concentration)}% of spend — single-point-of-failure risk; diversify sourcing`
+      : risky.length > 0
+        ? `${risky.length} high-risk supplier(s) with active spend — add contingency or secondary source`
+        : byVolume.results.length === 0
+          ? 'No supplier activity'
+          : 'Supplier spend diversified within policy',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+const supplierHandler: CatalystHandler = {
+  name: 'general:supplier',
+  match: t => {
+    const s = taskText(t);
+    return (anyOf(s, 'supplier') && anyOf(s, 'concentration', 'consolidation', 'diversification'))
+      || anyOf(s, 'supplier concentration', 'vendor concentration');
+  },
+  execute: runSupplierConcentration,
+};
+
+// ── ANOMALY TRIAGE ─────────────────────────────────────────────────────
+
+async function runAnomalyTriage(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
+  const bySeverity = await db.prepare(
+    `SELECT severity, status, COUNT(*) as count, AVG(deviation) as avg_deviation
+     FROM anomalies
+     WHERE tenant_id = ?
+     GROUP BY severity, status
+     ORDER BY severity DESC`,
+  ).bind(task.tenantId).all();
+
+  const staleOpen = await db.prepare(
+    `SELECT metric, severity, deviation, detected_at
+     FROM anomalies
+     WHERE tenant_id = ? AND status = 'open' AND detected_at < datetime('now', '-14 days')
+     ORDER BY severity DESC, detected_at ASC LIMIT 15`,
+  ).bind(task.tenantId).all();
+
+  const criticalOpen = await db.prepare(
+    `SELECT COUNT(*) as count FROM anomalies
+     WHERE tenant_id = ? AND status = 'open' AND severity IN ('critical', 'high')`,
+  ).bind(task.tenantId).first<{ count: number }>();
+
+  return {
+    type: 'general_anomaly_triage',
+    openCriticalOrHigh: criticalOpen?.count || 0,
+    staleOpen: staleOpen.results.length,
+    bySeverityStatus: bySeverity.results,
+    staleItems: staleOpen.results,
+    recommendation: (criticalOpen?.count || 0) > 0
+      ? `${criticalOpen?.count} critical/high anomalies open — triage in next standup`
+      : staleOpen.results.length > 0
+        ? `${staleOpen.results.length} open anomaly(ies) older than 14 days — resolve or downgrade`
+        : 'Anomaly backlog healthy',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+const anomalyHandler: CatalystHandler = {
+  name: 'general:anomaly-triage',
+  match: t => {
+    const s = taskText(t);
+    return (anyOf(s, 'anomaly', 'anomalies') && anyOf(s, 'triage', 'backlog', 'review', 'scan'));
+  },
+  execute: runAnomalyTriage,
+};
+
 // ── Registration ────────────────────────────────────────────────────────
 
 export function registerGeneralHandlers(): void {
   registerHandler(hrHandler);
   registerHandler(salesHandler);
   registerHandler(opsHandler);
+  registerHandler(supplierHandler);
+  registerHandler(anomalyHandler);
 }
 
 registerGeneralHandlers();
