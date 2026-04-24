@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AuthContext, AppBindings } from '../types';
+import { rotateErpConnectionEncryption } from '../services/encryption-rotation';
 
 const tenants = new Hono<AppBindings>();
 tenants.use('/*', cors());
@@ -435,6 +436,72 @@ tenants.delete('/tenants/:id/hard-delete', async (c) => {
   } catch (err) {
     console.error('Hard-delete tenant failed:', err);
     return c.json({ error: 'Failed to hard-delete tenant', details: (err as Error).message }, 500);
+  }
+});
+
+/**
+ * POST /api/v1/admin/rotate-encryption
+ * Re-encrypt all erp_connections.encrypted_config rows under a new key.
+ * Superadmin-only. Body: { old_key: string; new_key: string }.
+ *
+ * Operational procedure:
+ *   1. Call this endpoint with { old_key = current ENCRYPTION_KEY, new_key = next key }
+ *   2. Verify `rotated > 0 && failed === 0` in the response
+ *   3. Swap the ENCRYPTION_KEY secret in Cloudflare Workers
+ *   4. Deploy
+ *
+ * The rotation is idempotent: re-running with the same old_key after step 3 will
+ * see 0 rotations (all rows now decrypt under the new key, which is the new current
+ * key).
+ */
+tenants.post('/rotate-encryption', async (c) => {
+  if (!requireSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+
+  let body: { old_key?: string; new_key?: string };
+  try {
+    body = await c.req.json<{ old_key?: string; new_key?: string }>();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const oldKey = body.old_key;
+  const newKey = body.new_key;
+
+  if (typeof oldKey !== 'string' || typeof newKey !== 'string') {
+    return c.json({ error: 'old_key and new_key are required strings' }, 400);
+  }
+  if (oldKey.length < 16 || newKey.length < 16) {
+    return c.json({ error: 'keys must be at least 16 characters' }, 400);
+  }
+  if (oldKey === newKey) {
+    return c.json({ error: 'old_key and new_key must differ' }, 400);
+  }
+
+  try {
+    const result = await rotateErpConnectionEncryption(c.env.DB, oldKey, newKey);
+
+    // Audit the rotation (without logging the keys themselves)
+    try {
+      const auth = c.get('auth') as AuthContext | undefined;
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), 'system', 'security.encryption.key_rotated', 'security', 'erp_connections',
+        JSON.stringify({
+          rotatedBy: auth?.email,
+          rotated: result.rotated,
+          failed: result.failed,
+          skippedPlaintext: result.skippedPlaintext,
+        }),
+        result.failed === 0 ? 'success' : 'partial',
+      ).run();
+    } catch { /* non-fatal */ }
+
+    return c.json({ success: result.failed === 0, ...result });
+  } catch (err) {
+    return c.json({ error: (err as Error).message || 'Rotation failed' }, 400);
   }
 });
 

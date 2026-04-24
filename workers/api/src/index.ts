@@ -358,6 +358,8 @@ app.route('/api/v1/seed-vantax', seedVantaX);
 // Scoped to /tenants/* so /admin/setup and /admin/migrate (JWT-free) are not blocked
 app.use('/api/v1/admin/tenants/*', tenantIsolation());
 app.use('/api/v1/admin/tenants/*', requireRole('superadmin'));
+// §8.3 encryption key rotation needs JWT-backed auth (superadmin role enforced inside handler)
+app.use('/api/v1/admin/rotate-encryption', tenantIsolation());
 app.route('/api/v1/admin', tenantsAdmin);
 
 // Admin Tooling routes (ADMIN-001 to ADMIN-012)

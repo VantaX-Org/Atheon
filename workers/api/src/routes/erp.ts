@@ -20,6 +20,57 @@ function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: str
   return defaultTenantId;
 }
 
+/** Credential-bearing config fields. If any of these appear in a body, we must encrypt. */
+const SENSITIVE_CONFIG_FIELDS = ['client_secret', 'api_key', 'password', 'access_token', 'refresh_token'] as const;
+
+function hasCredentials(config: Record<string, unknown> | undefined | null): boolean {
+  if (!config) return false;
+  return SENSITIVE_CONFIG_FIELDS.some((f) => typeof config[f] === 'string' && (config[f] as string).length > 0);
+}
+
+/**
+ * §8.3: Persist an ERP config blob. If an ENCRYPTION_KEY is configured, the config
+ * is encrypted with AES-256-GCM and stored in `encrypted_config` (plaintext `config`
+ * column is blanked). If no key is configured — test envs with sensitive credentials
+ * stripped, on-prem with BYOK pending — we fall back to plaintext + audit a warning.
+ *
+ * Returns the pair of columns to write, plus a flag indicating whether encryption ran.
+ */
+async function persistErpConfig(
+  config: Record<string, unknown>,
+  encryptionKey: string | undefined,
+): Promise<{ config: string; encryptedConfig: string | null; encrypted: boolean; skipReason?: string }> {
+  const configStr = JSON.stringify(config);
+  if (encryptionKey && encryptionKey.length >= 16) {
+    try {
+      const encryptedConfig = await encrypt(configStr, encryptionKey);
+      return { config: '{}', encryptedConfig, encrypted: true };
+    } catch (err) {
+      console.error('[encryption] ERP config encryption failed, falling back to plaintext:', err);
+      return { config: configStr, encryptedConfig: null, encrypted: false, skipReason: 'encryption_error' };
+    }
+  }
+  // No key configured — store plaintext with loud warning. Callers should audit this.
+  if (hasCredentials(config)) {
+    console.warn('[encryption] ENCRYPTION_KEY not configured — storing ERP credentials as plaintext. Set ENCRYPTION_KEY secret to enable encryption at rest.');
+  }
+  return { config: configStr, encryptedConfig: null, encrypted: false, skipReason: 'no_encryption_key' };
+}
+
+async function auditEncryptionSkipped(
+  db: D1Database, tenantId: string, connectionId: string, skipReason: string, where: string,
+): Promise<void> {
+  try {
+    await db.prepare(
+      'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), tenantId, 'erp.credentials.encryption_skipped', 'security', 'erp_connections',
+      JSON.stringify({ connectionId, skipReason, where }),
+      'warning',
+    ).run();
+  } catch { /* non-fatal */ }
+}
+
 /**
  * 3.12: Write synced ERP records to canonical tables
  * Maps adapter entity types to canonical table inserts
@@ -206,16 +257,21 @@ erp.post('/connections', async (c) => {
   if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
 
   const id = crypto.randomUUID();
-  // Phase 1.1: Encrypt sensitive config fields before storing
+  // §8.3: Encrypt entire config blob at rest. If any credential-bearing field is
+  // supplied but ENCRYPTION_KEY is not configured, we log + audit a warning.
   const rawConfig = body.config || {};
-  const configStr = JSON.stringify(rawConfig);
-  const encryptedConfigStr = await encrypt(configStr, c.env.ENCRYPTION_KEY);
+  const { config: plaintextCol, encryptedConfig, encrypted, skipReason } =
+    await persistErpConfig(rawConfig, c.env.ENCRYPTION_KEY);
 
   await c.env.DB.prepare(
     'INSERT INTO erp_connections (id, tenant_id, adapter_id, name, config, encrypted_config, sync_frequency, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-  ).bind(id, tenantId, body.adapter_id, body.name, '{}', encryptedConfigStr, body.sync_frequency || 'realtime').run();
+  ).bind(id, tenantId, body.adapter_id, body.name, plaintextCol, encryptedConfig, body.sync_frequency || 'realtime').run();
 
-  return c.json({ id, status: 'connected' }, 201);
+  if (!encrypted && hasCredentials(rawConfig) && skipReason) {
+    await auditEncryptionSkipped(c.env.DB, tenantId, id, skipReason, 'POST /connections');
+  }
+
+  return c.json({ id, status: 'connected', encrypted }, 201);
 });
 
 // PUT /api/erp/connections/:id
@@ -231,7 +287,8 @@ erp.put('/connections/:id', async (c) => {
   if (body.name) { updates.push('name = ?'); values.push(body.name); }
   if (body.status === 'connected') { updates.push('last_sync = datetime(\'now\')'); }
 
-  // Phase 1.1: Update encrypted config if provided
+  // §8.3: Update encrypted config if provided. Uses the same persistErpConfig helper
+  // so the fallback path (no ENCRYPTION_KEY) matches insertion behavior.
   if (body.config && Object.keys(body.config).length > 0) {
     // Read existing config and merge
     const conn = await c.env.DB.prepare('SELECT encrypted_config, config FROM erp_connections WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
@@ -247,10 +304,15 @@ erp.put('/connections/:id', async (c) => {
     }
 
     const mergedConfig = { ...existingConfig, ...body.config };
-    const encryptedBlob = await encrypt(JSON.stringify(mergedConfig), c.env.ENCRYPTION_KEY);
+    const persisted = await persistErpConfig(mergedConfig, c.env.ENCRYPTION_KEY);
     updates.push('encrypted_config = ?');
-    values.push(encryptedBlob);
-    updates.push("config = '{}'");
+    values.push(persisted.encryptedConfig);
+    updates.push('config = ?');
+    values.push(persisted.config);
+
+    if (!persisted.encrypted && hasCredentials(mergedConfig) && persisted.skipReason) {
+      await auditEncryptionSkipped(c.env.DB, tenantId, id, persisted.skipReason, 'PUT /connections/:id');
+    }
   }
 
   if (updates.length > 0) {
@@ -530,11 +592,16 @@ erp.post('/oauth/authorize', async (c) => {
     auth_url: body.auth_url,
     token_url: body.token_url,
   };
-  // Encrypt the entire config blob so isEncrypted() returns true on read
-  const encryptedConfigBlob = await encrypt(JSON.stringify(mergedOauthConfig), c.env.ENCRYPTION_KEY);
+  // §8.3: Encrypt the entire config blob so isEncrypted() returns true on read.
+  // Falls back to plaintext + audit if ENCRYPTION_KEY is missing.
+  const persistedOauth = await persistErpConfig(mergedOauthConfig, c.env.ENCRYPTION_KEY);
   await c.env.DB.prepare(
     'UPDATE erp_connections SET encrypted_config = ?, config = ?, status = ? WHERE id = ? AND tenant_id = ?'
-  ).bind(encryptedConfigBlob, '{}', 'authorizing', body.connection_id, tenantId).run();
+  ).bind(persistedOauth.encryptedConfig, persistedOauth.config, 'authorizing', body.connection_id, tenantId).run();
+
+  if (!persistedOauth.encrypted && persistedOauth.skipReason) {
+    await auditEncryptionSkipped(c.env.DB, tenantId, body.connection_id, persistedOauth.skipReason, 'POST /oauth/authorize');
+  }
 
   return c.json({ authUrl, state });
 });
@@ -572,7 +639,7 @@ erp.post('/oauth/callback', async (c) => {
       existingConfig = JSON.parse(conn?.config as string || '{}');
     }
 
-    // Merge tokens into config and encrypt entire blob
+    // Merge tokens into config and encrypt entire blob (§8.3 fallback-safe)
     const mergedTokenConfig = {
       ...existingConfig,
       access_token: tokenResponse.access_token,
@@ -580,11 +647,15 @@ erp.post('/oauth/callback', async (c) => {
       token_type: tokenResponse.token_type,
       token_expires_at: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
     };
-    const encryptedTokenBlob = await encrypt(JSON.stringify(mergedTokenConfig), c.env.ENCRYPTION_KEY);
+    const persistedToken = await persistErpConfig(mergedTokenConfig, c.env.ENCRYPTION_KEY);
 
     await c.env.DB.prepare(
       'UPDATE erp_connections SET encrypted_config = ?, config = ?, status = ?, connected_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
-    ).bind(encryptedTokenBlob, '{}', 'connected', connectionId, tenantId).run();
+    ).bind(persistedToken.encryptedConfig, persistedToken.config, 'connected', connectionId, tenantId).run();
+
+    if (!persistedToken.encrypted && persistedToken.skipReason) {
+      await auditEncryptionSkipped(c.env.DB, tenantId, connectionId, persistedToken.skipReason, 'POST /oauth/callback');
+    }
 
     // Clean up state
     await c.env.CACHE.delete(`oauth_state:${body.state}`);
