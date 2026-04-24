@@ -5,7 +5,7 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-export const MIGRATION_VERSION = 'v44-llm';
+export const MIGRATION_VERSION = 'v45-alerts';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -121,6 +121,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS assessment_value_summary (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, total_immediate_value REAL NOT NULL DEFAULT 0, total_ongoing_monthly_value REAL NOT NULL DEFAULT 0, total_ongoing_annual_value REAL NOT NULL DEFAULT 0, total_data_quality_issues INTEGER NOT NULL DEFAULT 0, total_process_delays INTEGER NOT NULL DEFAULT 0, total_findings INTEGER NOT NULL DEFAULT 0, total_critical_findings INTEGER NOT NULL DEFAULT 0, outcome_based_monthly_fee REAL NOT NULL DEFAULT 0, outcome_based_fee_pct REAL NOT NULL DEFAULT 0, payback_days INTEGER NOT NULL DEFAULT 0, value_by_domain TEXT NOT NULL DEFAULT '{}', value_by_category TEXT NOT NULL DEFAULT '{}', executive_narrative TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS tenant_llm_budget (tenant_id TEXT PRIMARY KEY, monthly_token_budget INTEGER, tokens_used_this_month INTEGER NOT NULL DEFAULT 0, tokens_reset_at TEXT, llm_redaction_enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS tenant_llm_usage (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, endpoint TEXT, request_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS system_alert_rules (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, event_type TEXT NOT NULL, condition TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', channels TEXT NOT NULL DEFAULT '[]', recipients TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, silenced_until TEXT, triggered_count INTEGER NOT NULL DEFAULT 0, last_triggered_at TEXT, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -287,6 +288,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // LLM budget + PII redaction (v40)
     'CREATE INDEX IF NOT EXISTS idx_tenant_llm_usage_tenant ON tenant_llm_usage(tenant_id, created_at)',
     'CREATE INDEX IF NOT EXISTS idx_tenant_llm_usage_provider ON tenant_llm_usage(tenant_id, provider)',
+    // v45-alerts: system alert rules
+    'CREATE INDEX IF NOT EXISTS idx_system_alert_rules_tenant ON system_alert_rules(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_system_alert_rules_enabled ON system_alert_rules(tenant_id, enabled)',
   ];
 
   for (const idx of indexes) {

@@ -1183,6 +1183,68 @@ export const api = {
       request<GovernanceResponse>(`/api/v1/governance/${tenantId}`),
   },
 
+  // ── v45: Bulk User Management (iam.ts) ─────────────────────────────
+  bulkUsers: {
+    import: (csv: string, dryRun = false) =>
+      request<{
+        importId: string;
+        total: number;
+        created: number;
+        createdUsers: Array<{ row: number; id: string; email: string; name: string; role: string; tempPassword: string }>;
+        skipped: Array<{ row: number; email: string; reason: string }>;
+        errors: Array<{ row: number; email?: string; reason: string }>;
+        dryRun: boolean;
+      }>('/api/v1/iam/users/bulk-import', { method: 'POST', body: JSON.stringify({ csv, dryRun }) }),
+    action: (user_ids: string[], action: 'suspend' | 'activate' | 'change_role', role?: string) =>
+      request<{ applied: number; failed: Array<{ user_id: string; reason: string }>; appliedUsers: Array<{ user_id: string; email?: string }> }>(
+        '/api/v1/iam/users/bulk-action',
+        { method: 'POST', body: JSON.stringify({ user_ids, action, role }) },
+      ),
+    history: () =>
+      request<{ imports: Array<{ id: string; imported_by: string | null; row_count: number; created_count: number; skipped_count: number; error_count: number; outcome: string; created_at: string }> }>(
+        '/api/v1/iam/users/import-history',
+      ),
+  },
+
+  // ── v45: System Alert Rules (system-alerts.ts) ─────────────────────
+  systemAlertRules: {
+    list: () =>
+      request<{ rules: Array<Record<string, unknown>> }>('/api/v1/system-alerts/rules'),
+    create: (rule: {
+      name: string;
+      description?: string;
+      event_type: string;
+      condition: { field: string; op: string; value: unknown };
+      severity?: string;
+      channels?: string[];
+      recipients?: string[];
+      enabled?: boolean;
+    }) =>
+      request<{ rule: Record<string, unknown> }>('/api/v1/system-alerts/rules', { method: 'POST', body: JSON.stringify(rule) }),
+    update: (id: string, update: Record<string, unknown>) =>
+      request<{ rule: Record<string, unknown> }>(`/api/v1/system-alerts/rules/${id}`, { method: 'PUT', body: JSON.stringify(update) }),
+    remove: (id: string) =>
+      request<{ success: boolean }>(`/api/v1/system-alerts/rules/${id}`, { method: 'DELETE' }),
+    silence: (id: string, until: string | null) =>
+      request<{ success: boolean; silenced_until: string | null }>(
+        `/api/v1/system-alerts/rules/${id}/silence`,
+        { method: 'POST', body: JSON.stringify({ until }) },
+      ),
+    test: (id: string, payload: Record<string, unknown> = {}) =>
+      request<{
+        rule_id: string;
+        event_type: string;
+        would_fire: boolean;
+        matched: boolean;
+        enabled: boolean;
+        silenced: boolean;
+        reason: string;
+        channels: string[];
+        recipients: string[];
+        severity: string;
+      }>(`/api/v1/system-alerts/rules/${id}/test`, { method: 'POST', body: JSON.stringify({ payload }) }),
+  },
+
   // ── Webhooks (PR #225): HMAC-signed outbound event delivery ─────────
   webhooks: {
     list: () =>
