@@ -43,8 +43,8 @@ function _authedPut(path: string, body: Record<string, unknown>, token: string):
 }
 void _authedPut;
 
-/** Seed a tenant + user. `industry` param kept for signature back-compat but no longer persisted. */
-async function seedTenant(tenantId: string, slug: string, name: string, _industry: string): Promise<void> {
+/** Seed a tenant + user. */
+async function seedTenant(tenantId: string, slug: string, name: string): Promise<void> {
   await env.DB.prepare(
     `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, ?, ?, 'enterprise', 'active')`
   ).bind(tenantId, name, slug).run();
@@ -88,8 +88,8 @@ describe('Catalyst Engine', () => {
     if (migRes.status !== 200) throw new Error(`Migration failed: ${migRes.status}`);
 
     // Seed tenants
-    await seedTenant(TENANT_ID, 'cat-test', 'Catalyst Test Corp', 'technology');
-    await seedTenant(OTHER_TENANT, 'cat-other', 'Other Corp', 'healthcare');
+    await seedTenant(TENANT_ID, 'cat-test', 'Catalyst Test Corp');
+    await seedTenant(OTHER_TENANT, 'cat-other', 'Other Corp');
 
     // Seed users
     await seedUser('cat-admin', TENANT_ID, 'cat-admin@test.com', PASSWORD, 'admin');
