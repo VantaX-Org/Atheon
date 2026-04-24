@@ -806,6 +806,17 @@ export const api = {
       request<LlmConfigResponse>('/api/admin/llm-config'),
     saveLlmConfig: (data: { provider: string; model?: string; apiKey?: string; baseUrl?: string; temperature?: number; maxTokens?: number }) =>
       request<{ success: boolean; message: string; provider: string }>('/api/admin/llm-config', { method: 'POST', body: JSON.stringify(data) }),
+    /**
+     * Per-tenant LLM token budget + PII redaction state (backend PR #226).
+     * `monthlyTokenBudget: null` means unlimited.
+     */
+    getLlmBudget: (tenantId: string) =>
+      request<LlmBudgetResponse>(`/api/v1/admin/tenants/${tenantId}/llm-budget`),
+    setLlmBudget: (tenantId: string, body: { monthlyTokenBudget?: number | null; llmRedactionEnabled?: boolean }) =>
+      request<LlmBudgetResponse>(`/api/v1/admin/tenants/${tenantId}/llm-budget`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
   },
 
   // ── Apex Radar (Spec §2.1 — 11 endpoints) ───────────────────────────
@@ -2310,6 +2321,21 @@ export interface LlmConfigResponse {
   baseUrl: string | null;
   temperature: number;
   maxTokens: number;
+}
+
+/**
+ * Per-tenant LLM token budget + PII redaction state (backend PR #226).
+ * `monthlyTokenBudget: null` means the tenant has unlimited tokens.
+ * `exists === false` when no budget row has been created yet (defaults apply).
+ */
+export interface LlmBudgetResponse {
+  tenantId: string;
+  monthlyTokenBudget: number | null;
+  tokensUsedThisMonth: number;
+  tokensResetAt: string | null;
+  llmRedactionEnabled: boolean;
+  updatedAt: string | null;
+  exists: boolean;
 }
 
 export interface TechnicalSizing {
