@@ -257,9 +257,12 @@ tenants.post('/', async (c) => {
   // Using a UUID here would break FK constraints when other tables reference
   // tenants(id) via the slug stored in the JWT.
   const id = body.slug;
+  // Industry column removed from tenants schema — catalogs are no longer
+  // industry-gated. Any body.industry is ignored (kept accepted for backward-
+  // compat with older clients but no longer persisted).
   await c.env.DB.prepare(
-    'INSERT INTO tenants (id, name, slug, industry, plan, deployment_model, region) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, body.name, body.slug, body.industry || 'general', body.plan || 'starter', body.deploymentModel || 'saas', body.region || 'af-south-1').run();
+    'INSERT INTO tenants (id, name, slug, plan, deployment_model, region) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(id, body.name, body.slug, body.plan || 'starter', body.deploymentModel || 'saas', body.region || 'af-south-1').run();
 
   // Create default entitlements
   await c.env.DB.prepare(

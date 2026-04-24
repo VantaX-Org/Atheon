@@ -43,11 +43,11 @@ function _authedPut(path: string, body: Record<string, unknown>, token: string):
 }
 void _authedPut;
 
-/** Seed a tenant + user */
-async function seedTenant(tenantId: string, slug: string, name: string, industry: string): Promise<void> {
+/** Seed a tenant + user. `industry` param kept for signature back-compat but no longer persisted. */
+async function seedTenant(tenantId: string, slug: string, name: string, _industry: string): Promise<void> {
   await env.DB.prepare(
-    `INSERT OR REPLACE INTO tenants (id, name, slug, industry, plan, status) VALUES (?, ?, ?, ?, 'enterprise', 'active')`
-  ).bind(tenantId, name, slug, industry).run();
+    `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, ?, ?, 'enterprise', 'active')`
+  ).bind(tenantId, name, slug).run();
   await env.DB.prepare(
     `INSERT OR REPLACE INTO tenant_entitlements (tenant_id, layers, catalyst_clusters, max_agents, max_users) VALUES (?, '["apex","pulse","mind","memory"]', '["finance","hr","operations"]', 50, 100)`
   ).bind(tenantId).run();

@@ -40,11 +40,12 @@ app.post('/start', async (c) => {
   const tenantId = `trial-${assessmentId.slice(0, 8)}`;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Create trial tenant
+  // Create trial tenant — body.industry is accepted on the signup form but
+  // no longer persisted on the tenants table (column removed).
   try {
     await db.prepare(
-      "INSERT INTO tenants (id, slug, name, plan, status, industry, created_at) VALUES (?, ?, ?, 'trial', 'trial', ?, datetime('now'))"
-    ).bind(tenantId, tenantId, body.company_name, body.industry).run();
+      "INSERT INTO tenants (id, slug, name, plan, status, created_at) VALUES (?, ?, ?, 'trial', 'trial', datetime('now'))"
+    ).bind(tenantId, tenantId, body.company_name).run();
   } catch { /* tenant may already exist */ }
 
   // Create trial user

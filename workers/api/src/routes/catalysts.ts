@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import type { AppBindings, AuthContext, Env } from '../types';
 import { executeTask, approveAction, rejectAction } from '../services/catalyst-engine';
 import { getValidatedJsonBody } from '../middleware/validation';
-import { INDUSTRY_TEMPLATES, getTemplateForIndustry } from '../services/catalyst-templates';
+import {
+  INDUSTRY_TEMPLATES,
+  CATALYST_CATALOG,
+  getTemplateForIndustry,
+  getStarterClusters,
+} from '../services/catalyst-templates';
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
@@ -773,8 +778,21 @@ catalysts.post('/clusters', async (c) => {
   return c.json({ id, name: raw.name, domain: raw.domain }, 201);
 });
 
-// GET /api/catalysts/templates - List available industry templates
+// GET /api/catalysts/templates - List the flat catalyst catalog
+// Returns:
+//   - `catalog`: the flat, tag-based catalog (preferred)
+//   - `templates`: deprecated industry-grouped shape derived from the catalog,
+//                  kept for backwards compatibility with the existing frontend.
 catalysts.get('/templates', async (c) => {
+  const catalog = CATALYST_CATALOG.map(cl => ({
+    name: cl.name,
+    domain: cl.domain,
+    description: cl.description,
+    autonomy_tier: cl.autonomy_tier,
+    tags: cl.tags,
+    subCatalystCount: cl.sub_catalysts.length,
+    sub_catalysts: cl.sub_catalysts,
+  }));
   const templates = INDUSTRY_TEMPLATES.map(t => ({
     industry: t.industry,
     label: t.label,
@@ -789,7 +807,7 @@ catalysts.get('/templates', async (c) => {
       sub_catalysts: cl.sub_catalysts,
     })),
   }));
-  return c.json({ templates });
+  return c.json({ catalog, templates });
 });
 
 // POST /api/catalysts/deploy-template - Deploy all catalyst clusters for an industry template
@@ -801,7 +819,7 @@ catalysts.post('/deploy-template', async (c) => {
 
   const body = await c.req.json<{
     tenant_id: string;
-    industry: string;
+    industry?: string;
     clusters?: Array<{
       name: string; domain: string; description: string; autonomy_tier: string;
       sub_catalysts: Array<{ name: string; enabled: boolean; description: string }>;
@@ -809,7 +827,6 @@ catalysts.post('/deploy-template', async (c) => {
   }>();
 
   if (!body.tenant_id) return c.json({ error: 'tenant_id is required' }, 400);
-  if (!body.industry) return c.json({ error: 'industry is required' }, 400);
 
   // Only superadmin/support_admin can deploy to a different tenant
   const callerTenant = auth.tenantId;
@@ -821,9 +838,20 @@ catalysts.post('/deploy-template', async (c) => {
   const tenant = await c.env.DB.prepare('SELECT id FROM tenants WHERE id = ?').bind(body.tenant_id).first();
   if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
 
-  // Get template clusters — use custom clusters if provided, else use the industry default
+  // Resolve which clusters to deploy. Priority order:
+  //   1. Caller-supplied `clusters` (custom selection from the flat catalog)
+  //   2. `industry` — legacy path that resolves via the deprecated industry
+  //      bucket (derived from CATALYST_CATALOG by tag) so existing API
+  //      consumers keep working.
+  //   3. Neither provided — deploy the curated starter bundle (finance,
+  //      procurement, supply chain, HR, sales, operations, customer intel,
+  //      risk, CX, inventory) defined in catalyst-templates.ts. This gives
+  //      a tenant a useful baseline without having to choose an industry.
   let clustersToCreate = body.clusters;
-  if (!clustersToCreate || clustersToCreate.length === 0) {
+  let deploymentSource: string;
+  if (clustersToCreate && clustersToCreate.length > 0) {
+    deploymentSource = 'custom';
+  } else if (body.industry) {
     const template = getTemplateForIndustry(body.industry);
     if (!template) return c.json({ error: `No template found for industry: ${body.industry}` }, 404);
     clustersToCreate = template.clusters.map(cl => ({
@@ -833,6 +861,16 @@ catalysts.post('/deploy-template', async (c) => {
       autonomy_tier: cl.autonomy_tier,
       sub_catalysts: cl.sub_catalysts,
     }));
+    deploymentSource = `industry:${body.industry}`;
+  } else {
+    clustersToCreate = getStarterClusters().map(cl => ({
+      name: cl.name,
+      domain: cl.domain,
+      description: cl.description,
+      autonomy_tier: cl.autonomy_tier,
+      sub_catalysts: cl.sub_catalysts,
+    }));
+    deploymentSource = 'starter';
   }
 
   // Check for existing clusters for this tenant — skip duplicates by name
@@ -887,13 +925,20 @@ catalysts.post('/deploy-template', async (c) => {
     'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(
     crypto.randomUUID(), body.tenant_id, 'catalyst.template.deployed', 'catalysts', body.tenant_id,
-    JSON.stringify({ industry: body.industry, clusters_created: createdIds.length, existing_clusters: (existing.results || []).length, skipped_duplicates: skippedNames }),
+    JSON.stringify({
+      industry: body.industry,
+      source: deploymentSource,
+      clusters_created: createdIds.length,
+      existing_clusters: (existing.results || []).length,
+      skipped_duplicates: skippedNames,
+    }),
     'success'
   ).run().catch(() => {});
 
   return c.json({
     success: true,
     industry: body.industry,
+    source: deploymentSource,
     clustersCreated: createdIds.length,
     clusterIds: createdIds,
     existingClusters: (existing.results || []).length,

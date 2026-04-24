@@ -127,7 +127,9 @@ export async function computeStrategicContext(
     'SELECT * FROM market_benchmarks WHERE tenant_id = ? ORDER BY measured_at DESC LIMIT 5'
   ).bind(tenantId).all();
 
-  const tenant = await db.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first<{ industry: string }>();
+  // Industry no longer tracked on tenants — fall back to 'general' for LLM narrative.
+  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
+  const tenant: { industry: string } = { industry: 'general' };
 
   // Compute industry benchmark score from market_benchmarks
   let industryBenchmark = 0;

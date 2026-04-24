@@ -36,7 +36,7 @@ async function authedPost(path: string, body: Record<string, unknown>, token: st
 /** Seed a tenant + user directly in D1 for testing */
 async function seedTestTenant(tenantId: string, slug: string, name: string): Promise<void> {
   await env.DB.prepare(
-    `INSERT OR REPLACE INTO tenants (id, name, slug, industry, plan, status) VALUES (?, ?, ?, 'technology', 'enterprise', 'active')`
+    `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, ?, ?, 'enterprise', 'active')`
   ).bind(tenantId, name, slug).run();
   await env.DB.prepare(
     `INSERT OR REPLACE INTO tenant_entitlements (tenant_id, layers, catalyst_clusters, max_agents, max_users) VALUES (?, '["apex","pulse","mind","memory"]', '["finance"]', 50, 100)`
