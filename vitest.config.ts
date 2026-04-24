@@ -6,11 +6,17 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'workers/**/*.test.ts'],
-    exclude: ['workers/api/src/__tests__/auth.test.ts', 'workers/api/src/__tests__/catalysts.test.ts', 'workers/api/src/__tests__/smoke.test.ts', 'node_modules/**'],
+    // Worker-side tests live in `workers/api/` and depend on `cloudflare:test`
+    // (plus other `cloudflare:*` virtual modules) which only resolve inside the
+    // dedicated `@cloudflare/vitest-pool-workers` runner — invoked by the
+    // "Backend Tests" CI job via `cd workers/api && vitest run`. Including them
+    // in the root runner made every PR fail CI with "cannot resolve
+    // cloudflare:test".
+    include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['workers/**', 'node_modules/**'],
     coverage: {
       reporter: ['text', 'lcov'],
-      include: ['src/**/*.{ts,tsx}', 'workers/**/*.ts'],
+      include: ['src/**/*.{ts,tsx}'],
       exclude: ['**/*.test.*', '**/*.d.ts', '**/index.ts'],
     },
   },
