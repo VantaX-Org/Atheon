@@ -1,6 +1,6 @@
 # Atheon Go-Live Checklist
 
-Last updated: 2026-04-24
+Last updated: 2026-04-27
 
 This document tracks the gating items between the current production state and a clean go-live announcement. Items are grouped by tier: **Tier 1 (blockers)** must be resolved before the announcement; **Tier 2 (should-fix)** should be closed within the first week; **Tier 3 (deferred)** are known follow-ups tracked in the backlog.
 
@@ -17,8 +17,7 @@ This document tracks the gating items between the current production state and a
 
 ## Tier 2 — Should-fix in week 1
 
-- [ ] **CI flake: `@cloudflare/vitest-pool-workers` isolated storage**
-  The Backend Tests / Unit Tests jobs fail on `custom-roles.test.ts` and `feature-flags.test.ts` with `Failed to pop isolated storage stack frame ... AssertionError [ERR_ASSERTION]: Expected .sqlite, got .../miniflare-KVNamespaceObject/...sqlite-shm`. These tests **pass locally** (31/31 green). The failure is a known miniflare/vitest-pool-workers bug under CI parallelism — see https://developers.cloudflare.com/workers/testing/vitest-integration/known-issues/#isolated-storage. Workaround options: pin `@cloudflare/vitest-pool-workers` to the latest patch, reduce test-pool concurrency in `workers/api/vitest.config.ts`, or split the affected describe blocks into their own file. Not blocking code correctness — blocks clean CI signal.
+- [x] **CI flake: `@cloudflare/vitest-pool-workers` isolated storage** — fixed in PR #263. Set `poolOptions.workers.singleWorker = true` in `workers/api/vitest.config.ts`. CI fully green for the first time this sprint (12 / 12 checks); 341 / 341 tests pass in ~50s.
 
 - [ ] **119 catalyst stubs**
   Post-sprint, the catalyst catalog has ~70 real handlers across 14 domains. 119 remain as registered stubs that return structured "not implemented" payloads. Prioritize by domain based on the first week of tenant activity; signal comes from `catalyst_runs` grouped by `catalyst_key`.
