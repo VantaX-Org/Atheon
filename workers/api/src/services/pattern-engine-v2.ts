@@ -27,7 +27,10 @@ export async function analysePatterns(
 
   if (runs.results.length < 3) return;
 
-  const tenant = await db.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first<{ industry: string }>();
+  // tenants.industry was dropped from the schema; the LLM prompt is bucketed
+  // under 'general' until per-tenant industry tagging is reintroduced.
+  // Reading the column would throw "no such column: industry" at runtime.
+  const tenant: { industry: string } = { industry: 'general' };
   const llmConfig = await loadLlmConfig(db, tenantId);
 
   // Build run data summary for LLM
