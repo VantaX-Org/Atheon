@@ -62,11 +62,20 @@ npx wrangler d1 backup download atheon-db <backup-id>
 
 ### 3.1 Create New Tenant
 
+`tenants.industry` was dropped from the schema (see migrate.ts `columnsToDrop`).
+Including it in the INSERT will fail with `no such column: industry`.
+
 ```bash
 npx wrangler d1 execute atheon-db --command \
-  "INSERT INTO tenants (id, name, slug, industry, status, plan, created_at) \
-   VALUES ('$(uuidgen)', 'Company Name', 'company-slug', 'manufacturing', 'active', 'enterprise', datetime('now'))"
+  "INSERT INTO tenants (id, name, slug, status, plan, created_at) \
+   VALUES ('$(uuidgen)', 'Company Name', 'company-slug', 'active', 'enterprise', datetime('now'))"
 ```
+
+If you need industry classification for a tenant (e.g., for benchmarks),
+record it elsewhere — `tenant_entitlements.catalyst_clusters` is the
+closest existing signal. The aggregation crons (peer benchmarks,
+resolution patterns) currently bucket every active tenant under
+`'general'`; per-tenant industry tagging is on the Tier-2 backlog.
 
 ### 3.2 Disable Tenant
 
