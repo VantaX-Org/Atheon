@@ -348,8 +348,12 @@ radar.get('/success-stories', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
 
-  // Industry no longer tracked on tenants — fall back to 'general' patterns.
-  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
+  // Industry segmentation is intentionally global on this endpoint — patterns
+  // are aggregated across all tenants under the 'general' bucket. Per-tenant
+  // industry is captured on tenants.industry (populated from trial signup) but
+  // the aggregator (services/scheduled.ts::calculatePeerBenchmarks) currently
+  // writes a single 'general' bucket; reading any other value here would miss
+  // every row.
   const industry = 'general';
 
   // Only show resolution patterns with >= 3 resolutions (anonymity threshold)

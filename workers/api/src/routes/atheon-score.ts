@@ -65,9 +65,10 @@ app.get('/', async (c) => {
   ).bind(tenantId).all();
   const trend = (history.results || []).map((r: Record<string, unknown>) => ({ score: r.score as number, date: r.recorded_at as string })).reverse();
 
-  // Get industry average (from anonymised benchmarks if available)
-  // Industry no longer tracked on tenants — fall back to 'general' benchmarks.
-  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
+  // Get industry average (from anonymised benchmarks if available).
+  // Aggregation is currently global — calculatePeerBenchmarks() writes a single
+  // 'general' bucket — so we read 'general' here. Once that aggregator buckets
+  // by tenants.industry per-tenant, this can switch to the caller's industry.
   const industry = 'general';
   let industryAvg: number | null = null;
   try {
