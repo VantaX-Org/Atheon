@@ -1014,31 +1014,31 @@ async function checkGoalAchievements(db: D1Database, tenantId: string): Promise<
 // §11.4 — Peer benchmarks calculation (runs daily via cron — computes anonymised industry benchmarks)
 // OPTIMIZED: Fetch all health scores in ONE query instead of per-tenant-per-dimension (was N×9 queries)
 async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
-  // Get all industries with active tenants
-  const industries = await db.prepare(
-    "SELECT DISTINCT industry FROM tenants WHERE status = 'active' AND industry IS NOT NULL"
-  ).all();
-
+  // tenants.industry was dropped by migrate.ts — aggregation is global. All
+  // active tenants bucket as 'general' until per-tenant industry tagging is
+  // reintroduced. This silently no-op'd in production prior to this change
+  // because the SELECT referenced a missing column; the JOIN now drops the
+  // industry filter so the cron actually populates anonymised_benchmarks.
   const period = new Date().toISOString().slice(0, 7); // YYYY-MM
   const dimensions = ['financial', 'operational', 'compliance', 'strategic', 'technology', 'risk', 'catalyst', 'process', 'overall'];
+  const GLOBAL_BUCKET = 'general';
 
-  // OPTIMIZED: Single query to get latest health score per tenant (with industry), instead of N×9 queries
+  // Single query: latest health score per tenant for every active tenant.
   const allHealthScores = await db.prepare(
-    `SELECT hs.tenant_id, hs.overall_score, hs.dimensions, t.industry
+    `SELECT hs.tenant_id, hs.overall_score, hs.dimensions
      FROM health_scores hs
-     JOIN tenants t ON hs.tenant_id = t.id AND t.status = 'active' AND t.industry IS NOT NULL
+     JOIN tenants t ON hs.tenant_id = t.id AND t.status = 'active'
      WHERE hs.calculated_at = (
        SELECT MAX(hs2.calculated_at) FROM health_scores hs2 WHERE hs2.tenant_id = hs.tenant_id
      )`
   ).all();
 
-  // Group health scores by industry
+  // Bucket every tenant under the single global industry key.
   const healthByIndustry: Record<string, Array<{ overall_score: number; dimensions: Record<string, { score: number }> }>> = {};
+  healthByIndustry[GLOBAL_BUCKET] = [];
   for (const row of allHealthScores.results) {
     const r = row as Record<string, unknown>;
-    const industry = r.industry as string;
-    if (!healthByIndustry[industry]) healthByIndustry[industry] = [];
-    healthByIndustry[industry].push({
+    healthByIndustry[GLOBAL_BUCKET].push({
       overall_score: (r.overall_score as number) || 0,
       dimensions: r.dimensions ? JSON.parse(r.dimensions as string) : {},
     });
@@ -1046,9 +1046,8 @@ async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
 
   const insertStmts: D1PreparedStatement[] = [];
 
-  for (const indRow of industries.results) {
-    const industry = (indRow as Record<string, unknown>).industry as string;
-    const healthData = healthByIndustry[industry] || [];
+  for (const industry of Object.keys(healthByIndustry)) {
+    const healthData = healthByIndustry[industry];
     if (healthData.length < 3) continue; // Anonymity threshold
 
     for (const dim of dimensions) {
@@ -1087,24 +1086,27 @@ async function calculatePeerBenchmarks(db: D1Database): Promise<void> {
 
 // §11.6 — Success stories / resolution patterns aggregation (monthly)
 async function calculateResolutionPatterns(db: D1Database): Promise<void> {
-  // Get all resolved RCAs grouped by industry
+  // tenants.industry was dropped by migrate.ts — aggregation is global. All
+  // resolved RCAs bucket under 'general' until per-tenant industry tagging is
+  // reintroduced. Prior to this change, the SELECT referenced a missing column
+  // and the cron silently no-op'd.
   const resolved = await db.prepare(
-    `SELECT rca.metric_name, t.industry, rca.resolved_at, rca.generated_at,
+    `SELECT rca.metric_name, rca.resolved_at, rca.generated_at,
             GROUP_CONCAT(dp.title, '|') as fix_titles
      FROM root_cause_analyses rca
      JOIN tenants t ON rca.tenant_id = t.id
      LEFT JOIN diagnostic_prescriptions dp ON dp.rca_id = rca.id AND dp.status = 'completed'
-     WHERE rca.status = 'resolved' AND t.industry IS NOT NULL
+     WHERE rca.status = 'resolved'
      GROUP BY rca.id`
   ).all();
 
-  // Group by pattern signature + industry
+  // Group by pattern signature, bucketed under the single global industry key.
   const patterns: Record<string, { industry: string; count: number; totalDays: number; totalValue: number; fixTypes: Set<string> }> = {};
 
   for (const row of resolved.results) {
     const r = row as Record<string, unknown>;
     const metricName = (r.metric_name as string) || 'unknown';
-    const industry = (r.industry as string) || 'general';
+    const industry = 'general';
     // Pattern signature = normalized metric name (remove specific identifiers)
     const signature = metricName.replace(/[-_]\d+/g, '').replace(/\s+/g, '_').toLowerCase();
     const key = `${signature}::${industry}`;

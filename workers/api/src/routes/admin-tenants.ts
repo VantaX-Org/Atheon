@@ -29,9 +29,12 @@ tenants.get('/', async (c) => {
   }
 
   try {
+    // tenants.industry was dropped by migrate.ts; selecting it would throw
+    // "no such column" at runtime. Frontend now reads industry from
+    // tenant_entitlements / catalyst_clusters when needed.
     const result = await c.env.DB.prepare(`
-      SELECT 
-        t.id, t.name, t.slug, t.industry, t.plan, t.status, t.deployment_model,
+      SELECT
+        t.id, t.name, t.slug, t.plan, t.status, t.deployment_model,
         t.region, t.created_at, t.updated_at,
         COUNT(DISTINCT u.id) as user_count,
         COUNT(DISTINCT scr.id) as run_count,
