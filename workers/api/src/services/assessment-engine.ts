@@ -1,6 +1,8 @@
 // workers/api/src/services/assessment-engine.ts
 // Pre-Assessment Tool — Data collection, catalyst scoring, report generation
 
+import { detectAllFindings, summariseFindings, type Finding, type FindingsContext } from './assessment-findings';
+
 // ── Types ─────────────────────────────────────────────────────────────────
 export interface AssessmentConfig {
   // Atheon Pricing
@@ -131,6 +133,13 @@ export interface AssessmentResults {
   total_estimated_annual_saving_zar: number;
   payback_months: number;
   narrative_summary: string;
+  /**
+   * Detailed business findings — stale stock, AR aging, GR/IR mismatches,
+   * VAT anomalies, FX exposure etc. Each is mapped to the catalyst that
+   * resolves it. Drives the report's "what's wrong / what's the cure" narrative.
+   */
+  findings: Finding[];
+  findings_summary: ReturnType<typeof summariseFindings>;
 }
 
 export const DEFAULT_ASSESSMENT_CONFIG: AssessmentConfig = {
@@ -1767,8 +1776,24 @@ export async function runAssessment(
     // 4. Calculate technical sizing
     const technicalSizing = calculateTechnicalSizing(catalystScores, config);
 
-    // 5. Generate narrative
-    const totalSaving = catalystScores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+    // 5. Detect business findings (stale stock, AR aging, variances, etc.).
+    // Findings are the value-evidence the report hangs on — each maps to the
+    // catalyst that resolves it.
+    const findingsContext: FindingsContext = {
+      baseCurrency: 'ZAR',
+      exchangeRates: { ZAR: 1.0, USD: 18.5, EUR: 20.0, GBP: 23.0 },
+      monthsOfData: snapshot.months_of_data,
+    };
+    const findings = await detectAllFindings(db, tenantId, findingsContext);
+    const findingsSummary = summariseFindings(findings);
+
+    // 6. Generate narrative
+    const baselineSaving = catalystScores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+    // Findings give us a quantified, evidence-backed second opinion on saving
+    // potential. Take the maximum of the two so the report leads with the
+    // larger, better-grounded number when findings produce more value than
+    // the volume-percentage heuristic.
+    const totalSaving = Math.max(baselineSaving, findingsSummary.total_value_at_risk_zar);
     const annualLicence = config.deployment_model === 'saas'
       ? technicalSizing.annual_licence_revenue
       : config.deployment_model === 'hybrid' ? config.hybrid_licence_fee_pa : config.onprem_licence_fee_pa;
@@ -1782,6 +1807,8 @@ export async function runAssessment(
       total_estimated_annual_saving_zar: totalSaving,
       payback_months: paybackMonths,
       narrative_summary: narrative,
+      findings,
+      findings_summary: findingsSummary,
     };
 
     // 6–7. Generate reports (each wrapped independently — failures are non-fatal)
