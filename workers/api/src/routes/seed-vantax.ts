@@ -2144,4 +2144,443 @@ seed.get('/vantax-status', async (c) => {
   }
 });
 
+/**
+ * POST /api/v1/seed-vantax/seed-findings-demo
+ *
+ * Seeds focused fixtures designed to make every detector in the
+ * assessment-findings engine fire on the VantaX demo tenant. Each
+ * fixture block contributes 3-10 records — small enough not to bloat
+ * the demo dataset, large enough to trip the severity / count
+ * thresholds in `severityFromCount` and `severityFromValue`.
+ *
+ * Idempotent: every INSERT uses an `OR REPLACE` with deterministic
+ * `findings-demo:` prefixed ids so re-running the endpoint on the
+ * same tenant updates rather than duplicates.
+ *
+ * Restricted to the VantaX tenant via the same `getVantaXTenantId`
+ * guard as `/seed-vantax`. Returns the count of fixtures written per
+ * detector so an operator can verify which firings to expect.
+ */
+seed.post('/seed-findings-demo', async (c) => {
+  const tenantId = await getVantaXTenantId(c);
+  if (!tenantId) {
+    return c.json({ error: 'Access denied', message: 'This endpoint is restricted to the VantaX demo environment' }, 403);
+  }
+
+  const db = c.env.DB;
+  const written: Record<string, number> = {};
+  const PREFIX = 'findings-demo';
+
+  // Helper: insert a row with `INSERT OR REPLACE` so re-running is idempotent.
+  async function ins(sql: string, binds: unknown[]): Promise<void> {
+    await db.prepare(sql).bind(...binds).run();
+  }
+
+  // ── AR: 5 detectors ───────────────────────────────────────────────
+  // 90+ overdue, 60-90, 30-60 buckets — each uses different invoice ids.
+  const arBuckets = [{ days: 120, code: '90plus', n: 8 }, { days: 75, code: '60to90', n: 5 }, { days: 45, code: '30to60', n: 5 }];
+  let arCount = 0;
+  for (const b of arBuckets) {
+    for (let i = 0; i < b.n; i++) {
+      await ins(
+        `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, due_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-' || ? || ' days'), date('now', '-' || ? || ' days'), ?, ?, 'ZAR', 'unpaid', 'sent')`,
+        [`${PREFIX}-inv-ar-${b.code}-${i}`, tenantId, `INV-AR-${b.code.toUpperCase()}-${i}`, `Aged Customer ${b.code} ${i}`, b.days + 15, b.days, 350_000 + i * 25_000, 350_000 + i * 25_000],
+      );
+      arCount++;
+    }
+  }
+  written.ar_aging = arCount;
+
+  // Credit-limit breach: 6 customers
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_customers (id, tenant_id, name, credit_limit, credit_balance, currency, payment_terms, status)
+       VALUES (?, ?, ?, 200000, 350000, 'ZAR', 'Net 30', 'active')`,
+      [`${PREFIX}-cust-overlimit-${i}`, tenantId, `Over-Limit Customer ${i}`],
+    );
+  }
+  written.ar_credit_limit_breach = 6;
+
+  // Top-debtor concentration: 5 huge debtors + 5 small ones
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status)
+       VALUES (?, ?, ?, ?, date('now', '-30 days'), ?, ?, 'ZAR', 'unpaid', 'sent')`,
+      [`${PREFIX}-inv-bigdebt-${i}`, tenantId, `INV-BIG-${i}`, `Big Debtor ${i}`, 2_000_000, 2_000_000],
+    );
+  }
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status)
+       VALUES (?, ?, ?, ?, date('now', '-30 days'), ?, ?, 'ZAR', 'unpaid', 'sent')`,
+      [`${PREFIX}-inv-smdebt-${i}`, tenantId, `INV-SM-${i}`, `Small Debtor ${i}`, 80_000, 80_000],
+    );
+  }
+  written.ar_top_debtor_concentration = 10;
+
+  // ── AP: 3 detectors ────────────────────────────────────────────────
+  // Overdue PO delivery
+  for (let i = 0; i < 4; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_purchase_orders (id, tenant_id, po_number, supplier_name, order_date, delivery_date, total, currency, status, delivery_status)
+       VALUES (?, ?, ?, ?, date('now', '-90 days'), date('now', '-30 days'), ?, 'ZAR', 'open', 'pending')`,
+      [`${PREFIX}-po-late-${i}`, tenantId, `PO-LATE-${i}`, `Late Supplier ${i}`, 500_000 + i * 100_000],
+    );
+  }
+  written.ap_overdue_delivery = 4;
+
+  // 3-way mismatch — paid != total
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_paid, amount_due, currency, payment_status, status)
+       VALUES (?, ?, ?, ?, date('now', '-15 days'), ?, ?, 0, 'ZAR', 'paid', 'sent')`,
+      [`${PREFIX}-inv-3way-${i}`, tenantId, `INV-3W-${i}`, `Mismatch ${i}`, 100_000, 95_000 + i * 1000],
+    );
+  }
+  written.ap_three_way_mismatch = 5;
+
+  // Unreconciled bank
+  for (let i = 0; i < 60; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_bank_transactions (id, tenant_id, bank_account, transaction_date, description, debit, credit, balance, reconciled, reference)
+       VALUES (?, ?, 'OPS-001', date('now', '-' || ? || ' days'), ?, ?, ?, 0, 0, ?)`,
+      [`${PREFIX}-bank-unrec-${i}`, tenantId, 60 + i, `Unmatched payment ${i}`, i % 2 === 0 ? 25_000 + i * 100 : 0, i % 2 === 0 ? 0 : 25_000 + i * 100, `REF-${i}`],
+    );
+  }
+  written.ap_unreconciled_bank = 60;
+
+  // ── GL: 4 detectors ────────────────────────────────────────────────
+  // Suspense / clearing balances
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_gl_accounts (id, tenant_id, account_code, account_name, account_type, account_class, balance, currency, is_active)
+       VALUES (?, ?, ?, ?, 'asset', 'suspense', ?, 'ZAR', 1)`,
+      [`${PREFIX}-gl-susp-${i}`, tenantId, `9${i}90`, `Suspense Clearing Account ${i}`, 250_000 + i * 50_000],
+    );
+  }
+  written.gl_suspense_balance = 3;
+
+  // Off-hours journals (Saturday + after-hours)
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_journal_entries (id, tenant_id, journal_number, journal_date, description, total_debit, total_credit, status, posted_by, created_at)
+       VALUES (?, ?, ?, datetime('now', '-15 days', 'weekday 6'), 'Manual after-hours adjustment', ?, ?, 'posted', 'finance.user', datetime('now', '-15 days', 'weekday 6', '+22 hours'))`,
+      [`${PREFIX}-je-offh-${i}`, tenantId, `JE-OFFH-${i}`, 150_000 + i * 25_000, 150_000 + i * 25_000],
+    );
+  }
+  written.gl_journal_off_hours = 5;
+
+  // Round-amount journals
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_journal_entries (id, tenant_id, journal_number, journal_date, description, total_debit, total_credit, status, posted_by)
+       VALUES (?, ?, ?, date('now', '-30 days'), 'Round-amount accrual', ?, ?, 'posted', 'finance.user')`,
+      [`${PREFIX}-je-round-${i}`, tenantId, `JE-RND-${i}`, 100_000 * (i + 1), 100_000 * (i + 1)],
+    );
+  }
+  written.gl_round_amount_journals = 6;
+
+  // High manual journal volume — seed enough manual journals over 90d for the threshold to fire
+  for (let i = 0; i < 25; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_journal_entries (id, tenant_id, journal_number, journal_date, description, total_debit, total_credit, status, posted_by)
+       VALUES (?, ?, ?, date('now', '-' || ? || ' days'), 'Manual reclass', ?, ?, 'posted', 'finance.user')`,
+      [`${PREFIX}-je-manual-${i}`, tenantId, `JE-MAN-${i}`, i + 1, 50_000 + i * 5_000, 50_000 + i * 5_000],
+    );
+  }
+  written.gl_high_manual_volume = 25;
+
+  // ── Procurement: 4 detectors ───────────────────────────────────────
+  // Maverick spend — invoices without supplier-matching PO and no reference
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status, reference)
+       VALUES (?, ?, ?, ?, date('now', '-20 days'), ?, ?, 'ZAR', 'unpaid', 'sent', '')`,
+      [`${PREFIX}-inv-mav-${i}`, tenantId, `INV-MAV-${i}`, `Off-Contract Supplier ${i}`, 250_000 + i * 50_000, 250_000 + i * 50_000],
+    );
+  }
+  written.proc_maverick_spend = 5;
+
+  // Duplicate suppliers (same VAT)
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_suppliers (id, tenant_id, name, vat_number, status)
+       VALUES (?, ?, ?, '4123456789', 'active')`,
+      [`${PREFIX}-sup-dup-${i}`, tenantId, `Duplicate Supplier Variant ${i}`],
+    );
+  }
+  written.proc_duplicate_suppliers = 3;
+
+  // Supplier concentration (top-5 dominate spend) — seed 5 huge POs
+  for (let i = 0; i < 5; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_purchase_orders (id, tenant_id, po_number, supplier_name, order_date, total, currency, status, delivery_status)
+       VALUES (?, ?, ?, ?, date('now', '-60 days'), ?, 'ZAR', 'closed', 'received')`,
+      [`${PREFIX}-po-conc-${i}`, tenantId, `PO-CONC-${i}`, `Critical Supplier ${i}`, 5_000_000, 'ZAR'],
+    );
+  }
+  written.proc_supplier_concentration = 5;
+
+  // Inactive supplier with open POs
+  await ins(
+    `INSERT OR REPLACE INTO erp_suppliers (id, tenant_id, name, status) VALUES (?, ?, ?, 'inactive')`,
+    [`${PREFIX}-sup-inact-1`, tenantId, 'Inactive Supplier With Open POs'],
+  );
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_purchase_orders (id, tenant_id, po_number, supplier_name, order_date, total, currency, status, delivery_status)
+       VALUES (?, ?, ?, ?, date('now', '-90 days'), ?, 'ZAR', 'open', 'pending')`,
+      [`${PREFIX}-po-inact-${i}`, tenantId, `PO-INACT-${i}`, 'Inactive Supplier With Open POs', 200_000],
+    );
+  }
+  written.proc_inactive_with_open_pos = 3;
+
+  // ── Inventory: 6 detectors ─────────────────────────────────────────
+  // Negative stock (3 SKUs)
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, category, cost_price, selling_price, stock_on_hand, is_active)
+       VALUES (?, ?, ?, ?, 'misc', 250, 500, ?, 1)`,
+      [`${PREFIX}-prod-neg-${i}`, tenantId, `SKU-NEG-${i}`, `Negative Stock SKU ${i}`, -10 - i],
+    );
+  }
+  written.inv_negative_stock = 3;
+
+  // Margin erosion
+  for (let i = 0; i < 4; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, cost_price, selling_price, stock_on_hand, is_active)
+       VALUES (?, ?, ?, ?, 200, 150, 100, 1)`,
+      [`${PREFIX}-prod-merg-${i}`, tenantId, `SKU-MERG-${i}`, `Loss-Maker ${i}`],
+    );
+  }
+  written.inv_margin_erosion = 4;
+
+  // Inactive with stock value
+  for (let i = 0; i < 2; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, cost_price, stock_on_hand, is_active)
+       VALUES (?, ?, ?, ?, 1500, 250, 0)`,
+      [`${PREFIX}-prod-iv-${i}`, tenantId, `SKU-INA-${i}`, `Discontinued Product ${i}`],
+    );
+  }
+  written.inv_inactive_with_value = 2;
+
+  // Below reorder
+  for (let i = 0; i < 25; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, cost_price, stock_on_hand, reorder_level, is_active)
+       VALUES (?, ?, ?, ?, 100, 5, 50, 1)`,
+      [`${PREFIX}-prod-ro-${i}`, tenantId, `SKU-RO-${i}`, `Below-Reorder Item ${i}`],
+    );
+  }
+  written.inv_below_reorder = 25;
+
+  // Stale + dead stock require old created_at + no recent invoice movement.
+  // Without time travel SQLite still backdates created_at via inline literal.
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, cost_price, stock_on_hand, is_active, created_at)
+       VALUES (?, ?, ?, ?, 800, 50, 1, datetime('now', '-13 months'))`,
+      [`${PREFIX}-prod-dead-${i}`, tenantId, `SKU-DEAD-${i}`, `Dead Stock SKU ${i}`],
+    );
+  }
+  written.inv_dead_stock = 6;
+  for (let i = 0; i < 4; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_products (id, tenant_id, sku, name, cost_price, stock_on_hand, is_active, created_at)
+       VALUES (?, ?, ?, ?, 600, 30, 1, datetime('now', '-7 months'))`,
+      [`${PREFIX}-prod-stale-${i}`, tenantId, `SKU-STALE-${i}`, `Slow-Moving SKU ${i}`],
+    );
+  }
+  written.inv_stale_stock = 4;
+
+  // ── HR: 2 detectors ────────────────────────────────────────────────
+  // Terminated still on payroll
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, gross_salary, salary_frequency, status)
+       VALUES (?, ?, ?, ?, ?, 50000, 'monthly', 'terminated')`,
+      [`${PREFIX}-emp-term-${i}`, tenantId, `E-TERM-${i}`, 'Ghost', `Worker${i}`],
+    );
+  }
+  written.hr_terminated_in_payroll = 3;
+
+  // Top-earner concentration: one whale + many normal employees
+  await ins(
+    `INSERT OR REPLACE INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, position, gross_salary, salary_frequency, status)
+     VALUES (?, ?, 'E-CEO', 'Top', 'Earner', 'CEO', 800000, 'monthly', 'active')`,
+    [`${PREFIX}-emp-ceo`, tenantId],
+  );
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, position, gross_salary, salary_frequency, status)
+       VALUES (?, ?, ?, ?, ?, 'IC', 50000, 'monthly', 'active')`,
+      [`${PREFIX}-emp-ic-${i}`, tenantId, `E-IC-${i}`, 'Normal', `Worker${i}`],
+    );
+  }
+  written.hr_high_payroll_concentration = 7;
+
+  // ── Tax: 3 detectors ───────────────────────────────────────────────
+  // Overdue VAT submissions
+  for (let i = 0; i < 2; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_tax_entries (id, tenant_id, tax_period, tax_type, output_vat, input_vat, net_vat, status, created_at)
+       VALUES (?, ?, ?, 'VAT', 250000, 80000, 170000, 'draft', datetime('now', '-' || ? || ' days'))`,
+      [`${PREFIX}-tax-${i}`, tenantId, `2025-${String(i + 1).padStart(2, '0')}`, 90 + i * 30],
+    );
+  }
+  written.tax_overdue_submission = 2;
+
+  // VAT-rate anomalies (10% instead of 15%)
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, subtotal, vat_amount, total, currency, payment_status, status)
+       VALUES (?, ?, ?, ?, date('now', '-10 days'), 200000, 20000, 220000, 'ZAR', 'unpaid', 'sent')`,
+      [`${PREFIX}-inv-vat-${i}`, tenantId, `INV-VAT-${i}`, `Off-Rate Customer ${i}`],
+    );
+  }
+  written.tax_vat_rate_anomaly = 6;
+
+  // Customers + suppliers missing VAT
+  for (let i = 0; i < 4; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_customers (id, tenant_id, name, credit_balance, currency, status, vat_number)
+       VALUES (?, ?, ?, 25000, 'ZAR', 'active', NULL)`,
+      [`${PREFIX}-cust-novat-${i}`, tenantId, `No-VAT Customer ${i}`],
+    );
+    await ins(
+      `INSERT OR REPLACE INTO erp_suppliers (id, tenant_id, name, status, vat_number)
+       VALUES (?, ?, ?, 'active', NULL)`,
+      [`${PREFIX}-sup-novat-${i}`, tenantId, `No-VAT Supplier ${i}`],
+    );
+  }
+  written.tax_missing_vat_numbers = 8;
+
+  // ── FX: 2 detectors ────────────────────────────────────────────────
+  // Foreign-currency exposure
+  for (let i = 0; i < 4; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status)
+       VALUES (?, ?, ?, ?, date('now', '-30 days'), 75000, 75000, 'USD', 'unpaid', 'sent')`,
+      [`${PREFIX}-inv-fx-${i}`, tenantId, `INV-USD-${i}`, `US Customer ${i}`],
+    );
+  }
+  written.fx_currency_exposure = 4;
+
+  // Dual-currency suppliers — one supplier name in two currencies
+  for (let i = 0; i < 2; i++) {
+    const cur = i === 0 ? 'EUR' : 'USD';
+    await ins(
+      `INSERT OR REPLACE INTO erp_purchase_orders (id, tenant_id, po_number, supplier_name, order_date, total, currency, status, delivery_status)
+       VALUES (?, ?, ?, 'Multi-Currency Supplier', date('now', '-60 days'), ?, ?, 'closed', 'received')`,
+      [`${PREFIX}-po-fxdual-${i}`, tenantId, `PO-FXD-${i}`, 50_000, cur],
+    );
+  }
+  written.fx_dual_use_currency = 2;
+
+  // ── Service-company: 8 detectors ───────────────────────────────────
+  // Need projects + time entries. Seed 6 employees first to satisfy FKs.
+  for (let i = 0; i < 6; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, gross_salary, salary_frequency, status)
+       VALUES (?, ?, ?, 'Consultant', ?, 75000, 'monthly', 'active')`,
+      [`${PREFIX}-emp-svc-${i}`, tenantId, `E-SVC-${i}`, `Worker${i}`],
+    );
+  }
+
+  // 1 terminated consultant for the post-termination billing detector
+  await ins(
+    `INSERT OR REPLACE INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, gross_salary, salary_frequency, status, termination_date)
+     VALUES (?, ?, 'E-SVC-TERM', 'Term', 'Consultant', 60000, 'monthly', 'terminated', date('now', '-30 days'))`,
+    [`${PREFIX}-emp-svc-term`, tenantId],
+  );
+
+  // 2 active projects with budget overrun
+  for (let i = 0; i < 2; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_projects (id, tenant_id, code, name, customer_name, status, budgeted_cost, actual_cost, contract_value, billed_to_date, recognised_revenue, currency, project_manager, start_date)
+       VALUES (?, ?, ?, ?, ?, 'active', 500000, 750000, 1000000, 800000, 500000, 'ZAR', 'PM Mike', date('now', '-120 days'))`,
+      [`${PREFIX}-prj-over-${i}`, tenantId, `P-OVER-${i}`, `Overrun Project ${i}`, `Customer Co ${i}`],
+    );
+  }
+  written.svc_project_overrun = 2;
+
+  // 2 closed projects with negative margin
+  for (let i = 0; i < 2; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_projects (id, tenant_id, code, name, customer_name, status, recognised_revenue, actual_cost, contract_value, currency, start_date, end_date)
+       VALUES (?, ?, ?, ?, ?, 'closed', 400000, 600000, 500000, 'ZAR', date('now', '-1 year'), date('now', '-30 days'))`,
+      [`${PREFIX}-prj-loss-${i}`, tenantId, `P-LOSS-${i}`, `Loss Project ${i}`, `Customer Loss ${i}`],
+    );
+  }
+  written.svc_project_margin_negative = 2;
+
+  // 1 dormant active project (no time entries against it)
+  await ins(
+    `INSERT OR REPLACE INTO erp_projects (id, tenant_id, code, name, customer_name, status, contract_value, currency, start_date)
+     VALUES (?, ?, 'P-DORMANT', 'Dormant Engagement', 'Idle Customer', 'active', 750000, 'ZAR', date('now', '-200 days'))`,
+    [`${PREFIX}-prj-dormant`, tenantId],
+  );
+  written.svc_zero_hours_active_project = 1;
+
+  // 1 revrec-lag project (billed 800k, recognised 400k)
+  await ins(
+    `INSERT OR REPLACE INTO erp_projects (id, tenant_id, code, name, customer_name, status, billed_to_date, recognised_revenue, currency, billing_type, start_date)
+     VALUES (?, ?, 'P-REVREC', 'Revrec Lag', 'Lag Customer', 'active', 800000, 400000, 'ZAR', 'milestone', date('now', '-60 days'))`,
+    [`${PREFIX}-prj-revrec`, tenantId],
+  );
+  written.svc_revenue_recognition_lag = 1;
+
+  // Time entries — utilisation low (180 total, 50 billable = 28%)
+  for (let i = 0; i < 30; i++) {
+    const isBillable = i < 8 ? 1 : 0;
+    await ins(
+      `INSERT OR REPLACE INTO erp_time_entries (id, tenant_id, employee_id, work_date, hours, billable, billed, billable_rate, approval_status)
+       VALUES (?, ?, ?, date('now', '-' || ? || ' days'), 6, ?, 0, 1500, 'approved')`,
+      [`${PREFIX}-te-util-${i}`, tenantId, `${PREFIX}-emp-svc-${i % 6}`, i + 1, isBillable],
+    );
+  }
+  written.svc_low_billable_utilisation = 30;
+
+  // Approved unbilled aging
+  for (let i = 0; i < 8; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_time_entries (id, tenant_id, employee_id, project_id, work_date, hours, billable, billed, billable_rate, approval_status, project_code)
+       VALUES (?, ?, ?, ?, date('now', '-60 days'), 8, 1, 0, 1800, 'approved', 'P-WIP')`,
+      [`${PREFIX}-te-wip-${i}`, tenantId, `${PREFIX}-emp-svc-${i % 6}`, `${PREFIX}-prj-revrec`],
+    );
+  }
+  written.svc_unbilled_time_aging = 8;
+
+  // Pending approval > 14 days
+  for (let i = 0; i < 18; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_time_entries (id, tenant_id, employee_id, work_date, hours, billable, billable_rate, approval_status)
+       VALUES (?, ?, ?, date('now', '-30 days'), 8, 1, 1500, 'pending')`,
+      [`${PREFIX}-te-pa-${i}`, tenantId, `${PREFIX}-emp-svc-${i % 6}`],
+    );
+  }
+  written.svc_unapproved_time_entries = 18;
+
+  // Time on terminated employee (post termination_date)
+  for (let i = 0; i < 3; i++) {
+    await ins(
+      `INSERT OR REPLACE INTO erp_time_entries (id, tenant_id, employee_id, work_date, hours, billable, billable_rate, approval_status)
+       VALUES (?, ?, ?, date('now', '-15 days'), 8, 1, 1800, 'approved')`,
+      [`${PREFIX}-te-postterm-${i}`, tenantId, `${PREFIX}-emp-svc-term`],
+    );
+  }
+  written.svc_inactive_employee_billed_time = 3;
+
+  return c.json({
+    success: true,
+    tenant_id: tenantId,
+    fixtures_written: written,
+    total_records: Object.values(written).reduce((s, n) => s + n, 0),
+    message: 'Run POST /api/v1/assessments to detect findings on this dataset.',
+  });
+});
+
 export default seed;
