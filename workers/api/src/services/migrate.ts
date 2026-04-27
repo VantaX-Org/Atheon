@@ -684,7 +684,10 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'catalyst_clusters', column: 'sub_catalysts', definition: "TEXT NOT NULL DEFAULT '[]'" },
     { table: 'catalyst_actions', column: 'escalation_level', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
-    { table: 'tenants', column: 'industry', definition: "TEXT NOT NULL DEFAULT 'general'" },
+    // tenants.industry is intentionally NOT healed here — it is dropped a few
+    // hundred lines below in `columnsToDrop`. Healing it first would wastefully
+    // re-add the column on every cold start only to drop it again, and
+    // misleads readers into thinking the column persists.
     { table: 'tenants', column: 'deployment_model', definition: "TEXT NOT NULL DEFAULT 'saas'" },
     { table: 'tenants', column: 'region', definition: "TEXT NOT NULL DEFAULT 'af-south-1'" },
     { table: 'users', column: 'password_hash', definition: 'TEXT' },
