@@ -1,8 +1,23 @@
 # Atheon Go-Live Checklist
 
-Last updated: 2026-04-27
+Last updated: 2026-04-27 (assessment overhaul + frontend-findings + demo seeder shipped)
 
 This document tracks the gating items between the current production state and a clean go-live announcement. Items are grouped by tier: **Tier 1 (blockers)** must be resolved before the announcement; **Tier 2 (should-fix)** should be closed within the first week; **Tier 3 (deferred)** are known follow-ups tracked in the backlog.
+
+## Assessment engine — go-live ready
+
+The assessment engine is the lead-magnet that drives revenue. As of this update:
+
+- [x] **40 detectors** across product (32) + service (8) domains, each with `value_at_risk_zar` derived from the prospect's actual ERP rows — never a fixed percentage. PRs #272, #274.
+- [x] **Multi-currency normalisation** (USD / EUR / GBP / ZAR) — native amounts preserved on `currency_breakdown`, headline value normalised to ZAR via configurable rate table. PR #272.
+- [x] **Multi-company / multinational** per-entity findings via `detectAllFindingsByCompany()`. Concentration findings stay at the consolidated level so they don't fragment across entities. PR #273.
+- [x] **Service vs product detection** classifies tenants as product / service / mixed / unknown. Service detectors no-op cleanly for product-only tenants. PR #274.
+- [x] **Catalyst gap closure** — every entry in `FINDING_CATALYST_MAP` resolves to a real-implementation sub-catalyst in `CATALYST_CATALOG`. New "Service Operations Catalyst" cluster. Round-trip enforced by test. PR #275.
+- [x] **Business PDF report** renders one card per finding with severity ribbon, narrative, value-at-risk callout, sample records, and a "CURE: catalyst → sub-catalyst" footer. Per-entity summary page for multinationals. PR #276.
+- [x] **Pulse + Apex wire-up** — every finding becomes a `process_metric`; high+critical findings additionally become `risk_alerts` with the resolving catalyst in `recommended_actions`. Idempotent across re-runs. PR #277.
+- [x] **Frontend Findings tab** in AssessmentsPage — interactive list with severity filters, search, category filter, per-entity tabs, sample-record drill-down, and a Deploy button on each finding's recommended catalyst. PR #278.
+- [x] **Trial flow** runs `detectAllFindings` alongside the legacy value-assessment engine; trial `/results` exposes `findings` + `findingsSummary`. Migration v51-trial-findings. PR #279.
+- [x] **VantaX demo seeder** — `POST /api/v1/seed-vantax/seed-findings-demo` lights up all 40 detectors with ~280 deterministic fixture records so any sales demo runs against a fully-populated Findings tab. PR #280.
 
 ## Tier 1 — Blockers
 
