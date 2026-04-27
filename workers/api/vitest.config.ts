@@ -6,6 +6,15 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         main: './src/index.ts',
+        // Run all tests serially in a single worker so per-test isolated
+        // storage stack frames pop deterministically. Without this, CI hits
+        // the upstream miniflare race documented at
+        // https://developers.cloudflare.com/workers/testing/vitest-integration/known-issues/#isolated-storage
+        // ("Failed to pop isolated storage stack frame ... unable to pop KV
+        // storage"). Local runs were passing because there was less
+        // concurrent pressure on the storage stack; CI hit it consistently
+        // on `custom-roles.test.ts` and `feature-flags.test.ts`.
+        singleWorker: true,
         miniflare: {
           compatibilityDate: '2024-12-01',
           compatibilityFlags: ['nodejs_compat'],
