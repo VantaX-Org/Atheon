@@ -1,7 +1,14 @@
 // workers/api/src/services/assessment-engine.ts
 // Pre-Assessment Tool — Data collection, catalyst scoring, report generation
 
-import { detectAllFindings, summariseFindings, type Finding, type FindingsContext } from './assessment-findings';
+import {
+  detectAllFindings,
+  detectAllFindingsByCompany,
+  summariseFindings,
+  type Finding,
+  type FindingsContext,
+  type CompanyContext,
+} from './assessment-findings';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 export interface AssessmentConfig {
@@ -140,6 +147,16 @@ export interface AssessmentResults {
    */
   findings: Finding[];
   findings_summary: ReturnType<typeof summariseFindings>;
+  /**
+   * Per-entity findings for multinational / multi-company prospects. Empty
+   * array when the tenant has no `erp_companies` rows registered (single-
+   * entity engagement) — in that case `findings` carries the full set.
+   */
+  findings_by_company: Array<{
+    company: CompanyContext;
+    findings: Finding[];
+    summary: ReturnType<typeof summariseFindings>;
+  }>;
 }
 
 export const DEFAULT_ASSESSMENT_CONFIG: AssessmentConfig = {
@@ -1778,14 +1795,22 @@ export async function runAssessment(
 
     // 5. Detect business findings (stale stock, AR aging, variances, etc.).
     // Findings are the value-evidence the report hangs on — each maps to the
-    // catalyst that resolves it.
+    // catalyst that resolves it. For multinational tenants with multiple
+    // erp_companies registered, we also produce per-entity findings.
     const findingsContext: FindingsContext = {
       baseCurrency: 'ZAR',
       exchangeRates: { ZAR: 1.0, USD: 18.5, EUR: 20.0, GBP: 23.0 },
       monthsOfData: snapshot.months_of_data,
     };
-    const findings = await detectAllFindings(db, tenantId, findingsContext);
+    const { per_company, consolidated } = await detectAllFindingsByCompany(db, tenantId, findingsContext);
+    const findings = consolidated;
     const findingsSummary = summariseFindings(findings);
+    const findings_by_company = per_company.map(pc => ({
+      company: pc.company,
+      findings: pc.findings,
+      summary: summariseFindings(pc.findings),
+    }));
+    void detectAllFindings; // Re-export for tests; not used directly in this path.
 
     // 6. Generate narrative
     const baselineSaving = catalystScores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
@@ -1809,6 +1834,7 @@ export async function runAssessment(
       narrative_summary: narrative,
       findings,
       findings_summary: findingsSummary,
+      findings_by_company,
     };
 
     // 6–7. Generate reports (each wrapped independently — failures are non-fatal)
