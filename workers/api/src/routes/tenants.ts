@@ -16,7 +16,11 @@ tenants.get('/', async (c) => {
     id: t.id,
     name: t.name,
     slug: t.slug,
-    industry: t.industry,
+    // tenants.industry was dropped from the schema; every tenant is bucketed
+    // as 'general' until per-tenant industry tagging is reintroduced. Returning
+    // a stable string here keeps frontend consumers (TenantsPage badge,
+    // Header.setActiveTenant cast) from showing "undefined".
+    industry: 'general',
     plan: t.plan,
     status: t.status,
     deploymentModel: t.deployment_model,
@@ -305,7 +309,11 @@ tenants.get('/:id', async (c) => {
     id: t.id,
     name: t.name,
     slug: t.slug,
-    industry: t.industry,
+    // tenants.industry was dropped from the schema; every tenant is bucketed
+    // as 'general' until per-tenant industry tagging is reintroduced. Returning
+    // a stable string here keeps frontend consumers (TenantsPage badge,
+    // Header.setActiveTenant cast) from showing "undefined".
+    industry: 'general',
     plan: t.plan,
     status: t.status,
     deploymentModel: t.deployment_model,
