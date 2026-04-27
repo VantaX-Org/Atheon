@@ -16,6 +16,7 @@ import { env, SELF } from 'cloudflare:test';
 import {
   detectAllFindings,
   detectAllFindingsByCompany,
+  detectCompanyProfile,
   summariseFindings,
   FINDING_CATALYST_MAP,
   type FindingCode,
@@ -371,6 +372,128 @@ describe('Assessment Findings — sorting + summary', () => {
     expect(summary.total_count).toBeGreaterThanOrEqual(2);
     expect(summary.recommended_catalysts.length).toBeGreaterThanOrEqual(1);
     expect(summary.by_category.supply_chain.count).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('Assessment Findings — service-company detectors', () => {
+  beforeAll(async () => { await migrate(); });
+
+  it('classifies tenant as service when there are projects + time entries but no products', async () => {
+    const tenantId = nextTenantId('svc-profile-srv');
+    await seedTenant(tenantId);
+    await env.DB.prepare(
+      `INSERT INTO erp_projects (id, tenant_id, code, name, status, contract_value, currency)
+       VALUES (?, ?, 'P-001', 'Engagement', 'active', 500000, 'ZAR')`,
+    ).bind(`prj-${tenantId}-1`, tenantId).run();
+    await env.DB.prepare(
+      `INSERT INTO erp_time_entries (id, tenant_id, project_id, work_date, hours, billable, billable_rate, approval_status)
+       VALUES (?, ?, ?, date('now'), 8, 1, 1500, 'approved')`,
+    ).bind(`te-${tenantId}-1`, tenantId, `prj-${tenantId}-1`).run();
+    const profile = await detectCompanyProfile(env.DB, tenantId);
+    expect(profile.profile).toBe('service');
+    expect(profile.project_count).toBe(1);
+    expect(profile.time_entry_count).toBe(1);
+    expect(profile.product_count).toBe(0);
+  });
+
+  it('classifies tenant as mixed when products + projects coexist', async () => {
+    const tenantId = nextTenantId('svc-profile-mix');
+    await seedTenant(tenantId);
+    await env.DB.prepare(
+      `INSERT INTO erp_products (id, tenant_id, sku, name, is_active) VALUES (?, ?, 'SKU-1', 'Widget', 1)`,
+    ).bind(`prod-${tenantId}-1`, tenantId).run();
+    await env.DB.prepare(
+      `INSERT INTO erp_projects (id, tenant_id, code, name, status) VALUES (?, ?, 'P-1', 'Eng', 'active')`,
+    ).bind(`prj-${tenantId}-1`, tenantId).run();
+    const profile = await detectCompanyProfile(env.DB, tenantId);
+    expect(profile.profile).toBe('mixed');
+  });
+
+  it('detects low billable utilisation and quantifies the uplift', async () => {
+    const tenantId = nextTenantId('svc-util');
+    await seedTenant(tenantId);
+    // Need to satisfy total_hours > 100 AND utilPct < 50%.
+    // Seed 200 total hours with 60 billable (30%).
+    // Seed 3 employees first so the FK on erp_time_entries.employee_id is satisfied.
+    for (let i = 0; i < 3; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, salary_frequency, status)
+         VALUES (?, ?, ?, ?, ?, 'monthly', 'active')`,
+      ).bind(`emp-${tenantId}-${i}`, tenantId, `E${i}`, 'Test', `Worker${i}`).run();
+    }
+    for (let i = 0; i < 20; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_time_entries (id, tenant_id, work_date, hours, billable, billable_rate, employee_id)
+         VALUES (?, ?, date('now', '-' || ? || ' days'), 10, ?, 1500, ?)`,
+      ).bind(`te-${tenantId}-${i}`, tenantId, i + 1, i < 6 ? 1 : 0, `emp-${tenantId}-${i % 3}`).run();
+    }
+    const findings = await detectAllFindings(env.DB, tenantId, CTX);
+    const f = findings.find(x => x.code === 'svc_low_billable_utilisation');
+    expect(f).toBeTruthy();
+    expect(f!.title).toMatch(/utilisation 30%/i);
+    expect(f!.recommended_catalyst.catalyst).toBe('Service Operations');
+    expect(f!.value_at_risk_zar).toBeGreaterThan(0);
+  });
+
+  it('detects unbilled aged time entries', async () => {
+    const tenantId = nextTenantId('svc-wip');
+    await seedTenant(tenantId);
+    for (let i = 0; i < 5; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_time_entries (id, tenant_id, work_date, hours, billable, billed, billable_rate, approval_status, project_code)
+         VALUES (?, ?, date('now', '-60 days'), 8, 1, 0, 1800, 'approved', 'P-100')`,
+      ).bind(`te-wip-${tenantId}-${i}`, tenantId).run();
+    }
+    const f = (await detectAllFindings(env.DB, tenantId, CTX)).find(x => x.code === 'svc_unbilled_time_aging');
+    expect(f).toBeTruthy();
+    // 5 × 8 × 1800 = R72,000
+    expect(f!.value_at_risk_zar).toBe(72_000);
+    expect(f!.recommended_catalyst.sub_catalyst).toBe('WIP & Unbilled Aging');
+  });
+
+  it('detects active projects with > 15% cost overrun', async () => {
+    const tenantId = nextTenantId('svc-overrun');
+    await seedTenant(tenantId);
+    for (let i = 0; i < 3; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_projects (id, tenant_id, code, name, customer_name, status, budgeted_cost, actual_cost, contract_value, currency)
+         VALUES (?, ?, ?, ?, ?, 'active', 100000, 150000, 200000, 'ZAR')`,
+      ).bind(`prj-or-${tenantId}-${i}`, tenantId, `P-OR-${i}`, `Project ${i}`, `Customer ${i}`).run();
+    }
+    const f = (await detectAllFindings(env.DB, tenantId, CTX)).find(x => x.code === 'svc_project_overrun');
+    expect(f).toBeTruthy();
+    // 3 × (150k - 100k) = R150k overrun
+    expect(f!.value_at_risk_zar).toBe(150_000);
+  });
+
+  it('detects closed projects that ended at negative margin', async () => {
+    const tenantId = nextTenantId('svc-loss');
+    await seedTenant(tenantId);
+    for (let i = 0; i < 2; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_projects (id, tenant_id, code, name, customer_name, status, recognised_revenue, actual_cost, currency)
+         VALUES (?, ?, ?, ?, ?, 'closed', 80000, 120000, 'ZAR')`,
+      ).bind(`prj-loss-${tenantId}-${i}`, tenantId, `P-L-${i}`, `Loss ${i}`, `Customer ${i}`).run();
+    }
+    const f = (await detectAllFindings(env.DB, tenantId, CTX)).find(x => x.code === 'svc_project_margin_negative');
+    expect(f).toBeTruthy();
+    // 2 × (120k - 80k) = R80k
+    expect(f!.value_at_risk_zar).toBe(80_000);
+  });
+
+  it('detects time entries pending approval > 14 days', async () => {
+    const tenantId = nextTenantId('svc-approval');
+    await seedTenant(tenantId);
+    for (let i = 0; i < 12; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_time_entries (id, tenant_id, work_date, hours, billable, billable_rate, approval_status)
+         VALUES (?, ?, date('now', '-30 days'), 8, 1, 1500, 'pending')`,
+      ).bind(`te-pa-${tenantId}-${i}`, tenantId).run();
+    }
+    const f = (await detectAllFindings(env.DB, tenantId, CTX)).find(x => x.code === 'svc_unapproved_time_entries');
+    expect(f).toBeTruthy();
+    expect(f!.affected_count).toBe(12);
+    expect(f!.severity).toMatch(/^(medium|high|critical)$/);
   });
 });
 

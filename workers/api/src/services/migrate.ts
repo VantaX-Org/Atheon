@@ -5,9 +5,10 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-// v49-support: support_tickets + support_ticket_replies tables (additive).
-// Rebased over v48-narrative (catalyst-narrative service; no schema change).
-export const MIGRATION_VERSION = 'v49-support';
+// v50-service-erp: erp_projects + erp_time_entries (additive) for the
+// service-company branch of the assessment-findings engine. No changes to
+// existing rows; both tables are nullable / optional per tenant.
+export const MIGRATION_VERSION = 'v50-service-erp';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -128,6 +129,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS iam_custom_roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, permissions TEXT NOT NULL DEFAULT '[]', inherits_from TEXT, user_count INTEGER NOT NULL DEFAULT 0, created_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, name));
     CREATE TABLE IF NOT EXISTS support_tickets (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), assignee_user_id TEXT REFERENCES users(id), subject TEXT NOT NULL, body TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'general', priority TEXT NOT NULL DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS support_ticket_replies (id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL REFERENCES support_tickets(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS erp_projects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), company_id TEXT REFERENCES erp_companies(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', code TEXT NOT NULL, name TEXT NOT NULL, customer_id TEXT REFERENCES erp_customers(id), customer_name TEXT, project_manager TEXT, start_date TEXT, end_date TEXT, billing_type TEXT NOT NULL DEFAULT 'time_and_materials', currency TEXT DEFAULT 'ZAR', contract_value REAL DEFAULT 0, billed_to_date REAL DEFAULT 0, recognised_revenue REAL DEFAULT 0, budgeted_hours REAL DEFAULT 0, budgeted_cost REAL DEFAULT 0, actual_cost REAL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT);
+    CREATE TABLE IF NOT EXISTS erp_time_entries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), company_id TEXT REFERENCES erp_companies(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', employee_id TEXT REFERENCES erp_employees(id), employee_number TEXT, project_id TEXT REFERENCES erp_projects(id), project_code TEXT, work_date TEXT NOT NULL, hours REAL NOT NULL DEFAULT 0, billable INTEGER NOT NULL DEFAULT 1, billed INTEGER NOT NULL DEFAULT 0, billable_rate REAL DEFAULT 0, cost_rate REAL DEFAULT 0, currency TEXT DEFAULT 'ZAR', activity_code TEXT, description TEXT, approval_status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT);
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -307,6 +310,14 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(tenant_id, created_at)',
     'CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_ticket ON support_ticket_replies(ticket_id)',
     'CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_tenant ON support_ticket_replies(tenant_id)',
+    // v50-service-erp: project + time-entry indexes for service-company findings.
+    'CREATE INDEX IF NOT EXISTS idx_erp_projects_tenant ON erp_projects(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_projects_company ON erp_projects(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_projects_status ON erp_projects(tenant_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_time_entries_tenant ON erp_time_entries(tenant_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_time_entries_company ON erp_time_entries(tenant_id, company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_time_entries_employee ON erp_time_entries(tenant_id, employee_id, work_date)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_time_entries_project ON erp_time_entries(tenant_id, project_id)',
   ];
 
   for (const idx of indexes) {

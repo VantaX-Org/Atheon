@@ -4,10 +4,12 @@
 import {
   detectAllFindings,
   detectAllFindingsByCompany,
+  detectCompanyProfile,
   summariseFindings,
   type Finding,
   type FindingsContext,
   type CompanyContext,
+  type CompanyProfile,
 } from './assessment-findings';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -157,6 +159,18 @@ export interface AssessmentResults {
     findings: Finding[];
     summary: ReturnType<typeof summariseFindings>;
   }>;
+  /**
+   * Whether the prospect is a product / service / mixed company. Drives the
+   * report's narrative — service-company sections only appear when there is
+   * actual time/project data to back them. Computed from erp_products vs
+   * erp_projects + erp_time_entries row counts.
+   */
+  company_profile: {
+    profile: CompanyProfile;
+    product_count: number;
+    project_count: number;
+    time_entry_count: number;
+  };
 }
 
 export const DEFAULT_ASSESSMENT_CONFIG: AssessmentConfig = {
@@ -1810,6 +1824,7 @@ export async function runAssessment(
       findings: pc.findings,
       summary: summariseFindings(pc.findings),
     }));
+    const company_profile = await detectCompanyProfile(db, tenantId);
     void detectAllFindings; // Re-export for tests; not used directly in this path.
 
     // 6. Generate narrative
@@ -1835,6 +1850,7 @@ export async function runAssessment(
       findings,
       findings_summary: findingsSummary,
       findings_by_company,
+      company_profile,
     };
 
     // 6–7. Generate reports (each wrapped independently — failures are non-fatal)
