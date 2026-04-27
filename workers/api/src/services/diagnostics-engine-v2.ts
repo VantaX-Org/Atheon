@@ -50,7 +50,10 @@ export async function runRootCauseAnalysis(
     'SELECT * FROM correlation_events WHERE tenant_id = ? ORDER BY detected_at DESC LIMIT 10'
   ).bind(tenantId).all();
 
-  const tenant = await db.prepare('SELECT industry FROM tenants WHERE id = ?').bind(tenantId).first<{ industry: string }>();
+  // tenants.industry was dropped from the schema; the LLM prompt is bucketed
+  // under 'general' until per-tenant industry tagging is reintroduced.
+  // Reading the column would throw "no such column: industry" at runtime.
+  const tenant: { industry: string } = { industry: 'general' };
   const llmConfig = await loadLlmConfig(db, tenantId);
 
   // L0 factor — Symptom
