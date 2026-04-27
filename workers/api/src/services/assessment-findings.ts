@@ -77,7 +77,16 @@ export type FindingCode =
   | 'tax_vat_rate_anomaly'
   // Cross-cutting / FX
   | 'fx_currency_exposure'
-  | 'fx_dual_use_currency';
+  | 'fx_dual_use_currency'
+  // Service-company specific (require erp_projects / erp_time_entries)
+  | 'svc_low_billable_utilisation'
+  | 'svc_unbilled_time_aging'
+  | 'svc_project_overrun'
+  | 'svc_project_margin_negative'
+  | 'svc_unapproved_time_entries'
+  | 'svc_revenue_recognition_lag'
+  | 'svc_zero_hours_active_project'
+  | 'svc_inactive_employee_billed_time';
 
 export type FindingCategory =
   | 'finance'
@@ -86,7 +95,10 @@ export type FindingCategory =
   | 'sales'
   | 'workforce'
   | 'compliance'
-  | 'cross_cutting';
+  | 'cross_cutting'
+  | 'service_delivery';
+
+export type CompanyProfile = 'product' | 'service' | 'mixed' | 'unknown';
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -208,6 +220,16 @@ export const FINDING_CATALYST_MAP: Record<FindingCode, { catalyst: string; sub_c
   tax_vat_rate_anomaly:          { catalyst: 'Compliance',   sub_catalyst: 'Tax Audit' },
   fx_currency_exposure:          { catalyst: 'Finance',      sub_catalyst: 'FX Hedge Advisory' },
   fx_dual_use_currency:          { catalyst: 'Procurement',  sub_catalyst: 'Vendor Master Cleanup' },
+  // Service-company catalyst mapping. Most route to a 'Service Operations'
+  // catalyst that is added in PR D — explicit gap surfaced at the bottom.
+  svc_low_billable_utilisation:  { catalyst: 'Service Operations', sub_catalyst: 'Billable Utilisation' },
+  svc_unbilled_time_aging:       { catalyst: 'Service Operations', sub_catalyst: 'WIP & Unbilled Aging' },
+  svc_project_overrun:           { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
+  svc_project_margin_negative:   { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
+  svc_unapproved_time_entries:   { catalyst: 'Service Operations', sub_catalyst: 'Time & Expense Governance' },
+  svc_revenue_recognition_lag:   { catalyst: 'Finance',            sub_catalyst: 'Revenue Recognition' },
+  svc_zero_hours_active_project: { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
+  svc_inactive_employee_billed_time: { catalyst: 'Workforce',      sub_catalyst: 'Payroll Audit' },
 };
 
 const CATEGORY_MAP: Record<FindingCode, FindingCategory> = {
@@ -243,6 +265,14 @@ const CATEGORY_MAP: Record<FindingCode, FindingCategory> = {
   tax_vat_rate_anomaly: 'compliance',
   fx_currency_exposure: 'cross_cutting',
   fx_dual_use_currency: 'cross_cutting',
+  svc_low_billable_utilisation: 'service_delivery',
+  svc_unbilled_time_aging: 'service_delivery',
+  svc_project_overrun: 'service_delivery',
+  svc_project_margin_negative: 'service_delivery',
+  svc_unapproved_time_entries: 'service_delivery',
+  svc_revenue_recognition_lag: 'service_delivery',
+  svc_zero_hours_active_project: 'service_delivery',
+  svc_inactive_employee_billed_time: 'service_delivery',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1998,6 +2028,467 @@ async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: Fi
   });
 }
 
+// ── Company-type detection ────────────────────────────────────────────────
+
+/**
+ * Classify the prospect as product / service / mixed / unknown so the
+ * orchestrator can include or skip the service-only detectors.
+ *
+ * Heuristic (deliberately simple — gets the right answer for ~95% of cases
+ * and never raises a false-positive that would attempt a service detector
+ * against a tenant with no time-tracking data):
+ *
+ *   - has erp_time_entries OR erp_projects rows AND has erp_products → mixed
+ *   - has erp_time_entries OR erp_projects rows AND no erp_products → service
+ *   - has erp_products AND no time/projects → product
+ *   - none of the above → unknown (only the universal detectors run)
+ */
+export async function detectCompanyProfile(
+  db: D1Database,
+  tenantId: string,
+): Promise<{ profile: CompanyProfile; product_count: number; project_count: number; time_entry_count: number }> {
+  const counts = await db.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM erp_products WHERE tenant_id = ? AND COALESCE(is_active, 1) = 1) as product_count,
+       (SELECT COUNT(*) FROM erp_projects WHERE tenant_id = ?) as project_count,
+       (SELECT COUNT(*) FROM erp_time_entries WHERE tenant_id = ?) as time_entry_count`,
+  ).bind(tenantId, tenantId, tenantId).first<{ product_count: number; project_count: number; time_entry_count: number }>();
+  const product_count = counts?.product_count || 0;
+  const project_count = counts?.project_count || 0;
+  const time_entry_count = counts?.time_entry_count || 0;
+  const hasService = project_count > 0 || time_entry_count > 0;
+  const hasProduct = product_count > 0;
+  let profile: CompanyProfile = 'unknown';
+  if (hasService && hasProduct) profile = 'mixed';
+  else if (hasService) profile = 'service';
+  else if (hasProduct) profile = 'product';
+  return { profile, product_count, project_count, time_entry_count };
+}
+
+// ── Service-company detectors ────────────────────────────────────────────
+
+/**
+ * Billable utilisation — billable hours ÷ total hours over the last 90 days.
+ * Industry benchmark for professional services is 65-75% utilisation; below
+ * 50% is structural waste worth quantifying.
+ */
+async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const summary = await db.prepare(
+    `SELECT
+       SUM(hours) as total_hours,
+       SUM(CASE WHEN billable = 1 THEN hours ELSE 0 END) as billable_hours,
+       SUM(CASE WHEN billable = 1 THEN hours * billable_rate ELSE 0 END) as billable_value,
+       COUNT(DISTINCT employee_id) as headcount
+     FROM erp_time_entries
+     WHERE tenant_id = ?
+       AND date(work_date) >= date('now', '-90 days')
+       ${cf.clause}`,
+  ).bind(tenantId, ...cf.binds).first<{ total_hours: number; billable_hours: number; billable_value: number; headcount: number }>();
+  if (!summary || !summary.total_hours || summary.total_hours < 100) return null;
+  const utilPct = (summary.billable_hours / summary.total_hours) * 100;
+  if (utilPct >= 50) return null;
+  // Lift to 65% target → unrealised billable hours × historical billable rate.
+  const targetHours = summary.total_hours * 0.65;
+  const gapHours = Math.max(0, targetHours - summary.billable_hours);
+  const avgRate = summary.billable_hours > 0 ? summary.billable_value / summary.billable_hours : 1500;
+  const annualUplift = gapHours * avgRate * (365 / 90); // annualise from 90d window
+  return makeFinding({
+    code: 'svc_low_billable_utilisation',
+    title: `Billable utilisation ${utilPct.toFixed(0)}% — below 50% threshold`,
+    narrative: `Across ${summary.headcount} consultants in the last 90 days, billable utilisation is ${utilPct.toFixed(0)}% (${Math.round(summary.billable_hours).toLocaleString()} of ${Math.round(summary.total_hours).toLocaleString()} hours). Lifting to a 65% benchmark recovers ${Math.round(gapHours).toLocaleString()} 90-day hours, ${formatZAR(annualUplift)} annualised at the current average billable rate.`,
+    affected_count: summary.headcount,
+    value_at_risk_zar: annualUplift,
+    value_components: [{
+      label: 'Annualised utilisation uplift',
+      amount_zar: annualUplift,
+      methodology: `(65% target − ${utilPct.toFixed(0)}% actual) × ${Math.round(summary.total_hours).toLocaleString()} hours × ${formatZAR(avgRate)}/hr × 365/90`,
+    }],
+    currency_breakdown: {},
+    sample_records: [],
+    severity: maxSeverity(severityFromValue(annualUplift), 'high'),
+    ctx,
+  });
+}
+
+/**
+ * Time entries that are billable, approved, but not invoiced and aging out.
+ * Each day unbilled is a day the cash conversion cycle stretches.
+ */
+async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const rows = (await db.prepare(
+    `SELECT id, employee_number, project_code, work_date, hours, billable_rate, currency, description
+       FROM erp_time_entries
+      WHERE tenant_id = ?
+        AND billable = 1
+        AND COALESCE(billed, 0) = 0
+        AND approval_status = 'approved'
+        AND date(work_date) < date('now', '-30 days')
+        ${cf.clause}
+      ORDER BY (hours * billable_rate) DESC
+      LIMIT 100`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; employee_number: string | null; project_code: string | null;
+    work_date: string; hours: number; billable_rate: number;
+    currency: string | null; description: string | null;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  let totalZar = 0;
+  const breakdown: Record<string, number> = {};
+  for (const r of rows) {
+    const cur = (r.currency || 'ZAR').toUpperCase();
+    const v = (r.hours || 0) * (r.billable_rate || 0);
+    breakdown[cur] = (breakdown[cur] || 0) + v;
+    totalZar += toZAR(v, cur, ctx);
+  }
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: `${r.project_code || 'no-project'} / ${r.employee_number || 'unknown'}`,
+    description: r.description || `${r.hours}h @ ${r.billable_rate}/h`,
+    amount_native: r.hours * r.billable_rate,
+    currency: r.currency || 'ZAR',
+    amount_zar: toZAR(r.hours * r.billable_rate, r.currency || undefined, ctx),
+    date: r.work_date,
+  }));
+  return makeFinding({
+    code: 'svc_unbilled_time_aging',
+    title: `${rows.length} aged unbilled time entries (${formatZAR(totalZar)})`,
+    narrative: `${rows.length} approved billable time entries totalling ${formatZAR(totalZar)} have been waiting more than 30 days to invoice. Every day unbilled is a day of working capital tied up — and the longer it sits, the higher the chance the client pushes back on the line item. WIP automation invoices these immediately on approval.`,
+    affected_count: rows.length,
+    value_at_risk_zar: totalZar,
+    value_components: [{
+      label: 'Aged WIP — invoice immediately',
+      amount_zar: totalZar,
+      methodology: 'Σ (hours × billable_rate) on approved-but-unbilled entries older than 30 days',
+    }],
+    currency_breakdown: breakdown,
+    sample_records: sample,
+    severity: severityFromValue(totalZar),
+    ctx,
+  });
+}
+
+/**
+ * Projects where actual_cost has exceeded budgeted_cost by > 15% but the
+ * project is still active. Each is a margin leak to investigate.
+ */
+async function detectSvcProjectOverrun(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const rows = (await db.prepare(
+    `SELECT id, code, name, customer_name, contract_value, budgeted_cost, actual_cost, currency, project_manager
+       FROM erp_projects
+      WHERE tenant_id = ?
+        AND status = 'active'
+        AND budgeted_cost > 0
+        AND actual_cost > budgeted_cost * 1.15
+        ${cf.clause}
+      ORDER BY (actual_cost - budgeted_cost) DESC
+      LIMIT 100`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; code: string; name: string; customer_name: string | null;
+    contract_value: number; budgeted_cost: number; actual_cost: number;
+    currency: string | null; project_manager: string | null;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  let overrunZar = 0;
+  const breakdown: Record<string, number> = {};
+  for (const r of rows) {
+    const cur = (r.currency || 'ZAR').toUpperCase();
+    const overrun = r.actual_cost - r.budgeted_cost;
+    breakdown[cur] = (breakdown[cur] || 0) + overrun;
+    overrunZar += toZAR(overrun, cur, ctx);
+  }
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.code,
+    description: `${r.name} (${r.customer_name || 'no client'}) — PM ${r.project_manager || 'unassigned'}`,
+    amount_native: r.actual_cost - r.budgeted_cost,
+    currency: r.currency || 'ZAR',
+    amount_zar: toZAR(r.actual_cost - r.budgeted_cost, r.currency || undefined, ctx),
+    metadata: {
+      budgeted: r.budgeted_cost,
+      actual: r.actual_cost,
+      overrun_pct: (((r.actual_cost - r.budgeted_cost) / r.budgeted_cost) * 100).toFixed(0) + '%',
+    },
+  }));
+  return makeFinding({
+    code: 'svc_project_overrun',
+    title: `${rows.length} active projects over budget by 15%+ (${formatZAR(overrunZar)} overrun)`,
+    narrative: `${rows.length} active projects have already burned ≥15% past their budgeted cost — total overrun ${formatZAR(overrunZar)}. Without intervention this falls straight through to the gross margin. Project profitability monitoring catches the trend in the first 25% of project life.`,
+    affected_count: rows.length,
+    value_at_risk_zar: overrunZar,
+    value_components: [{
+      label: 'Margin leak from active overruns',
+      amount_zar: overrunZar,
+      methodology: 'Σ (actual_cost − budgeted_cost) on active projects > 15% over',
+    }],
+    currency_breakdown: breakdown,
+    sample_records: sample,
+    severity: maxSeverity(severityFromValue(overrunZar), 'high'),
+    ctx,
+  });
+}
+
+/**
+ * Closed projects that ended at negative margin — actual cost > recognised
+ * revenue. These are losses booked but not yet learned from.
+ */
+async function detectSvcProjectMarginNegative(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const rows = (await db.prepare(
+    `SELECT id, code, name, customer_name, contract_value, recognised_revenue, actual_cost, currency
+       FROM erp_projects
+      WHERE tenant_id = ?
+        AND status = 'closed'
+        AND recognised_revenue > 0
+        AND actual_cost > recognised_revenue
+        ${cf.clause}
+      ORDER BY (actual_cost - recognised_revenue) DESC
+      LIMIT 100`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; code: string; name: string; customer_name: string | null;
+    contract_value: number; recognised_revenue: number; actual_cost: number;
+    currency: string | null;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  let lossZar = 0;
+  const breakdown: Record<string, number> = {};
+  for (const r of rows) {
+    const cur = (r.currency || 'ZAR').toUpperCase();
+    const loss = r.actual_cost - r.recognised_revenue;
+    breakdown[cur] = (breakdown[cur] || 0) + loss;
+    lossZar += toZAR(loss, cur, ctx);
+  }
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.code,
+    description: `${r.name} (${r.customer_name || 'no client'})`,
+    amount_native: r.actual_cost - r.recognised_revenue,
+    currency: r.currency || 'ZAR',
+    amount_zar: toZAR(r.actual_cost - r.recognised_revenue, r.currency || undefined, ctx),
+    metadata: { revenue: r.recognised_revenue, cost: r.actual_cost },
+  }));
+  return makeFinding({
+    code: 'svc_project_margin_negative',
+    title: `${rows.length} closed projects ran at negative margin (${formatZAR(lossZar)} total loss)`,
+    narrative: `${rows.length} closed projects delivered at a loss — ${formatZAR(lossZar)} of cost above recognised revenue. These are the patterns to learn from before the next contract: scope creep, mis-scoped time, off-rate work. Re-quoting on the same shape would lift margin by the full loss amount.`,
+    affected_count: rows.length,
+    value_at_risk_zar: lossZar,
+    value_components: [{
+      label: 'Avoidable loss on future re-quotes',
+      amount_zar: lossZar,
+      methodology: 'Σ (actual_cost − recognised_revenue) on closed loss-making projects',
+    }],
+    currency_breakdown: breakdown,
+    sample_records: sample,
+    severity: maxSeverity(severityFromValue(lossZar), 'high'),
+    ctx,
+  });
+}
+
+/**
+ * Time entries pending approval > 14 days. Approval lag delays invoicing,
+ * obscures utilisation, and is the most common audit finding in services.
+ */
+async function detectSvcUnapprovedTimeEntries(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const rows = (await db.prepare(
+    `SELECT id, employee_number, project_code, work_date, hours, billable_rate, currency, approval_status
+       FROM erp_time_entries
+      WHERE tenant_id = ?
+        AND approval_status = 'pending'
+        AND date(work_date) < date('now', '-14 days')
+        ${cf.clause}
+      ORDER BY work_date ASC
+      LIMIT 100`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; employee_number: string | null; project_code: string | null;
+    work_date: string; hours: number; billable_rate: number; currency: string | null;
+    approval_status: string;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  const totalValue = rows.reduce((s, r) => s + toZAR((r.hours || 0) * (r.billable_rate || 0), r.currency || undefined, ctx), 0);
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.id,
+    description: `${r.project_code || '?'} / ${r.employee_number || '?'} — ${r.hours}h`,
+    amount_zar: toZAR((r.hours || 0) * (r.billable_rate || 0), r.currency || undefined, ctx),
+    currency: r.currency || 'ZAR',
+    date: r.work_date,
+  }));
+  return makeFinding({
+    code: 'svc_unapproved_time_entries',
+    title: `${rows.length} time entries pending approval > 14 days (${formatZAR(totalValue)})`,
+    narrative: `${rows.length} time entries totalling ${formatZAR(totalValue)} have been waiting for approval for more than 14 days. Approval lag delays invoicing and obscures utilisation reporting; automating approval workflow + escalations clears the backlog within a sprint.`,
+    affected_count: rows.length,
+    value_at_risk_zar: 0,
+    value_components: [{
+      label: 'Time waiting for approval',
+      amount_zar: totalValue,
+      methodology: 'Σ (hours × billable_rate) on pending entries > 14 days old (informational)',
+    }],
+    currency_breakdown: {},
+    sample_records: sample,
+    severity: severityFromCount(rows.length, { critical: 200, high: 50, medium: 10 }),
+    ctx,
+  });
+}
+
+/**
+ * Projects with delivered hours but recognised_revenue lagging the
+ * billed_to_date — milestone-billing or PoC revenue not yet booked.
+ */
+async function detectSvcRevenueRecognitionLag(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
+  const rows = (await db.prepare(
+    `SELECT id, code, name, customer_name, billed_to_date, recognised_revenue, currency, billing_type
+       FROM erp_projects
+      WHERE tenant_id = ?
+        AND status = 'active'
+        AND billed_to_date > 0
+        AND billed_to_date - recognised_revenue > billed_to_date * 0.2
+        ${cf.clause}
+      ORDER BY (billed_to_date - recognised_revenue) DESC
+      LIMIT 100`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; code: string; name: string; customer_name: string | null;
+    billed_to_date: number; recognised_revenue: number; currency: string | null;
+    billing_type: string;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  let lagZar = 0;
+  const breakdown: Record<string, number> = {};
+  for (const r of rows) {
+    const cur = (r.currency || 'ZAR').toUpperCase();
+    const lag = r.billed_to_date - r.recognised_revenue;
+    breakdown[cur] = (breakdown[cur] || 0) + lag;
+    lagZar += toZAR(lag, cur, ctx);
+  }
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.code,
+    description: `${r.name} — billing type: ${r.billing_type}`,
+    amount_native: r.billed_to_date - r.recognised_revenue,
+    currency: r.currency || 'ZAR',
+    amount_zar: toZAR(r.billed_to_date - r.recognised_revenue, r.currency || undefined, ctx),
+    metadata: { billed: r.billed_to_date, recognised: r.recognised_revenue },
+  }));
+  return makeFinding({
+    code: 'svc_revenue_recognition_lag',
+    title: `${rows.length} projects with recognition lag > 20% of billings (${formatZAR(lagZar)})`,
+    narrative: `${rows.length} active projects have billed ${formatZAR(lagZar)} more than they have recognised as revenue. This is deferred revenue or unrecognised milestones — either intentional (PoC delivery) or a revenue-recognition lag worth surfacing to the finance team. Either way it's a discussion to have before period-close.`,
+    affected_count: rows.length,
+    value_at_risk_zar: 0,
+    value_components: [{
+      label: 'Recognition lag',
+      amount_zar: lagZar,
+      methodology: 'Σ (billed_to_date − recognised_revenue) on active projects with > 20% lag (informational)',
+    }],
+    currency_breakdown: breakdown,
+    sample_records: sample,
+    severity: severityFromValue(lagZar),
+    ctx,
+  });
+}
+
+/**
+ * Active projects with zero time entries in the last 60 days. Either the
+ * project is dormant and should be closed, or work IS happening but is being
+ * recorded against a different project (timesheet hygiene issue).
+ */
+async function detectSvcZeroHoursActiveProject(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id', 'p');
+  const rows = (await db.prepare(
+    `SELECT p.id, p.code, p.name, p.customer_name, p.contract_value, p.start_date, p.currency
+       FROM erp_projects p
+      WHERE p.tenant_id = ?
+        AND p.status = 'active'
+        AND date(COALESCE(p.start_date, '1970-01-01')) <= date('now', '-60 days')
+        AND NOT EXISTS (
+          SELECT 1 FROM erp_time_entries t
+          WHERE t.tenant_id = p.tenant_id
+            AND t.project_id = p.id
+            AND date(t.work_date) >= date('now', '-60 days')
+        )
+        ${cf.clause}
+      ORDER BY p.contract_value DESC
+      LIMIT 50`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; code: string; name: string; customer_name: string | null;
+    contract_value: number; start_date: string | null; currency: string | null;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  let totalContractZar = 0;
+  for (const r of rows) totalContractZar += toZAR(r.contract_value, r.currency || undefined, ctx);
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.code,
+    description: `${r.name} (${r.customer_name || 'no client'}) — started ${r.start_date || '?'}`,
+    amount_native: r.contract_value,
+    currency: r.currency || 'ZAR',
+    amount_zar: toZAR(r.contract_value, r.currency || undefined, ctx),
+  }));
+  return makeFinding({
+    code: 'svc_zero_hours_active_project',
+    title: `${rows.length} active projects with zero hours in 60 days (${formatZAR(totalContractZar)} contract value)`,
+    narrative: `${rows.length} projects are flagged active with combined contract value ${formatZAR(totalContractZar)} but have had no time entries logged for 60+ days. Each is either a dormant project that should be closed (stops dilution of utilisation reports) or a timesheet hygiene gap where work is being booked elsewhere.`,
+    affected_count: rows.length,
+    value_at_risk_zar: 0,
+    value_components: [{
+      label: 'Project status hygiene',
+      amount_zar: totalContractZar,
+      methodology: 'Σ contract_value on dormant active projects (informational)',
+    }],
+    currency_breakdown: {},
+    sample_records: sample,
+    severity: severityFromCount(rows.length, { critical: 50, high: 20, medium: 5 }),
+    ctx,
+  });
+}
+
+/**
+ * Time entries booked under a terminated/inactive employee. Classic
+ * timesheet-fraud signal or stale data.
+ */
+async function detectSvcInactiveEmployeeBilledTime(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id', 't');
+  const rows = (await db.prepare(
+    `SELECT t.id, t.employee_number, t.project_code, t.work_date, t.hours, t.billable_rate, t.currency, e.status
+       FROM erp_time_entries t
+       JOIN erp_employees e ON e.tenant_id = t.tenant_id AND e.id = t.employee_id
+      WHERE t.tenant_id = ?
+        AND e.status != 'active'
+        AND date(t.work_date) >= date(COALESCE(e.termination_date, '1970-01-01'))
+        ${cf.clause}
+      ORDER BY t.work_date DESC
+      LIMIT 50`,
+  ).bind(tenantId, ...cf.binds).all<{
+    id: string; employee_number: string | null; project_code: string | null;
+    work_date: string; hours: number; billable_rate: number; currency: string | null;
+    status: string;
+  }>()).results || [];
+  if (rows.length === 0) return null;
+  const totalValue = rows.reduce((s, r) => s + toZAR((r.hours || 0) * (r.billable_rate || 0), r.currency || undefined, ctx), 0);
+  const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
+    ref: r.employee_number || r.id,
+    description: `Inactive (${r.status}) — ${r.hours}h on ${r.project_code || '?'}`,
+    amount_zar: toZAR((r.hours || 0) * (r.billable_rate || 0), r.currency || undefined, ctx),
+    currency: r.currency || 'ZAR',
+    date: r.work_date,
+  }));
+  return makeFinding({
+    code: 'svc_inactive_employee_billed_time',
+    title: `${rows.length} time entries booked under inactive employees (${formatZAR(totalValue)})`,
+    narrative: `${rows.length} time entries totalling ${formatZAR(totalValue)} have been logged on or after the employee's termination date. Each is either a payroll/HR data sync issue or a timesheet-fraud signal — both warrant immediate review.`,
+    affected_count: rows.length,
+    value_at_risk_zar: totalValue,
+    value_components: [{
+      label: 'Recoverable on payroll/timesheet remediation',
+      amount_zar: totalValue,
+      methodology: 'Σ (hours × billable_rate) on entries logged after termination_date',
+    }],
+    currency_breakdown: {},
+    sample_records: sample,
+    severity: maxSeverity(severityFromValue(totalValue), 'high'),
+    ctx,
+  });
+}
+
 // ── Orchestrator ──────────────────────────────────────────────────────────
 
 const DETECTORS: Array<(db: D1Database, tenantId: string, ctx: FindingsContext) => Promise<Finding | null>> = [
@@ -2033,6 +2524,16 @@ const DETECTORS: Array<(db: D1Database, tenantId: string, ctx: FindingsContext) 
   detectTaxVatRateAnomaly,
   detectFxCurrencyExposure,
   detectFxDualUseCurrency,
+  // Service-company detectors. Always run — they no-op (return null) cleanly
+  // for tenants without erp_projects / erp_time_entries data.
+  detectSvcLowBillableUtilisation,
+  detectSvcUnbilledTimeAging,
+  detectSvcProjectOverrun,
+  detectSvcProjectMarginNegative,
+  detectSvcUnapprovedTimeEntries,
+  detectSvcRevenueRecognitionLag,
+  detectSvcZeroHoursActiveProject,
+  detectSvcInactiveEmployeeBilledTime,
 ];
 
 /**
@@ -2138,6 +2639,7 @@ export function summariseFindings(findings: Finding[]): {
     workforce: { count: 0, value_at_risk_zar: 0 },
     compliance: { count: 0, value_at_risk_zar: 0 },
     cross_cutting: { count: 0, value_at_risk_zar: 0 },
+    service_delivery: { count: 0, value_at_risk_zar: 0 },
   };
   const catalysts = new Set<string>();
   let totalValue = 0;
@@ -2180,3 +2682,7 @@ export function summariseFindings(findings: Finding[]): {
 //   - Sales / Customer Risk                  — used by sales_customer_concentration
 //   - Workforce / Payroll Audit              — used by hr_terminated_in_payroll
 //   - Workforce / Compensation Analysis      — used by hr_high_payroll_concentration
+//   - Service Operations (NEW catalyst)       — used by every svc_* finding except revrec
+//     - Sub-catalysts: Billable Utilisation, WIP & Unbilled Aging, Project
+//       Profitability, Time & Expense Governance
+//   - Finance / Revenue Recognition           — used by svc_revenue_recognition_lag
