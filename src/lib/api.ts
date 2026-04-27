@@ -578,6 +578,8 @@ export const api = {
       request<{ comments: RunComment[] }>(`/api/catalysts/runs/${runId}/comments`),
     addRunComment: (runId: string, data: { comment: string; item_id?: string; comment_type?: string }) =>
       request<{ id: string; success: boolean }>(`/api/catalysts/runs/${runId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteRunComment: (runId: string, commentId: string) =>
+      request<{ success: boolean }>(`/api/catalysts/runs/${runId}/comments/${commentId}`, { method: 'DELETE' }),
   },
 
   memory: {
