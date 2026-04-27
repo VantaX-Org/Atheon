@@ -127,13 +127,10 @@ export async function computeStrategicContext(
     'SELECT * FROM market_benchmarks WHERE tenant_id = ? ORDER BY measured_at DESC LIMIT 5'
   ).bind(tenantId).all();
 
-  // Use tenants.industry directly — it's column-healed to 'general' by default
-  // and populated for trial-conversion tenants. Falls back to 'general' if the
-  // row is unexpectedly missing.
-  const tenantRow = await db.prepare(
-    'SELECT industry FROM tenants WHERE id = ?'
-  ).bind(tenantId).first<{ industry: string | null }>();
-  const tenant: { industry: string } = { industry: tenantRow?.industry || 'general' };
+  // tenants.industry is intentionally dropped by migrate.ts — reading it here
+  // would throw "no such column: industry" at runtime. The narrative bucket is
+  // global-only for now; revisit once the aggregator buckets per-tenant.
+  const tenant: { industry: string } = { industry: 'general' };
 
   // Compute industry benchmark score from market_benchmarks
   let industryBenchmark = 0;

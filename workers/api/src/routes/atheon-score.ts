@@ -65,10 +65,10 @@ app.get('/', async (c) => {
   ).bind(tenantId).all();
   const trend = (history.results || []).map((r: Record<string, unknown>) => ({ score: r.score as number, date: r.recorded_at as string })).reverse();
 
-  // Get industry average (from anonymised benchmarks if available).
-  // Aggregation is currently global — calculatePeerBenchmarks() writes a single
-  // 'general' bucket — so we read 'general' here. Once that aggregator buckets
-  // by tenants.industry per-tenant, this can switch to the caller's industry.
+  // tenants.industry is intentionally dropped by migrate.ts; benchmarks are
+  // bucketed under 'general' until per-tenant industry tagging is
+  // reintroduced (e.g., on a tenant_industry table or an entitlements
+  // field). Reading any other value here would miss every row.
   const industry = 'general';
   let industryAvg: number | null = null;
   try {

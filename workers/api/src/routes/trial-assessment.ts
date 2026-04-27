@@ -40,15 +40,15 @@ app.post('/start', async (c) => {
   const tenantId = `trial-${assessmentId.slice(0, 8)}`;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Create trial tenant. `tenants.industry` is column-healed to 'general' by
-  // default (see migrate.ts), so passing `body.industry` here makes downstream
-  // peer-benchmark + radar narrative segmentation actually work for trial
-  // conversions instead of bucketing everyone as 'general'.
-  const trialIndustry = (body.industry || 'general').toString().slice(0, 64);
+  // Create trial tenant. The `industry` column is intentionally dropped from
+  // tenants by migrate.ts (line ~909); body.industry is captured on the
+  // trial_assessments row below for analytics. Adding it to this INSERT
+  // would silently no-op (caught by the surrounding try/catch) and the SELECT
+  // path would throw — see radar-engine-v2.ts which now also avoids that read.
   try {
     await db.prepare(
-      "INSERT INTO tenants (id, slug, name, plan, status, industry, created_at) VALUES (?, ?, ?, 'trial', 'trial', ?, datetime('now'))"
-    ).bind(tenantId, tenantId, body.company_name, trialIndustry).run();
+      "INSERT INTO tenants (id, slug, name, plan, status, created_at) VALUES (?, ?, ?, 'trial', 'trial', datetime('now'))"
+    ).bind(tenantId, tenantId, body.company_name).run();
   } catch { /* tenant may already exist */ }
 
   // Create trial user
