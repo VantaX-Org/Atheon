@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, ApiError } from '@/lib/api';
 import type { Assessment, AssessmentResults, CatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
+import { AssessmentFindingsPanel } from '@/components/AssessmentFindingsPanel';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -607,7 +608,13 @@ function RunningView({ id, onComplete }: {
 // ── Results View (Value Assessment — 7 Sections) ─────────────────────────
 function ResultsView({ assessment }: { assessment: Assessment }) {
   const toast = useToast();
-  const [tab, setTab] = useState<'value' | 'legacy'>('value');
+  // 'findings' tab consumes assessment.results.findings (the new
+  // assessment-findings engine output); 'value' is the older value-assessment
+  // table; 'legacy' is the original catalyst-score sizing view.
+  const [tab, setTab] = useState<'findings' | 'value' | 'legacy'>(() => {
+    const r = assessment.results as AssessmentResults | null;
+    return (r?.findings && r.findings.length > 0) ? 'findings' : 'value';
+  });
   const [findings, setFindings] = useState<ValueAssessmentFinding[]>([]);
   const [dataQuality, setDataQuality] = useState<DataQualityRecord[]>([]);
   const [processTiming, setProcessTiming] = useState<ProcessTimingRecord[]>([]);
@@ -730,15 +737,28 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
       {/* Tab selector */}
       <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
         {[
-          { key: 'value' as const, label: 'Value Assessment' },
-          { key: 'legacy' as const, label: 'Legacy Sizing' },
+          { key: 'findings' as const, label: 'Findings', count: results?.findings?.length || 0 },
+          { key: 'value' as const, label: 'Value Assessment', count: 0 },
+          { key: 'legacy' as const, label: 'Legacy Sizing', count: 0 },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === t.key ? 'text-white' : ''}`}
             style={tab === t.key ? { background: 'var(--accent)' } : { color: 'var(--text-secondary)' }}
-          >{t.label}</button>
+            data-testid={`assessment-tab-${t.key}`}
+          >
+            {t.label}{t.count > 0 ? ` (${t.count})` : ''}
+          </button>
         ))}
       </div>
+
+      {tab === 'findings' && (
+        <AssessmentFindingsPanel
+          findings={results?.findings || []}
+          summary={results?.findings_summary}
+          findingsByCompany={results?.findings_by_company}
+          companyProfile={results?.company_profile}
+        />
+      )}
 
       {tab === 'value' && (
         <div className="space-y-6">

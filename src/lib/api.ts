@@ -2295,6 +2295,77 @@ export interface AssessmentResults {
   volume_snapshot?: Record<string, unknown>;
   narrative?: string;
   error?: string;
+  /**
+   * Detailed business findings — stale stock, AR aging, GR/IR mismatches,
+   * etc. — produced by the assessment-findings engine. Each maps to a
+   * specific catalyst/sub-catalyst that resolves it.
+   */
+  findings?: AssessmentFinding[];
+  findings_summary?: AssessmentFindingsSummary;
+  /** Per-entity findings for multinational engagements. Empty for single-entity tenants. */
+  findings_by_company?: Array<{
+    company: AssessmentCompany;
+    findings: AssessmentFinding[];
+    summary: AssessmentFindingsSummary;
+  }>;
+  company_profile?: {
+    profile: 'product' | 'service' | 'mixed' | 'unknown';
+    product_count: number;
+    project_count: number;
+    time_entry_count: number;
+  };
+  total_estimated_annual_saving_zar?: number;
+  payback_months?: number;
+}
+
+export type AssessmentFindingSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export type AssessmentFindingCategory =
+  | 'finance' | 'procurement' | 'supply_chain' | 'sales'
+  | 'workforce' | 'compliance' | 'cross_cutting' | 'service_delivery';
+
+export interface AssessmentFinding {
+  id: string;
+  code: string;
+  category: AssessmentFindingCategory;
+  severity: AssessmentFindingSeverity;
+  title: string;
+  narrative: string;
+  affected_count: number;
+  value_at_risk_zar: number;
+  value_components: { label: string; amount_zar: number; methodology: string }[];
+  currency_breakdown: Record<string, number>;
+  sample_records: Array<{
+    ref: string;
+    description: string;
+    amount_native?: number;
+    currency?: string;
+    amount_zar?: number;
+    date?: string;
+    metadata?: Record<string, string | number>;
+  }>;
+  recommended_catalyst: { catalyst: string; sub_catalyst: string };
+  metric_signature: string;
+  evidence_quality: 'high' | 'medium' | 'low';
+  detected_at: string;
+  company_id?: string;
+  company_name?: string;
+}
+
+export interface AssessmentFindingsSummary {
+  total_count: number;
+  total_value_at_risk_zar: number;
+  by_severity: Record<AssessmentFindingSeverity, number>;
+  by_category: Record<AssessmentFindingCategory, { count: number; value_at_risk_zar: number }>;
+  recommended_catalysts: string[];
+}
+
+export interface AssessmentCompany {
+  id: string;
+  name: string;
+  currency: string;
+  country: string;
+  is_primary: number;
 }
 
 export interface CatalystScore {
