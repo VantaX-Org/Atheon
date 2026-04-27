@@ -5,10 +5,11 @@
  */
 
 /** Current schema version — bump when adding new tables/columns/indexes */
-// v50-service-erp: erp_projects + erp_time_entries (additive) for the
-// service-company branch of the assessment-findings engine. No changes to
-// existing rows; both tables are nullable / optional per tenant.
-export const MIGRATION_VERSION = 'v50-service-erp';
+// v51-trial-findings: trial_assessments.findings_json + findings_summary_json
+// (additive self-heal columns, default to empty JSON). Used by the trial-
+// assessment route to persist the new assessment-findings engine output for
+// the trial UI. v50-service-erp came before; no rollback needed.
+export const MIGRATION_VERSION = 'v51-trial-findings';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -693,6 +694,10 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
   // ── Self-Healing Column Additions ──
   const selfHealColumns: Array<{ table: string; column: string; definition: string }> = [
     { table: 'catalyst_clusters', column: 'sub_catalysts', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    // PR H: trial-assessments persist findings_json so the trial results UI
+    // can surface them. Additive — old rows default to '[]'.
+    { table: 'trial_assessments', column: 'findings_json', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { table: 'trial_assessments', column: 'findings_summary_json', definition: "TEXT NOT NULL DEFAULT '{}'" },
     { table: 'catalyst_actions', column: 'escalation_level', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
     // tenants.industry is intentionally NOT healed here — it is dropped a few
