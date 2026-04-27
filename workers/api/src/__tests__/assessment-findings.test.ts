@@ -25,6 +25,7 @@ import {
 import { CATALYST_CATALOG } from '../services/catalyst-templates';
 import {
   generateBusinessReportPDF,
+  persistFindingsToPulseApex,
   DEFAULT_ASSESSMENT_CONFIG,
   type VolumeSnapshot,
 } from '../services/assessment-engine';
@@ -600,6 +601,116 @@ describe('Assessment Findings — multi-company per-entity', () => {
     expect(result.per_company).toEqual([]);
     expect(result.consolidated.length).toBeGreaterThan(0);
     expect(result.consolidated.find(f => f.code === 'inv_negative_stock')).toBeTruthy();
+  });
+});
+
+describe('Assessment Findings — Pulse + Apex wire-up', () => {
+  beforeAll(async () => { await migrate(); });
+
+  function makeFinding(
+    code: string,
+    severity: 'critical' | 'high' | 'medium' | 'low',
+    valueZar: number,
+  ): Finding {
+    return {
+      id: `f-${code}`,
+      code: code as Finding['code'],
+      category: 'finance',
+      severity,
+      title: `Finding ${code}`,
+      narrative: `Quoted from ERP — ${code} narrative`,
+      affected_count: 5,
+      value_at_risk_zar: valueZar,
+      value_components: [],
+      currency_breakdown: { ZAR: valueZar },
+      sample_records: [{ ref: 'INV-1', description: 'Sample' }],
+      recommended_catalyst: { catalyst: 'Finance Catalyst', sub_catalyst: 'AR Collection' },
+      metric_signature: code,
+      evidence_quality: 'high',
+      detected_at: new Date().toISOString(),
+    };
+  }
+
+  it('writes one process_metric per finding and risk_alerts only for high+critical', async () => {
+    const tenantId = nextTenantId('pulse-apex');
+    await seedTenant(tenantId);
+    const findings: Finding[] = [
+      makeFinding('ar_aging_overdue_90_plus', 'critical', 5_000_000),
+      makeFinding('proc_maverick_spend', 'high', 800_000),
+      makeFinding('inv_below_reorder', 'medium', 200_000),
+      makeFinding('inv_negative_stock', 'low', 0),
+    ];
+    const result = await persistFindingsToPulseApex(env.DB, tenantId, findings);
+    expect(result.metrics_written).toBe(4);
+    expect(result.alerts_written).toBe(2); // critical + high only
+
+    const metrics = await env.DB.prepare(
+      `SELECT name, value, status, source_system FROM process_metrics WHERE tenant_id = ? AND source_system = 'assessment' ORDER BY name`,
+    ).bind(tenantId).all<{ name: string; value: number; status: string; source_system: string }>();
+    expect(metrics.results.length).toBe(4);
+    // critical → red, high → red, medium → amber, low → green
+    const byCode = Object.fromEntries(metrics.results.map(r => [r.name, r]));
+    expect(byCode['Finding ar_aging_overdue_90_plus'].status).toBe('red');
+    expect(byCode['Finding proc_maverick_spend'].status).toBe('red');
+    expect(byCode['Finding inv_below_reorder'].status).toBe('amber');
+    expect(byCode['Finding inv_negative_stock'].status).toBe('green');
+
+    const alerts = await env.DB.prepare(
+      `SELECT title, severity, impact_value, status FROM risk_alerts WHERE tenant_id = ? AND status = 'active' ORDER BY severity DESC`,
+    ).bind(tenantId).all<{ title: string; severity: string; impact_value: number; status: string }>();
+    expect(alerts.results.length).toBe(2);
+    expect(alerts.results.find(a => a.severity === 'critical')!.impact_value).toBe(5_000_000);
+    expect(alerts.results.find(a => a.severity === 'high')!.impact_value).toBe(800_000);
+  });
+
+  it('idempotently replaces prior assessment-derived rows on re-run', async () => {
+    const tenantId = nextTenantId('pulse-apex-rerun');
+    await seedTenant(tenantId);
+    // First run — 3 findings
+    const first: Finding[] = [
+      makeFinding('first_a', 'critical', 1_000_000),
+      makeFinding('first_b', 'high', 500_000),
+      makeFinding('first_c', 'low', 1000),
+    ];
+    await persistFindingsToPulseApex(env.DB, tenantId, first);
+
+    // Second run — different findings should fully replace, not merge.
+    const second: Finding[] = [
+      makeFinding('second_only', 'high', 250_000),
+    ];
+    await persistFindingsToPulseApex(env.DB, tenantId, second);
+
+    const metricNames = (await env.DB.prepare(
+      `SELECT name FROM process_metrics WHERE tenant_id = ? AND source_system = 'assessment'`,
+    ).bind(tenantId).all<{ name: string }>()).results.map(r => r.name);
+    expect(metricNames).toEqual(['Finding second_only']);
+
+    const alertCount = await env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM risk_alerts WHERE tenant_id = ? AND status = 'active'`,
+    ).bind(tenantId).first<{ cnt: number }>();
+    expect(alertCount?.cnt).toBe(1);
+  });
+
+  it('does not touch non-assessment metrics or alerts on the same tenant', async () => {
+    const tenantId = nextTenantId('pulse-apex-isolate');
+    await seedTenant(tenantId);
+    // Pre-existing operational metric — not from assessment
+    await env.DB.prepare(
+      `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, source_system) VALUES ('pm-other', ?, 'Cycle Time', 42, 'min', 'green', 'sap')`,
+    ).bind(tenantId).run();
+    // Pre-existing risk alert — recommended_actions doesn't carry the assessment marker
+    await env.DB.prepare(
+      `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, recommended_actions, status) VALUES ('ra-other', ?, 'Other', 'Other', 'high', 'finance', '[]', 'active')`,
+    ).bind(tenantId).run();
+
+    await persistFindingsToPulseApex(env.DB, tenantId, [
+      makeFinding('asmnt_only', 'critical', 500_000),
+    ]);
+
+    const otherMetric = await env.DB.prepare(`SELECT id FROM process_metrics WHERE id = 'pm-other'`).first();
+    expect(otherMetric).not.toBeNull();
+    const otherAlert = await env.DB.prepare(`SELECT id FROM risk_alerts WHERE id = 'ra-other'`).first();
+    expect(otherAlert).not.toBeNull();
   });
 });
 

@@ -201,6 +201,100 @@ export const DEFAULT_ASSESSMENT_CONFIG: AssessmentConfig = {
   contract_years: 3,
 };
 
+// ── Pulse + Apex persistence ──────────────────────────────────────────────
+
+/**
+ * Push assessment findings into the Pulse and Apex layers.
+ *
+ *   • Every finding becomes a `process_metric` row tagged
+ *     `source_system = 'assessment'` so the Pulse dashboard surfaces it
+ *     as a tracked metric. Severity → green/amber/red on the metric
+ *     status. The metric's `name` is the finding code so the same metric
+ *     updates in place across reassessments.
+ *
+ *   • High + critical severity findings additionally become
+ *     `risk_alert` rows on the Apex executive dashboard. Lower-severity
+ *     findings are not surfaced at the executive level — they are still
+ *     tracked operationally via the Pulse metric.
+ *
+ * Idempotency: prior assessment-derived rows for this tenant are cleared
+ * before insert so re-running an assessment doesn't duplicate every
+ * finding from the previous run. Other (non-assessment) metrics and
+ * alerts on the tenant are untouched.
+ *
+ * Non-fatal: any DB error here is logged and swallowed by the caller —
+ * the report-generation path must complete even if Pulse/Apex writes fail.
+ */
+export async function persistFindingsToPulseApex(
+  db: D1Database,
+  tenantId: string,
+  findings: Finding[],
+): Promise<{ metrics_written: number; alerts_written: number }> {
+  // Clear prior assessment-derived rows. We tag with source_system =
+  // 'assessment' on metrics, and use a recommended_actions marker on
+  // risk_alerts to identify our rows.
+  await db.prepare(
+    `DELETE FROM process_metrics WHERE tenant_id = ? AND source_system = 'assessment'`,
+  ).bind(tenantId).run();
+  await db.prepare(
+    `DELETE FROM risk_alerts WHERE tenant_id = ? AND status = 'active' AND recommended_actions LIKE '%"_source":"assessment"%'`,
+  ).bind(tenantId).run();
+
+  if (findings.length === 0) return { metrics_written: 0, alerts_written: 0 };
+
+  const sevToStatus: Record<string, string> = {
+    critical: 'red',
+    high: 'red',
+    medium: 'amber',
+    low: 'green',
+  };
+
+  // Batch the inserts. Each finding produces one metric row; high+critical
+  // also produce one alert row.
+  const stmts: D1PreparedStatement[] = [];
+  let metricsCount = 0;
+  let alertsCount = 0;
+
+  for (const f of findings) {
+    const metricId = `pm-asm-${f.code}-${tenantId}`;
+    stmts.push(
+      db.prepare(
+        `INSERT INTO process_metrics (id, tenant_id, name, value, unit, status, source_system, measured_at)
+         VALUES (?, ?, ?, ?, 'ZAR', ?, 'assessment', datetime('now'))`,
+      ).bind(metricId, tenantId, f.title, f.value_at_risk_zar, sevToStatus[f.severity] || 'amber'),
+    );
+    metricsCount++;
+
+    if (f.severity === 'critical' || f.severity === 'high') {
+      const alertId = `ra-asm-${f.code}-${tenantId}`;
+      const recommendedActions = JSON.stringify({
+        _source: 'assessment',
+        finding_code: f.code,
+        catalyst: f.recommended_catalyst.catalyst,
+        sub_catalyst: f.recommended_catalyst.sub_catalyst,
+        sample_record_count: f.sample_records.length,
+      });
+      stmts.push(
+        db.prepare(
+          `INSERT INTO risk_alerts (id, tenant_id, title, description, severity, category, probability, impact_value, impact_unit, recommended_actions, status, detected_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ZAR', ?, 'active', datetime('now'))`,
+        ).bind(
+          alertId, tenantId,
+          f.title, f.narrative, f.severity, f.category,
+          f.evidence_quality === 'high' ? 0.9 : f.evidence_quality === 'medium' ? 0.7 : 0.5,
+          f.value_at_risk_zar, recommendedActions,
+        ),
+      );
+      alertsCount++;
+    }
+  }
+
+  if (stmts.length > 0) {
+    await db.batch(stmts);
+  }
+  return { metrics_written: metricsCount, alerts_written: alertsCount };
+}
+
 // ── Data Collection ───────────────────────────────────────────────────────
 export async function collectVolumeSnapshot(
   db: D1Database,
@@ -1986,6 +2080,19 @@ export async function runAssessment(
     }));
     const company_profile = await detectCompanyProfile(db, tenantId);
     void detectAllFindings; // Re-export for tests; not used directly in this path.
+
+    // 5b. Push findings into Pulse (process_metrics) and Apex (risk_alerts).
+    // Each finding becomes both:
+    //   • a process_metric on the Pulse dashboard (operational tracking)
+    //   • a risk_alert on the Apex dashboard, IF severity is high or
+    //     critical (executive-level cuts to focus on what matters).
+    // Prior assessment-derived rows are cleared first so re-running an
+    // assessment doesn't duplicate every finding from the previous run.
+    try {
+      await persistFindingsToPulseApex(db, tenantId, findings);
+    } catch (err) {
+      console.error('Pulse/Apex persistence failed (non-fatal):', err);
+    }
 
     // 6. Generate narrative
     const baselineSaving = catalystScores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
