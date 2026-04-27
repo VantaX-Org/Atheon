@@ -23,6 +23,12 @@ import {
   type FindingsContext,
 } from '../services/assessment-findings';
 import { CATALYST_CATALOG } from '../services/catalyst-templates';
+import {
+  generateBusinessReportPDF,
+  DEFAULT_ASSESSMENT_CONFIG,
+  type VolumeSnapshot,
+} from '../services/assessment-engine';
+import type { Finding } from '../services/assessment-findings';
 
 const CTX: FindingsContext = {
   baseCurrency: 'ZAR',
@@ -594,6 +600,80 @@ describe('Assessment Findings — multi-company per-entity', () => {
     expect(result.per_company).toEqual([]);
     expect(result.consolidated.length).toBeGreaterThan(0);
     expect(result.consolidated.find(f => f.code === 'inv_negative_stock')).toBeTruthy();
+  });
+});
+
+describe('Assessment Findings — Business PDF report integration', () => {
+  it('renders the Findings section into the Business PDF without throwing', async () => {
+    const fakeFindings: Finding[] = [
+      {
+        id: 'f-1',
+        code: 'inv_dead_stock',
+        category: 'supply_chain',
+        severity: 'high',
+        title: 'Test finding — dead stock',
+        narrative: 'Quoted back from the customer ERP — 12 SKUs valued at R 1,200,000 have not moved in 12 months.',
+        affected_count: 12,
+        value_at_risk_zar: 480_000,
+        value_components: [{ label: 'Liquidation recovery', amount_zar: 480_000, methodology: 'Stub' }],
+        currency_breakdown: { ZAR: 1_200_000 },
+        sample_records: [{ ref: 'SKU-1', description: 'Widget' }],
+        recommended_catalyst: { catalyst: 'Supply Chain Catalyst', sub_catalyst: 'Slow & Obsolete Stock' },
+        metric_signature: 'inv_dead_stock',
+        evidence_quality: 'high',
+        detected_at: new Date().toISOString(),
+      },
+      {
+        id: 'f-2',
+        code: 'svc_low_billable_utilisation',
+        category: 'service_delivery',
+        severity: 'critical',
+        title: 'Test service finding',
+        narrative: 'Billable utilisation 35% across 8 consultants over 90 days.',
+        affected_count: 8,
+        value_at_risk_zar: 2_500_000,
+        value_components: [{ label: 'Util uplift', amount_zar: 2_500_000, methodology: 'Stub' }],
+        currency_breakdown: {},
+        sample_records: [],
+        recommended_catalyst: { catalyst: 'Service Operations Catalyst', sub_catalyst: 'Billable Utilisation' },
+        metric_signature: 'svc_low_billable_utilisation',
+        evidence_quality: 'medium',
+        detected_at: new Date().toISOString(),
+      },
+    ];
+    const fakeSnapshot: VolumeSnapshot = {
+      monthly_invoices: 100, monthly_purchase_orders: 50, monthly_journal_entries: 20,
+      monthly_bank_transactions: 200, total_ar_balance: 500000, total_ap_balance: 200000,
+      overdue_invoice_count: 10, overdue_invoice_value: 50000, avg_invoice_value: 5000,
+      total_revenue_12m: 6_000_000, total_spend_12m: 4_000_000, employee_count: 25,
+      total_monthly_payroll: 750_000, active_customer_count: 100, active_supplier_count: 30,
+      product_count: 200, total_inventory_value: 1_500_000, months_of_data: 12,
+      data_completeness_pct: 90, erp_system: 'sap', snapshot_date: new Date().toISOString(),
+    };
+
+    const pdf = await generateBusinessReportPDF(
+      [], // catalyst scores not relevant for this smoke test
+      {
+        total_monthly_api_calls: 0, total_monthly_vector_queries: 0, total_monthly_llm_tokens: 0,
+        total_db_size_gb: 0, total_storage_gb: 0, monthly_cf_cost_zar: 0, monthly_cf_cost_breakdown: {
+          workers: 0, d1: 0, vectorize: 0, workers_ai: 0, r2: 0, kv: 0,
+        },
+        monthly_onprem_cost_zar: 0, annual_licence_revenue: 0, monthly_revenue: 0,
+        monthly_margin_zar: 0, monthly_margin_pct: 0, annual_margin_zar: 0,
+        per_catalyst: [],
+      },
+      DEFAULT_ASSESSMENT_CONFIG,
+      'Test Co',
+      'Test narrative',
+      fakeSnapshot,
+      fakeFindings,
+      [],
+    );
+    // Sanity: a real PDF starts with '%PDF-' magic.
+    const bytes = new Uint8Array(pdf);
+    expect(bytes.length).toBeGreaterThan(2000);
+    const header = String.fromCharCode(...bytes.slice(0, 5));
+    expect(header).toBe('%PDF-');
   });
 });
 

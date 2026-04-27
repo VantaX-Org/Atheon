@@ -606,7 +606,9 @@ export async function generateBusinessReportPDF(
   config: AssessmentConfig,
   prospectName: string,
   narrativeSummary: string,
-  snapshot: VolumeSnapshot
+  snapshot: VolumeSnapshot,
+  findings: Finding[] = [],
+  findingsByCompany: AssessmentResults['findings_by_company'] = [],
 ): Promise<ArrayBuffer> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -1031,6 +1033,164 @@ export async function generateBusinessReportPDF(
   doc.text('Ready to activate? Contact GONXT Technology', pageW / 2, y + 9, { align: 'center' });
 
   pageFooter();
+
+  // ═══════════════════════════════════════════════
+  // FINDINGS SECTION — finding-by-finding evidence
+  // The catalyst pages above are the *recommendation* layer; this section
+  // is the *evidence* layer the prospect can verify against their own ERP.
+  // Each finding shows the issue, the value-at-risk derived from their
+  // actual data, top sample records, and the catalyst that resolves it.
+  // ═══════════════════════════════════════════════
+  if (findings.length > 0) {
+    doc.addPage();
+    pageHeader('Findings — What we found in your data');
+    let fy = 28;
+
+    // Section intro
+    doc.setTextColor(...slate);
+    doc.setFontSize(9);
+    const totalValue = findings.reduce((s, f) => s + f.value_at_risk_zar, 0);
+    const intro = `${findings.length} findings detected across your ERP data, totalling ${formatCurrency(totalValue, config.currency, config.exchange_rate_to_zar)} of value-at-risk. Each finding is derived from your own records and maps to the Atheon catalyst that resolves it. Sample records are included so you can verify against your source system.`;
+    const introLines = doc.splitTextToSize(intro, pageW - 28);
+    doc.text(introLines, 14, fy);
+    fy += introLines.length * 4 + 6;
+
+    // Severity colour map
+    const severityColour: Record<string, readonly [number, number, number]> = {
+      critical: [200, 30, 30],
+      high:     [230, 110, 30],
+      medium:   gold,
+      low:      teal,
+    };
+
+    // Render each finding as a card. Cap to top 25 to keep the PDF
+    // reasonable; the consolidated JSON in the API response carries the
+    // full list. The technical report carries the raw dump.
+    const top = findings.slice(0, 25);
+    for (let i = 0; i < top.length; i++) {
+      const f = top[i];
+
+      // Page break if we don't have ~50mm left for the card
+      if (fy > pageH - 60) {
+        pageFooter();
+        doc.addPage();
+        pageHeader('Findings — What we found in your data (cont.)');
+        fy = 28;
+      }
+
+      // Severity ribbon on the left edge of the card
+      const ribbon = severityColour[f.severity] || teal;
+      doc.setFillColor(...lightBg);
+      doc.rect(14, fy, pageW - 28, 38, 'F');
+      doc.setFillColor(ribbon[0], ribbon[1], ribbon[2]);
+      doc.rect(14, fy, 2, 38, 'F');
+
+      // Severity badge text + finding code
+      doc.setFontSize(7);
+      doc.setTextColor(ribbon[0], ribbon[1], ribbon[2]);
+      doc.text(f.severity.toUpperCase(), 18, fy + 5);
+      doc.setTextColor(160, 160, 160);
+      doc.text(f.code, pageW - 18, fy + 5, { align: 'right' });
+
+      // Title
+      doc.setFontSize(10);
+      doc.setTextColor(...navy);
+      const titleLines = doc.splitTextToSize(f.title, pageW - 36);
+      doc.text(titleLines.slice(0, 1), 18, fy + 11);
+
+      // Narrative — wrap to 3 lines max
+      doc.setFontSize(8);
+      doc.setTextColor(...slate);
+      const narrativeLines = doc.splitTextToSize(f.narrative, pageW - 36).slice(0, 3);
+      doc.text(narrativeLines, 18, fy + 17);
+
+      // Value-at-risk callout (right side)
+      if (f.value_at_risk_zar > 0) {
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        doc.text('VALUE AT RISK', pageW - 18, fy + 17, { align: 'right' });
+        doc.setFontSize(11);
+        doc.setTextColor(...teal);
+        doc.text(
+          formatCurrency(f.value_at_risk_zar, config.currency, config.exchange_rate_to_zar),
+          pageW - 18, fy + 23, { align: 'right' },
+        );
+      }
+
+      // Recommended catalyst footer (bottom of card)
+      doc.setFontSize(7);
+      doc.setTextColor(120, 120, 120);
+      doc.text('CURE:', 18, fy + 33);
+      doc.setTextColor(...navy);
+      doc.text(
+        `${f.recommended_catalyst.catalyst} → ${f.recommended_catalyst.sub_catalyst}`,
+        30, fy + 33,
+      );
+
+      // Affected count and evidence-quality indicator
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `${f.affected_count.toLocaleString()} records · evidence: ${f.evidence_quality}`,
+        pageW - 18, fy + 33, { align: 'right' },
+      );
+
+      fy += 42;
+    }
+
+    // Footer note for trimmed list
+    if (findings.length > top.length) {
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `+ ${findings.length - top.length} additional findings in the technical report and JSON export.`,
+        14, fy + 4,
+      );
+    }
+
+    pageFooter();
+
+    // Per-company summary page (only if there are 2+ entities — single-
+    // entity engagements are already covered by the consolidated list).
+    if (findingsByCompany.length >= 2) {
+      doc.addPage();
+      pageHeader('Findings by Entity');
+      let cy = 28;
+      doc.setFontSize(9);
+      doc.setTextColor(...slate);
+      doc.text(
+        'For multinational engagements, findings are also reported per registered legal entity. Concentration findings (top-debtor / supplier / customer) only appear in the consolidated rollup above.',
+        14, cy,
+      );
+      cy += 12;
+
+      for (const entry of findingsByCompany) {
+        if (cy > pageH - 40) {
+          pageFooter();
+          doc.addPage();
+          pageHeader('Findings by Entity (cont.)');
+          cy = 28;
+        }
+        doc.setFontSize(11);
+        doc.setTextColor(...navy);
+        doc.text(`${entry.company.name} (${entry.company.country}, ${entry.company.currency})`, 14, cy);
+        cy += 6;
+        doc.setFontSize(8);
+        doc.setTextColor(...slate);
+        doc.text(
+          `${entry.summary.total_count} findings · ${formatCurrency(entry.summary.total_value_at_risk_zar, config.currency, config.exchange_rate_to_zar)} value-at-risk · catalysts: ${entry.summary.recommended_catalysts.slice(0, 4).join(', ') || 'none'}`,
+          14, cy,
+        );
+        cy += 5;
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        const sevSummary = `${entry.summary.by_severity.critical} critical · ${entry.summary.by_severity.high} high · ${entry.summary.by_severity.medium} medium · ${entry.summary.by_severity.low} low`;
+        doc.text(sevSummary, 14, cy);
+        cy += 10;
+      }
+
+      pageFooter();
+    }
+  }
 
   return doc.output('arraybuffer');
 }
@@ -1861,7 +2021,10 @@ export async function runAssessment(
     // Business PDF
     try {
       const businessKey = `assessments/${assessmentId}/business-report.pdf`;
-      const businessPdf = await generateBusinessReportPDF(catalystScores, technicalSizing, config, prospectName, narrative, snapshot);
+      const businessPdf = await generateBusinessReportPDF(
+        catalystScores, technicalSizing, config, prospectName, narrative, snapshot,
+        findings, findings_by_company,
+      );
       await storage.put(businessKey, businessPdf, { httpMetadata: { contentType: 'application/pdf' } });
       businessReportKey = businessKey;
     } catch (pdfErr) {
