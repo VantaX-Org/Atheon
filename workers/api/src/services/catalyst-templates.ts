@@ -150,6 +150,17 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Budget Management', enabled: true, description: 'Budget tracking and variance reporting' },
       { name: 'Seasonal Budget Planning', enabled: false, description: 'Cycle-aligned budget forecasting and variance tracking', implementation: 'stub'  },
       { name: 'Grant & Subsidy Tracking', enabled: false, description: 'Grant applications and compliance monitoring', implementation: 'stub'  },
+      // ── Sub-catalysts wired up by the assessment-findings engine. Each
+      // resolves a specific finding code from FINDING_CATALYST_MAP — see
+      // workers/api/src/services/assessment-findings.ts for the mapping.
+      { name: 'AR Collection', enabled: true, description: 'Structured collections cadence on aged AR — dunning ladder, top-debtor focus, hand-off to legal at policy thresholds', implementation: 'real' },
+      { name: 'AP Processing', enabled: true, description: '3-way invoice match, approval routing, payment scheduling, early-pay discount capture', implementation: 'real' },
+      { name: 'Invoice Reconciliation', enabled: true, description: 'Invoice-to-payment reconciliation with mismatch routing for overpayments, short-payments, and missing credits', implementation: 'real' },
+      { name: 'GL-Bank Reconciliation', enabled: true, description: 'Daily bank-feed reconciliation against GL with auto-match, suspense routing, and aged exception alerts', implementation: 'real' },
+      { name: 'Credit Vetting', enabled: true, description: 'Credit limit assignment + ongoing monitoring on customer onboarding and balance changes; flags over-limit and unvetted exposure', implementation: 'real' },
+      { name: 'Automation Coverage', enabled: false, description: 'Manual-journal pattern analysis with automation candidate ranking and ROI estimation', implementation: 'real' },
+      { name: 'FX Hedge Advisory', enabled: false, description: 'Foreign-currency exposure analysis with forward-cover and natural-hedge recommendations sized to actual receivables / payables', implementation: 'real' },
+      { name: 'Revenue Recognition', enabled: false, description: 'Milestone-based revenue recognition tracking with billed-vs-recognised lag detection and period-close attestation workflow', implementation: 'real' },
     ],
   },
   {
@@ -196,7 +207,7 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
     sub_catalysts: [
       { name: 'Supplier Management', enabled: true, description: 'Vendor qualification, performance rating, and relationship management' },
       { name: 'Supplier Scoring', enabled: true, description: 'Automated supplier risk and performance rating', implementation: 'real'  },
-      { name: 'PO Automation', enabled: true, description: 'Purchase order creation and multi-level approval workflows' },
+      { name: 'PO Automation', enabled: true, description: 'Purchase order creation, multi-level approval workflows, and overdue-delivery escalation', implementation: 'real' },
       { name: 'Strategic Sourcing', enabled: false, description: 'Sourcing event management and competitive bidding coordination', implementation: 'stub'  },
       { name: 'Spend Analytics', enabled: false, description: 'Category-level spend analysis and savings identification', implementation: 'real'  },
       { name: 'Contract Management', enabled: true, description: 'Automated contract renewal alerts and compliance tracking' },
@@ -221,6 +232,10 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Ingredient Sourcing', enabled: false, description: 'Raw material supplier qualification and price benchmarking', implementation: 'stub'  },
       { name: 'Co-Packer Management', enabled: false, description: 'Third-party manufacturer performance tracking and quality compliance', implementation: 'stub'  },
       { name: 'Packaging Procurement', enabled: false, description: 'Packaging material sourcing and minimum order quantity optimization', implementation: 'stub'  },
+      // ── Sub-catalysts wired up by the assessment-findings engine.
+      { name: '3-Way Match', enabled: true, description: 'PO–invoice–receipt match with off-contract / maverick spend detection and supplier-compliance routing', implementation: 'real' },
+      { name: 'Vendor Master Cleanup', enabled: true, description: 'Vendor duplicate detection, dormant-supplier deactivation, missing VAT / banking detail remediation, and master-data quality scoring', implementation: 'real' },
+      { name: 'Supplier Risk Management', enabled: true, description: 'Supplier concentration risk, dual-source coverage, financial health monitoring, and continuity planning recommendations', implementation: 'real' },
     ],
   },
   {
@@ -263,6 +278,10 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Hardware Lifecycle', enabled: false, description: 'Employee device tracking, refresh cycles, and disposal management', implementation: 'stub'  },
       { name: 'License Compliance', enabled: false, description: 'Software audit readiness and entitlement tracking', implementation: 'stub'  },
       { name: 'Resource Planning', enabled: false, description: 'Professional services resource allocation and utilization optimization', implementation: 'stub'  },
+      // ── Sub-catalysts wired up by the assessment-findings engine.
+      { name: 'Slow & Obsolete Stock', enabled: true, description: 'Slow-mover and dead-stock detection with markdown / liquidation / retirement recommendations sized to carrying cost', implementation: 'real' },
+      { name: 'Inventory Data Quality', enabled: true, description: 'Negative-stock detection, on-hand reconciliation, COGS impact tracking, and root-cause routing (un-receipted issues, backflush errors, rebooking)', implementation: 'real' },
+      { name: 'Replenishment Triggers', enabled: true, description: 'Reorder-point monitoring, stock-out exposure quantification, and automated replenishment workflow', implementation: 'real' },
     ],
   },
   // Renamed from "Operations Catalyst" — differentiates this cross-industry
@@ -308,6 +327,9 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Scheduling', enabled: true, description: 'Employee shift scheduling and availability management' },
       { name: 'Compliance Training', enabled: true, description: 'Mandatory training completion tracking' },
       { name: 'Performance Reviews', enabled: false, description: 'Review cycle management and goal tracking', implementation: 'stub'  },
+      // ── Sub-catalysts wired up by the assessment-findings engine.
+      { name: 'Payroll Audit', enabled: true, description: 'Ghost-employee detection, terminated-on-payroll review, time-vs-payroll reconciliation, and post-termination billing alerts', implementation: 'real' },
+      { name: 'Compensation Analysis', enabled: false, description: 'Top-earner concentration analysis, banded compensation review, and structural compensation health monitoring', implementation: 'real' },
     ],
   },
   {
@@ -379,6 +401,9 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'Order Processing', enabled: true, description: 'Customer order intake and fulfillment tracking' },
       { name: 'Customer Scoring', enabled: false, description: 'Customer value scoring and segmentation', implementation: 'stub'  },
       { name: 'Quote Management', enabled: true, description: 'Quotation generation and follow-up automation' },
+      // ── Sub-catalysts wired up by the assessment-findings engine.
+      { name: 'Pricing & Margin Analysis', enabled: true, description: 'Per-SKU margin tracking, loss-making product detection, dynamic pricing recommendations, and price-leakage routing', implementation: 'real' },
+      { name: 'Customer Risk', enabled: true, description: 'Customer concentration risk, churn signals, single-customer-loss exposure, and account-tier diversification recommendations', implementation: 'real' },
     ],
   },
   {
@@ -1851,6 +1876,36 @@ export const CATALYST_CATALOG: CatalystTemplate[] = [
       { name: 'SOX-Style Control Evidence', enabled: true, description: 'SOX-style key control inventory with evidence repository and sign-off workflow', implementation: 'generic' },
       { name: 'Exception & Waiver Management', enabled: true, description: 'Policy exception requests, risk scoring, approval workflow, and expiry tracking', implementation: 'generic' },
       { name: 'Compliance Risk Dashboard', enabled: true, description: 'Aggregated compliance risk dashboard across policies, controls, findings, and regulatory events', implementation: 'generic' },
+      // ── Sub-catalysts wired up by the assessment-findings engine.
+      { name: 'Tax Compliance', enabled: true, description: 'VAT submission tracking, late-payment penalty exposure quantification, SARS / equivalent regulator filing reminders, and overdue-period escalation', implementation: 'real' },
+      { name: 'Tax Audit', enabled: true, description: 'Effective-VAT-rate anomaly detection on invoices, zero-rated / exempt classification audit, and reconciliation against expected output VAT', implementation: 'real' },
+      { name: 'Journal Anomaly Detection', enabled: true, description: 'Off-hours postings, round-amount Benford anomalies, manual-journal volume tracking, and supervisor-review routing for high-risk patterns', implementation: 'real' },
+    ],
+  },
+  // ───────────────────────────────────────────────────────────────────────
+  // Service Operations Catalyst — for service / consulting / professional-
+  // services prospects. Each sub-catalyst is wired up to one or more
+  // findings produced by the service-company branch of the
+  // assessment-findings engine (svc_*).
+  // ───────────────────────────────────────────────────────────────────────
+  {
+    name: 'Service Operations Catalyst',
+    domain: 'service-operations',
+    description: 'Billable utilisation, project profitability, WIP / unbilled aging, and time + expense governance for service / professional-services businesses',
+    autonomy_tier: 'assisted',
+    tags: [
+      'function:service-operations',
+      'vertical:professional-services', 'vertical:technology-saas', 'vertical:general',
+      'criticality:revenue-impacting',
+      'maturity:starter',
+      // Legacy aliases
+      'general', 'professional_services', 'technology', 'service',
+    ],
+    sub_catalysts: [
+      { name: 'Billable Utilisation', enabled: true, description: 'Billable hours / total hours tracking with sub-50% alerting, gap-to-target quantification, and FTE-level utilisation drill-down', implementation: 'real' },
+      { name: 'WIP & Unbilled Aging', enabled: true, description: 'Approved-but-unbilled time aging with > 30-day exposure quantification, automatic invoice generation triggers, and PM escalation', implementation: 'real' },
+      { name: 'Project Profitability', enabled: true, description: 'Active-project budget overrun detection, closed-project margin analysis, and dormant-project (zero-hours) cleanup recommendations', implementation: 'real' },
+      { name: 'Time & Expense Governance', enabled: true, description: 'Time-entry approval-lag detection, expense policy compliance, and time-on-inactive-employee fraud signals', implementation: 'real' },
     ],
   },
 ];

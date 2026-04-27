@@ -22,6 +22,7 @@ import {
   type FindingCode,
   type FindingsContext,
 } from '../services/assessment-findings';
+import { CATALYST_CATALOG } from '../services/catalyst-templates';
 
 const CTX: FindingsContext = {
   baseCurrency: 'ZAR',
@@ -76,6 +77,34 @@ describe('Assessment Findings — sanity', () => {
     }
   });
 
+  /**
+   * The "every finding closes the loop" test — for every entry in
+   * FINDING_CATALYST_MAP, the catalyst name must exist in CATALYST_CATALOG
+   * AND the sub-catalyst must exist on that cluster with `implementation:
+   * 'real'`. Otherwise the report's "here's the cure" recommendation
+   * dangles into thin air and the prospect can't act on it.
+   */
+  it('every FINDING_CATALYST_MAP entry resolves to a real sub-catalyst in CATALYST_CATALOG', () => {
+    const errors: string[] = [];
+    for (const code of Object.keys(FINDING_CATALYST_MAP) as FindingCode[]) {
+      const target = FINDING_CATALYST_MAP[code];
+      const cluster = CATALYST_CATALOG.find(c => c.name === target.catalyst);
+      if (!cluster) {
+        errors.push(`${code}: catalyst "${target.catalyst}" not found in catalog`);
+        continue;
+      }
+      const sub = cluster.sub_catalysts.find(s => s.name === target.sub_catalyst);
+      if (!sub) {
+        errors.push(`${code}: sub-catalyst "${target.sub_catalyst}" not found on cluster "${target.catalyst}"`);
+        continue;
+      }
+      if (sub.implementation !== 'real') {
+        errors.push(`${code}: sub-catalyst "${target.catalyst} / ${target.sub_catalyst}" has implementation=${sub.implementation || 'generic'}, expected 'real'`);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
+
   it('summariseFindings returns 0 totals for empty findings', () => {
     const s = summariseFindings([]);
     expect(s.total_count).toBe(0);
@@ -123,7 +152,7 @@ describe('Assessment Findings — AR aging detectors', () => {
     expect(f90.affected_count).toBe(5);
     expect(f90.value_at_risk_zar).toBeGreaterThan(0);
     expect(f90.sample_records.length).toBeLessThanOrEqual(10);
-    expect(f90.recommended_catalyst.catalyst).toBe('Finance');
+    expect(f90.recommended_catalyst.catalyst).toBe('Finance Catalyst');
     expect(f90.recommended_catalyst.sub_catalyst).toBe('AR Collection');
     expect(f90.severity).toMatch(/^(high|critical)$/);
     expect(f90.metric_signature).toBe('ar_aging_overdue_90_plus');
@@ -198,7 +227,7 @@ describe('Assessment Findings — Inventory detectors', () => {
     expect(f).not.toBeNull();
     // 4 SKUs × (200-150) × 50 = R10,000 loss exposure
     expect(f!.value_at_risk_zar).toBe(10_000);
-    expect(f!.recommended_catalyst.catalyst).toBe('Sales');
+    expect(f!.recommended_catalyst.catalyst).toBe('Sales Catalyst');
     expect(f!.recommended_catalyst.sub_catalyst).toBe('Pricing & Margin Analysis');
   });
 
@@ -431,7 +460,7 @@ describe('Assessment Findings — service-company detectors', () => {
     const f = findings.find(x => x.code === 'svc_low_billable_utilisation');
     expect(f).toBeTruthy();
     expect(f!.title).toMatch(/utilisation 30%/i);
-    expect(f!.recommended_catalyst.catalyst).toBe('Service Operations');
+    expect(f!.recommended_catalyst.catalyst).toBe('Service Operations Catalyst');
     expect(f!.value_at_risk_zar).toBeGreaterThan(0);
   });
 

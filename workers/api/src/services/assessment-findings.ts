@@ -187,49 +187,58 @@ export interface FindingsContext {
  * Sub-catalyst names that don't yet exist as `real` handlers in the catalog
  * are flagged with a TODO at the bottom of this file so PR D can pick them up.
  */
+/**
+ * Catalyst names below match the canonical cluster names in
+ * catalyst-templates.ts. Sub-catalyst names match the (newly-added in PR D)
+ * `implementation: 'real'` entries on each cluster. The
+ * `every-finding-has-a-real-catalyst` test asserts this round-trip.
+ */
 export const FINDING_CATALYST_MAP: Record<FindingCode, { catalyst: string; sub_catalyst: string }> = {
-  ar_aging_overdue_30_60:        { catalyst: 'Finance',      sub_catalyst: 'AR Collection' },
-  ar_aging_overdue_60_90:        { catalyst: 'Finance',      sub_catalyst: 'AR Collection' },
-  ar_aging_overdue_90_plus:      { catalyst: 'Finance',      sub_catalyst: 'AR Collection' },
-  ar_credit_limit_breach:        { catalyst: 'Finance',      sub_catalyst: 'Credit Vetting' },
-  ar_top_debtor_concentration:   { catalyst: 'Finance',      sub_catalyst: 'AR Collection' },
-  ap_overdue_delivery:           { catalyst: 'Procurement',  sub_catalyst: 'PO Automation' },
-  ap_three_way_mismatch:         { catalyst: 'Finance',      sub_catalyst: 'Invoice Reconciliation' },
-  ap_unreconciled_bank:          { catalyst: 'Finance',      sub_catalyst: 'GL-Bank Reconciliation' },
-  gl_suspense_balance:           { catalyst: 'Finance',      sub_catalyst: 'GL-Bank Reconciliation' },
-  gl_journal_off_hours:          { catalyst: 'Compliance',   sub_catalyst: 'Journal Anomaly Detection' },
-  gl_round_amount_journals:      { catalyst: 'Compliance',   sub_catalyst: 'Journal Anomaly Detection' },
-  gl_high_manual_volume:         { catalyst: 'Finance',      sub_catalyst: 'Automation Coverage' },
-  proc_maverick_spend:           { catalyst: 'Procurement',  sub_catalyst: '3-Way Match' },
-  proc_duplicate_suppliers:      { catalyst: 'Procurement',  sub_catalyst: 'Vendor Master Cleanup' },
-  proc_supplier_concentration:   { catalyst: 'Procurement',  sub_catalyst: 'Supplier Risk Management' },
-  proc_inactive_with_open_pos:   { catalyst: 'Procurement',  sub_catalyst: 'Vendor Master Cleanup' },
-  inv_stale_stock:               { catalyst: 'Supply Chain', sub_catalyst: 'Inventory Optimisation' },
-  inv_dead_stock:                { catalyst: 'Supply Chain', sub_catalyst: 'Slow & Obsolete Stock' },
-  inv_negative_stock:            { catalyst: 'Supply Chain', sub_catalyst: 'Inventory Data Quality' },
-  inv_below_reorder:             { catalyst: 'Supply Chain', sub_catalyst: 'Replenishment Triggers' },
-  inv_margin_erosion:            { catalyst: 'Sales',        sub_catalyst: 'Pricing & Margin Analysis' },
-  inv_inactive_with_value:       { catalyst: 'Supply Chain', sub_catalyst: 'Inventory Optimisation' },
-  sales_customer_concentration:  { catalyst: 'Sales',        sub_catalyst: 'Customer Risk' },
-  sales_inactive_with_ar:        { catalyst: 'Finance',      sub_catalyst: 'AR Collection' },
-  sales_credit_no_check:         { catalyst: 'Finance',      sub_catalyst: 'Credit Vetting' },
-  hr_terminated_in_payroll:      { catalyst: 'Workforce',    sub_catalyst: 'Payroll Audit' },
-  hr_high_payroll_concentration: { catalyst: 'Workforce',    sub_catalyst: 'Compensation Analysis' },
-  tax_overdue_submission:        { catalyst: 'Compliance',   sub_catalyst: 'Tax Compliance' },
-  tax_missing_vat_numbers:       { catalyst: 'Compliance',   sub_catalyst: 'Vendor Master Cleanup' },
-  tax_vat_rate_anomaly:          { catalyst: 'Compliance',   sub_catalyst: 'Tax Audit' },
-  fx_currency_exposure:          { catalyst: 'Finance',      sub_catalyst: 'FX Hedge Advisory' },
-  fx_dual_use_currency:          { catalyst: 'Procurement',  sub_catalyst: 'Vendor Master Cleanup' },
-  // Service-company catalyst mapping. Most route to a 'Service Operations'
-  // catalyst that is added in PR D — explicit gap surfaced at the bottom.
-  svc_low_billable_utilisation:  { catalyst: 'Service Operations', sub_catalyst: 'Billable Utilisation' },
-  svc_unbilled_time_aging:       { catalyst: 'Service Operations', sub_catalyst: 'WIP & Unbilled Aging' },
-  svc_project_overrun:           { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
-  svc_project_margin_negative:   { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
-  svc_unapproved_time_entries:   { catalyst: 'Service Operations', sub_catalyst: 'Time & Expense Governance' },
-  svc_revenue_recognition_lag:   { catalyst: 'Finance',            sub_catalyst: 'Revenue Recognition' },
-  svc_zero_hours_active_project: { catalyst: 'Service Operations', sub_catalyst: 'Project Profitability' },
-  svc_inactive_employee_billed_time: { catalyst: 'Workforce',      sub_catalyst: 'Payroll Audit' },
+  ar_aging_overdue_30_60:        { catalyst: 'Finance Catalyst',                 sub_catalyst: 'AR Collection' },
+  ar_aging_overdue_60_90:        { catalyst: 'Finance Catalyst',                 sub_catalyst: 'AR Collection' },
+  ar_aging_overdue_90_plus:      { catalyst: 'Finance Catalyst',                 sub_catalyst: 'AR Collection' },
+  ar_credit_limit_breach:        { catalyst: 'Finance Catalyst',                 sub_catalyst: 'Credit Vetting' },
+  ar_top_debtor_concentration:   { catalyst: 'Finance Catalyst',                 sub_catalyst: 'AR Collection' },
+  ap_overdue_delivery:           { catalyst: 'Procurement Catalyst',             sub_catalyst: 'PO Automation' },
+  ap_three_way_mismatch:         { catalyst: 'Finance Catalyst',                 sub_catalyst: 'Invoice Reconciliation' },
+  ap_unreconciled_bank:          { catalyst: 'Finance Catalyst',                 sub_catalyst: 'GL-Bank Reconciliation' },
+  gl_suspense_balance:           { catalyst: 'Finance Catalyst',                 sub_catalyst: 'GL-Bank Reconciliation' },
+  gl_journal_off_hours:          { catalyst: 'Compliance & Regulatory Catalyst', sub_catalyst: 'Journal Anomaly Detection' },
+  gl_round_amount_journals:      { catalyst: 'Compliance & Regulatory Catalyst', sub_catalyst: 'Journal Anomaly Detection' },
+  gl_high_manual_volume:         { catalyst: 'Finance Catalyst',                 sub_catalyst: 'Automation Coverage' },
+  proc_maverick_spend:           { catalyst: 'Procurement Catalyst',             sub_catalyst: '3-Way Match' },
+  proc_duplicate_suppliers:      { catalyst: 'Procurement Catalyst',             sub_catalyst: 'Vendor Master Cleanup' },
+  proc_supplier_concentration:   { catalyst: 'Procurement Catalyst',             sub_catalyst: 'Supplier Risk Management' },
+  proc_inactive_with_open_pos:   { catalyst: 'Procurement Catalyst',             sub_catalyst: 'Vendor Master Cleanup' },
+  inv_stale_stock:               { catalyst: 'Supply Chain Catalyst',            sub_catalyst: 'Inventory Optimization' },
+  inv_dead_stock:                { catalyst: 'Supply Chain Catalyst',            sub_catalyst: 'Slow & Obsolete Stock' },
+  inv_negative_stock:            { catalyst: 'Supply Chain Catalyst',            sub_catalyst: 'Inventory Data Quality' },
+  inv_below_reorder:             { catalyst: 'Supply Chain Catalyst',            sub_catalyst: 'Replenishment Triggers' },
+  inv_margin_erosion:            { catalyst: 'Sales Catalyst',                   sub_catalyst: 'Pricing & Margin Analysis' },
+  inv_inactive_with_value:       { catalyst: 'Supply Chain Catalyst',            sub_catalyst: 'Inventory Optimization' },
+  sales_customer_concentration:  { catalyst: 'Sales Catalyst',                   sub_catalyst: 'Customer Risk' },
+  sales_inactive_with_ar:        { catalyst: 'Finance Catalyst',                 sub_catalyst: 'AR Collection' },
+  sales_credit_no_check:         { catalyst: 'Finance Catalyst',                 sub_catalyst: 'Credit Vetting' },
+  hr_terminated_in_payroll:      { catalyst: 'HR & Workforce Catalyst',          sub_catalyst: 'Payroll Audit' },
+  hr_high_payroll_concentration: { catalyst: 'HR & Workforce Catalyst',          sub_catalyst: 'Compensation Analysis' },
+  tax_overdue_submission:        { catalyst: 'Compliance & Regulatory Catalyst', sub_catalyst: 'Tax Compliance' },
+  // Vendor master cleanup is canonically a Procurement concern — the missing
+  // VAT numbers on suppliers are mastered there, not in the compliance cluster.
+  tax_missing_vat_numbers:       { catalyst: 'Procurement Catalyst',             sub_catalyst: 'Vendor Master Cleanup' },
+  tax_vat_rate_anomaly:          { catalyst: 'Compliance & Regulatory Catalyst', sub_catalyst: 'Tax Audit' },
+  fx_currency_exposure:          { catalyst: 'Finance Catalyst',                 sub_catalyst: 'FX Hedge Advisory' },
+  fx_dual_use_currency:          { catalyst: 'Procurement Catalyst',             sub_catalyst: 'Vendor Master Cleanup' },
+  // Service-company catalyst mapping — all entries resolve to the new
+  // Service Operations Catalyst added in PR D, except revenue recognition
+  // which is canonically a Finance sub-catalyst.
+  svc_low_billable_utilisation:  { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'Billable Utilisation' },
+  svc_unbilled_time_aging:       { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'WIP & Unbilled Aging' },
+  svc_project_overrun:           { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'Project Profitability' },
+  svc_project_margin_negative:   { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'Project Profitability' },
+  svc_unapproved_time_entries:   { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'Time & Expense Governance' },
+  svc_revenue_recognition_lag:   { catalyst: 'Finance Catalyst',                 sub_catalyst: 'Revenue Recognition' },
+  svc_zero_hours_active_project: { catalyst: 'Service Operations Catalyst',      sub_catalyst: 'Project Profitability' },
+  svc_inactive_employee_billed_time: { catalyst: 'HR & Workforce Catalyst',      sub_catalyst: 'Payroll Audit' },
 };
 
 const CATEGORY_MAP: Record<FindingCode, FindingCategory> = {
@@ -2659,30 +2668,12 @@ export function summariseFindings(findings: Finding[]): {
   };
 }
 
-// ── Catalyst gap surface for PR D ─────────────────────────────────────────
+// ── Catalyst gap surface ──────────────────────────────────────────────────
 //
-// The mapping table above references several sub-catalyst names that do NOT
-// yet exist as `real`-implementation handlers in the catalog (catalyst-templates.ts).
-// PR D is the place to either (a) add the handler or (b) pick a real handler
-// to remap. Tracking them here so the gap is explicit in code, not just docs:
-//
-//   - Finance / Credit Vetting           — used by ar_credit_limit_breach, sales_credit_no_check
-//   - Finance / Automation Coverage      — used by gl_high_manual_volume
-//   - Finance / FX Hedge Advisory        — used by fx_currency_exposure
-//   - Finance / GL-Bank Reconciliation   — used by ap_unreconciled_bank, gl_suspense_balance
-//   - Compliance / Journal Anomaly Detection — used by gl_journal_off_hours, gl_round_amount_journals
-//   - Compliance / Tax Audit             — used by tax_vat_rate_anomaly
-//   - Procurement / 3-Way Match          — used by proc_maverick_spend
-//   - Procurement / Vendor Master Cleanup — used by proc_duplicate_suppliers, proc_inactive_with_open_pos, fx_dual_use_currency, tax_missing_vat_numbers
-//   - Procurement / Supplier Risk Management — used by proc_supplier_concentration
-//   - Supply Chain / Slow & Obsolete Stock   — used by inv_dead_stock
-//   - Supply Chain / Inventory Data Quality  — used by inv_negative_stock
-//   - Supply Chain / Replenishment Triggers  — used by inv_below_reorder
-//   - Sales / Pricing & Margin Analysis      — used by inv_margin_erosion
-//   - Sales / Customer Risk                  — used by sales_customer_concentration
-//   - Workforce / Payroll Audit              — used by hr_terminated_in_payroll
-//   - Workforce / Compensation Analysis      — used by hr_high_payroll_concentration
-//   - Service Operations (NEW catalyst)       — used by every svc_* finding except revrec
-//     - Sub-catalysts: Billable Utilisation, WIP & Unbilled Aging, Project
-//       Profitability, Time & Expense Governance
-//   - Finance / Revenue Recognition           — used by svc_revenue_recognition_lag
+// Closed in PR #275 — every entry in FINDING_CATALYST_MAP now resolves to a
+// `real`-implementation sub-catalyst on a real cluster in catalyst-templates.ts.
+// The `every-finding-has-a-real-catalyst` test in assessment-findings.test.ts
+// asserts the round-trip: each finding's recommended catalyst+sub_catalyst
+// must exist in the catalog with implementation === 'real'. Adding a new
+// detector that references a non-existent sub-catalyst will fail that test
+// (intentionally — the report's "here's the cure" loop must always close).
