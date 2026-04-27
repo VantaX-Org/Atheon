@@ -165,11 +165,38 @@ app.post('/:id/run', async (c) => {
         { title: 'Ongoing Prevention', description: `R${Math.round(ongoingAnnual / 1000)}k annual value through continuous monitoring`, value: ongoingAnnual },
       ];
 
+      // PR H: also run the new assessment-findings engine. The value
+      // assessment above is the legacy data-quality / process-timing
+      // analysis; this new engine produces the structured Finding objects
+      // the AssessmentsPage Findings tab consumes. They are complementary,
+      // not redundant.
+      let findingsJson = '[]';
+      let findingsSummaryJson = '{}';
+      try {
+        const { detectAllFindings, summariseFindings } = await import('../services/assessment-findings');
+        const findings = await detectAllFindings(db, tenantId, {
+          baseCurrency: 'ZAR',
+          exchangeRates: { ZAR: 1, USD: 18.5, EUR: 20, GBP: 23 },
+          monthsOfData: 6, // trial = ≤ 6 months of CSV data typically
+        });
+        findingsJson = JSON.stringify(findings);
+        findingsSummaryJson = JSON.stringify(summariseFindings(findings));
+      } catch (findingsErr) {
+        console.error('detectAllFindings failed in trial path (non-fatal):', findingsErr);
+      }
+
       await db.prepare(
         `UPDATE trial_assessments SET status = 'complete', progress = 100, current_step = 'Assessment complete',
          health_score = ?, issues_found = ?, estimated_exposure = ?, projected_roi = ?,
-         top_risks = ?, top_opportunities = ?, completed_at = datetime('now') WHERE id = ?`
-      ).bind(healthScore, totalFindings, immediateValue + ongoingAnnual, projectedRoi, JSON.stringify(topRisks), JSON.stringify(topOpportunities), id).run();
+         top_risks = ?, top_opportunities = ?,
+         findings_json = ?, findings_summary_json = ?,
+         completed_at = datetime('now') WHERE id = ?`
+      ).bind(
+        healthScore, totalFindings, immediateValue + ongoingAnnual, projectedRoi,
+        JSON.stringify(topRisks), JSON.stringify(topOpportunities),
+        findingsJson, findingsSummaryJson,
+        id,
+      ).run();
 
       return c.json({ status: 'complete', mode: 'value_assessment' });
     }
@@ -228,6 +255,13 @@ app.get('/:id/results', async (c) => {
   if (!assessment) return c.json({ error: 'Assessment not found' }, 404);
   if (assessment.status !== 'complete') return c.json({ error: 'Assessment not yet complete', status: assessment.status }, 400);
 
+  // PR H: parse findings_json + findings_summary_json (default to empty
+  // when not present, e.g. older trial rows from before the heal column).
+  let findings: unknown[] = [];
+  let findingsSummary: unknown = {};
+  try { findings = JSON.parse((assessment.findings_json as string) || '[]'); } catch { /* corrupt → empty */ }
+  try { findingsSummary = JSON.parse((assessment.findings_summary_json as string) || '{}'); } catch { /* corrupt → empty */ }
+
   return c.json({
     companyName: assessment.company_name,
     industry: assessment.industry,
@@ -238,6 +272,8 @@ app.get('/:id/results', async (c) => {
     topOpportunities: JSON.parse((assessment.top_opportunities as string) || '[]'),
     projectedRoi: assessment.projected_roi,
     completedAt: assessment.completed_at,
+    findings,
+    findingsSummary,
   });
 });
 
