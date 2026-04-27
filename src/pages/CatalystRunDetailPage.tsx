@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
 import type { SubCatalystRunItem, SubCatalystRunItemsResponse, RunComment } from "@/lib/api";
 import { useToast, type ToastApi } from "@/components/ui/toast";
+import { useAppStore } from "@/stores/appStore";
 import {
   RunItemsFilterBar,
   type ItemStatus,
@@ -15,8 +16,10 @@ import {
 import {
   ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle,
   Activity, Database, BarChart3, Download, FileText,
-  ThumbsUp, ThumbsDown, MessageCircle, Send, Loader2,
+  ThumbsUp, ThumbsDown, MessageCircle, Send, Loader2, Trash2,
 } from "lucide-react";
+
+const ADMIN_ROLES = new Set(['superadmin', 'support_admin', 'admin', 'executive']);
 
 
 interface RunDetail {
@@ -137,6 +140,14 @@ export function CatalystRunDetailPage() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const currentUser = useAppStore((s) => s.user);
+  const canDeleteComment = useCallback(
+    (comment: RunComment) =>
+      !!currentUser &&
+      (comment.user_id === currentUser.id || ADMIN_ROLES.has(currentUser.role)),
+    [currentUser],
+  );
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -278,6 +289,24 @@ export function CatalystRunDetailPage() {
       toast.error('Failed to add comment', { message, requestId });
     } finally {
       setAddingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!runId) return;
+    setDeletingCommentId(commentId);
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    try {
+      await api.catalysts.deleteRunComment(runId, commentId);
+      toast.success('Comment deleted');
+    } catch (err) {
+      console.error('Delete comment failed:', err);
+      const message = err instanceof Error ? err.message : 'Failed to delete comment';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Failed to delete comment', { message, requestId });
+      await loadComments();
+    } finally {
+      setDeletingCommentId(null);
     }
   };
 
@@ -752,6 +781,21 @@ export function CatalystRunDetailPage() {
                     {c.item_id && (
                       <Badge variant="info" className="text-[10px]">on item</Badge>
                     )}
+                    {canDeleteComment(c) && (
+                      <button
+                        type="button"
+                        aria-label="Delete comment"
+                        title="Delete comment"
+                        className="ml-auto inline-flex items-center justify-center rounded-md p-1 text-[var(--text-muted)] hover:text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+                        disabled={deletingCommentId === c.id}
+                        onClick={() => handleDeleteComment(c.id)}
+                        data-testid={`delete-comment-${c.id}`}
+                      >
+                        {deletingCommentId === c.id
+                          ? <Loader2 size={14} className="animate-spin" />
+                          : <Trash2 size={14} />}
+                      </button>
+                    )}
                   </div>
                   <p className="text-sm t-primary whitespace-pre-wrap">{c.comment}</p>
                 </div>
@@ -774,7 +818,6 @@ export function CatalystRunDetailPage() {
               Post
             </Button>
           </div>
-          {/* TODO: delete-comment endpoint does not exist yet on backend (/api/catalysts/runs/:runId/comments/:commentId DELETE). Wire up once added. */}
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

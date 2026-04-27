@@ -5077,6 +5077,33 @@ catalysts.post('/runs/:runId/comments', async (c) => {
   return c.json({ id: commentId, success: true });
 });
 
+// DELETE /api/catalysts/runs/:runId/comments/:commentId — Delete a comment.
+// Only the original author or an admin/executive can delete. Tenant-scoped.
+catalysts.delete('/runs/:runId/comments/:commentId', async (c) => {
+  const tenantId = getTenantId(c);
+  const runId = c.req.param('runId');
+  const commentId = c.req.param('commentId');
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth) return c.json({ error: 'Unauthorized' }, 401);
+
+  const row = await c.env.DB.prepare(
+    'SELECT user_id FROM run_comments WHERE id = ? AND run_id = ? AND tenant_id = ?'
+  ).bind(commentId, runId, tenantId).first<{ user_id: string }>();
+  if (!row) return c.json({ error: 'Comment not found' }, 404);
+
+  const isAuthor = row.user_id === auth.userId;
+  const isAdmin = isAdminRole(auth.role) || auth.role === 'executive';
+  if (!isAuthor && !isAdmin) {
+    return c.json({ error: 'Forbidden', message: 'Only the author or an admin can delete this comment' }, 403);
+  }
+
+  await c.env.DB.prepare(
+    'DELETE FROM run_comments WHERE id = ? AND run_id = ? AND tenant_id = ?'
+  ).bind(commentId, runId, tenantId).run();
+
+  return c.json({ success: true });
+});
+
 // GET /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions — List all KPI definitions
 catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/kpi-definitions', async (c) => {
   const clusterId = c.req.param('clusterId');
