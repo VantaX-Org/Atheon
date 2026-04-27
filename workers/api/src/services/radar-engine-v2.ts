@@ -127,9 +127,13 @@ export async function computeStrategicContext(
     'SELECT * FROM market_benchmarks WHERE tenant_id = ? ORDER BY measured_at DESC LIMIT 5'
   ).bind(tenantId).all();
 
-  // Industry no longer tracked on tenants — fall back to 'general' for LLM narrative.
-  // TODO: reintroduce per-tenant industry tagging via tenant_tags if needed.
-  const tenant: { industry: string } = { industry: 'general' };
+  // Use tenants.industry directly — it's column-healed to 'general' by default
+  // and populated for trial-conversion tenants. Falls back to 'general' if the
+  // row is unexpectedly missing.
+  const tenantRow = await db.prepare(
+    'SELECT industry FROM tenants WHERE id = ?'
+  ).bind(tenantId).first<{ industry: string | null }>();
+  const tenant: { industry: string } = { industry: tenantRow?.industry || 'general' };
 
   // Compute industry benchmark score from market_benchmarks
   let industryBenchmark = 0;
