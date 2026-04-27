@@ -135,6 +135,21 @@ export interface Finding {
   metric_signature: string;
   evidence_quality: EvidenceQuality;
   detected_at: string;
+  /**
+   * When the engine runs per-company (multi-entity / multinational), each
+   * Finding is tagged with the entity it belongs to. Unset for tenant-wide
+   * runs (`detectAllFindings` without a company filter).
+   */
+  company_id?: string;
+  company_name?: string;
+}
+
+export interface CompanyContext {
+  id: string;
+  name: string;
+  currency: string;
+  country: string;
+  is_primary: number;
 }
 
 export interface FindingsContext {
@@ -691,16 +706,17 @@ async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: F
 }
 
 async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  // erp_bank_transactions doesn't carry a company_id column today, so unscoped.
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, bank_account, transaction_date, description, debit, credit, balance, reference
        FROM erp_bank_transactions
       WHERE tenant_id = ?
         AND COALESCE(reconciled, 0) = 0
         AND date(transaction_date) < date('now', '-30 days')
+        ${cf.clause}
       ORDER BY (COALESCE(debit, 0) + COALESCE(credit, 0)) DESC
       LIMIT 200`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; bank_account: string; transaction_date: string;
     description: string | null; debit: number; credit: number; balance: number;
     reference: string | null;
@@ -740,6 +756,7 @@ async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: F
 }
 
 async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, account_code, account_name, account_type, account_class, currency, balance
        FROM erp_gl_accounts
@@ -752,9 +769,10 @@ async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: Fi
           OR LOWER(COALESCE(account_name, '')) LIKE '%clearing%'
           OR LOWER(COALESCE(account_name, '')) LIKE '%unallocated%'
         )
+        ${cf.clause}
       ORDER BY ABS(balance) DESC
       LIMIT 50`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; account_code: string; account_name: string; account_type: string;
     account_class: string | null; currency: string | null; balance: number;
   }>()).results || [];
@@ -796,7 +814,7 @@ async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: Fi
 }
 
 async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   // SQLite strftime('%w', x) returns 0=Sun .. 6=Sat. Hours via strftime('%H').
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by, created_at
@@ -807,9 +825,10 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
           CAST(strftime('%w', COALESCE(created_at, journal_date)) AS INTEGER) IN (0, 6)
           OR CAST(strftime('%H', COALESCE(created_at, journal_date)) AS INTEGER) NOT BETWEEN 7 AND 18
         )
+        ${cf.clause}
       ORDER BY total_debit DESC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
     created_at: string | null;
@@ -845,7 +864,7 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
 }
 
 async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   // Suspiciously round = above R10k AND ends in '000.00' (multiples of 1000).
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by
@@ -854,9 +873,10 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
         AND status = 'posted'
         AND total_debit >= 10000
         AND ABS(total_debit - ROUND(total_debit, -3)) < 0.01
+        ${cf.clause}
       ORDER BY total_debit DESC
       LIMIT 50`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
   }>()).results || [];
@@ -891,7 +911,7 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
 }
 
 async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   // Heuristic: any journal with posted_by in (manual user list) or description LIKE 'Manual%'
   // and a high count over the last 90 days. We don't have a "source" column,
   // so fall back to description heuristic + count.
@@ -903,8 +923,9 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
      FROM erp_journal_entries
      WHERE tenant_id = ?
        AND status = 'posted'
-       AND date(journal_date) >= date('now', '-90 days')`,
-  ).bind(tenantId).first<{ manual_count: number; total_count: number; manual_value: number }>();
+       AND date(journal_date) >= date('now', '-90 days')
+       ${cf.clause}`,
+  ).bind(tenantId, ...cf.binds).first<{ manual_count: number; total_count: number; manual_value: number }>();
   if (!r || r.total_count < 20) return null; // not enough data to reason about
   const manualPct = (r.manual_count / r.total_count) * 100;
   if (manualPct < 50) return null;
@@ -1159,7 +1180,7 @@ async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, c
 }
 
 async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   // Stale = active product, stock_on_hand > 0, no recent invoice line referencing the SKU.
   // Without a movements table we approximate with: product.created_at older than 6 months
   // AND product not in any line_items in the last 6 months. Line_items check is an
@@ -1178,9 +1199,10 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
              AND date(invoice_date) >= date('now', '-6 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
         )
+        ${cf.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId).all<{
+  ).bind(tenantId, tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number; selling_price: number;
     warehouse: string | null; created_at: string | null;
@@ -1216,7 +1238,7 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
 }
 
 async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   // Dead stock = same as stale but 12+ months. Reuse the same query template.
   const rows = (await db.prepare(
     `SELECT id, sku, name, category, stock_on_hand, cost_price
@@ -1232,9 +1254,10 @@ async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: Finding
              AND date(invoice_date) >= date('now', '-12 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
         )
+        ${cf.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId).all<{
+  ).bind(tenantId, tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number;
   }>()).results || [];
@@ -1270,14 +1293,16 @@ async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: Finding
 }
 
 async function detectInvNegativeStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, cost_price, warehouse
        FROM erp_products
       WHERE tenant_id = ?
         AND stock_on_hand < 0
+        ${cf.clause}
       ORDER BY stock_on_hand ASC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1310,7 +1335,7 @@ async function detectInvNegativeStock(db: D1Database, tenantId: string, ctx: Fin
 }
 
 async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, reorder_level, reorder_quantity, cost_price, warehouse
        FROM erp_products
@@ -1319,9 +1344,10 @@ async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: Find
         AND reorder_level > 0
         AND stock_on_hand < reorder_level
         AND stock_on_hand >= 0
+        ${cf.clause}
       ORDER BY (reorder_level - stock_on_hand) DESC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     reorder_level: number; reorder_quantity: number; cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1362,7 +1388,7 @@ async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: Find
 }
 
 async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, sku, name, cost_price, selling_price, stock_on_hand, category
        FROM erp_products
@@ -1371,9 +1397,10 @@ async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: Fin
         AND cost_price > 0
         AND selling_price > 0
         AND cost_price >= selling_price
+        ${cf.clause}
       ORDER BY (cost_price - selling_price) DESC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; cost_price: number;
     selling_price: number; stock_on_hand: number; category: string | null;
   }>()).results || [];
@@ -1411,7 +1438,7 @@ async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: Fin
 }
 
 async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, cost_price, warehouse
        FROM erp_products
@@ -1419,9 +1446,10 @@ async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx:
         AND COALESCE(is_active, 1) = 0
         AND stock_on_hand > 0
         AND cost_price > 0
+        ${cf.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1637,7 +1665,7 @@ async function detectSalesCreditNoCheck(db: D1Database, tenantId: string, ctx: F
 }
 
 async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, employee_number, first_name, last_name, department, gross_salary,
             status, termination_date, salary_frequency
@@ -1645,9 +1673,10 @@ async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx
       WHERE tenant_id = ?
         AND status IN ('terminated', 'resigned', 'retired')
         AND COALESCE(gross_salary, 0) > 0
+        ${cf.clause}
       ORDER BY gross_salary DESC
       LIMIT 100`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     id: string; employee_number: string; first_name: string; last_name: string;
     department: string | null; gross_salary: number; status: string;
     termination_date: string | null; salary_frequency: string;
@@ -1687,19 +1716,19 @@ async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx
 }
 
 async function detectHrHighPayrollConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const cf = companyFilter(ctx, 'company_id');
   const summary = await db.prepare(
     `SELECT SUM(gross_salary) as total_payroll, COUNT(*) as headcount
-       FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0`,
-  ).bind(tenantId).first<{ total_payroll: number; headcount: number }>();
+       FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause}`,
+  ).bind(tenantId, ...cf.binds).first<{ total_payroll: number; headcount: number }>();
   if (!summary || !summary.total_payroll || summary.headcount < 5) return null;
 
   const top5 = await db.prepare(
     `SELECT employee_number, first_name, last_name, department, position, gross_salary
        FROM erp_employees
-      WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0
+      WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause}
       ORDER BY gross_salary DESC LIMIT 5`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...cf.binds).all<{
     employee_number: string; first_name: string; last_name: string;
     department: string | null; position: string | null; gross_salary: number;
   }>();
@@ -2039,6 +2068,57 @@ export async function detectAllFindings(
     return b.value_at_risk_zar - a.value_at_risk_zar;
   });
   return findings;
+}
+
+/**
+ * Multi-company / multinational variant — runs every detector once per
+ * registered `erp_company` and tags each finding with the entity it belongs
+ * to. Returns the per-company breakdown the report uses for entity-level
+ * sections, plus a tenant-wide rollup (under a synthetic "all" company) so
+ * the cover page can still lead with consolidated numbers.
+ *
+ * Tenants without any `erp_companies` rows degrade to a single tenant-wide
+ * run (effectively the same shape as `detectAllFindings`).
+ */
+export async function detectAllFindingsByCompany(
+  db: D1Database,
+  tenantId: string,
+  ctx: FindingsContext,
+): Promise<{
+  per_company: Array<{ company: CompanyContext; findings: Finding[] }>;
+  consolidated: Finding[];
+}> {
+  const companies = (await db.prepare(
+    `SELECT id, name, currency, country, is_primary
+       FROM erp_companies
+      WHERE tenant_id = ?
+        AND status = 'active'
+      ORDER BY is_primary DESC, name ASC`,
+  ).bind(tenantId).all<CompanyContext>()).results || [];
+
+  // No companies registered → single tenant-wide run, no per-company split.
+  if (companies.length === 0) {
+    const consolidated = await detectAllFindings(db, tenantId, ctx);
+    return { per_company: [], consolidated };
+  }
+
+  const per_company: Array<{ company: CompanyContext; findings: Finding[] }> = [];
+  for (const company of companies) {
+    const scopedCtx: FindingsContext = { ...ctx, companyIds: [company.id] };
+    const findings = (await detectAllFindings(db, tenantId, scopedCtx)).map(f => ({
+      ...f,
+      company_id: company.id,
+      company_name: company.name,
+    }));
+    per_company.push({ company, findings });
+  }
+
+  // Consolidated run (no company filter) for the tenant-wide cover page.
+  // We keep this separate from a sum-of-per-company because some detectors
+  // (e.g., concentration / duplicate detection) only make sense at the
+  // tenant level — running them per-company would miss cross-entity duplicates.
+  const consolidated = await detectAllFindings(db, tenantId, ctx);
+  return { per_company, consolidated };
 }
 
 /** Tally findings into a category-grouped summary for the report cover page. */

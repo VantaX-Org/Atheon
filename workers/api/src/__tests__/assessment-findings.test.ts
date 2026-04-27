@@ -15,6 +15,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import {
   detectAllFindings,
+  detectAllFindingsByCompany,
   summariseFindings,
   FINDING_CATALYST_MAP,
   type FindingCode,
@@ -370,6 +371,77 @@ describe('Assessment Findings — sorting + summary', () => {
     expect(summary.total_count).toBeGreaterThanOrEqual(2);
     expect(summary.recommended_catalysts.length).toBeGreaterThanOrEqual(1);
     expect(summary.by_category.supply_chain.count).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('Assessment Findings — multi-company per-entity', () => {
+  beforeAll(async () => { await migrate(); });
+
+  it('returns one findings group per active erp_company, plus a consolidated rollup', async () => {
+    const tenantId = nextTenantId('mc');
+    await seedTenant(tenantId);
+    // Two companies — ZA and UK — each with its own data quality issue.
+    await env.DB.prepare(
+      `INSERT INTO erp_companies (id, tenant_id, name, currency, country, is_primary, status)
+       VALUES ('co-za', ?, 'VantaX South Africa', 'ZAR', 'ZA', 1, 'active')`,
+    ).bind(tenantId).run();
+    await env.DB.prepare(
+      `INSERT INTO erp_companies (id, tenant_id, name, currency, country, is_primary, status)
+       VALUES ('co-uk', ?, 'VantaX UK', 'GBP', 'GB', 0, 'active')`,
+    ).bind(tenantId).run();
+
+    // ZA company: 2 SKUs with negative stock (fires inv_negative_stock)
+    for (let i = 0; i < 2; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_products (id, tenant_id, company_id, sku, name, cost_price, stock_on_hand, is_active)
+         VALUES (?, ?, 'co-za', ?, ?, 100, -5, 1)`,
+      ).bind(`prod-mc-za-${i}`, tenantId, `SKU-ZA-${i}`, `ZA Product ${i}`).run();
+    }
+    // UK company: 1 inactive employee on payroll (fires hr_terminated_in_payroll).
+    // erp_employees has no company_id column — finding is unscoped, so it
+    // appears in BOTH company runs and the consolidated run.
+    await env.DB.prepare(
+      `INSERT INTO erp_employees (id, tenant_id, employee_number, first_name, last_name, gross_salary, salary_frequency, status)
+       VALUES (?, ?, 'E-UK-001', 'Ghost', 'Worker', 80000, 'monthly', 'terminated')`,
+    ).bind(`emp-mc-uk-1`, tenantId).run();
+
+    const result = await detectAllFindingsByCompany(env.DB, tenantId, CTX);
+    expect(result.per_company.length).toBe(2);
+    const za = result.per_company.find(p => p.company.id === 'co-za')!;
+    const uk = result.per_company.find(p => p.company.id === 'co-uk')!;
+    expect(za).toBeTruthy();
+    expect(uk).toBeTruthy();
+
+    // ZA-only finding: negative stock with company_id tagged.
+    const zaNeg = za.findings.find(f => f.code === 'inv_negative_stock');
+    expect(zaNeg).toBeTruthy();
+    expect(zaNeg!.company_id).toBe('co-za');
+    expect(zaNeg!.company_name).toBe('VantaX South Africa');
+
+    // UK shouldn't see ZA-scoped negative stock — its erp_products list is empty.
+    const ukNeg = uk.findings.find(f => f.code === 'inv_negative_stock');
+    expect(ukNeg).toBeUndefined();
+
+    // Consolidated rollup runs WITHOUT company filter — sees the ZA stock and the unscoped employee.
+    const consolidatedCodes = result.consolidated.map(f => f.code);
+    expect(consolidatedCodes).toContain('inv_negative_stock');
+    expect(consolidatedCodes).toContain('hr_terminated_in_payroll');
+    // Consolidated findings are not company-tagged.
+    expect(result.consolidated.every(f => f.company_id === undefined)).toBe(true);
+  });
+
+  it('falls back to a single tenant-wide run when no erp_companies are registered', async () => {
+    const tenantId = nextTenantId('mc-empty');
+    await seedTenant(tenantId);
+    await env.DB.prepare(
+      `INSERT INTO erp_products (id, tenant_id, sku, name, cost_price, stock_on_hand, is_active)
+       VALUES (?, ?, 'SKU-NEG', 'A', 10, -3, 1)`,
+    ).bind(`prod-mc-empty-1`, tenantId).run();
+
+    const result = await detectAllFindingsByCompany(env.DB, tenantId, CTX);
+    expect(result.per_company).toEqual([]);
+    expect(result.consolidated.length).toBeGreaterThan(0);
+    expect(result.consolidated.find(f => f.code === 'inv_negative_stock')).toBeTruthy();
   });
 });
 
