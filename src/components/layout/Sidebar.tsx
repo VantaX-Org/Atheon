@@ -53,11 +53,15 @@ const navItems: NavItem[] = [
   { path: '/integrations', label: 'Integrations', icon: IconERPAdapters, section: 'administration', sublabel: 'Systems & Data Schema', roles: PLATFORM_ADMIN_ROLES },
   { path: '/webhooks', label: 'Webhooks', icon: IconBolt, section: 'administration', sublabel: 'Event Subscriptions', roles: PLATFORM_ADMIN_ROLES },
   { path: '/audit', label: 'Audit', icon: IconAudit, section: 'administration', sublabel: 'Governance', roles: PLATFORM_ADMIN_ROLES },
-  // UX-14: Platform Ops — superadmin-only operational tools
-  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform-ops', sublabel: 'Agent Management', roles: SUPERADMIN_ROLES },
+  // Platform Ops — backend prefix middleware controls who can use the routes.
+  // Sidebar role gating must match. Control Plane + Connectivity are open to
+  // PLATFORM_ADMIN_ROLES (superadmin + support_admin + admin) per
+  // workers/api/src/index.ts platformAdminRoutePrefixes. Deployments + Assessments
+  // remain superadmin-only because their handlers explicitly enforce that.
+  { path: '/control-plane', label: 'Control Plane', icon: IconControlPlane, section: 'platform-ops', sublabel: 'Agent Management', roles: PLATFORM_ADMIN_ROLES },
   { path: '/deployments', label: 'Deployments', icon: IconNetwork, section: 'platform-ops', sublabel: 'Hybrid & On-Premise', roles: SUPERADMIN_ROLES },
   { path: '/assessments', label: 'Assessments', icon: IconBarChart, section: 'platform-ops', sublabel: 'Pre-Sale Analysis', roles: SUPERADMIN_ROLES },
-  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'Protocols', roles: SUPERADMIN_ROLES },
+  { path: '/connectivity', label: 'Connectivity', icon: IconConnectivity, section: 'platform-ops', sublabel: 'Protocols', roles: PLATFORM_ADMIN_ROLES },
   // /executive retired: ExecutiveMobilePage consolidated into responsive ApexPage.
   { path: '/executive-summary', label: 'Exec Briefing', icon: IconBarChart, section: 'intelligence', sublabel: 'One-Page Summary', roles: EXECUTIVE_ROLES },
   // Admin Tooling (ADMIN-001 to ADMIN-012)
