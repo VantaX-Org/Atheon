@@ -9,11 +9,12 @@
 // (additive self-heal columns, default to empty JSON). Used by the trial-
 // assessment route to persist the new assessment-findings engine output for
 // the trial UI. v50-service-erp came before; no rollback needed.
-// v52-simulator: catalyst_simulations + catalyst_calibrations tables for
-// the closed-loop catalyst simulator. Predictions are recorded before
-// execution; outcomes are recorded after; calibration_factor is updated
-// per-tenant per-catalyst via Welford's online stats. Additive only.
-export const MIGRATION_VERSION = 'v52-simulator';
+// v53-provenance: provenance_chain table for cryptographically-verifiable
+// AI decision logging. Every catalyst execution + HITL approval + assessment
+// run + simulation + license action appends a hash-linked entry; auditors
+// can walk the chain and verify nothing was tampered with after-the-fact.
+// Additive only — no breaking changes to existing rows.
+export const MIGRATION_VERSION = 'v53-provenance';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -138,6 +139,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS erp_time_entries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), company_id TEXT REFERENCES erp_companies(id), external_id TEXT, source_system TEXT NOT NULL DEFAULT 'manual', employee_id TEXT REFERENCES erp_employees(id), employee_number TEXT, project_id TEXT REFERENCES erp_projects(id), project_code TEXT, work_date TEXT NOT NULL, hours REAL NOT NULL DEFAULT 0, billable INTEGER NOT NULL DEFAULT 1, billed INTEGER NOT NULL DEFAULT 0, billable_rate REAL DEFAULT 0, cost_rate REAL DEFAULT 0, currency TEXT DEFAULT 'ZAR', activity_code TEXT, description TEXT, approval_status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), synced_at TEXT);
     CREATE TABLE IF NOT EXISTS catalyst_simulations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, predicted_value_zar REAL NOT NULL, lower_bound_zar REAL NOT NULL, upper_bound_zar REAL NOT NULL, confidence_pct REAL NOT NULL DEFAULT 95, calibration_factor REAL NOT NULL DEFAULT 1, n_priors INTEGER NOT NULL DEFAULT 0, methodology_json TEXT NOT NULL DEFAULT '{}', simulated_at TEXT NOT NULL DEFAULT (datetime('now')), run_id TEXT REFERENCES sub_catalyst_runs(id), actual_value_zar REAL, residual REAL, recorded_at TEXT);
     CREATE TABLE IF NOT EXISTS catalyst_calibrations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, n_observations INTEGER NOT NULL DEFAULT 0, mean_residual REAL NOT NULL DEFAULT 1, m2_residual REAL NOT NULL DEFAULT 0, calibration_factor REAL NOT NULL DEFAULT 1, std_residual REAL NOT NULL DEFAULT 0, mae REAL NOT NULL DEFAULT 0, last_observation_at TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name));
+    CREATE TABLE IF NOT EXISTS provenance_chain (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), seq INTEGER NOT NULL, parent_id TEXT, payload_type TEXT NOT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL, signed_by_user_id TEXT REFERENCES users(id), signature TEXT, merkle_root_after TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, seq));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -331,6 +333,11 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_catalyst_simulations_run ON catalyst_simulations(run_id)',
     'CREATE INDEX IF NOT EXISTS idx_catalyst_simulations_recent ON catalyst_simulations(tenant_id, simulated_at DESC)',
     'CREATE INDEX IF NOT EXISTS idx_catalyst_calibrations_lookup ON catalyst_calibrations(tenant_id, cluster_id, sub_catalyst_name)',
+    // v53-provenance — chain walks need fast (tenant_id, seq) lookup; verify
+    // operation walks (tenant_id, parent_id) ascending.
+    'CREATE INDEX IF NOT EXISTS idx_provenance_chain_walk ON provenance_chain(tenant_id, seq)',
+    'CREATE INDEX IF NOT EXISTS idx_provenance_chain_parent ON provenance_chain(tenant_id, parent_id)',
+    'CREATE INDEX IF NOT EXISTS idx_provenance_chain_type ON provenance_chain(tenant_id, payload_type, created_at DESC)',
   ];
 
   for (const idx of indexes) {
