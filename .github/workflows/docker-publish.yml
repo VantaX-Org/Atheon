@@ -13,8 +13,14 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/reshigan/atheon-api
-  AGENT_IMAGE: ghcr.io/reshigan/atheon-agent
+  # Image namespace must match the repo owner — the workflow's GITHUB_TOKEN
+  # only has packages:write on the same org as the repo. The previous
+  # `ghcr.io/reshigan/...` was the personal-account namespace and produced
+  # `denied: permission_denied: The requested installation does not exist`
+  # on every push. The repo is owned by VantaX-Org so the namespace is
+  # `vantax-org` (lowercase per GHCR convention).
+  API_IMAGE: ghcr.io/vantax-org/atheon-api
+  AGENT_IMAGE: ghcr.io/vantax-org/atheon-agent
 
 jobs:
   build-api:

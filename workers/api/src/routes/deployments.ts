@@ -255,7 +255,7 @@ function buildInstallConfig(deploymentId: string, licenceKey: string, config: Re
     licenceKey,
     controlPlaneUrl,
     heartbeatIntervalSeconds: 60,
-    agentImage: `ghcr.io/reshigan/atheon-agent:${config.updateChannel || 'latest'}`,
+    agentImage: `ghcr.io/vantax-org/atheon-agent:${config.updateChannel || 'latest'}`,
     initialConfig: config,
     envFile: [
       `ATHEON_DEPLOYMENT_ID=${deploymentId}`,
