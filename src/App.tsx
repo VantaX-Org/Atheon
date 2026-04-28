@@ -92,7 +92,10 @@ export default function App() {
           <Route path="/mind" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><MindPage /></ProtectedRoute>} />
           <Route path="/memory" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><MemoryPage /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ChatPage /></ProtectedRoute>} />
-          <Route path="/connectivity" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
+          {/* Backend gates /api/v1/connectivity to superadmin + support_admin + admin
+              (workers/api/src/index.ts platformAdminRoutePrefixes); aligning the
+              frontend guard so support_admin can reach the page. */}
+          <Route path="/connectivity" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/mfa" element={<MFASetupPage />} />
@@ -100,7 +103,9 @@ export default function App() {
           <Route path="/admin/tenants/:id/llm" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantLlmBudgetPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
           <Route path="/iam" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IAMPage /></ProtectedRoute>} />
-          <Route path="/control-plane" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><ControlPlanePage /></ProtectedRoute>} />
+          {/* Backend gates /api/v1/controlplane to superadmin + support_admin + admin;
+              aligning frontend so support_admin can configure agents and catalysts. */}
+          <Route path="/control-plane" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ControlPlanePage /></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IntegrationsPage /></ProtectedRoute>} />
           <Route path="/canonical-api" element={<Navigate to="/integrations" replace />} />
           <Route path="/erp-adapters" element={<Navigate to="/integrations" replace />} />
