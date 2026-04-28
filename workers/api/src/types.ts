@@ -20,6 +20,28 @@ export interface Env {
   DEMO_LOGIN_SECRET?: string;
   OLLAMA_API_KEY: string;
   ENVIRONMENT: string;
+  /**
+   * Deployment role distinguishes Atheon's own SaaS / control-plane
+   * instance from a customer-hosted hybrid / on-premise instance:
+   *
+   *   - 'cloud'    (default): Atheon's hosted Workers — exposes
+   *                /api/agent/license-check for customer instances to
+   *                phone home against. Skip license-enforcement
+   *                middleware (customers don't gate their own license).
+   *   - 'customer': running inside a customer's docker-compose / k8s.
+   *                Periodically calls home to ATHEON_LICENSE_CHECK_URL
+   *                with LICENCE_KEY; if revoked, license-enforcement
+   *                middleware returns 503 on data-plane requests.
+   *
+   * Wrangler.toml sets this to 'cloud' for the SaaS deploy; the
+   * customer docker-compose sets it to 'customer'. Tests default to
+   * unset / 'cloud' so the middleware no-ops.
+   */
+  DEPLOYMENT_ROLE?: 'cloud' | 'customer';
+  /** URL to phone home for license validation (customer-side only). */
+  ATHEON_LICENSE_CHECK_URL?: string;
+  /** Customer-deploy licence key (matches managed_deployments.licence_key). */
+  LICENCE_KEY?: string;
   /** One-time setup secret for initial admin provisioning. Must match wrangler secret. */
   SETUP_SECRET?: string;
   SENTRY_DSN?: string;

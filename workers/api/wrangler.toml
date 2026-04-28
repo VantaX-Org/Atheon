@@ -9,6 +9,11 @@ routes = [
 
 [vars]
 ENVIRONMENT = "production"
+# Atheon's own Workers runtime — license enforcement no-ops here (we control
+# the runtime). Customer hybrid / on-premise deployments override this to
+# 'customer' in their docker-compose.yml so the license-enforcement
+# middleware phones home to validate.
+DEPLOYMENT_ROLE = "cloud"
 
 [[d1_databases]]
 binding = "DB"
@@ -72,6 +77,7 @@ name = "atheon-api-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
+DEPLOYMENT_ROLE = "cloud"
 
 [[env.staging.d1_databases]]
 binding = "DB"

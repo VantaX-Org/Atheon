@@ -13,6 +13,7 @@ import type { CatalystQueueMessage } from './services/scheduled';
 import { sendOrQueueEmail } from './services/email';
 import { requestIdMiddleware } from './middleware/requestid';
 import { logError, logInfo, logWarn } from './services/logger';
+import { licenseEnforcement, getLicenseStatusForAdmin, refreshLicenseNow } from './services/license-enforcement';
 import auth, { validatePasswordStrength } from './routes/auth';
 import tenants from './routes/tenants';
 import iam from './routes/iam';
@@ -141,6 +142,22 @@ app.use('/api/auth/*', authRateLimiter);
 app.use('/api/mind/*', aiRateLimiter);
 app.use('/api/contact', contactRateLimiter);
 app.use('/api/*', apiRateLimiter);
+
+// License enforcement — only fires when DEPLOYMENT_ROLE === 'customer'
+// (hybrid + on-premise deployments). On Atheon's own SaaS this is a no-op.
+// See services/license-enforcement.ts for the phone-home protocol.
+app.use('/api/*', licenseEnforcement());
+
+// Customer-side license-status endpoints — read-only for ops dashboards
+// + a forced re-validate trigger for admins.
+app.get('/api/v1/license-status', async (c) => {
+  const status = await getLicenseStatusForAdmin(c.env);
+  return c.json(status);
+});
+app.post('/api/v1/license-status/refresh', async (c) => {
+  const result = await refreshLicenseNow(c.env);
+  return c.json(result);
+});
 
 // 4.4: Database migrations — extracted to services/migrate.ts
 // All DDL, indexes, self-heal columns, role upgrades, and seed orchestration
