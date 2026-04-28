@@ -25,6 +25,7 @@ import {
   AlertCircle, AlertTriangle, ChevronDown, ChevronRight,
   TrendingUp, Building2, FileText, Search,
 } from 'lucide-react';
+import { PeerInsightsBadge } from '@/components/PeerInsightsBadge';
 import type {
   AssessmentFinding,
   AssessmentFindingSeverity,
@@ -405,6 +406,11 @@ export function AssessmentFindingsPanel({
                         </div>
                       </div>
                     )}
+
+                    {/* Federated peer insights — only renders when DP-noised
+                        aggregate exists for (industry, finding_code). Below
+                        k-anonymity floor (n < 5) → renders nothing. */}
+                    <PeerInsightsBadge findingCode={f.code} />
 
                     {/* Catalyst recommendation footer */}
                     <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--border-card)]">

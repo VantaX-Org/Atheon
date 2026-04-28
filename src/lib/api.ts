@@ -544,7 +544,7 @@ export const api = {
       request<SubCatalystRunDetail>(`/api/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/runs/${runId}`),
     runDetail: (runId: string) =>
       request<{
-        id: string; subCatalystName: string; clusterName: string; clusterDomain: string;
+        id: string; clusterId?: string; subCatalystName: string; clusterName: string; clusterDomain: string;
         status: string; matched: number; discrepancies: number; exceptions: number;
         totalValue: number; startedAt: string; completedAt: string;
         kpis: Array<{ name: string; value: number; status: string; unit: string; target: number }>;
@@ -580,6 +580,30 @@ export const api = {
       request<{ id: string; success: boolean }>(`/api/catalysts/runs/${runId}/comments`, { method: 'POST', body: JSON.stringify(data) }),
     deleteRunComment: (runId: string, commentId: string) =>
       request<{ success: boolean }>(`/api/catalysts/runs/${runId}/comments/${commentId}`, { method: 'DELETE' }),
+    // ── Catalyst Simulator (PR N — closed-loop calibration) ───────────
+    simulate: (clusterId: string, subName: string) =>
+      request<CatalystSimulationResult>(`/api/v1/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/simulate`, { method: 'POST' }),
+    recordSimulationOutcome: (simulationId: string, data: { run_id: string; actual_value_zar: number }) =>
+      request<{ residual: number; calibration: CatalystCalibrationStats }>(`/api/v1/catalysts/simulations/${simulationId}/record-outcome`, { method: 'POST', body: JSON.stringify(data) }),
+    getCalibration: (clusterId: string, subName: string) =>
+      request<{ stats: CatalystCalibrationStats; history: CatalystSimulationHistoryRow[] }>(`/api/v1/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/calibration`),
+  },
+
+  // ── Provenance ledger (PR O — Merkle-chained AI decision log) ─────
+  provenance: {
+    list: (options?: { limit?: number; offset?: number; order?: 'asc' | 'desc'; type?: string }) =>
+      request<{ entries: ProvenanceEntry[]; total: number }>(`/api/audit/provenance${qs({ limit: options?.limit?.toString(), offset: options?.offset?.toString(), order: options?.order, type: options?.type })}`),
+    verify: () => request<ProvenanceVerifyResult>('/api/audit/provenance/verify', { method: 'POST' }),
+    root: () => request<{ root: string | null; seq: number; created_at: string | null }>('/api/audit/provenance/root'),
+  },
+
+  // ── Federated peer patterns (PR P — DP cross-tenant intelligence) ─
+  peerPatterns: {
+    list: (industry: string) =>
+      request<{ industry_bucket: string; patterns: FederatedPattern[]; total: number }>(`/api/radar/peer-patterns${qs({ industry })}`),
+    get: (findingCode: string, industry?: string) =>
+      request<{ pattern: FederatedPattern | null; reason?: string }>(`/api/radar/peer-patterns/${encodeURIComponent(findingCode)}${qs({ industry })}`),
+    refresh: () => request<{ buckets_refreshed: number; buckets_purged: number }>('/api/radar/peer-patterns/refresh', { method: 'POST' }),
   },
 
   memory: {
@@ -2366,6 +2390,87 @@ export interface AssessmentCompany {
   currency: string;
   country: string;
   is_primary: number;
+}
+
+// ── Catalyst Simulator types (PR N) ───────────────────────────────────────
+export interface CatalystSimulationResult {
+  id: string;
+  cluster_id: string | null;
+  sub_catalyst_name: string;
+  predicted_value_zar: number;
+  lower_bound_zar: number;
+  upper_bound_zar: number;
+  confidence_pct: number;
+  calibration_factor: number;
+  n_priors: number;
+  methodology: {
+    raw_prediction_zar: number;
+    contributing_finding_codes: string[];
+    contributing_finding_count: number;
+    notes: string;
+  };
+  simulated_at: string;
+}
+
+export interface CatalystCalibrationStats {
+  cluster_id: string | null;
+  sub_catalyst_name: string;
+  n_observations: number;
+  calibration_factor: number;
+  std_residual: number;
+  mae_zar: number;
+  last_observation_at: string | null;
+}
+
+export interface CatalystSimulationHistoryRow {
+  id: string;
+  sub_catalyst_name: string;
+  cluster_id: string | null;
+  predicted_value_zar: number;
+  lower_bound_zar: number;
+  upper_bound_zar: number;
+  actual_value_zar: number | null;
+  residual: number | null;
+  calibration_factor: number;
+  n_priors: number;
+  simulated_at: string;
+  recorded_at: string | null;
+}
+
+// ── Provenance ledger types (PR O) ────────────────────────────────────────
+export interface ProvenanceEntry {
+  id: string;
+  tenant_id: string;
+  seq: number;
+  parent_id: string | null;
+  payload_type: string;
+  payload_hash: string;
+  payload_json: string;
+  signed_by_user_id: string | null;
+  signature: string | null;
+  merkle_root_after: string;
+  created_at: string;
+}
+
+export interface ProvenanceVerifyResult {
+  valid: boolean;
+  total_entries: number;
+  first_invalid_seq: number | null;
+  reason: string;
+  current_root: string | null;
+}
+
+// ── Federated peer patterns types (PR P) ──────────────────────────────────
+export interface FederatedPattern {
+  industry_bucket: string;
+  finding_code: string;
+  n_contributors: number;
+  avg_resolved_days: number;
+  avg_recovery_pct: number;
+  p25_recovery_pct: number;
+  p75_recovery_pct: number;
+  epsilon: number;
+  last_refreshed_at: string;
 }
 
 export interface CatalystScore {

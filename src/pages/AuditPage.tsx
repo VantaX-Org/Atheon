@@ -6,6 +6,7 @@ import type { AuditEntry } from "@/lib/api";
 import { Shield, CheckCircle, XCircle, Clock, Filter, Loader2, Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { ProvenanceVerifyPanel } from "@/components/ProvenanceVerifyPanel";
 
 export function AuditPage() {
  const toast = useToast();
@@ -66,8 +67,8 @@ export function AuditPage() {
  <Shield className="w-5 h-5 text-accent"/>
  </div>
  <div>
- <h1 className="text-2xl font-bold t-primary">Audit Log</h1>
- <p className="text-sm t-muted">Complete governance trail across all Atheon layers</p>
+ <h1 className="text-2xl font-bold t-primary">Audit & Provenance</h1>
+ <p className="text-sm t-muted">Complete governance trail across all Atheon layers, plus the cryptographic AI decision ledger</p>
  </div>
  </div>
  <div className="flex items-center gap-2">
@@ -145,6 +146,10 @@ export function AuditPage() {
  </button>
  </div>
  </div>
+
+ {/* Cryptographic provenance ledger — sits above the standard audit log
+     so the tamper-evidence story is the first thing on the page. */}
+ <ProvenanceVerifyPanel />
 
  {/* Filter Panel */}
  {showFilters && (
