@@ -41,6 +41,7 @@ import { WebhooksPage } from "@/pages/WebhooksPage";
 import { SupportPage } from "@/pages/SupportPage";
 import { SupportTicketDetailPage } from "@/pages/SupportTicketDetailPage";
 import { SupportTriagePage } from "@/pages/admin/SupportTriagePage";
+import { TrustPerformancePage } from "@/pages/TrustPerformancePage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -97,6 +98,10 @@ export default function App() {
               frontend guard so support_admin can reach the page. */}
           <Route path="/connectivity" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
+          {/* Trust & Performance — buyer-facing aggregation of calibration,
+              provenance, and federated peer patterns. Open to standard roles
+              so a salesperson with a viewer login can demo it. */}
+          <Route path="/trust" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><TrustPerformancePage /></ProtectedRoute>} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/mfa" element={<MFASetupPage />} />
           <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />

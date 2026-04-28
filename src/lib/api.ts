@@ -587,6 +587,30 @@ export const api = {
       request<{ residual: number; calibration: CatalystCalibrationStats }>(`/api/v1/catalysts/simulations/${simulationId}/record-outcome`, { method: 'POST', body: JSON.stringify(data) }),
     getCalibration: (clusterId: string, subName: string) =>
       request<{ stats: CatalystCalibrationStats; history: CatalystSimulationHistoryRow[] }>(`/api/v1/catalysts/clusters/${clusterId}/sub-catalysts/${encodeURIComponent(subName)}/calibration`),
+    /**
+     * Tenant-wide calibration summary for the Trust & Performance buyer
+     * dashboard. Aggregates accuracy across every observed simulation and
+     * lists per-(cluster, sub) calibration rows.
+     */
+    getCalibrationSummary: () =>
+      request<{
+        accuracyPct: number;
+        totalSimulations: number;
+        simulationsWithOutcomes: number;
+        totalPredictedValueZar: number;
+        totalObservations: number;
+        calibratedSubCatalysts: number;
+        perSubCatalystCount: number;
+        calibrations: Array<{
+          cluster_id: string | null;
+          sub_catalyst_name: string;
+          n_observations: number;
+          calibration_factor: number;
+          std_residual: number;
+          mae: number;
+          last_observation_at: string | null;
+        }>;
+      }>(`/api/v1/catalysts/calibrations/summary`),
   },
 
   // ── Provenance ledger (PR O — Merkle-chained AI decision log) ─────

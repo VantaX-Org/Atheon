@@ -53,6 +53,7 @@ const navItems: NavItem[] = [
   { path: '/integrations', label: 'Integrations', icon: IconERPAdapters, section: 'administration', sublabel: 'Systems & Data Schema', roles: PLATFORM_ADMIN_ROLES },
   { path: '/webhooks', label: 'Webhooks', icon: IconBolt, section: 'administration', sublabel: 'Event Subscriptions', roles: PLATFORM_ADMIN_ROLES },
   { path: '/audit', label: 'Audit', icon: IconAudit, section: 'administration', sublabel: 'Governance', roles: PLATFORM_ADMIN_ROLES },
+  { path: '/trust', label: 'Trust', icon: IconAudit, section: 'intelligence', sublabel: 'Calibration · Provenance · Peers', roles: STANDARD_ROLES },
   // Platform Ops — backend prefix middleware controls who can use the routes.
   // Sidebar role gating must match. Control Plane + Connectivity are open to
   // PLATFORM_ADMIN_ROLES (superadmin + support_admin + admin) per

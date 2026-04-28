@@ -5512,5 +5512,62 @@ catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/calibration', async (
   return c.json({ stats, history });
 });
 
+// GET /calibrations/summary
+// Tenant-wide aggregate for the buyer-facing Trust & Performance page —
+// "predictions made vs outcomes recorded" expressed in one row instead of
+// per-(cluster, sub-catalyst). Used by /trust on the frontend.
+catalysts.get('/calibrations/summary', async (c) => {
+  const tenantId = getTenantId(c);
+  const calibrations = await c.env.DB.prepare(
+    `SELECT cluster_id, sub_catalyst_name, n_observations, calibration_factor, std_residual, mae, last_observation_at
+       FROM catalyst_calibrations
+      WHERE tenant_id = ?
+      ORDER BY n_observations DESC, last_observation_at DESC`,
+  ).bind(tenantId).all<{
+    cluster_id: string | null;
+    sub_catalyst_name: string;
+    n_observations: number;
+    calibration_factor: number;
+    std_residual: number;
+    mae: number;
+    last_observation_at: string | null;
+  }>();
+
+  const sims = await c.env.DB.prepare(
+    `SELECT
+        COUNT(*) AS total_simulations,
+        SUM(CASE WHEN actual_value_zar IS NOT NULL THEN 1 ELSE 0 END) AS with_outcomes,
+        SUM(predicted_value_zar) AS total_predicted_zar
+       FROM catalyst_simulations
+      WHERE tenant_id = ?`,
+  ).bind(tenantId).first<{ total_simulations: number; with_outcomes: number; total_predicted_zar: number }>();
+
+  // Accuracy = 1 - mean(|residual - 1|) across all observed sims; clamp to
+  // [0, 1] so a single bad outcome doesn't drive negative numbers in the UI.
+  const observed = await c.env.DB.prepare(
+    `SELECT residual FROM catalyst_simulations
+      WHERE tenant_id = ? AND residual IS NOT NULL`,
+  ).bind(tenantId).all<{ residual: number }>();
+  const residualErrors = (observed.results || []).map(r => Math.abs((r.residual || 1) - 1));
+  const meanErr = residualErrors.length > 0
+    ? residualErrors.reduce((a, b) => a + b, 0) / residualErrors.length
+    : 0;
+  const accuracyPct = Math.max(0, Math.min(100, Math.round((1 - meanErr) * 1000) / 10));
+
+  const totalObservations = (calibrations.results || []).reduce((s, r) => s + (r.n_observations || 0), 0);
+  const calibratedClusters = (calibrations.results || []).filter(r => (r.n_observations || 0) >= 5).length;
+
+  return c.json({
+    accuracyPct,
+    totalSimulations: sims?.total_simulations || 0,
+    simulationsWithOutcomes: sims?.with_outcomes || 0,
+    totalPredictedValueZar: Math.round((sims?.total_predicted_zar || 0) * 100) / 100,
+    totalObservations,
+    calibratedSubCatalysts: calibratedClusters,
+    perSubCatalystCount: (calibrations.results || []).length,
+    calibrations: calibrations.results || [],
+  });
+});
+
 export { sendHitlNotification, sendRunResultsEmail };
 export default catalysts;
