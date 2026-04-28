@@ -9,12 +9,12 @@
 // (additive self-heal columns, default to empty JSON). Used by the trial-
 // assessment route to persist the new assessment-findings engine output for
 // the trial UI. v50-service-erp came before; no rollback needed.
-// v53-provenance: provenance_chain table for cryptographically-verifiable
-// AI decision logging. Every catalyst execution + HITL approval + assessment
-// run + simulation + license action appends a hash-linked entry; auditors
-// can walk the chain and verify nothing was tampered with after-the-fact.
-// Additive only — no breaking changes to existing rows.
-export const MIGRATION_VERSION = 'v53-provenance';
+// v54-federation: federation_aggregates + federation_observations tables
+// for differentially-private cross-tenant pattern learning. Each tenant
+// contributes anonymised observations to industry/finding aggregates;
+// reads are noised with Laplace mechanism (epsilon = 1.0) before
+// returning to any tenant. No raw cross-tenant data exposure.
+export const MIGRATION_VERSION = 'v54-federation';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -140,6 +140,8 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS catalyst_simulations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, predicted_value_zar REAL NOT NULL, lower_bound_zar REAL NOT NULL, upper_bound_zar REAL NOT NULL, confidence_pct REAL NOT NULL DEFAULT 95, calibration_factor REAL NOT NULL DEFAULT 1, n_priors INTEGER NOT NULL DEFAULT 0, methodology_json TEXT NOT NULL DEFAULT '{}', simulated_at TEXT NOT NULL DEFAULT (datetime('now')), run_id TEXT REFERENCES sub_catalyst_runs(id), actual_value_zar REAL, residual REAL, recorded_at TEXT);
     CREATE TABLE IF NOT EXISTS catalyst_calibrations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), cluster_id TEXT REFERENCES catalyst_clusters(id), sub_catalyst_name TEXT NOT NULL, n_observations INTEGER NOT NULL DEFAULT 0, mean_residual REAL NOT NULL DEFAULT 1, m2_residual REAL NOT NULL DEFAULT 0, calibration_factor REAL NOT NULL DEFAULT 1, std_residual REAL NOT NULL DEFAULT 0, mae REAL NOT NULL DEFAULT 0, last_observation_at TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, cluster_id, sub_catalyst_name));
     CREATE TABLE IF NOT EXISTS provenance_chain (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), seq INTEGER NOT NULL, parent_id TEXT, payload_type TEXT NOT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL, signed_by_user_id TEXT REFERENCES users(id), signature TEXT, merkle_root_after TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, seq));
+    CREATE TABLE IF NOT EXISTS federation_observations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), industry_bucket TEXT NOT NULL DEFAULT 'general', finding_code TEXT NOT NULL, resolved_in_days REAL, recovery_pct REAL, raw_value_zar REAL, observed_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS federation_aggregates (id TEXT PRIMARY KEY, industry_bucket TEXT NOT NULL DEFAULT 'general', finding_code TEXT NOT NULL, n_contributors INTEGER NOT NULL DEFAULT 0, avg_resolved_days REAL NOT NULL DEFAULT 0, avg_recovery_pct REAL NOT NULL DEFAULT 0, p25_recovery_pct REAL DEFAULT 0, p75_recovery_pct REAL DEFAULT 0, epsilon REAL NOT NULL DEFAULT 1, last_refreshed_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(industry_bucket, finding_code));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -338,6 +340,11 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_provenance_chain_walk ON provenance_chain(tenant_id, seq)',
     'CREATE INDEX IF NOT EXISTS idx_provenance_chain_parent ON provenance_chain(tenant_id, parent_id)',
     'CREATE INDEX IF NOT EXISTS idx_provenance_chain_type ON provenance_chain(tenant_id, payload_type, created_at DESC)',
+    // v54-federation indexes — observation aggregations group by
+    // (industry_bucket, finding_code); reads are uniqueness-constrained.
+    'CREATE INDEX IF NOT EXISTS idx_federation_observations_lookup ON federation_observations(industry_bucket, finding_code)',
+    'CREATE INDEX IF NOT EXISTS idx_federation_observations_tenant ON federation_observations(tenant_id, finding_code)',
+    'CREATE INDEX IF NOT EXISTS idx_federation_aggregates_lookup ON federation_aggregates(industry_bucket, finding_code)',
   ];
 
   for (const idx of indexes) {

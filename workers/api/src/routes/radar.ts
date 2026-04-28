@@ -383,4 +383,45 @@ radar.post('/scan', async (c) => {
   }
 });
 
+// ── Federated peer-pattern learning (v54-federation) ──────────────────
+//
+// World-first capability #3: peer benchmarks with mathematically-
+// guaranteed differential privacy. Each (industry_bucket, finding_code)
+// bucket publishes only when n >= 5 distinct tenants contribute, and
+// the means are noised with Laplace(epsilon=1.0). Reads return the
+// pre-noised stored value — re-querying does not re-noise (which would
+// inflate the privacy budget).
+
+// GET /api/radar/peer-patterns?industry=manufacturing
+radar.get('/peer-patterns', async (c) => {
+  const { listPeerPatterns } = await import('../services/federation-engine');
+  const industry = c.req.query('industry') || 'general';
+  const patterns = await listPeerPatterns(c.env.DB, industry);
+  return c.json({ industry_bucket: industry, patterns, total: patterns.length });
+});
+
+// GET /api/radar/peer-patterns/:findingCode?industry=manufacturing
+radar.get('/peer-patterns/:findingCode', async (c) => {
+  const { getPeerPattern } = await import('../services/federation-engine');
+  const industry = c.req.query('industry') || 'general';
+  const findingCode = c.req.param('findingCode');
+  const pattern = await getPeerPattern(c.env.DB, industry, findingCode);
+  if (!pattern) {
+    return c.json({
+      pattern: null,
+      reason: `No peer pattern for industry='${industry}', finding='${findingCode}' — bucket has fewer than 5 contributors (k-anonymity floor) or no observations recorded yet.`,
+    });
+  }
+  return c.json({ pattern });
+});
+
+// POST /api/radar/peer-patterns/refresh — superadmin-only, manual cron trigger
+radar.post('/peer-patterns/refresh', async (c) => {
+  const auth = c.get('auth') as { role?: string } | undefined;
+  if (auth?.role !== 'superadmin') return c.json({ error: 'Forbidden — superadmin only' }, 403);
+  const { refreshAggregates } = await import('../services/federation-engine');
+  const result = await refreshAggregates(c.env.DB);
+  return c.json(result);
+});
+
 export default radar;
