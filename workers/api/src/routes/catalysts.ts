@@ -5435,5 +5435,80 @@ catalysts.get('/runs/:runId/narrative', async (c) => {
   }
 });
 
+// ── Catalyst Simulator routes (v52-simulator) ─────────────────────────
+//
+// World-first capability: predict the impact of running a catalyst
+// against the customer's actual ERP data with a calibrated confidence
+// interval, then record the actual outcome and improve the prediction
+// per-tenant via Welford's online stats.
+// See workers/api/src/services/catalyst-simulator.ts for the algorithm.
+
+// POST /clusters/:clusterId/sub-catalysts/:subName/simulate
+// Generates a calibrated prediction (predicted_value_zar + lower/upper
+// bound + calibration factor + n_priors) for running this sub-catalyst
+// against the tenant's current state. Persists the prediction so a
+// later recordOutcome() call can update calibration.
+catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/simulate', async (c) => {
+  const tenantId = getTenantId(c);
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+
+  // Look up the cluster to get its canonical catalyst-catalog name. The
+  // simulator's findingsForCatalyst() matches by catalyst NAME, not by
+  // cluster_id — so we resolve the cluster's name here.
+  const cluster = await c.env.DB.prepare(
+    'SELECT id, name FROM catalyst_clusters WHERE id = ? AND tenant_id = ?',
+  ).bind(clusterId, tenantId).first<{ id: string; name: string }>();
+  if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
+
+  const { simulateCatalyst } = await import('../services/catalyst-simulator');
+  try {
+    const result = await simulateCatalyst(c.env.DB, tenantId, cluster.name, subName, {
+      clusterId: cluster.id,
+    });
+    return c.json(result);
+  } catch (err) {
+    console.error('catalyst simulation failed:', err);
+    return c.json({ error: 'simulation_failed', message: err instanceof Error ? err.message : 'Unknown error' }, 500);
+  }
+});
+
+// POST /simulations/:simulationId/record-outcome
+// Records the actual outcome of a previously-simulated catalyst run.
+// The Welford-style calibration aggregate is updated atomically.
+catalysts.post('/simulations/:simulationId/record-outcome', async (c) => {
+  const tenantId = getTenantId(c);
+  const simulationId = c.req.param('simulationId');
+  const body = await c.req.json<{ run_id: string; actual_value_zar: number }>();
+  if (!body.run_id || typeof body.actual_value_zar !== 'number') {
+    return c.json({ error: 'run_id (string) and actual_value_zar (number) are required' }, 400);
+  }
+  const { recordOutcome } = await import('../services/catalyst-simulator');
+  try {
+    const result = await recordOutcome(c.env.DB, tenantId, simulationId, body.run_id, body.actual_value_zar);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('not found')) {
+      return c.json({ error: 'simulation_not_found' }, 404);
+    }
+    console.error('record-outcome failed:', err);
+    return c.json({ error: 'record_failed', message: err instanceof Error ? err.message : 'Unknown error' }, 500);
+  }
+});
+
+// GET /clusters/:clusterId/sub-catalysts/:subName/calibration
+// Returns the current calibration stats for the chart on the run-detail page.
+catalysts.get('/clusters/:clusterId/sub-catalysts/:subName/calibration', async (c) => {
+  const tenantId = getTenantId(c);
+  const clusterId = c.req.param('clusterId');
+  const subName = decodeURIComponent(c.req.param('subName'));
+  const { getCalibrationStats, listRecentSimulations } = await import('../services/catalyst-simulator');
+  const [stats, history] = await Promise.all([
+    getCalibrationStats(c.env.DB, tenantId, clusterId, subName),
+    listRecentSimulations(c.env.DB, tenantId, { clusterId, subCatalystName: subName, limit: 50 }),
+  ]);
+  return c.json({ stats, history });
+});
+
 export { sendHitlNotification, sendRunResultsEmail };
 export default catalysts;
