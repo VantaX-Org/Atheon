@@ -110,4 +110,44 @@ audit.get('/export', async (c) => {
   return c.json({ entries: results.results, total: results.results.length, exportedAt: new Date().toISOString() });
 });
 
+// ── Provenance chain (v53-provenance) ─────────────────────────────────
+//
+// Cryptographically-verifiable audit log. Every catalyst execution,
+// HITL approval, assessment run, simulation, and license action
+// appends a hash-linked entry. `verifyChain` re-derives every Merkle
+// root + HMAC signature in seq order; the first mismatch is the
+// tampering point.
+
+// GET /api/audit/provenance — paginated chain view
+audit.get('/provenance', async (c) => {
+  const { listChain } = await import('../services/provenance-ledger');
+  const tenantId = getTenantId(c);
+  const url = new URL(c.req.url);
+  const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const order = url.searchParams.get('order') === 'asc' ? 'asc' : 'desc';
+  const payloadType = url.searchParams.get('type') || undefined;
+  const result = await listChain(c.env, tenantId, {
+    limit, offset, order,
+    payloadType: payloadType as undefined | ReturnType<typeof String> as undefined,
+  });
+  return c.json(result);
+});
+
+// POST /api/audit/provenance/verify — full-chain verification
+audit.post('/provenance/verify', async (c) => {
+  const { verifyChain } = await import('../services/provenance-ledger');
+  const tenantId = getTenantId(c);
+  const result = await verifyChain(c.env, tenantId);
+  return c.json(result);
+});
+
+// GET /api/audit/provenance/root — current merkle root + seq
+audit.get('/provenance/root', async (c) => {
+  const { getCurrentRoot } = await import('../services/provenance-ledger');
+  const tenantId = getTenantId(c);
+  const result = await getCurrentRoot(c.env, tenantId);
+  return c.json(result);
+});
+
 export default audit;
