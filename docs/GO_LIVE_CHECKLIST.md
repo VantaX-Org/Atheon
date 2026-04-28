@@ -53,6 +53,26 @@ The assessment engine is the lead-magnet that drives revenue. As of this update:
 - Deeper permission matrix tests for `iam_custom_roles` (unit-tested; no E2E yet).
 - Playwright coverage for MFA enrollment + recovery codes beyond LoginPage assertions added in PR #256.
 
+## Deployment models — go-live ready
+
+All three deployment models (saas, hybrid, on-premise) are implementation-complete. See [HYBRID_DEPLOY.md](HYBRID_DEPLOY.md) for the architecture, configuration matrix, and operating procedures.
+
+- [x] **saas** — Atheon's Cloudflare Workers; default deployment.
+- [x] **hybrid** — Customer hosts data plane in their VPC; Atheon cloud handles license + version + billing. Implemented via:
+  - `DEPLOYMENT_ROLE=customer` env var distinguishes customer instances from cloud
+  - `licenseEnforcement()` middleware ([workers/api/src/services/license-enforcement.ts](../workers/api/src/services/license-enforcement.ts)) phones home hourly to validate license, caches result in KV, fails-closed after 7 days of disconnect for safety
+  - Cloud-side phone-home endpoint `GET /api/agent/license-check` (agent-routes.ts) returns valid/expired/revoked/unknown verdicts against `managed_deployments`
+  - Customer-side admin endpoints `/api/v1/license-status` (read-only) and `/api/v1/license-status/refresh` (force re-validate)
+  - 7 integration tests covering license-check verdicts + middleware no-op behaviour on cloud
+  - docker-compose.yml wires the new env vars for customer deployments
+- [x] **on-premise** — Same as hybrid; air-gapped customers can leave `LICENCE_KEY`/`ATHEON_LICENSE_CHECK_URL` unset and the middleware no-ops (intentional — fail-OPEN to avoid locking out a misconfigured deployment).
+
+## Role model — verified
+
+- [x] **superadmin** — full coverage; backend gating + frontend pages aligned. Cross-tenant access via `?tenant_id=` works on every admin route.
+- [x] **support_admin** — backend `platformAdminRoutePrefixes` allows access to `/iam`, `/erp`, `/audit`, `/controlplane`, `/connectivity`. Frontend role gating aligned in PR #282 (Control Plane + Connectivity sidebar entries switched from SUPERADMIN_ROLES to PLATFORM_ADMIN_ROLES so support_admin can reach pages the backend already permits).
+- [x] **admin / executive / manager / analyst / operator / viewer** — standard hierarchy, gating consistent end-to-end.
+
 ## Verifications completed during this sprint
 
 - [x] **34+ PRs merged to `main`** — catalyst platform, multicompany ERP, security hardening, audit fixes, and ops docs.

@@ -18,6 +18,16 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-atheon}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-atheon123}
       - ENVIRONMENT=${ENVIRONMENT:-on-premise}
+      # ── Hybrid / on-premise license enforcement ─────────────────
+      # When DEPLOYMENT_ROLE=customer, the Worker phones home to
+      # ATHEON_LICENSE_CHECK_URL with LICENCE_KEY every hour and
+      # caches the result in CACHE KV. Data-plane requests are
+      # blocked with HTTP 503 if the license is revoked, expired, or
+      # has not been validated for > 7 days.
+      # See workers/api/src/services/license-enforcement.ts.
+      - DEPLOYMENT_ROLE=${DEPLOYMENT_ROLE:-customer}
+      - LICENCE_KEY=${ATHEON_LICENCE_KEY}
+      - ATHEON_LICENSE_CHECK_URL=${ATHEON_LICENSE_CHECK_URL:-https://atheon-api.vantax.co.za/api/agent/license-check}
     restart: unless-stopped
     depends_on:
       - db

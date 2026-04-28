@@ -144,4 +144,63 @@ agentRoutes.post('/error', async (c) => {
   return c.json({ ok: true });
 });
 
+// ── CLOUD: GET /api/agent/license-check?key=... ────────────────────────
+//
+// Phone-home endpoint for hybrid + on-premise customer instances. The
+// customer-side license-enforcement middleware calls this every hour;
+// it caches the result in KV and gates data-plane traffic on the answer.
+//
+// Returns 200 + a status payload regardless of validity — the customer
+// instance distinguishes "valid: true" vs "valid: false" from the body
+// rather than HTTP status, so a temporarily-revoked license can still
+// recover via re-validation without the customer's network treating it
+// as a hard failure.
+agentRoutes.get('/license-check', async (c) => {
+  const key = c.req.query('key');
+  if (!key) {
+    return c.json({
+      valid: false,
+      status: 'unknown',
+      expires_at: null,
+      reason: 'license-check called without ?key= query parameter',
+    });
+  }
+  // Re-use the same suspended/expired guards as getDeploymentByLicenceKey,
+  // but expose the reason in the response so the customer admin gets a
+  // clear remediation message.
+  const dep = await c.env.DB.prepare(
+    'SELECT id, status, licence_expires_at FROM managed_deployments WHERE licence_key = ?',
+  ).bind(key).first<{ id: string; status: string; licence_expires_at: string | null }>();
+  if (!dep) {
+    return c.json({
+      valid: false,
+      status: 'unknown',
+      expires_at: null,
+      reason: 'No deployment found for this licence key. Contact your account manager.',
+    });
+  }
+  if (dep.status === 'suspended') {
+    return c.json({
+      valid: false,
+      status: 'revoked',
+      expires_at: dep.licence_expires_at,
+      reason: 'Licence is suspended. Contact your account manager to reactivate.',
+    });
+  }
+  if (dep.licence_expires_at && new Date(dep.licence_expires_at) < new Date()) {
+    return c.json({
+      valid: false,
+      status: 'expired',
+      expires_at: dep.licence_expires_at,
+      reason: `Licence expired on ${dep.licence_expires_at}. Contact your account manager to renew.`,
+    });
+  }
+  return c.json({
+    valid: true,
+    status: 'active',
+    expires_at: dep.licence_expires_at,
+    reason: '',
+  });
+});
+
 export default agentRoutes;
