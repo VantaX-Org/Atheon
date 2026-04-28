@@ -601,12 +601,16 @@ describe('Domain catalyst handlers', () => {
       expect(['metric_analysis', 'data_summary', 'customer_analysis']).toContain(out.type);
     });
 
-    it('falls through to default:generic catch-all when no keyword matches', async () => {
+    it('falls through to default:catalog catch-all when no keyword matches', async () => {
+      // The previous catch-all (default:generic, type='generic_result') was
+      // replaced with default:catalog (catalog_default:<bucket>) which uses
+      // the catalog's domain field to produce a domain-shaped payload, or
+      // catalog_default:unknown for an off-catalog catalystName.
       const out = await dispatchAction(makeTask({
         catalystName: 'Mystery Action',
         action: 'xyzzy_zzz',
       }), env.DB);
-      expect(out.type).toBe('generic_result');
+      expect(out.type).toBe('catalog_default:unknown');
     });
   });
 
@@ -804,12 +808,12 @@ describe('Domain catalyst handlers', () => {
       expect(out._handler).toBe('domain:mining');
     });
 
-    it('dispatch output includes _handler for generic fallback', async () => {
+    it('dispatch output includes _handler for catalog-aware fallback', async () => {
       const out = await dispatchAction(makeTask({
         catalystName: 'Mystery',
         action: 'zzz_unknown',
       }), env.DB);
-      expect(out._handler).toBe('default:generic');
+      expect(out._handler).toBe('default:catalog');
     });
   });
 

@@ -17,7 +17,11 @@ import type { CatalystQueueMessage } from './scheduled';
 import './catalyst-operational-handlers';
 import './catalyst-commercial-handlers';
 import './catalyst-service-handlers';
+// Cross-cutting handlers register before general handlers so specific
+// patterns (e.g. "payroll audit") win over the broader `hr` keyword match.
+import './catalyst-cross-cutting-handlers';
 import './catalyst-general-handlers';
+import { catalogAwareDefaultHandler } from './catalyst-catalog-defaults';
 
 export interface TaskDefinition {
   id: string;
@@ -405,30 +409,15 @@ const mutationHandler: CatalystHandler = {
   execute: performMutationAction,
 };
 
-const genericHandler: CatalystHandler = {
-  name: 'default:generic',
-  // Catch-all — must always match, and must be registered last.
-  match: () => true,
-  execute: async (task, db) => {
-    const metricCount = await db.prepare(
-      'SELECT COUNT(*) as count FROM process_metrics WHERE tenant_id = ?'
-    ).bind(task.tenantId).first<{ count: number }>();
-
-    return {
-      type: 'generic_result',
-      action: task.action,
-      catalyst: task.catalystName,
-      tenantMetrics: metricCount?.count || 0,
-      timestamp: new Date().toISOString(),
-    };
-  },
-};
+// Catch-all is the catalog-aware default — see catalyst-catalog-defaults.ts.
+// It uses the cluster's `domain` field to route to a domain-shaped query so
+// tasks always come back with evidence, not a generic_result placeholder.
 
 registerDefaultHandler(readHandler);
 registerDefaultHandler(notifyHandler);
 registerDefaultHandler(investigateHandler);
 registerDefaultHandler(mutationHandler);
-registerDefaultHandler(genericHandler);
+registerDefaultHandler(catalogAwareDefaultHandler);
 
 /** Read/query actions: fetch real data from ERP canonical tables and process metrics */
 async function performReadAction(task: TaskDefinition, db: D1Database): Promise<Record<string, unknown>> {
