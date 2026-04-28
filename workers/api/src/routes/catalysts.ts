@@ -5228,6 +5228,8 @@ catalysts.get('/runs/:runId/detail', async (c) => {
 
   return c.json({
     id: run.id,
+    // PR Q: cluster_id surfaced for the simulator card on the run detail page.
+    clusterId: run.cluster_id,
     subCatalystName: run.sub_catalyst_name,
     clusterName: run.cluster_name,
     clusterDomain: run.cluster_domain,

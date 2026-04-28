@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import type { SubCatalystRunItem, SubCatalystRunItemsResponse, RunComment } from "@/lib/api";
 import { useToast, type ToastApi } from "@/components/ui/toast";
 import { useAppStore } from "@/stores/appStore";
+import { CatalystSimulatorCard } from "@/components/CatalystSimulatorCard";
 import {
   RunItemsFilterBar,
   type ItemStatus,
@@ -24,6 +25,7 @@ const ADMIN_ROLES = new Set(['superadmin', 'support_admin', 'admin', 'executive'
 
 interface RunDetail {
   id: string;
+  clusterId?: string;
   subCatalystName: string;
   clusterName: string;
   clusterDomain: string;
@@ -819,6 +821,16 @@ export function CatalystRunDetailPage() {
             </Button>
           </div>
         </Card>
+
+        {/* Catalyst simulator — predicts the next run's recovery against
+            this customer's data and tightens the per-tenant calibration
+            with each completed run's residual. World-first capability. */}
+        {run.clusterId && (
+          <CatalystSimulatorCard
+            clusterId={run.clusterId}
+            subCatalystName={run.subCatalystName}
+          />
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* KPIs Generated */}
