@@ -43,6 +43,138 @@ const severityColor = (s: string) => s === 'critical' ? 'danger' : s === 'high' 
 const riskImpactLabel = (probability: number) => probability >= 0.7 ? 'Very High' : probability >= 0.5 ? 'High' : probability >= 0.3 ? 'Medium' : 'Low';
 const riskLikelihoodBar = (probability: number) => Math.round(probability * 100);
 
+/**
+ * Executive Brief hero — three cards above the tabs delivering on the
+ * "Executive Intelligence" promise on first paint. No tab clicks, no AI
+ * Insights button required.
+ *
+ *   1. Health      — overall score + delta vs prior period
+ *   2. Top Risks   — top 3 by impact value, jump-link to Risk Overview tab
+ *   3. Strategic Signal — most recent / highest-relevance radar signal
+ *
+ * Each card stays useful when its data is empty — it tells the user what
+ * needs to happen to populate it (no silent blank cards).
+ */
+function ExecutiveBriefHero({
+  health, healthHistory, briefing, risks, radarContext, onJumpToTab,
+}: {
+  health: HealthScore | null;
+  healthHistory: HealthHistoryResponse | null;
+  briefing: Briefing | null;
+  risks: Risk[];
+  radarContext: RadarContextResponse | null;
+  onJumpToTab: (id: string) => void;
+}): JSX.Element {
+  const overall = health?.overall ?? 0;
+  const histPoints = healthHistory?.history?.map(h => h.overallScore) ?? [];
+  const delta = healthHistory?.delta ?? briefing?.healthDelta ?? null;
+  const deltaPositive = (delta ?? 0) > 0;
+
+  const top3 = [...risks]
+    .filter(r => r.severity === 'critical' || r.severity === 'high')
+    .sort((a, b) => (b.impactValue || 0) - (a.impactValue || 0))
+    .slice(0, 3);
+
+  const topSignal = radarContext?.signals
+    ?.slice()
+    .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))[0];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="apex-brief-hero">
+      {/* ── Health ── */}
+      <Card className="p-5 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => onJumpToTab('health')}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Crown className="w-4 h-4 text-accent" />
+            <h3 className="text-sm font-semibold t-primary">Business Health</h3>
+          </div>
+          {delta !== null && (
+            <span className={`text-xs font-medium ${deltaPositive ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 't-muted'}`}>
+              {deltaPositive ? '+' : ''}{delta} pts
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          <ScoreRing score={overall} size="md" />
+          <div className="flex-1 min-w-0">
+            <div className="text-3xl font-semibold t-primary leading-none">{Math.round(overall)}</div>
+            <div className="text-xs t-muted mt-1">
+              {overall >= 80 ? 'Strong posture' : overall >= 60 ? 'Mixed posture' : overall > 0 ? 'Action required' : 'Awaiting data'}
+            </div>
+            {histPoints.length >= 2 && (
+              <div className="mt-2"><Sparkline data={histPoints} width={120} height={20} /></div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Top Risks ── */}
+      <Card className="p-5 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => onJumpToTab('risks')}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <h3 className="text-sm font-semibold t-primary">Top Risks</h3>
+          </div>
+          <span className="text-xs t-muted">{risks.length} active</span>
+        </div>
+        {top3.length > 0 ? (
+          <div className="space-y-2">
+            {top3.map(r => (
+              <div key={r.id} className="flex items-start gap-2 text-xs">
+                <Badge variant={severityColor(r.severity)} size="sm">{r.severity}</Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="t-primary font-medium truncate">{r.title}</div>
+                  {r.impactValue ? (
+                    <div className="t-muted text-[10px] mt-0.5">
+                      Impact: {r.impactUnit === 'ZAR' || r.impactUnit === 'currency'
+                        ? `R${Math.round(r.impactValue).toLocaleString()}`
+                        : `${r.impactValue.toLocaleString()} ${r.impactUnit ?? ''}`}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs t-muted py-3">
+            No critical or high risks active.
+            {risks.length === 0 && ' Run an assessment to populate the risk register.'}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Strategic Signal ── */}
+      <Card className="p-5 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => onJumpToTab('strategic-context')}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Radar className="w-4 h-4 text-accent" />
+            <h3 className="text-sm font-semibold t-primary">Strategic Signal</h3>
+          </div>
+          {radarContext?.summary ? (
+            <span className="text-xs t-muted">{radarContext.summary.activeSignals} active</span>
+          ) : null}
+        </div>
+        {topSignal ? (
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant={severityColor(topSignal.severity)} size="sm">{topSignal.severity}</Badge>
+              <span className="text-[10px] t-muted uppercase tracking-wider">{topSignal.signalType}</span>
+            </div>
+            <div className="text-sm font-medium t-primary line-clamp-2 mb-1">{topSignal.title}</div>
+            <div className="text-xs t-muted line-clamp-2">{topSignal.description}</div>
+          </div>
+        ) : briefing?.summary ? (
+          <div className="text-xs t-secondary line-clamp-4 leading-relaxed">{briefing.summary}</div>
+        ) : (
+          <div className="text-xs t-muted py-3">
+            No strategic signals captured yet. Sources from the Radar tab populate this card.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 export function ApexPage() {
  const companyId = useSelectedCompanyId();
  const [activeTab, setActiveTab] = useState<string>('health');
@@ -239,16 +371,22 @@ export function ApexPage() {
 
  // Data loader — extracted as a callback so both the initial effect and the
  // mobile pull-to-refresh gesture can reuse it.
+ //
+ // The hero strip above the tabs (Health · Top Risks · Strategic Signal) needs
+ // health, risks, AND radar context populated on first paint, so radar is
+ // eager-loaded here rather than tab-gated. Briefing carries the headline
+ // narrative; without it the hero still works but loses its summary line.
  const loadApexData = useCallback(async (opts: { showLoading?: boolean } = {}) => {
   if (opts.showLoading) setLoading(true);
   const co = companyId || undefined;
-  const [h, b, r, s, hh, br] = await Promise.allSettled([
+  const [h, b, r, s, hh, br, rc] = await Promise.allSettled([
    api.apex.health(undefined, undefined, co),
    api.apex.briefing(undefined, undefined, co),
    api.apex.risks(undefined, undefined, co),
    api.apex.scenarios(undefined, undefined, co),
    api.apex.healthHistory(undefined, undefined, co),
    api.boardReport.list(),
+   api.radar.getContext(),
   ]);
   if (h.status === 'fulfilled') setHealth(h.value);
   if (b.status === 'fulfilled') setBriefing(b.value);
@@ -256,6 +394,7 @@ export function ApexPage() {
   if (s.status === 'fulfilled') setScenarios(s.value.scenarios);
   if (hh.status === 'fulfilled') setHealthHistory(hh.value);
   if (br.status === 'fulfilled') setBoardReports(br.value.reports);
+  if (rc.status === 'fulfilled') setRadarContext(rc.value);
   if (opts.showLoading) setLoading(false);
  }, [companyId]);
 
@@ -347,6 +486,22 @@ export function ApexPage() {
  <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300" title="Dismiss error"><X size={14} /></button>
  </div>
  )}
+
+ {/*
+   Executive Brief — three-card hero, generated above the fold so an
+   executive opening Apex sees Health · Top Risks · Strategic Signal in
+   the first paint instead of a tab carousel. Same data the tabs render;
+   this is just structural promotion. Each card links to its tab for
+   drill-down. See PR (this one) and IA audit notes in commit message.
+ */}
+ <ExecutiveBriefHero
+   health={health}
+   healthHistory={healthHistory}
+   briefing={briefing}
+   risks={risks}
+   radarContext={radarContext}
+   onJumpToTab={setActiveTab}
+ />
 
  <div className="flex items-center gap-3">
   <div className="flex-1 overflow-x-auto">

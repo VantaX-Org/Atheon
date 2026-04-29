@@ -37,6 +37,96 @@ const trendIcon = (trend: string, size = 14) => {
   return <Minus size={size} className="text-gray-400" />;
 };
 
+/**
+ * PulseActionRequired — strip at the top of the Overview tab summarising
+ * what needs attention right now. Three categories:
+ *
+ *   - Red metrics            (status === 'red')
+ *   - Critical / high anomalies (open + severity in {critical, high})
+ *   - Low-conformance processes (conformanceRate < 70%)
+ *
+ * Each chip jumps to the relevant tab. The strip is hidden when nothing
+ * is actionable — quiet operations should produce a quiet UI.
+ */
+function PulseActionRequired({
+  metrics, anomalies, processes, onJumpToTab,
+}: {
+  metrics: Metric[];
+  anomalies: AnomalyItem[];
+  processes: ProcessItem[];
+  onJumpToTab: (id: string) => void;
+}): JSX.Element | null {
+  const redMetrics = metrics.filter(m => m.status === 'red');
+  const criticalAnomalies = anomalies.filter(
+    a => (a.status === 'open' || !a.status) && (a.severity === 'critical' || a.severity === 'high'),
+  );
+  const lowConformance = processes.filter(p => (p.conformanceRate ?? 100) < 70);
+  const totalActions = redMetrics.length + criticalAnomalies.length + lowConformance.length;
+  if (totalActions === 0) return null;
+
+  const items: Array<{
+    key: string; tab: string; count: number; label: string; tone: string; subline: string;
+  }> = [];
+  if (redMetrics.length > 0) {
+    items.push({
+      key: 'red-metrics',
+      tab: 'monitoring',
+      count: redMetrics.length,
+      label: 'Red metrics',
+      tone: 'text-red-400 border-red-500/30 bg-red-500/5',
+      subline: redMetrics.slice(0, 2).map(m => m.name).join(', ') + (redMetrics.length > 2 ? ` +${redMetrics.length - 2} more` : ''),
+    });
+  }
+  if (criticalAnomalies.length > 0) {
+    items.push({
+      key: 'critical-anomalies',
+      tab: 'anomalies',
+      count: criticalAnomalies.length,
+      label: 'Critical / high anomalies',
+      tone: 'text-amber-400 border-amber-500/30 bg-amber-500/5',
+      subline: criticalAnomalies.slice(0, 2).map(a => a.metric).join(', ') + (criticalAnomalies.length > 2 ? ` +${criticalAnomalies.length - 2} more` : ''),
+    });
+  }
+  if (lowConformance.length > 0) {
+    items.push({
+      key: 'low-conformance',
+      tab: 'processes',
+      count: lowConformance.length,
+      label: 'Low-conformance processes',
+      tone: 'text-orange-400 border-orange-500/30 bg-orange-500/5',
+      subline: lowConformance.slice(0, 2).map(p => p.name).join(', ') + (lowConformance.length > 2 ? ` +${lowConformance.length - 2} more` : ''),
+    });
+  }
+
+  return (
+    <Card className="p-4 mb-6 border-red-500/20 bg-red-500/5" data-testid="pulse-action-required">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertCircle className="w-4 h-4 text-red-400" />
+        <h3 className="text-sm font-semibold t-primary">Action Required</h3>
+        <Badge variant="danger" size="sm">{totalActions}</Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {items.map(item => (
+          <button
+            key={item.key}
+            onClick={() => onJumpToTab(item.tab)}
+            className={`text-left p-3 rounded-lg border transition-all hover:scale-[1.01] ${item.tone}`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium t-primary">{item.label}</span>
+              <span className="text-lg font-bold">{item.count}</span>
+            </div>
+            <div className="text-[10px] t-muted truncate">{item.subline}</div>
+            <div className="flex items-center gap-1 text-[10px] mt-1.5 opacity-80">
+              <ArrowRight size={10} /> Jump to {item.tab}
+            </div>
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 const statusColor = (s: string) =>
   s === 'green' ? 'text-emerald-400' : s === 'amber' ? 'text-amber-400' : s === 'red' ? 'text-red-400' : 'text-gray-400';
 
@@ -694,6 +784,19 @@ export function PulsePage() {
           ══════════════════════════════════════════════════════ */}
       {activeTab === 'dashboard' && (
         <TabPanel>
+          {/*
+            Action Required strip — surfaces urgency above the metrics grid
+            so an operator landing on Pulse sees what needs attention before
+            they scroll. Each item links to the relevant tab so deep-dive is
+            one click. Hidden when nothing is actionable (avoids empty noise).
+          */}
+          <PulseActionRequired
+            metrics={metrics}
+            anomalies={anomalies}
+            processes={processes}
+            onJumpToTab={setActiveTab}
+          />
+
           {/* TASK-002: Decomposed MetricsGrid sub-component for compact overview */}
           <MetricsGrid metrics={filteredMetrics} />
 
