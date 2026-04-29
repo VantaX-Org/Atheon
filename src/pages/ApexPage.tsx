@@ -22,7 +22,7 @@ import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
  Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
- CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw, PinOff, Pin
+ CheckCircle2, XCircle, Gauge, Radar, Globe, Zap, RefreshCw, PinOff, Pin, Sparkles
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
@@ -44,6 +44,90 @@ const severityColor = (s: string) => s === 'critical' ? 'danger' : s === 'high' 
 
 const riskImpactLabel = (probability: number) => probability >= 0.7 ? 'Very High' : probability >= 0.5 ? 'High' : probability >= 0.3 ? 'Medium' : 'Low';
 const riskLikelihoodBar = (probability: number) => Math.round(probability * 100);
+
+/**
+ * Pre-built scenario templates — solve the blank-page problem on the
+ * What-If tab. Each template fully specifies the inputs to
+ * `api.apex.createScenario()` so a click runs the analysis end-to-end
+ * without the user filling the 3-step wizard from scratch. Templates
+ * cover the executive-grade questions a CEO actually asks: customer
+ * concentration, input shocks, FX, supplier risk, workforce, working
+ * capital. Add a new template by appending an entry — the UI grid auto-
+ * resizes.
+ */
+interface ScenarioTemplate {
+  id: string;
+  title: string;
+  description: string;
+  modelType: 'what-if' | 'sensitivity' | 'monte-carlo' | 'stress-test';
+  query: string;
+  variables: Array<{ name: string; baseValue: string }>;
+}
+
+const SCENARIO_TEMPLATES: ScenarioTemplate[] = [
+  {
+    id: 'top-3-customer-loss',
+    title: 'Lose top 3 customers',
+    description: 'Revenue + cash impact if the three largest customers churn within a quarter.',
+    modelType: 'what-if',
+    query: 'Quantify revenue and free-cash-flow impact if our top 3 customers by revenue churn within the next 90 days. Compare against current run-rate; flag the biggest single-point-of-failure.',
+    variables: [
+      { name: 'top_customer_count', baseValue: '3' },
+      { name: 'churn_window_days', baseValue: '90' },
+    ],
+  },
+  {
+    id: 'input-cost-shock-15',
+    title: 'Input cost shock +15%',
+    description: 'Margin compression from a sustained 15% rise in raw-material or COGS inputs.',
+    modelType: 'sensitivity',
+    query: 'Project gross margin and EBITDA under a sustained +15% rise in cost-of-goods inputs over the next 6 months. Identify which product lines erode fastest and whether price pass-through is feasible.',
+    variables: [
+      { name: 'input_cost_increase_pct', baseValue: '15' },
+      { name: 'horizon_months', baseValue: '6' },
+    ],
+  },
+  {
+    id: 'fx-zar-usd-10',
+    title: 'ZAR/USD ±10%',
+    description: 'P&L sensitivity to a 10-percent move in ZAR/USD on imports and exports.',
+    modelType: 'sensitivity',
+    query: 'Run a P&L sensitivity to a ±10% move in ZAR/USD across all foreign-currency receivables, payables, and inventory holdings. Highlight natural-hedge opportunities.',
+    variables: [
+      { name: 'zar_usd_move_pct', baseValue: '10' },
+    ],
+  },
+  {
+    id: 'key-supplier-default',
+    title: 'Key supplier defaults',
+    description: 'Operational and revenue impact if our highest-risk supplier fails to deliver.',
+    modelType: 'stress-test',
+    query: 'Identify the supplier with the highest combined risk score × open PO value, and project operational + revenue impact if they default on outstanding deliveries. Recommend secondary-source switching or buffer-stock build.',
+    variables: [
+      { name: 'risk_threshold', baseValue: '0.6' },
+    ],
+  },
+  {
+    id: 'attrition-spike',
+    title: 'Workforce attrition +25%',
+    description: 'Capacity and replacement-cost impact if voluntary attrition rises 25 percent.',
+    modelType: 'sensitivity',
+    query: 'Project capacity loss and recruiting-cost impact if voluntary attrition rises 25% above the trailing 12-month baseline. Highlight the departments most exposed.',
+    variables: [
+      { name: 'attrition_uplift_pct', baseValue: '25' },
+    ],
+  },
+  {
+    id: 'ar-collection-delay-30d',
+    title: 'AR collection delay +30 days',
+    description: 'Working-capital impact if days-sales-outstanding rises by a full month.',
+    modelType: 'what-if',
+    query: 'Project working-capital and short-term funding impact if AR days-sales-outstanding rises by 30 days across the customer base. Flag which customer segments are most likely to drive this drift.',
+    variables: [
+      { name: 'dso_increase_days', baseValue: '30' },
+    ],
+  },
+];
 
 /**
  * Executive Brief hero — three cards above the tabs delivering on the
@@ -371,6 +455,33 @@ export function ApexPage() {
  const removeVariable = (idx: number) => setScenarioVariables(prev => prev.filter((_, i) => i !== idx));
  const updateVariable = (idx: number, field: 'name' | 'baseValue', value: string) =>
  setScenarioVariables(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
+
+ // One-click scenario from a curated template — bypasses the 3-step wizard
+ // for the questions an exec actually asks. Closes the blank-page problem
+ // on /apex What-If.
+ const [runningTemplate, setRunningTemplate] = useState<string | null>(null);
+ const runScenarioTemplate = async (template: ScenarioTemplate) => {
+   if (runningTemplate) return;
+   setRunningTemplate(template.id);
+   setActionError(null);
+   try {
+     const result = await api.apex.createScenario({
+       title: template.title,
+       description: template.description,
+       input_query: template.query,
+       variables: template.variables.map(v => v.name),
+       model_type: template.modelType,
+       base_values: Object.fromEntries(template.variables.map(v => [v.name, v.baseValue])),
+     });
+     if (result.id) {
+       const s = await api.apex.scenarios(undefined, undefined, companyId || undefined);
+       setScenarios(s.scenarios);
+     }
+   } catch (err) {
+     setActionError(err instanceof Error ? err.message : 'Failed to run scenario template');
+   }
+   setRunningTemplate(null);
+ };
 
  // Data loader — extracted as a callback so both the initial effect and the
  // mobile pull-to-refresh gesture can reuse it.
@@ -1202,11 +1313,47 @@ export function ApexPage() {
  <h3 className="text-lg font-semibold t-primary">What-If Analysis</h3>
  <Button variant="primary" size="sm" onClick={() => { resetScenarioBuilder(); setShowScenarioBuilder(true); }} title="Create a new what-if scenario analysis"><Plus size={14} /> New Scenario</Button>
  </div>
- {scenarios.length === 0 && (
+
+ {/* Quick-start templates — solve the blank-page problem on What-If.
+     Click runs the scenario end-to-end; result lands in the list below. */}
+ <Card className="p-4">
+   <div className="flex items-center gap-2 mb-3">
+     <Sparkles className="w-4 h-4 text-accent" />
+     <h4 className="text-sm font-semibold t-primary">Quick-start scenarios</h4>
+     <Badge variant="info" size="sm">One-click</Badge>
+   </div>
+   <p className="text-xs t-muted mb-3">
+     Pre-built executive what-ifs grounded in your live ERP data. Click to run; results appear below.
+   </p>
+   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+     {SCENARIO_TEMPLATES.map(t => (
+       <button
+         key={t.id}
+         onClick={() => runScenarioTemplate(t)}
+         disabled={!!runningTemplate}
+         className="text-left p-3 rounded-lg border border-[var(--border-card)] bg-[var(--bg-secondary)] hover:border-accent/40 hover:bg-accent/5 transition-all disabled:opacity-50 disabled:cursor-wait"
+         data-testid={`scenario-template-${t.id}`}
+       >
+         <div className="flex items-start justify-between gap-2 mb-1">
+           <span className="text-sm font-medium t-primary">{t.title}</span>
+           {runningTemplate === t.id ? (
+             <Loader2 size={12} className="text-accent animate-spin flex-shrink-0 mt-1" />
+           ) : (
+             <Play size={12} className="text-accent flex-shrink-0 mt-1" />
+           )}
+         </div>
+         <p className="text-[11px] t-muted line-clamp-2">{t.description}</p>
+         <div className="text-[10px] t-muted mt-1.5 capitalize">{t.modelType.replace('-', ' ')}</div>
+       </button>
+     ))}
+   </div>
+ </Card>
+
+ {scenarios.length === 0 && !runningTemplate && (
  <div className="flex flex-col items-center justify-center py-8 text-center">
  <BarChart3 className="w-10 h-10 t-muted mb-3 opacity-30" />
- <p className="text-sm t-muted">No scenarios created yet.</p>
- <p className="text-xs t-muted mt-1">Click &quot;New Scenario&quot; above to create your first what-if analysis.</p>
+ <p className="text-sm t-muted">No scenarios run yet.</p>
+ <p className="text-xs t-muted mt-1">Pick a quick-start template above or click &quot;New Scenario&quot; for a custom run.</p>
  </div>
  )}
    {scenarios.map((scenario) => {
