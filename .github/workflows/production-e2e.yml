@@ -1,0 +1,89 @@
+name: Production E2E
+
+# Runs the Playwright E2E suite against the live production frontend at
+# https://atheon.vantax.co.za. Day-5 of the GO_LIVE_SPRINT and the final
+# pre-launch smoke at T-1h on Day-10.
+#
+# Triggers:
+#   - schedule:        nightly at 02:30 UTC (off-peak, after backups)
+#   - workflow_dispatch: ad-hoc — used during launch window and DR drills
+#
+# Required secrets (in `production` environment, NOT repo-level):
+#   - E2E_PROD_LOGIN_EMAIL    — service account that exists on prod
+#   - E2E_PROD_LOGIN_PASSWORD — its password
+#   - E2E_PROD_LOGIN_TOTP_SEED (optional, only needed if MFA enforced)
+#
+# Tests run in CI mode: 2 retries, 1 worker (avoids flooding prod).
+# Failures upload Playwright trace + screenshots as artifacts so on-call
+# can triage without re-running.
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why this run? (logged for audit)'
+        required: false
+        default: 'manual smoke'
+
+concurrency:
+  group: production-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Run Playwright suite against production
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      - name: Run tests against production
+        run: npx playwright test --project=chromium-desktop
+        working-directory: e2e
+        env:
+          CI: true
+          E2E_BASE_URL: https://atheon.vantax.co.za
+          E2E_LOGIN_EMAIL: ${{ secrets.E2E_PROD_LOGIN_EMAIL }}
+          E2E_LOGIN_PASSWORD: ${{ secrets.E2E_PROD_LOGIN_PASSWORD }}
+          E2E_LOGIN_TOTP_SEED: ${{ secrets.E2E_PROD_LOGIN_TOTP_SEED }}
+
+      - name: Upload trace + screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace-${{ github.run_id }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Production E2E result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Target:** https://atheon.vantax.co.za" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Trigger:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Reason:** ${{ inputs.reason || 'scheduled' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Conclusion:** ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ job.status }}" = "failure" ]; then
+            echo "Trace + screenshots uploaded as \`playwright-trace-${{ github.run_id }}\`." >> "$GITHUB_STEP_SUMMARY"
+          fi

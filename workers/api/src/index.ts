@@ -53,6 +53,7 @@ import governance from './routes/governance';
 import systemAlerts from './routes/system-alerts';
 import featureFlagsRoutes from './routes/feature-flags';
 import supportRoutes from './routes/support';
+import openapi from './routes/openapi';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -379,6 +380,11 @@ for (const [name, handler] of routeModules) {
   app.route(`/api/${name}`, handler);
   app.route(`/api/v1/${name}`, handler);
 }
+
+// OpenAPI spec + Swagger UI — PUBLIC (developer-facing, no secrets in
+// schema). Mounted at /api/v1/{openapi.json,docs}. Day 8 of GO_LIVE_SPRINT.
+app.route('/api/v1', openapi);
+app.route('/api', openapi);
 
 // §11.1 Trial Assessment — PUBLIC routes (no auth required)
 app.route('/api/trial', trialAssessment);
