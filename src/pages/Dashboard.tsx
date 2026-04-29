@@ -15,7 +15,7 @@ import { TraceabilityModal } from "@/components/TraceabilityModal";
 import {
   TrendingUp, TrendingDown, Minus,
   ChevronRight, AlertTriangle, RefreshCw, Eye, Lightbulb, X,
-  CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins,
+  CheckCircle2, XCircle, Gauge, Shield, Radar, Stethoscope, Coins, ArrowRight,
 } from "lucide-react";
 import { chartPalette } from "@/lib/chart-theme";
 import { OnboardingChecklist } from "@/components/common/OnboardingChecklist";
@@ -432,7 +432,13 @@ export function Dashboard() {
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Gauge className="w-10 h-10 t-muted mb-3 opacity-30" />
               <p className="text-sm t-muted">No dimensions available yet.</p>
-              <p className="text-xs t-muted mt-1">Run a catalyst to start generating health data.</p>
+              <p className="text-xs t-muted mt-1 mb-3">Run a catalyst to start generating health data.</p>
+              <Link
+                to="/catalysts"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-all"
+              >
+                Open Catalysts <ArrowRight size={12} />
+              </Link>
             </div>
           ) : (
             <div className="space-y-3">
@@ -938,7 +944,13 @@ export function Dashboard() {
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <TrendingUp className="w-10 h-10 t-muted mb-3 opacity-30" />
                 <p className="text-sm t-muted">No health data yet.</p>
-                <p className="text-xs t-muted mt-1">Run a catalyst from the Catalysts page to generate health insights.</p>
+                <p className="text-xs t-muted mt-1 mb-3">Run a catalyst from the Catalysts page to generate health insights.</p>
+                <Link
+                  to="/catalysts"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-all"
+                >
+                  Open Catalysts <ArrowRight size={12} />
+                </Link>
               </div>
             </DashCard>
           ) : (
