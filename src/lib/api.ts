@@ -524,6 +524,21 @@ export const api = {
       }),
     hitlConfig: (clusterId?: string, tenantId?: string, subCatalystName?: string) =>
       request<{ config?: HitlConfig | null; configs?: HitlConfigListItem[]; subConfigs?: HitlConfigListItem[]; users?: Record<string, { email: string; name: string }> }>(`/api/catalysts/hitl-config${qs({ cluster_id: clusterId, tenant_id: tenantId, sub_catalyst_name: subCatalystName })}`),
+    /**
+     * Pending HITL approvals for the current tenant. Drives the Action
+     * Queue widget in the header — these are the catalyst actions waiting
+     * on a human decision (status: pending_approval | escalated).
+     */
+    pendingApprovals: () =>
+      request<{
+        approvals: Array<{
+          id: string; clusterId: string; clusterName: string; domain: string;
+          catalystName: string; action: string; status: string;
+          confidence: number; reasoning: string;
+          inputData: Record<string, unknown>; createdAt: string;
+        }>;
+        total: number;
+      }>(`/api/catalysts/approvals`),
     saveHitlConfig: (data: { cluster_id: string; sub_catalyst_name?: string; domain?: string; validator_user_ids?: string[]; exception_handler_user_ids?: string[]; escalation_user_ids?: string[]; notify_on_completion?: boolean; notify_on_exception?: boolean; notify_on_approval_needed?: boolean }) =>
       request<{ id: string; created?: boolean; updated?: boolean }>('/api/catalysts/hitl-config', { method: 'PUT', body: JSON.stringify(data) }),
     deleteHitlConfig: (clusterId: string, subCatalystName?: string) =>

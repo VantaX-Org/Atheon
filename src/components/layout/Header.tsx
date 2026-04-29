@@ -7,6 +7,7 @@ import type { IndustryVertical } from "@/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { FreshnessDot } from "@/components/common/FreshnessIndicator";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
+import { ActionQueueWidget } from "@/components/layout/ActionQueueWidget";
 
 const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
@@ -296,6 +297,11 @@ export function Header() {
         >
           <MessageCircle size={15} />
         </button>
+
+        {/* Action Queue — pending HITL approvals + critical anomalies + open
+            risks. Hidden when nothing is actionable so the header stays clean
+            for quiet ops. */}
+        <ActionQueueWidget />
 
         {/* Notifications */}
         <div className="relative" ref={dropdownRef}>
