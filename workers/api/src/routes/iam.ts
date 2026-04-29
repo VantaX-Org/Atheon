@@ -742,8 +742,16 @@ const PERMISSION_TAXONOMY: string[] = [
  * the creator adds). The UI reflects this by showing inherited permissions
  * as read-only / pre-checked.
  */
+// Permissions deliberately track the frontend role gates in src/App.tsx —
+// analyst sits in STANDARD_ROLES which exposes /dashboard, /pulse, /chat,
+// /trust. Granting apex.read/catalysts.read/memory.read here historically
+// over-promised access the base role's UI does not surface, so a custom
+// role that inherits from analyst couldn't actually use those permissions.
+// Custom roles needing those reads should inherit from operator/manager
+// instead (or list the permission explicitly), which is the common path
+// for tenants that want a read-only operator-style profile.
 const BASE_ROLE_PERMISSIONS: Record<string, string[]> = {
-  analyst: ['apex.read', 'pulse.read', 'catalysts.read', 'mind.query', 'memory.read'],
+  analyst: ['pulse.read', 'mind.query'],
   operator: ['apex.read', 'pulse.read', 'catalysts.read', 'catalysts.execute', 'mind.query'],
   manager: ['apex.read', 'apex.write', 'pulse.read', 'pulse.write', 'catalysts.read', 'catalysts.execute', 'catalysts.approve', 'mind.query', 'memory.read', 'memory.write', 'iam.users.read'],
   admin: ['admin.*'],
