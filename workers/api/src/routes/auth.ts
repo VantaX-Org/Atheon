@@ -708,7 +708,11 @@ auth.get('/me', async (c) => {
     }
 
     const user = await c.env.DB.prepare(
-      'SELECT u.*, t.name as tenant_name, t.slug as tenant_slug FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?'
+      `SELECT u.*, t.name as tenant_name, t.slug as tenant_slug,
+              t.logo_url as tenant_logo_url,
+              t.brand_primary_color as tenant_brand_primary_color,
+              t.brand_name_override as tenant_brand_name_override
+         FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = ?`
     ).bind(payload.sub).first();
 
     if (!user) {
@@ -724,6 +728,11 @@ auth.get('/me', async (c) => {
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
       permissions: JSON.parse(user.permissions as string || '[]'),
+      brand: {
+        logoUrl: user.tenant_logo_url || null,
+        primaryColor: user.tenant_brand_primary_color || null,
+        nameOverride: user.tenant_brand_name_override || null,
+      },
     });
   } catch {
     return c.json({ error: 'Invalid token' }, 401);

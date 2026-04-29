@@ -37,6 +37,11 @@ export function AppLayout() {
           tenantId: me.tenantId,
           tenantName: me.tenantName,
           permissions: me.permissions,
+          // Whitelabel — backend always returns a `brand` block; default to
+          // null fields so the BrandProvider clears any prior tenant state.
+          brand: me.brand
+            ? { logoUrl: me.brand.logoUrl, primaryColor: me.brand.primaryColor, nameOverride: me.brand.nameOverride }
+            : { logoUrl: null, primaryColor: null, nameOverride: null },
         });
       })
       .catch(() => {

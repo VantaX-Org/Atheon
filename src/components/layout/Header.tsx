@@ -252,8 +252,20 @@ export function Header() {
           </div>
         ) : user?.tenantName ? (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}>
-            <Building2 size={12} className="flex-shrink-0 t-muted" />
-            <span className="text-[11px] font-medium t-secondary truncate max-w-[180px]">{user.tenantName}</span>
+            {/* Whitelabel — render the tenant's logo when set, otherwise the
+                generic Building2 icon. nameOverride wins over tenants.name. */}
+            {user.brand?.logoUrl ? (
+              <img
+                src={user.brand.logoUrl}
+                alt={user.brand?.nameOverride || user.tenantName}
+                className="h-3 w-auto max-w-[24px] flex-shrink-0 object-contain"
+              />
+            ) : (
+              <Building2 size={12} className="flex-shrink-0 t-muted" />
+            )}
+            <span className="text-[11px] font-medium t-secondary truncate max-w-[180px]">
+              {user.brand?.nameOverride || user.tenantName}
+            </span>
           </div>
         ) : null}
       </div>
