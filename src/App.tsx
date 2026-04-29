@@ -42,6 +42,8 @@ import { SupportPage } from "@/pages/SupportPage";
 import { SupportTicketDetailPage } from "@/pages/SupportTicketDetailPage";
 import { SupportTriagePage } from "@/pages/admin/SupportTriagePage";
 import { TrustPerformancePage } from "@/pages/TrustPerformancePage";
+import { ApexBriefPage } from "@/pages/ApexBriefPage";
+import { OnboardingWizardPage } from "@/pages/OnboardingWizardPage";
 import { useAppStore } from "@/stores/appStore";
 import type { UserRole } from "@/types";
 
@@ -86,7 +88,15 @@ export default function App() {
         <Route path="/erp/oauth/callback" element={<ERPOAuthCallbackPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          {/* Guided onboarding wizard — full-screen version of the
+              Dashboard's OnboardingChecklist, walks the user through the
+              7 week-1 stop-gates with deep-link CTAs. Open to all auth users
+              (the checklist itself is per-user, not per-tenant). */}
+          <Route path="/onboarding" element={<OnboardingWizardPage />} />
           <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />
+          {/* Mobile-friendly executive brief — single-screen, no tabs.
+              Open to EXECUTIVE_ROLES + manager (whoever runs board prep). */}
+          <Route path="/apex/brief" element={<ProtectedRoute allowedRoles={MANAGER_ROLES}><ApexBriefPage /></ProtectedRoute>} />
           <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
           <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
           <Route path="/catalysts/runs/:runId" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystRunDetailPage /></ProtectedRoute>} />

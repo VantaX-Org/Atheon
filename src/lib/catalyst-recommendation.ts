@@ -102,6 +102,21 @@ export function recommendForRisk(input: { category?: string; title?: string }): 
 }
 
 /**
+ * Recommendation from a peer-benchmark dimension name (e.g. "Finance",
+ * "Operations", "Procurement"). Used by the Apex Peer Benchmarks tab to
+ * surface a Deploy CTA when the tenant is below the median in a dimension.
+ *
+ * Falls back to the risk rules first since dimensions overlap with risk
+ * categories (e.g. "Finance" risk rules match "Finance" dimension), then
+ * the anomaly rules so generic phrases like "Quality" or "Maintenance"
+ * still resolve.
+ */
+export function recommendForDimension(dimension: string): CatalystRecommendation | null {
+  if (!dimension) return null;
+  return matchRules(RISK_RULES, dimension) || matchRules(ANOMALY_RULES, dimension);
+}
+
+/**
  * Build the /catalysts navigation URL with a pre-selected cluster + sub.
  * The CatalystsPage reads these query params on mount to scroll-to and
  * highlight the matched row.

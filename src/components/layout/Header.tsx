@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { FreshnessDot } from "@/components/common/FreshnessIndicator";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { ActionQueueWidget } from "@/components/layout/ActionQueueWidget";
+import { CalibrationChip } from "@/components/layout/CalibrationChip";
 
 const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
@@ -297,6 +298,10 @@ export function Header() {
         >
           <MessageCircle size={15} />
         </button>
+
+        {/* Calibration accuracy chip — moat indicator. Hidden when no
+            observations exist yet so cold-start tenants don't see "0%". */}
+        <CalibrationChip />
 
         {/* Action Queue — pending HITL approvals + critical anomalies + open
             risks. Hidden when nothing is actionable so the header stays clean
