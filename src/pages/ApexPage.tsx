@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import { DimensionComparisonGrid } from "@/components/DimensionComparisonGrid";
 import { HealthTrendChart } from "@/components/HealthTrendChart";
 import { RiskHeatMap } from "@/components/RiskHeatMap";
 import { ScenarioComparisonGrid } from "@/components/ScenarioComparisonGrid";
+import { recommendForRisk, catalystDeployUrl } from "@/lib/catalyst-recommendation";
 
 
 const trendIcon = (trend: string, size = 14) => {
@@ -176,6 +178,7 @@ function ExecutiveBriefHero({
 }
 
 export function ApexPage() {
+ const navigate = useNavigate();
  const companyId = useSelectedCompanyId();
  const [activeTab, setActiveTab] = useState<string>('health');
  const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
@@ -1047,9 +1050,26 @@ export function ApexPage() {
  </div>
  </div>
  <p className="text-sm t-muted mt-1">{risk.description}</p>
- <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
- <span>Probability: {Math.round(risk.probability * 100)}%</span>
- <span>Impact: {risk.impactValue} {risk.impactUnit}</span>
+ <div className="flex items-center justify-between gap-3 mt-2">
+   <div className="flex items-center gap-4 text-xs text-gray-400">
+     <span>Probability: {Math.round(risk.probability * 100)}%</span>
+     <span>Impact: {risk.impactValue} {risk.impactUnit}</span>
+   </div>
+   {(() => {
+     const rec = recommendForRisk({ category: risk.category, title: risk.title });
+     if (!rec) return null;
+     return (
+       <Button
+         variant="primary"
+         size="sm"
+         onClick={(e) => { e.stopPropagation(); navigate(catalystDeployUrl(rec)); }}
+         data-testid={`mitigate-risk-${risk.id}`}
+         title={`Open ${rec.catalyst} → ${rec.subCatalyst}`}
+       >
+         <Zap size={12} className="mr-1" /> Mitigate
+       </Button>
+     );
+   })()}
  </div>
 
  {expandedRisk === risk.id && (

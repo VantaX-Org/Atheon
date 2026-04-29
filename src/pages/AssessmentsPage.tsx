@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import type { Assessment, AssessmentResults, CatalystScore, ERPConnection, ValueAssessmentFinding, DataQualityRecord, ProcessTimingRecord, ValueSummaryRecord } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { AssessmentFindingsPanel } from '@/components/AssessmentFindingsPanel';
+import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -608,6 +610,7 @@ function RunningView({ id, onComplete }: {
 // ── Results View (Value Assessment — 7 Sections) ─────────────────────────
 function ResultsView({ assessment }: { assessment: Assessment }) {
   const toast = useToast();
+  const navigate = useNavigate();
   // 'findings' tab consumes assessment.results.findings (the new
   // assessment-findings engine output); 'value' is the older value-assessment
   // table; 'legacy' is the original catalyst-score sizing view.
@@ -757,6 +760,9 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
           summary={results?.findings_summary}
           findingsByCompany={results?.findings_by_company}
           companyProfile={results?.company_profile}
+          onDeployCatalyst={(catalyst, subCatalyst) =>
+            navigate(catalystDeployUrl({ catalyst, subCatalyst }))
+          }
         />
       )}
 
