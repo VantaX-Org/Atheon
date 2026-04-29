@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -451,6 +452,37 @@ export function CatalystsPage() {
      }
    }
  }, [opsPanel, clusters]);
+
+ // Deep-link from Pulse anomalies / Apex risks: ?cluster=Foo&sub=Bar opens
+ // the SubCatalystOpsPanel for that pairing as soon as clusters are loaded.
+ // Falls back to a toast if the cluster name doesn't resolve (e.g. stale
+ // catalog entry on the recommendation side). The query string is consumed
+ // (cleared) after handling so a back-navigation doesn't keep re-firing.
+ const [searchParams, setSearchParams] = useSearchParams();
+ useEffect(() => {
+   const wantedCluster = searchParams.get('cluster');
+   const wantedSub = searchParams.get('sub');
+   if (!wantedCluster || clusters.length === 0) return;
+   const cluster = clusters.find(c => c.name.toLowerCase() === wantedCluster.toLowerCase());
+   if (cluster) {
+     const sub = wantedSub
+       ? cluster.subCatalysts?.find(s => s.name.toLowerCase() === wantedSub.toLowerCase())
+       : cluster.subCatalysts?.[0];
+     if (sub) {
+       setOpsPanel({ clusterId: cluster.id, clusterName: cluster.name, subName: sub.name });
+     }
+   } else {
+     toast.error('Catalyst not found', {
+       message: `No catalyst named "${wantedCluster}" — opening the catalogue.`,
+     });
+   }
+   // Clear the consumed params so re-renders don't re-trigger the effect.
+   const next = new URLSearchParams(searchParams);
+   next.delete('cluster');
+   next.delete('sub');
+   setSearchParams(next, { replace: true });
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [clusters]);
 
  const handleToggleSubCatalyst = async (clusterId: string, subName: string) => {
  const key = `${clusterId}:${subName}`;
