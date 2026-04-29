@@ -933,6 +933,24 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
+    /**
+     * Per-tenant whitelabel branding. Superadmin-only — sets the logo URL,
+     * primary color (hex without #), and a display-name override that wins
+     * over `tenants.name` in the UI.
+     */
+    setTenantBrand: (tenantId: string, body: {
+      logoUrl?: string | null;
+      primaryColor?: string | null;
+      nameOverride?: string | null;
+    }) =>
+      request<{
+        success: boolean;
+        tenantId: string;
+        brand: TenantBrand;
+      }>(`/api/v1/admin/tenants/${tenantId}/brand`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
   },
 
   // ── Apex Radar (Spec §2.1 — 11 endpoints) ───────────────────────────
@@ -1403,6 +1421,15 @@ export const api = {
 };
 
 // Types for API responses
+export interface TenantBrand {
+  /** HTTPS URL or data:image/ URI. Null = no logo override. */
+  logoUrl: string | null;
+  /** Hex without leading # (e.g. "4A6B5A"). Null = use platform default. */
+  primaryColor: string | null;
+  /** Short tenant-side display name. Null = fall back to tenants.name. */
+  nameOverride: string | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -1412,6 +1439,8 @@ export interface AuthUser {
   tenantName?: string;
   tenantSlug?: string;
   permissions: string[];
+  /** Per-tenant whitelabel — populated by /api/auth/me. */
+  brand?: TenantBrand;
 }
 
 export interface Tenant {

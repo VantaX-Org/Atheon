@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 // app shell, public entry points, and a thin set of pages that we don't
 // want to wait on a chunk fetch for (Dashboard is the post-login landing).
 import { AppLayout } from "@/components/layout/AppLayout";
+import { BrandProvider } from "@/components/layout/BrandProvider";
 import { Dashboard } from "@/pages/Dashboard";
 import { LoginPage } from "@/pages/LoginPage";
 import { MarketingPage } from "@/pages/MarketingPage";
@@ -99,6 +100,7 @@ const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'exe
 export default function App() {
   return (
     <BrowserRouter>
+      <BrandProvider>
       <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route path="/" element={<MarketingPage />} />
@@ -174,6 +176,7 @@ export default function App() {
           </Route>
         </Routes>
       </Suspense>
+      </BrandProvider>
     </BrowserRouter>
   );
 }

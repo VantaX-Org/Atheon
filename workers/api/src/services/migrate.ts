@@ -14,7 +14,7 @@
 // contributes anonymised observations to industry/finding aggregates;
 // reads are noised with Laplace mechanism (epsilon = 1.0) before
 // returning to any tenant. No raw cross-tenant data exposure.
-export const MIGRATION_VERSION = 'v54-federation';
+export const MIGRATION_VERSION = 'v55-whitelabel';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -779,6 +779,10 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'tenants', column: 'logo_url', definition: 'TEXT' },
     { table: 'tenants', column: 'billing_email', definition: 'TEXT' },
     { table: 'tenants', column: 'max_storage_gb', definition: 'INTEGER NOT NULL DEFAULT 10' },
+    // Whitelabel — per-tenant branding. Hex color (no #); short display
+    // name override that wins over `tenants.name` in the UI when set.
+    { table: 'tenants', column: 'brand_primary_color', definition: 'TEXT' },
+    { table: 'tenants', column: 'brand_name_override', definition: 'TEXT' },
     { table: 'tenant_entitlements', column: 'api_calls_used', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { table: 'tenant_entitlements', column: 'storage_used_gb', definition: 'REAL NOT NULL DEFAULT 0' },
     // Phase 7: HITL user assignment

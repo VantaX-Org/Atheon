@@ -614,6 +614,95 @@ tenants.put('/tenants/:id/llm-budget', async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════
+// Whitelabel — superadmin sets per-tenant brand. Used by Header + Login
+// to render the customer's logo + accent color + display-name override.
+// PUT /api/v1/admin/tenants/:id/brand
+// ══════════════════════════════════════════════════════════
+tenants.put('/tenants/:id/brand', async (c) => {
+  if (!requireSuperadmin(c)) {
+    return c.json({ error: 'Forbidden: Superadmin only' }, 403);
+  }
+  const tenantId = c.req.param('id');
+  let body: { logoUrl?: string | null; primaryColor?: string | null; nameOverride?: string | null };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  // Validate hex color (3 or 6 hex chars, no leading #).
+  if (body.primaryColor !== undefined && body.primaryColor !== null) {
+    if (typeof body.primaryColor !== 'string' || !/^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(body.primaryColor)) {
+      return c.json({ error: 'primaryColor must be a hex string without leading # (e.g. "4A6B5A")' }, 400);
+    }
+  }
+  // Logo URL — must be HTTPS to avoid mixed-content browser warnings.
+  if (body.logoUrl !== undefined && body.logoUrl !== null) {
+    if (typeof body.logoUrl !== 'string' || (!body.logoUrl.startsWith('https://') && !body.logoUrl.startsWith('data:image/'))) {
+      return c.json({ error: 'logoUrl must be an https:// URL or a data:image/ URI' }, 400);
+    }
+    if (body.logoUrl.length > 4096) {
+      return c.json({ error: 'logoUrl too long (max 4096 chars)' }, 400);
+    }
+  }
+  if (body.nameOverride !== undefined && body.nameOverride !== null) {
+    if (typeof body.nameOverride !== 'string' || body.nameOverride.length > 64) {
+      return c.json({ error: 'nameOverride must be a string up to 64 chars' }, 400);
+    }
+  }
+
+  const updates: string[] = [];
+  const binds: unknown[] = [];
+  if (Object.prototype.hasOwnProperty.call(body, 'logoUrl')) {
+    updates.push('logo_url = ?'); binds.push(body.logoUrl);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'primaryColor')) {
+    updates.push('brand_primary_color = ?'); binds.push(body.primaryColor);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'nameOverride')) {
+    updates.push('brand_name_override = ?'); binds.push(body.nameOverride);
+  }
+  if (updates.length === 0) {
+    return c.json({ error: 'Provide at least one of: logoUrl, primaryColor, nameOverride' }, 400);
+  }
+
+  binds.push(tenantId);
+  await c.env.DB.prepare(`UPDATE tenants SET ${updates.join(', ')} WHERE id = ?`).bind(...binds).run();
+
+  const auth = c.get('auth') as AuthContext;
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(
+      crypto.randomUUID(),
+      tenantId,
+      auth?.userId ?? null,
+      'admin.brand.update',
+      'platform',
+      'tenant_brand',
+      JSON.stringify(body),
+      'success',
+    ).run();
+  } catch (auditErr) {
+    console.error('Brand update audit log failed (non-fatal):', auditErr);
+  }
+
+  const updated = await c.env.DB.prepare(
+    'SELECT logo_url, brand_primary_color, brand_name_override FROM tenants WHERE id = ?',
+  ).bind(tenantId).first<{ logo_url: string | null; brand_primary_color: string | null; brand_name_override: string | null }>();
+
+  return c.json({
+    success: true,
+    tenantId,
+    brand: {
+      logoUrl: updated?.logo_url ?? null,
+      primaryColor: updated?.brand_primary_color ?? null,
+      nameOverride: updated?.brand_name_override ?? null,
+    },
+  });
+});
+
+// ══════════════════════════════════════════════════════════
 // Revenue & Usage aggregation — superadmin only
 // GET /api/v1/admin/revenue-usage
 // ═══

@@ -7,6 +7,12 @@ export type AtheonLayer = 'apex' | 'pulse' | 'catalysts' | 'mind' | 'memory';
 export type IndustryVertical = 'fmcg' | 'healthcare' | 'mining' | 'general' | 'agriculture' | 'logistics' | 'technology' | 'manufacturing' | 'retail';
 
 // --- Auth & Tenancy ---
+export interface TenantBrandConfig {
+  logoUrl: string | null;
+  primaryColor: string | null;
+  nameOverride: string | null;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -16,6 +22,8 @@ export interface User {
   tenantName?: string;
   avatarUrl?: string;
   permissions: string[];
+  /** Per-tenant whitelabel — populated by /api/auth/me. */
+  brand?: TenantBrandConfig;
 }
 
 export type UserRole = 'superadmin' | 'support_admin' | 'admin' | 'executive' | 'manager' | 'analyst' | 'operator' | 'viewer';
