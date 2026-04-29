@@ -116,7 +116,11 @@ describe('Custom Roles - CRUD', () => {
     expect(body.role.name).toBe('Department Lead');
     expect(body.role.inheritsFrom).toBe('analyst');
     expect(body.role.permissions).toEqual(expect.arrayContaining(['memory.write', 'iam.users.read']));
-    expect(body.role.inheritedPermissions).toContain('apex.read');
+    // analyst's BASE_ROLE_PERMISSIONS were trimmed to match the frontend
+    // (STANDARD_ROLES exposes /pulse + /chat to analyst). The remaining
+    // analyst permissions are pulse.read + mind.query.
+    expect(body.role.inheritedPermissions).toContain('pulse.read');
+    expect(body.role.inheritedPermissions).toContain('mind.query');
   });
 
   it('rejects duplicate names for the same tenant', async () => {
