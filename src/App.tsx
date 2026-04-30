@@ -58,6 +58,7 @@ const SupportTicketDetailPage = lazy(() => import("@/pages/SupportTicketDetailPa
 const SupportTriagePage = lazy(() => import("@/pages/admin/SupportTriagePage").then(m => ({ default: m.SupportTriagePage })));
 const TrustPerformancePage = lazy(() => import("@/pages/TrustPerformancePage"));
 const OnboardingWizardPage = lazy(() => import("@/pages/OnboardingWizardPage"));
+const PricingPage = lazy(() => import("@/pages/PricingPage"));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -104,6 +105,10 @@ export default function App() {
       <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route path="/" element={<MarketingPage />} />
+          {/* Public pricing page — public so prospects can land on it from
+              the marketing site, and so trial users can navigate to it
+              from the upgrade banner without being logged in. */}
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<LoginPage />} />
           <Route path="/trial" element={<TrialPage />} />

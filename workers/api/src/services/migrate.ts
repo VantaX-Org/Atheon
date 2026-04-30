@@ -14,7 +14,7 @@
 // contributes anonymised observations to industry/finding aggregates;
 // reads are noised with Laplace mechanism (epsilon = 1.0) before
 // returning to any tenant. No raw cross-tenant data exposure.
-export const MIGRATION_VERSION = 'v55-whitelabel';
+export const MIGRATION_VERSION = 'v56-stripe-checkout';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -142,6 +142,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS provenance_chain (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), seq INTEGER NOT NULL, parent_id TEXT, payload_type TEXT NOT NULL, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL, signed_by_user_id TEXT REFERENCES users(id), signature TEXT, merkle_root_after TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(tenant_id, seq));
     CREATE TABLE IF NOT EXISTS federation_observations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), industry_bucket TEXT NOT NULL DEFAULT 'general', finding_code TEXT NOT NULL, resolved_in_days REAL, recovery_pct REAL, raw_value_zar REAL, observed_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS federation_aggregates (id TEXT PRIMARY KEY, industry_bucket TEXT NOT NULL DEFAULT 'general', finding_code TEXT NOT NULL, n_contributors INTEGER NOT NULL DEFAULT 0, avg_resolved_days REAL NOT NULL DEFAULT 0, avg_recovery_pct REAL NOT NULL DEFAULT 0, p25_recovery_pct REAL DEFAULT 0, p75_recovery_pct REAL DEFAULT 0, epsilon REAL NOT NULL DEFAULT 1, last_refreshed_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(industry_bucket, finding_code));
+    CREATE TABLE IF NOT EXISTS billing_checkouts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), plan_id TEXT NOT NULL, billing_cycle TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', stripe_session_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
   `;
 
   const coreStatements = coreTableSQL.split(';').filter(s => s.trim().length > 0);
@@ -787,6 +788,10 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // name override that wins over `tenants.name` in the UI when set.
     { table: 'tenants', column: 'brand_primary_color', definition: 'TEXT' },
     { table: 'tenants', column: 'brand_name_override', definition: 'TEXT' },
+    // Stripe Checkout session id, persisted on /api/billing/checkout so the
+    // webhook can match `checkout.session.completed` events back to the
+    // initiating tenant if the metadata field is empty.
+    { table: 'billing_checkouts', column: 'stripe_session_id', definition: 'TEXT' },
     { table: 'tenant_entitlements', column: 'api_calls_used', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { table: 'tenant_entitlements', column: 'storage_used_gb', definition: 'REAL NOT NULL DEFAULT 0' },
     // Phase 7: HITL user assignment
