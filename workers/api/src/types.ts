@@ -16,6 +16,10 @@ export interface Env {
   MS_GRAPH_TENANT_ID: string;
   // SSO redirect URI (optional, defaults to production URL)
   SSO_REDIRECT_URI?: string;
+  /** Shared OIDC client secret used as a fallback when sso_configs.client_secret is unset.
+   *  Per-tenant configs should set client_secret directly; this exists so a small
+   *  multi-tenant deployment can share a single IdP app for testing. */
+  OIDC_CLIENT_SECRET?: string;
   // Demo login secret (only used in non-production environments)
   DEMO_LOGIN_SECRET?: string;
   OLLAMA_API_KEY: string;
