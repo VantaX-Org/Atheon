@@ -20,6 +20,20 @@ export interface Env {
    *  Per-tenant configs should set client_secret directly; this exists so a small
    *  multi-tenant deployment can share a single IdP app for testing. */
   OIDC_CLIENT_SECRET?: string;
+  /** Stripe API key (sk_live_… or sk_test_…). Required for /api/billing/checkout
+   *  to create real Stripe Checkout Sessions. When unset, the endpoint returns
+   *  a 503 with a clear message — Atheon ops can see this in Sentry without
+   *  customers seeing scary stack traces. */
+  STRIPE_SECRET_KEY?: string;
+  /** Stripe webhook signing secret (whsec_…). When set, /api/billing/webhook
+   *  verifies the `Stripe-Signature` header before processing the event.
+   *  When unset, the webhook accepts unsigned events — only safe in dev. */
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Stripe price IDs per (plan, billing_cycle). JSON-encoded:
+   *    {"starter:monthly":"price_…","starter:annual":"price_…",…}
+   *  Lets Atheon ops point staging vs prod at different Stripe products
+   *  without redeploying. Falls back to a hardcoded test-mode mapping. */
+  STRIPE_PRICE_MAP?: string;
   // Demo login secret (only used in non-production environments)
   DEMO_LOGIN_SECRET?: string;
   OLLAMA_API_KEY: string;

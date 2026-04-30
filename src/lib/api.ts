@@ -1411,6 +1411,31 @@ export const api = {
       request<{ event_types: string[] }>('/api/v1/webhooks/event-types').catch(() => ({ event_types: [] as string[] })),
   },
 
+  // ── Billing (self-service trial → paid Stripe Checkout) ───────────
+  billing: {
+    /** Public — list available plans + prices. Used by /pricing. */
+    plans: () =>
+      request<{ plans: Array<{
+        id: string; name: string; description: string;
+        price: { monthly: number; annual: number };
+        currency: string; features: string[];
+        limits: { users: number; erpConnections: number; catalystClusters: number; storageGb: number };
+      }> }>('/api/billing/plans'),
+    /** Authenticated — current tenant's active subscription, if any. */
+    subscription: () =>
+      request<{ subscription: {
+        planId: string; status: string;
+        currentPeriodStart: string; currentPeriodEnd: string;
+        stripeSubscriptionId?: string; stripeCustomerId?: string;
+      } | null }>('/api/billing/subscription'),
+    /** Create a Stripe Checkout Session for the current tenant. */
+    checkout: (body: { plan_id: string; billing_cycle: 'monthly' | 'annual'; success_url?: string; cancel_url?: string }) =>
+      request<{ sessionId: string; url: string; planId: string; billingCycle: string }>(
+        '/api/billing/checkout',
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+  },
+
   // Generic HTTP helpers for pages that call arbitrary endpoints
   get: <T = Record<string, unknown>>(path: string) => request<T>(path),
   post: <T = Record<string, unknown>>(path: string, body?: unknown) =>

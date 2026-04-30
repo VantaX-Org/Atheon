@@ -96,41 +96,72 @@ billing.post('/checkout', async (c) => {
   if (!body || errors.length > 0) {
     return c.json({ error: 'Invalid input', details: errors }, 400);
   }
+  if (body.billing_cycle !== 'monthly' && body.billing_cycle !== 'annual') {
+    return c.json({ error: 'billing_cycle must be "monthly" or "annual"' }, 400);
+  }
 
   const plan = PLANS.find(p => p.id === body.plan_id);
   if (!plan) {
     return c.json({ error: 'Invalid plan' }, 400);
   }
 
-  // Create or retrieve Stripe customer
+  if (!c.env.STRIPE_SECRET_KEY) {
+    // Stripe isn't configured — return 503 with a clear message instead
+    // of building a fake URL. Atheon ops sees this in Sentry as a 503,
+    // not a customer-facing crash.
+    return c.json({
+      error: 'Billing temporarily unavailable',
+      details: 'STRIPE_SECRET_KEY not configured in this environment.',
+    }, 503);
+  }
+
   const tenant = await c.env.DB.prepare(
-    'SELECT * FROM tenants WHERE id = ?'
-  ).bind(auth.tenantId).first();
+    'SELECT t.*, u.email as admin_email FROM tenants t LEFT JOIN users u ON u.tenant_id = t.id AND u.role = "admin" WHERE t.id = ? LIMIT 1'
+  ).bind(auth.tenantId).first<{ id: string; name: string; admin_email?: string }>();
 
   if (!tenant) {
     return c.json({ error: 'Tenant not found' }, 404);
   }
 
-  // Store checkout intent for webhook processing
-  const checkoutId = crypto.randomUUID();
+  const { resolvePriceId, createCheckoutSession } = await import('../services/stripe');
+  const price = resolvePriceId(body.plan_id, body.billing_cycle as 'monthly' | 'annual', c.env.STRIPE_PRICE_MAP);
+  if (!price) {
+    return c.json({ error: `No Stripe price configured for ${body.plan_id}:${body.billing_cycle}` }, 500);
+  }
+
+  // Defaults — caller can override, but most flows use the standard ones.
+  const successUrl = body.success_url || 'https://atheon.vantax.co.za/settings?upgrade=success';
+  const cancelUrl  = body.cancel_url  || 'https://atheon.vantax.co.za/pricing?upgrade=cancelled';
+
+  let session: { id: string; url: string };
+  try {
+    session = await createCheckoutSession({
+      apiKey: c.env.STRIPE_SECRET_KEY,
+      priceId: price.priceId,
+      tenantId: auth.tenantId,
+      customerEmail: auth.email || tenant.admin_email,
+      successUrl,
+      cancelUrl,
+      metadata: { plan_id: body.plan_id, billing_cycle: body.billing_cycle, tenant_id: auth.tenantId },
+    });
+  } catch (err) {
+    console.error('Stripe Checkout session creation failed:', err);
+    return c.json({ error: 'Stripe Checkout creation failed', details: (err as Error).message }, 502);
+  }
+
+  // Track the checkout intent so the webhook handler can resolve the plan
+  // even if Stripe forgets to return our metadata (rare but observed).
   await c.env.DB.prepare(
-    'INSERT INTO billing_checkouts (id, tenant_id, plan_id, billing_cycle, status, created_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\'))'
-  ).bind(checkoutId, auth.tenantId, body.plan_id, body.billing_cycle, 'pending').run().catch(() => {
-    // Table may not exist yet — non-fatal
+    'INSERT INTO billing_checkouts (id, tenant_id, plan_id, billing_cycle, status, stripe_session_id, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+  ).bind(crypto.randomUUID(), auth.tenantId, body.plan_id, body.billing_cycle, 'pending', session.id).run().catch(() => {
+    // Table may not exist yet — non-fatal; webhook can fall back to metadata.
   });
 
-  // In production, this would create a Stripe Checkout Session
-  // For now, return a checkout URL structure
-  const price = body.billing_cycle === 'annual' ? plan.price.annual : plan.price.monthly;
-
   return c.json({
-    checkoutId,
+    sessionId: session.id,
+    url: session.url,
     planId: body.plan_id,
     billingCycle: body.billing_cycle,
-    amount: price,
-    currency: plan.currency,
-    // In production: url would be Stripe Checkout Session URL
-    message: 'Checkout session created. Stripe integration pending configuration.',
   }, 201);
 });
 
@@ -215,8 +246,32 @@ billing.get('/invoices', async (c) => {
 
 // POST /api/billing/webhook - Stripe webhook handler
 billing.post('/webhook', async (c) => {
-  // In production: verify Stripe signature
-  const body = await c.req.json<{ type: string; data: { object: Record<string, unknown> } }>();
+  // Read raw body once — we need it both for signature verification and
+  // for parsing. Hono's c.req.json() can't be called after c.req.text().
+  const bodyText = await c.req.text();
+
+  // Verify Stripe signature when STRIPE_WEBHOOK_SECRET is configured.
+  // Without the secret set, we accept unsigned events — only safe in dev.
+  if (c.env.STRIPE_WEBHOOK_SECRET) {
+    const sigHeader = c.req.header('stripe-signature') || '';
+    const { verifyWebhookSignature } = await import('../services/stripe');
+    const verdict = await verifyWebhookSignature({
+      bodyText,
+      signatureHeader: sigHeader,
+      secret: c.env.STRIPE_WEBHOOK_SECRET,
+    });
+    if (!verdict.valid) {
+      console.warn('Stripe webhook signature rejected:', verdict.reason);
+      return c.json({ error: 'Invalid Stripe signature', details: verdict.reason }, 400);
+    }
+  }
+
+  let body: { type: string; data: { object: Record<string, unknown> } };
+  try {
+    body = JSON.parse(bodyText) as { type: string; data: { object: Record<string, unknown> } };
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
 
   switch (body.type) {
     case 'checkout.session.completed': {
