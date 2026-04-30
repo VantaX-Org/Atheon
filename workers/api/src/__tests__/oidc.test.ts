@@ -69,7 +69,8 @@ let mockResponses: Record<string, unknown> = {};
 beforeEach(() => {
   originalFetch = globalThis.fetch;
   mockResponses = {};
-  globalThis.fetch = async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    void init; // mock fetch ignores init; declared so the signature matches
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const body = mockResponses[url];
     if (body === undefined) {
