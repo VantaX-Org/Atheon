@@ -1411,6 +1411,58 @@ export const api = {
       request<{ event_types: string[] }>('/api/v1/webhooks/event-types').catch(() => ({ event_types: [] as string[] })),
   },
 
+  // ── Compliance (SOC 2 evidence pack) ─────────────────────────────
+  compliance: {
+    /**
+     * Aggregated SOC 2 control evidence for the current tenant. Admin+ for
+     * own tenant; support_admin / superadmin can pass `tenantId` to read
+     * any tenant's pack. Audit-logged on the backend.
+     */
+    evidencePack: (tenantId?: string) =>
+      request<{
+        generatedAt: string;
+        tenantId: string;
+        generatedBy: string;
+        accessReviews: {
+          activeAdminCount: number;
+          adminsAssignedLast90d: number;
+          roleChangesLast90d: number;
+          mfaEnabledCount: number;
+          activeUserCount: number;
+        };
+        mfa: {
+          totalUsers: number;
+          mfaEnabled: number;
+          mfaCoveragePct: number;
+          adminsInGracePeriod: number;
+          adminsExpiredGrace: number;
+        };
+        configChanges: {
+          changesLast30d: number;
+          changesLast90d: number;
+          topActions: Array<{ action: string; count: number }>;
+        };
+        incidentResponse: {
+          totalCriticalLast90d: number;
+          resolvedCriticalLast90d: number;
+          openCritical: number;
+          medianResolutionHours: number | null;
+        };
+        deprovisioning: {
+          deprovisionedLast90d: number;
+          currentlyDisabled: number;
+          privilegedDisabled: number;
+        };
+        encryption: { erpEncrypted: number; erpPlaintext: number; totalConnections: number };
+        auditRetention: {
+          totalRows: number;
+          oldestEventAt: string | null;
+          oneYearAgo: string;
+          provenanceChainLength: number;
+        };
+      }>(`/api/v1/compliance/evidence-pack${qs({ tenant_id: tenantId })}`),
+  },
+
   // ── Billing (self-service trial → paid Stripe Checkout) ───────────
   billing: {
     /** Public — list available plans + prices. Used by /pricing. */
