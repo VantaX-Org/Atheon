@@ -54,6 +54,7 @@ import systemAlerts from './routes/system-alerts';
 import featureFlagsRoutes from './routes/feature-flags';
 import supportRoutes from './routes/support';
 import openapi from './routes/openapi';
+import compliance from './routes/compliance';
 
 // Export Durable Object class for Cloudflare runtime
 export { DashboardRoom };
@@ -414,6 +415,11 @@ app.route('/api/admin-tooling', adminTooling);
 // tenantIsolation provides the JWT-backed auth context.
 app.use('/api/v1/governance/*', tenantIsolation());
 app.route('/api/v1/governance', governance);
+
+// SOC 2 control evidence pack (read-only). Admin+ for own tenant; support+
+// for cross-tenant. Role enforcement inside the handler.
+app.use('/api/v1/compliance/*', tenantIsolation());
+app.route('/api/v1/compliance', compliance);
 
 // Feature Flags (v47-platform) — admin CRUD gated by role inside handler, evaluate endpoint
 // requires only auth. tenantIsolation runs first to populate c.get('auth').

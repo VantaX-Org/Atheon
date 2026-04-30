@@ -59,6 +59,7 @@ const SupportTriagePage = lazy(() => import("@/pages/admin/SupportTriagePage").t
 const TrustPerformancePage = lazy(() => import("@/pages/TrustPerformancePage"));
 const OnboardingWizardPage = lazy(() => import("@/pages/OnboardingWizardPage"));
 const PricingPage = lazy(() => import("@/pages/PricingPage"));
+const CompliancePage = lazy(() => import("@/pages/CompliancePage"));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -136,6 +137,11 @@ export default function App() {
                 frontend guard so support_admin can reach the page. */}
             <Route path="/connectivity" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
             <Route path="/audit" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><AuditPage /></ProtectedRoute>} />
+            {/* SOC 2 control evidence pack — read-only aggregation over
+                audit_log + IAM + support tables. Admin+ for own tenant;
+                support_admin / superadmin for cross-tenant via the existing
+                tenant switcher. Backend enforces role + cross-tenant rules. */}
+            <Route path="/compliance" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><CompliancePage /></ProtectedRoute>} />
             {/* Trust & Performance — buyer-facing aggregation of calibration,
                 provenance, and federated peer patterns. Open to standard roles
                 so a salesperson with a viewer login can demo it. */}
