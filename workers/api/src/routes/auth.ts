@@ -817,6 +817,27 @@ auth.post('/sso', async (c) => {
     return c.json({ redirect_url: authorizeUrl });
   }
 
+  // Generic OIDC — Okta, Auth0, Google Workspace, Keycloak, etc. Issuer URL
+  // is the IdP's root (we append /.well-known/openid-configuration).
+  if (body.provider === 'oidc_generic' || body.provider === 'okta' || body.provider === 'auth0' || body.provider === 'google_workspace') {
+    try {
+      const { fetchDiscovery, buildAuthorizeUrl } = await import('../services/oidc');
+      const discovery = await fetchDiscovery(sso.issuer_url as string, c.env.CACHE);
+      const authorizeUrl = buildAuthorizeUrl({
+        discovery,
+        clientId: sso.client_id as string,
+        redirectUri,
+        state,
+        scope: 'openid profile email',
+        domainHint: (sso.domain_hint as string | null) || null,
+      });
+      return c.json({ redirect_url: authorizeUrl });
+    } catch (err) {
+      console.error('OIDC SSO initiate failed:', err);
+      return c.json({ error: 'OIDC discovery failed', details: (err as Error).message }, 502);
+    }
+  }
+
   return c.json({ error: 'Unsupported SSO provider' }, 400);
 });
 
@@ -869,50 +890,79 @@ auth.post('/sso/callback', async (c) => {
 
   const clientId = sso.client_id as string;
   const issuerUrl = sso.issuer_url as string;
-  const directoryTenantId = issuerUrl.split('/')[3] || 'common';
   // Use SSO_REDIRECT_URI from env var if available, otherwise default to production URL
   const redirectUri = c.env.SSO_REDIRECT_URI || 'https://atheon.vantax.co.za/login';
 
-  // Exchange authorization code for tokens with Azure AD
-  const tokenUrl = `https://login.microsoftonline.com/${directoryTenantId}/oauth2/v2.0/token`;
-  const tokenResponse = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: c.env.AZURE_AD_CLIENT_SECRET,
-      code: body.code,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-      scope: 'openid profile email',
-    }).toString(),
-  });
-
-  if (!tokenResponse.ok) {
-    const err = await tokenResponse.text();
-    console.error('Azure AD token exchange failed:', err);
-    return c.json({ error: 'SSO authentication failed' }, 401);
-  }
-
-  const tokenData = await tokenResponse.json() as { id_token?: string; access_token?: string };
-
-  if (!tokenData.id_token) {
-    return c.json({ error: 'No ID token returned from Azure AD' }, 401);
-  }
-
-  // Decode the ID token to get user info (JWT payload is base64url-encoded)
-  const idTokenParts = tokenData.id_token.split('.');
-  if (idTokenParts.length !== 3) {
-    return c.json({ error: 'Invalid ID token format' }, 401);
-  }
-
   let idPayload: { email?: string; preferred_username?: string; name?: string; sub?: string; oid?: string };
-  try {
-    const padded = idTokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const decoded = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
-    idPayload = JSON.parse(decoded);
-  } catch {
-    return c.json({ error: 'Failed to decode ID token' }, 401);
+
+  if (stateData.provider === 'oidc_generic' || stateData.provider === 'okta'
+      || stateData.provider === 'auth0' || stateData.provider === 'google_workspace') {
+    // Generic OIDC path — discovery doc + RS256 ID token verification.
+    try {
+      const { fetchDiscovery, exchangeCodeForTokens, verifyIdToken } = await import('../services/oidc');
+      const discovery = await fetchDiscovery(issuerUrl, c.env.CACHE);
+      const tokens = await exchangeCodeForTokens({
+        discovery,
+        clientId,
+        // OIDC client secret is stored either in a per-tenant SSO field or
+        // a shared env var (per-tenant override wins). Most enterprise IdPs
+        // require Confidential clients with a secret.
+        clientSecret: (sso.client_secret as string | null) || c.env.OIDC_CLIENT_SECRET || '',
+        code: body.code,
+        redirectUri,
+      });
+      const claims = await verifyIdToken({
+        idToken: tokens.id_token,
+        discovery,
+        expectedAudience: clientId,
+        cacheKv: c.env.CACHE,
+      });
+      idPayload = {
+        email: claims.email,
+        preferred_username: claims.preferred_username,
+        name: claims.name,
+        sub: claims.sub,
+      };
+    } catch (err) {
+      console.error('OIDC SSO callback failed:', err);
+      return c.json({ error: 'OIDC authentication failed', details: (err as Error).message }, 401);
+    }
+  } else {
+    // Azure AD path — preserved as-is for backwards compatibility.
+    const directoryTenantId = issuerUrl.split('/')[3] || 'common';
+    const tokenUrl = `https://login.microsoftonline.com/${directoryTenantId}/oauth2/v2.0/token`;
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: c.env.AZURE_AD_CLIENT_SECRET,
+        code: body.code,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+        scope: 'openid profile email',
+      }).toString(),
+    });
+    if (!tokenResponse.ok) {
+      const err = await tokenResponse.text();
+      console.error('Azure AD token exchange failed:', err);
+      return c.json({ error: 'SSO authentication failed' }, 401);
+    }
+    const tokenData = await tokenResponse.json() as { id_token?: string; access_token?: string };
+    if (!tokenData.id_token) {
+      return c.json({ error: 'No ID token returned from Azure AD' }, 401);
+    }
+    const idTokenParts = tokenData.id_token.split('.');
+    if (idTokenParts.length !== 3) {
+      return c.json({ error: 'Invalid ID token format' }, 401);
+    }
+    try {
+      const padded = idTokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
+      idPayload = JSON.parse(decoded);
+    } catch {
+      return c.json({ error: 'Failed to decode ID token' }, 401);
+    }
   }
 
   const ssoEmail = (idPayload.email || idPayload.preferred_username || '').toLowerCase();
