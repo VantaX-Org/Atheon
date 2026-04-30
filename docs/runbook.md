@@ -37,8 +37,30 @@ npx wrangler rollback
 
 ### 2.1 Run Migrations
 
-Migrations run automatically on first request via `ensureMigrated()`.
-To force a migration bump, increment `CURRENT_VERSION` in `workers/api/src/services/migrate.ts`.
+Migrations run automatically on the first request after a `MIGRATION_VERSION` bump via the auto-migration middleware in `workers/api/src/index.ts`. Subsequent requests short-circuit on the `db:migrated:<version>` KV flag.
+
+**Bounding contract** (added 2026-04-30 after the v56-stripe-checkout outage):
+- The middleware races the migration against a 25-second hard timeout and takes a 60-second KV lease (`db:migrating:<version>`) so concurrent requests don't all attempt migration in parallel.
+- On timeout: the version flag becomes `'timeout'`, all subsequent `/api/*` requests return 503 with `reason: 'timeout'` for 5 min until an operator runs migration manually.
+- On unexpected error: the flag becomes `'error'` (same 5-min window).
+- During an active lease: requests return 503 with `reason: 'migration_in_progress'`.
+
+**Recovery — auto-migration timed out**:
+
+```bash
+# Trigger a manual migration via the admin endpoint (no time bound).
+# X-Setup-Secret must match wrangler secret SETUP_SECRET.
+curl -X POST https://atheon-api.vantax.co.za/api/v1/admin/migrate \
+  -H "X-Setup-Secret: $(wrangler secret list | grep SETUP_SECRET | awk ...)"
+
+# OR: if the migration's already known to have applied (column heals are
+# idempotent and most are already there), unblock production by setting
+# the version flag to 'true' directly:
+npx wrangler kv key put "db:migrated:<version>" "true" \
+  --binding CACHE --remote --ttl 86400
+```
+
+To force a migration bump, increment `MIGRATION_VERSION` in `workers/api/src/services/migrate.ts`. New schema goes in `columnsToHeal` (idempotent ALTER TABLE) for additive changes; full table creates go in the `coreTableSQL` block.
 
 ### 2.2 Manual Queries
 

@@ -167,9 +167,24 @@ app.post('/api/v1/license-status/refresh', async (c) => {
 // entry point; the legacy auto-migration middleware below provides backward compat.
 
 // ── Auto-Migration + Guard Middleware ──
-// On first request: runs migrations automatically (backward compat).
-// Once KV flag is set, subsequent requests skip migration.
-// Returns 503 only if migration was attempted and failed.
+// On first request after a MIGRATION_VERSION bump, runs migrations
+// automatically (backward compat). Once the KV flag is set, subsequent
+// requests skip migration and pass through to next().
+//
+// Bounding contract (post-2026-04-30 prod incident):
+//   - First request takes a "running" lease on a KV lock key (60s TTL)
+//   - Concurrent requests that see the lease return 503 immediately
+//     instead of stacking up behind a slow migration
+//   - The lease-holder bounds the migration with AUTO_MIGRATE_TIMEOUT_MS
+//     (default 25s — under Cloudflare's 30s request limit). On timeout
+//     we mark KV='timeout' so subsequent requests stop retrying, and
+//     return 503 with a hint to call POST /api/v1/admin/migrate.
+//   - Operators recover by calling /admin/migrate (no time bound) or by
+//     setting the migrated flag manually if the schema is known-good.
+const AUTO_MIGRATE_TIMEOUT_MS = 25_000;
+const AUTO_MIGRATE_LEASE_TTL_S = 60;
+const AUTO_MIGRATE_ERROR_TTL_S = 300;
+
 app.use('*', async (c, next) => {
   const path = c.req.path;
   if (path === '/healthz' || path === '/' || path.includes('/admin/migrate') || path.includes('/admin/setup')) {
@@ -178,35 +193,71 @@ app.use('*', async (c, next) => {
   }
 
   const migrationKey = `db:migrated:${MIGRATION_VERSION}`;
+  const leaseKey = `db:migrating:${MIGRATION_VERSION}`;
   const alreadyMigrated = await c.env.CACHE.get(migrationKey);
 
   if (alreadyMigrated === 'true') {
-    // Already migrated — proceed
     await next();
     return;
   }
 
-  if (alreadyMigrated === 'error') {
-    // Previous migration attempt failed — return 503
+  if (alreadyMigrated === 'error' || alreadyMigrated === 'timeout') {
     return c.json({
       error: 'Service unavailable',
-      message: 'Database migration failed. Call POST /api/v1/admin/migrate to retry.',
+      message: alreadyMigrated === 'timeout'
+        ? 'Database migration exceeded the auto-migration timeout. Call POST /api/v1/admin/migrate to complete it.'
+        : 'Database migration failed. Call POST /api/v1/admin/migrate to retry.',
       version: MIGRATION_VERSION,
+      reason: alreadyMigrated,
     }, 503);
   }
 
-  // No flag yet — attempt auto-migration (legacy backward compat)
-  try {
-    await runMigrations(c.env.DB);
-    await c.env.CACHE.put(migrationKey, 'true', { expirationTtl: 86400 });
-  } catch (e) {
-    console.error('Auto-migration error:', e);
-    await c.env.CACHE.put(migrationKey, 'error', { expirationTtl: 300 });
+  // Acquire a short-lived lease so concurrent requests don't all attempt
+  // migration in parallel. KV doesn't have native CAS — but a short-TTL
+  // get/put pair is sufficient: at most one request "loses" by writing
+  // its lease milliseconds after another, and migrations are idempotent.
+  const existingLease = await c.env.CACHE.get(leaseKey);
+  if (existingLease) {
     return c.json({
       error: 'Service unavailable',
-      message: 'Database migration failed on first request. Call POST /api/v1/admin/migrate to retry.',
+      message: 'Database migration in progress on another request — retry shortly.',
       version: MIGRATION_VERSION,
+      reason: 'migration_in_progress',
     }, 503);
+  }
+  await c.env.CACHE.put(leaseKey, '1', { expirationTtl: AUTO_MIGRATE_LEASE_TTL_S });
+
+  // Race the migration against a hard timeout. If the timeout wins, we
+  // mark the version key as 'timeout' so subsequent requests fail fast
+  // with a clear operator-actionable message instead of stacking up.
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('auto_migrate_timeout')), AUTO_MIGRATE_TIMEOUT_MS);
+  });
+
+  try {
+    await Promise.race([runMigrations(c.env.DB), timeoutPromise]);
+    await c.env.CACHE.put(migrationKey, 'true', { expirationTtl: 86400 });
+  } catch (e) {
+    const isTimeout = e instanceof Error && e.message === 'auto_migrate_timeout';
+    console.error(isTimeout ? 'Auto-migration timed out' : 'Auto-migration error:', e);
+    await c.env.CACHE.put(
+      migrationKey,
+      isTimeout ? 'timeout' : 'error',
+      { expirationTtl: AUTO_MIGRATE_ERROR_TTL_S },
+    );
+    return c.json({
+      error: 'Service unavailable',
+      message: isTimeout
+        ? 'Database migration exceeded the auto-migration timeout. Call POST /api/v1/admin/migrate to complete it.'
+        : 'Database migration failed on first request. Call POST /api/v1/admin/migrate to retry.',
+      version: MIGRATION_VERSION,
+      reason: isTimeout ? 'timeout' : 'error',
+    }, 503);
+  } finally {
+    // Release the lease whether we succeeded or failed — successful
+    // migrations don't need the lease (migrationKey='true' short-circuits)
+    // and failed ones write their state into migrationKey directly.
+    await c.env.CACHE.delete(leaseKey).catch(() => { /* non-fatal */ });
   }
 
   await next();
