@@ -128,47 +128,59 @@ export function ExecutiveSummaryPage() {
         }
       />
 
-      {/* Top row: Atheon Score + Health Score + Journey */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-5 flex flex-col items-center justify-center">
-          <p className="text-label mb-2">Atheon Score</p>
-          <ScoreRing score={data.atheonScore} size="lg" />
-          <p className="text-caption t-muted mt-3">Composite across 5 pillars</p>
-        </Card>
-        <Card className="p-5 flex flex-col items-center justify-center">
-          <p className="text-label mb-2">Health Score</p>
-          <ScoreRing score={data.healthScore} size="lg" />
-          {trendValues.length > 1 && (
-            <div className="mt-3 w-full">
-              <Sparkline data={trendValues} width={120} height={28} />
-              <p className="text-caption t-muted text-center mt-1">Last {trendValues.length} points</p>
+      {/* Wave H-3: The page is named "Executive summary" — the Atheon
+          Score IS its anchor metric. The previous 3-equal-card grid
+          (Atheon / Health / Journey) gave every score the same visual
+          rank, which dilutes the executive read. Promoted Atheon Score
+          to a .card-hero anchor with the score number set in .text-hero
+          (44px tabular-num) next to the ring; Health Score + Journey
+          demoted to a supporting ledger column on the right. */}
+      <div className="card-hero p-7 md:p-8" data-testid="exec-summary-hero">
+        <p className="hero-eyebrow flex items-center gap-2 mb-4">
+          <TrendingUp size={11} aria-hidden="true" />
+          Atheon Score · Composite
+        </p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="flex items-center gap-5 min-w-0">
+            <ScoreRing score={data.atheonScore} size="lg" />
+            <div className="min-w-0">
+              <p className="text-hero t-primary leading-none">{data.atheonScore ?? '—'}</p>
+              <p className="text-body-sm t-muted mt-2">Composite across 5 health pillars</p>
             </div>
-          )}
-        </Card>
-        <Card className="p-5">
-          <p className="text-label mb-2">Journey</p>
-          {data.journey?.baselineHealthScore !== null ? (
-            <>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold t-primary">
-                  {improvement !== null && improvement !== undefined && improvement > 0 ? '+' : ''}{improvement ?? 0}
-                </span>
-                {improvementIcon}
+          </div>
+          <div className="md:text-right shrink-0 grid grid-cols-2 md:grid-cols-1 gap-4 md:gap-3">
+            <div className="md:flex md:items-center md:justify-end md:gap-3">
+              <div className="md:order-2 md:text-right">
+                <p className="text-caption uppercase tracking-wider t-muted">Health</p>
+                <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">{data.healthScore ?? '—'}</p>
+                {trendValues.length > 1 && (
+                  <p className="text-caption t-muted mt-0.5">trend · last {trendValues.length} pts</p>
+                )}
               </div>
-              <p className="text-xs t-muted mt-1">vs baseline of {data.journey.baselineHealthScore}</p>
-              {data.journey.baselineDate && (
-                <p className="text-caption t-muted mt-1">
-                  Day zero: {new Date(data.journey.baselineDate).toLocaleDateString()}
-                </p>
+              {trendValues.length > 1 && (
+                <div className="md:order-1 mt-1.5 md:mt-0">
+                  <Sparkline data={trendValues} width={96} height={24} />
+                </div>
               )}
-            </>
-          ) : (
-            <>
-              <Minus className="w-6 h-6 t-muted mb-2" />
-              <p className="text-xs t-muted">No baseline captured yet — the &ldquo;day zero&rdquo; snapshot will appear once onboarding completes.</p>
-            </>
-          )}
-        </Card>
+            </div>
+            <div>
+              <p className="text-caption uppercase tracking-wider t-muted">Journey</p>
+              {data.journey?.baselineHealthScore !== null && data.journey?.baselineHealthScore !== undefined ? (
+                <>
+                  <div className="flex items-baseline md:justify-end gap-1.5 mt-0.5">
+                    <span className="text-headline-md font-semibold t-primary tabular-nums font-mono">
+                      {improvement !== null && improvement !== undefined && improvement > 0 ? '+' : ''}{improvement ?? 0}
+                    </span>
+                    {improvementIcon}
+                  </div>
+                  <p className="text-caption t-muted mt-0.5">vs baseline {data.journey.baselineHealthScore}</p>
+                </>
+              ) : (
+                <p className="text-body-sm t-muted mt-0.5">No baseline captured</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Financial + Diagnostic KPIs */}
