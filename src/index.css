@@ -85,13 +85,31 @@
     --neg: #b03423;
     --neg-rgb: 176, 52, 35;
 
-    /* ── Elevation — flat; shadow only on true overlays ── */
-    --shadow-xs: none;
-    --shadow-card: none;
-    --shadow-card-hover: none;
+    /* ── Elevation — 5-tier Material scale ──────────────
+       Canonical depth tokens. Use the semantic aliases below
+       (--shadow-card, --shadow-raised, --shadow-dropdown,
+       --shadow-modal) in components. Numeric tokens exist for
+       components that need a specific tier explicitly.
+       Tier mapping:
+         elev-0 — flat surface (page bg, table rows)
+         elev-1 — cards, panels (near-flat for Swiss Calm)
+         elev-2 — raised buttons, popovers, onboarding cards
+         elev-3 — drawers, sheets, dropdowns
+         elev-4 — modals, dialogs (highest layer below toast) */
+    --elev-0: none;
+    --elev-1: 0 1px 2px rgba(15, 17, 21, 0.04);
+    --elev-2: 0 2px 8px rgba(15, 17, 21, 0.08);
+    --elev-3: 0 16px 40px rgba(15, 17, 21, 0.14);
+    --elev-4: 0 24px 60px rgba(15, 17, 21, 0.18);
+
+    /* Semantic aliases (preferred for component-level usage) */
+    --shadow-xs: var(--elev-1);
+    --shadow-card: var(--elev-0);          /* cards stay flat per Swiss Calm */
+    --shadow-card-hover: var(--elev-1);    /* subtle lift on hover */
+    --shadow-raised: var(--elev-2);
     --shadow-glass: none;
-    --shadow-dropdown: 0 16px 40px rgba(15, 17, 21, 0.14);
-    --shadow-modal: 0 24px 60px rgba(15, 17, 21, 0.18);
+    --shadow-dropdown: var(--elev-3);
+    --shadow-modal: var(--elev-4);
 
     /* ── Overlay (floating layers only) ────────────────── */
     --overlay-bg: rgba(255, 255, 255, 0.82);

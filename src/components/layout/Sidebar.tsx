@@ -409,7 +409,7 @@ export function Sidebar() {
           'fixed left-0 top-0 h-full z-50 flex flex-col transition-transform duration-300 w-72 md:hidden',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
-        style={{ background: 'var(--bg-modal)', borderRight: '1px solid var(--border-card)', boxShadow: '2px 0 16px rgba(28, 25, 23, 0.10)' }}
+        style={{ background: 'var(--bg-modal)', borderRight: '1px solid var(--border-card)', boxShadow: 'var(--shadow-dropdown)' }}
         role="navigation"
         aria-label="Mobile navigation"
         aria-hidden={!mobileSidebarOpen}

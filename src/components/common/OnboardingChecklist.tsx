@@ -57,7 +57,7 @@ export function OnboardingChecklist() {
   return (
     <div
       className="rounded-md overflow-hidden mb-5"
-      style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)', boxShadow: '0 2px 12px rgba(100, 120, 180, 0.07)' }}
+      style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)', boxShadow: 'var(--shadow-raised)' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: collapsed ? 'none' : '1px solid var(--border-card)' }}>
