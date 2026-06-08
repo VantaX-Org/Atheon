@@ -335,7 +335,10 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3" aria-label="Primary navigation">
-        <ul className="space-y-0.5">
+        {/* Wave H-2: section spacing lifted from `space-y-0.5` (sections bled
+            together) to `space-y-2`. Gives each Stitch IA section its own
+            visual block, restores the breathing room executives expect. */}
+        <ul className="space-y-2">
           {sectionsForRender.map(({ section, visible }) => (
             <li key={section.key}>
               <SidebarSection

@@ -199,20 +199,24 @@ export function Header() {
 
         <div className="hidden lg:block flex-shrink-0 w-8" />
 
-        {/* Company Selector for Platform Admins */}
+        {/* Company Selector for Platform Admins.
+            Wave H-2: promoted from secondary chip to header anchor — the
+            active tenant is the most-glanced piece of context in a
+            multi-tenant product, so it gets a 2px accent left-rule, taller
+            padding, and a slightly heavier label than the surrounding chips. */}
         {isPlatformAdmin && tenants.length > 0 ? (
           <div className="relative" ref={companyDropdownRef}>
             <button
               onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md cursor-pointer hover:bg-[var(--bg-tertiary)] transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
+              className="flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-md cursor-pointer hover:bg-[var(--bg-tertiary)] transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)', borderLeft: '2px solid var(--accent)' }}
               title="Switch company"
             >
-              <Building2 size={12} className="flex-shrink-0 t-muted" />
-              <span className="text-caption font-medium t-secondary truncate max-w-[180px]">
+              <Building2 size={13} className="flex-shrink-0" style={{ color: 'var(--accent)' }} />
+              <span className="text-body-sm font-semibold t-primary truncate max-w-[200px] tracking-tight">
                 {activeTenantName || user?.tenantName || 'Select Company'}
               </span>
-              <ChevronDown size={10} className="flex-shrink-0 t-muted" />
+              <ChevronDown size={11} className="flex-shrink-0 t-muted" />
             </button>
 
             {showCompanyDropdown && (
@@ -254,19 +258,26 @@ export function Header() {
             )}
           </div>
         ) : user?.tenantName ? (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}>
+          /* Wave H-2: same anchor treatment as the platform-admin switcher
+             above — accent left-rule, body-sm semibold label — so the
+             "which company am I in?" signal reads consistently across
+             both surfaces. */
+          <div
+            className="flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-md"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)', borderLeft: '2px solid var(--accent)' }}
+          >
             {/* Whitelabel — render the tenant's logo when set, otherwise the
                 generic Building2 icon. nameOverride wins over tenants.name. */}
             {user.brand?.logoUrl ? (
               <img
                 src={user.brand.logoUrl}
                 alt={user.brand?.nameOverride || user.tenantName}
-                className="h-3 w-auto max-w-[24px] flex-shrink-0 object-contain"
+                className="h-3.5 w-auto max-w-[28px] flex-shrink-0 object-contain"
               />
             ) : (
-              <Building2 size={12} className="flex-shrink-0 t-muted" />
+              <Building2 size={13} className="flex-shrink-0" style={{ color: 'var(--accent)' }} />
             )}
-            <span className="text-caption font-medium t-secondary truncate max-w-[180px]">
+            <span className="text-body-sm font-semibold t-primary truncate max-w-[200px] tracking-tight">
               {user.brand?.nameOverride || user.tenantName}
             </span>
           </div>
