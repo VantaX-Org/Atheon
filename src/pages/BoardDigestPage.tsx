@@ -111,17 +111,22 @@ export default function BoardDigestPage(): JSX.Element {
         dek="Quarterly outcomes — shared-savings, health, risk"
       />
 
-      {/* Shared-savings hero — this IS the purchase decision in one tile.
-          R0 until you save R1, presented as a single readable line. */}
-      <Card className="p-6" style={{ background: 'rgb(var(--accent-rgb) / 0.05)', borderColor: 'rgb(var(--accent-rgb) / 0.25)' }}>
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={18} style={{ color: 'var(--accent)' }} />
-          <h2 className="text-headline-md font-semibold t-primary">Shared-savings to date</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-caption uppercase tracking-wider t-muted">Recovered for the business</div>
+      {/* Wave H-3: Board-level anchor. The 3-column equal-weight grid
+          previously gave Recovered / Billed / Multiple the same visual
+          rank — but the board only cares about ONE number ("how much
+          did we recover?"). Promoted Recovered to .text-hero (44px
+          tabular-num) and demoted Billed + Multiple to a supporting
+          ledger on the right. Preserved every MetricSource provenance
+          link — auditors must still be able to inspect any figure. */}
+      <div className="card-hero p-7 md:p-8" data-testid="board-digest-hero">
+        <p className="hero-eyebrow flex items-center gap-2 mb-3">
+          <TrendingUp size={11} aria-hidden="true" />
+          Shared Savings · Lifetime
+        </p>
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <p className="text-hero t-primary">{formatCurrency(recovered, currency)}</p>
               <MetricSource source={{
                 ...baseProvenance,
                 label: 'Total realised savings',
@@ -132,37 +137,39 @@ export default function BoardDigestPage(): JSX.Element {
                 notes: [{ label: 'Currency', value: currency }],
               }} />
             </div>
-            <p className="text-headline-xl font-bold tabular-nums font-mono mt-1 text-accent">{formatCurrency(recovered, currency)}</p>
+            <p className="text-body-sm t-muted">Recovered for the business since first sync</p>
           </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-caption uppercase tracking-wider t-muted">Atheon billed to date</div>
-              <MetricSource source={{
-                ...baseProvenance,
-                label: 'Atheon revenue (shared-savings share)',
-                definition: 'Atheon revenue invoiced under the shared-savings model: contracted % × realised savings. Customer banks the savings first; Atheon bills after.',
-                table: 'billable_periods',
-                endpoint: 'GET /api/insights-stats/billing/summary',
-                query: 'SUM(atheon_revenue_zar) FROM billable_periods',
-                notes: [{ label: 'Model', value: 'shared-savings (no upfront fee)' }],
-              }} />
+          <div className="md:text-right shrink-0 grid grid-cols-2 md:grid-cols-1 gap-3 md:gap-2">
+            <div>
+              <div className="flex items-center md:justify-end gap-1.5">
+                <span className="text-caption uppercase tracking-wider t-muted">Atheon billed</span>
+                <MetricSource source={{
+                  ...baseProvenance,
+                  label: 'Atheon revenue (shared-savings share)',
+                  definition: 'Atheon revenue invoiced under the shared-savings model: contracted % × realised savings. Customer banks the savings first; Atheon bills after.',
+                  table: 'billable_periods',
+                  endpoint: 'GET /api/insights-stats/billing/summary',
+                  query: 'SUM(atheon_revenue_zar) FROM billable_periods',
+                  notes: [{ label: 'Model', value: 'shared-savings (no upfront fee)' }],
+                }} />
+              </div>
+              <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">{formatCurrency(billed, currency)}</p>
             </div>
-            <p className="text-headline-xl font-bold t-primary tabular-nums font-mono mt-1">{formatCurrency(billed, currency)}</p>
-          </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-caption uppercase tracking-wider t-muted">ROI multiple</div>
-              <MetricSource source={{
-                ...baseProvenance,
-                label: 'ROI multiple',
-                definition: 'Recovered ÷ billed. The headline outcome metric the audit committee tracks each quarter.',
-                query: 'total_realised_savings / NULLIF(total_atheon_revenue, 0)',
-              }} />
+            <div>
+              <div className="flex items-center md:justify-end gap-1.5">
+                <span className="text-caption uppercase tracking-wider t-muted">ROI multiple</span>
+                <MetricSource source={{
+                  ...baseProvenance,
+                  label: 'ROI multiple',
+                  definition: 'Recovered ÷ billed. The headline outcome metric the audit committee tracks each quarter.',
+                  query: 'total_realised_savings / NULLIF(total_atheon_revenue, 0)',
+                }} />
+              </div>
+              <p className="text-headline-md font-semibold text-accent tabular-nums font-mono mt-0.5">{multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}</p>
             </div>
-            <p className="text-headline-xl font-bold tabular-nums font-mono mt-1 text-accent">{multiple > 0 ? `${multiple.toFixed(1)}x` : '—'}</p>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Business health + risk + anomaly summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
