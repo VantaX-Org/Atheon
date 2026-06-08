@@ -174,33 +174,41 @@ function ExecutiveBriefHero({
     .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))[0];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 stagger" data-testid="apex-brief-hero">
-      {/* ── Health ── */}
-      <Card className="p-5 cursor-pointer hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]" onClick={() => onJumpToTab('health')}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Crown className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold t-primary">Atheon Score</h3>
-          </div>
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 stagger" data-testid="apex-brief-hero">
+      {/* Wave H-3: Apex's anchor metric is the Atheon Score — the briefing
+          existed to surface "where are we?". Previous 3-equal-card grid
+          (Score / Risks / Signal) gave them all the same visual rank.
+          Promoted Atheon Score to a .card-hero, span 2 cols, with the
+          score number set in .text-hero (44px tabular-num); risks +
+          signal demoted to 1-col supporting cards. */}
+      <div
+        className="card-hero p-7 md:p-8 md:col-span-2 cursor-pointer hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
+        onClick={() => onJumpToTab('health')}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <p className="hero-eyebrow flex items-center gap-2">
+            <Crown className="w-3 h-3" />
+            Atheon Score · Composite
+          </p>
           {delta !== null && (
-            <span className="text-xs font-medium font-mono tnum" style={{ color: deltaPositive ? 'var(--positive)' : (delta ?? 0) < 0 ? 'var(--neg)' : undefined }}>
+            <span className="text-caption font-medium font-mono tnum" style={{ color: deltaPositive ? 'var(--positive)' : (delta ?? 0) < 0 ? 'var(--neg)' : undefined }}>
               {deltaPositive ? '+' : ''}{delta} pts
             </span>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           <ScoreRing score={overall} size="md" />
           <div className="flex-1 min-w-0">
-            <div className="text-3xl font-semibold t-primary leading-none tabular-nums font-mono">{Math.round(overall)}</div>
-            <div className="text-xs t-muted mt-1">
+            <div className="text-hero t-primary">{Math.round(overall)}</div>
+            <div className="text-body-sm t-muted mt-1">
               {overall >= 80 ? 'Strong posture' : overall >= 60 ? 'Mixed posture' : overall > 0 ? 'Action required' : 'Awaiting data'}
             </div>
             {histPoints.length >= 2 && (
-              <div className="mt-2"><Sparkline data={histPoints} width={120} height={20} /></div>
+              <div className="mt-2"><Sparkline data={histPoints} width={140} height={22} /></div>
             )}
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* ── Top Risks ── */}
       <Card className="p-5 cursor-pointer hover:border-[var(--border-card)] hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]" onClick={() => onJumpToTab('risks')}>
