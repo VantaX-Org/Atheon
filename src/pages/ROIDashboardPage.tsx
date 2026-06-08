@@ -23,7 +23,6 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
-import { SharedSavingsStrip } from '@/components/SharedSavingsStrip';
 import { TrendingUp, Shield, Activity, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import type {
@@ -109,84 +108,113 @@ export default function ROIDashboardPage(): JSX.Element {
 
   return (
     <div className="p-6 space-y-6">
-      <SharedSavingsStrip />
       <PageHeader
         eyebrow="Value · ROI"
         title="ROI Dashboard"
         dek="Financial Proof & Inference Calibration"
       />
 
-      {/* Billing summary — Stitch financial-proof tile pattern */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp size={18} style={{ color: 'var(--accent)' }} />
-          <h2 className="text-headline-md font-semibold t-primary">Shared-savings billing</h2>
-        </div>
-        {billing ? (() => {
-          const billingBase: Partial<MetricProvenance> = {
-            endpoint: 'GET /api/insights-stats/billing/summary',
-            refreshedAt: loadedAt,
-            window: 'All elapsed billable periods',
-          };
-          return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
-              <div className="flex items-center justify-between">
-                <div className="text-caption uppercase tracking-wider t-muted">Periods invoiced</div>
-                <MetricSource source={{
-                  ...billingBase,
-                  label: 'Periods invoiced',
-                  definition: 'Number of distinct billing periods that have completed and produced an invoice line.',
-                  table: 'billable_periods',
-                  query: 'COUNT(*) FROM billable_periods WHERE tenant_id = ? AND status IN (graded, invoiced)',
-                  sample: billing.periods_count,
-                }} />
+      {/* Wave H-3: ROI's anchor IS the realised-savings figure — the whole
+          page exists to prove "you banked R{X} before we billed you R{Y}".
+          Removed the slim SharedSavingsStrip (was redundant — strip and
+          billing card surfaced the same data). Promoted the realised-
+          savings figure to .text-hero with Periods/Atheon share/Multiple
+          as supporting metrics in the ledger column. */}
+      {billing ? (() => {
+        const billingBase: Partial<MetricProvenance> = {
+          endpoint: 'GET /api/insights-stats/billing/summary',
+          refreshedAt: loadedAt,
+          window: 'All elapsed billable periods',
+        };
+        const multiple = billing.total_atheon_revenue > 0
+          ? billing.total_realised_savings / billing.total_atheon_revenue
+          : 0;
+        return (
+          <div className="card-hero p-7 md:p-8" data-testid="roi-hero">
+            <p className="hero-eyebrow flex items-center gap-2 mb-3">
+              <TrendingUp size={11} aria-hidden="true" />
+              Shared-Savings · Lifetime
+            </p>
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2 mb-1.5">
+                  <p className="text-hero t-primary">{formatCurrency(billing.total_realised_savings, billing.currency)}</p>
+                  <MetricSource source={{
+                    ...billingBase,
+                    label: 'Total realised savings',
+                    definition: 'Cumulative sum of operator-confirmed savings across every closed billing period. Each Rand traces to an ERP record via the catalyst action that produced it.',
+                    table: 'billable_periods',
+                    query: 'SUM(realised_savings_zar) FROM billable_periods WHERE tenant_id = ? AND status = graded',
+                    notes: [
+                      { label: 'Currency', value: billing.currency },
+                      { label: 'Trace', value: 'every Rand → catalyst_actions.value_zar → source_finding_id' },
+                    ],
+                    drillTo: '/action-layer?status=completed',
+                  }} />
+                </div>
+                <p className="text-body-sm t-muted">Recovered for the business across every elapsed billing period</p>
               </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{billing.periods_count}</p>
-            </div>
-            <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
-              <div className="flex items-center justify-between">
-                <div className="text-caption uppercase tracking-wider t-muted">Total realised savings</div>
-                <MetricSource source={{
-                  ...billingBase,
-                  label: 'Total realised savings',
-                  definition: 'Cumulative sum of operator-confirmed savings across every closed billing period. Each Rand traces to an ERP record via the catalyst action that produced it.',
-                  table: 'billable_periods',
-                  query: 'SUM(realised_savings_zar) FROM billable_periods WHERE tenant_id = ? AND status = graded',
-                  notes: [
-                    { label: 'Currency', value: billing.currency },
-                    { label: 'Trace', value: 'every Rand → catalyst_actions.value_zar → source_finding_id' },
-                  ],
-                  drillTo: '/action-layer?status=completed',
-                }} />
+              <div className="md:text-right shrink-0 grid grid-cols-3 md:grid-cols-1 gap-3 md:gap-2">
+                <div>
+                  <div className="flex items-center md:justify-end gap-1.5">
+                    <span className="text-caption uppercase tracking-wider t-muted">Periods</span>
+                    <MetricSource source={{
+                      ...billingBase,
+                      label: 'Periods invoiced',
+                      definition: 'Number of distinct billing periods that have completed and produced an invoice line.',
+                      table: 'billable_periods',
+                      query: 'COUNT(*) FROM billable_periods WHERE tenant_id = ? AND status IN (graded, invoiced)',
+                      sample: billing.periods_count,
+                    }} />
+                  </div>
+                  <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">{billing.periods_count}</p>
+                </div>
+                <div>
+                  <div className="flex items-center md:justify-end gap-1.5">
+                    <span className="text-caption uppercase tracking-wider t-muted">Atheon share</span>
+                    <MetricSource source={{
+                      ...billingBase,
+                      label: 'Atheon revenue (shared-savings share)',
+                      definition: 'Atheon revenue from the shared-savings billing model: contracted share % × realised savings. Every Rand here is a Rand the customer banked in their ERP first.',
+                      table: 'billable_periods',
+                      query: 'SUM(atheon_revenue_zar) FROM billable_periods WHERE tenant_id = ?',
+                      notes: [
+                        { label: 'Currency', value: billing.currency },
+                        { label: 'Model', value: 'shared-savings (contracted %)' },
+                      ],
+                    }} />
+                  </div>
+                  <p className="text-headline-md font-semibold text-accent tabular-nums font-mono mt-0.5">
+                    {formatCurrency(billing.total_atheon_revenue, billing.currency)}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center md:justify-end gap-1.5">
+                    <span className="text-caption uppercase tracking-wider t-muted">Multiple</span>
+                    <MetricSource source={{
+                      ...billingBase,
+                      label: 'ROI multiple',
+                      definition: 'Recovered ÷ billed. The headline outcome metric the audit committee tracks each quarter.',
+                      query: 'total_realised_savings / NULLIF(total_atheon_revenue, 0)',
+                    }} />
+                  </div>
+                  <p className="text-headline-md font-semibold text-accent tabular-nums font-mono mt-0.5">
+                    {multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
+                  </p>
+                </div>
               </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">
-                {formatCurrency(billing.total_realised_savings, billing.currency)}
-              </p>
-            </div>
-            <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
-              <div className="flex items-center justify-between">
-                <div className="text-caption uppercase tracking-wider t-muted">Atheon share</div>
-                <MetricSource source={{
-                  ...billingBase,
-                  label: 'Atheon revenue (shared-savings share)',
-                  definition: 'Atheon revenue from the shared-savings billing model: contracted share % × realised savings. Every Rand here is a Rand the customer banked in their ERP first.',
-                  table: 'billable_periods',
-                  query: 'SUM(atheon_revenue_zar) FROM billable_periods WHERE tenant_id = ?',
-                  notes: [
-                    { label: 'Currency', value: billing.currency },
-                    { label: 'Model', value: 'shared-savings (contracted %)' },
-                  ],
-                }} />
-              </div>
-              <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">
-                {formatCurrency(billing.total_atheon_revenue, billing.currency)}
-              </p>
             </div>
           </div>
-          );
-        })() : <div className="text-sm t-muted">No billing data yet.</div>}
-      </Card>
+        );
+      })() : (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp size={18} style={{ color: 'var(--accent)' }} />
+            <h2 className="text-headline-md font-semibold t-primary">Shared-savings billing</h2>
+          </div>
+          <div className="text-sm t-muted">No billing data yet.</div>
+        </Card>
+      )}
 
       {/* Forecast accuracy */}
       <Card className="p-6">
