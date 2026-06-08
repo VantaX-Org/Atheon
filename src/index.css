@@ -364,6 +364,56 @@
   }
   .card-accent:hover { border-color: rgb(var(--accent-rgb) / 0.5); }
 
+  /* `.card-hero` — the one anchor card per screen. Sage wash, taller padding,
+     accent left-rule, larger interior breathing room. Reserve for the page's
+     dominant metric (e.g. Shared Savings on Dashboard, Recovered $ on
+     BoardDigest, Health Score on Apex). Never render two on a single screen. */
+  .card-hero {
+    background:
+      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.06) 0%, rgb(var(--accent-rgb) / 0.02) 60%, transparent 100%),
+      var(--bg-card);
+    border: 1px solid rgb(var(--accent-rgb) / 0.22);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+  }
+
+  /* `.card-prominent` — tier between `.card-swiss` and `.card-hero`. Slightly
+     deeper background tint and accent border, but no left-rule. Use for the
+     2-3 board-level metrics that ride alongside (not above) the hero. */
+  .card-prominent {
+    background: var(--bg-card);
+    border: 1px solid rgb(var(--accent-rgb) / 0.16);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+  }
+  .card-prominent:hover { border-color: rgb(var(--accent-rgb) / 0.32); }
+
+  /* `.hero-eyebrow` — uppercase tracked label that sits above a hero number.
+     Same metrics as .text-label but coloured for the sage hero band. */
+  .hero-eyebrow {
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* `.text-hero` — the single dominant number on a screen. Larger than
+     .text-display so it actually anchors the page. Always paired with
+     .hero-eyebrow above and an explanatory dek below. */
+  .text-hero {
+    font-size: 44px;
+    line-height: 1.05;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
   /* Legacy aliases — keep until the page-rollout phases migrate direct
      className references off them. All resolve to the Swiss surface. */
   .card-glass, .card-dark, .card-black, .card-mint { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius); box-shadow: var(--shadow-card); transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out); }
