@@ -705,11 +705,14 @@ async function performMutationAction(task: TaskDefinition, db: D1Database): Prom
 
 export async function approveAction(
   actionId: string,
+  tenantId: string,
   approvedBy: string,
   db: D1Database,
   cache: KVNamespace,
 ): Promise<TaskResult> {
-  const action = await db.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(actionId).first();
+  // Tenant-scoped lookup: any caller from another tenant gets the same "not found" error
+  // as a non-existent action, preventing cross-tenant approval of HITL actions.
+  const action = await db.prepare('SELECT * FROM catalyst_actions WHERE id = ? AND tenant_id = ?').bind(actionId, tenantId).first();
   if (!action) throw new Error('Action not found');
 
   // Execute the approved action. When the original pending action carried a
@@ -734,8 +737,8 @@ export async function approveAction(
   const output = await performAction(task, db);
 
   await db.prepare(
-    'UPDATE catalyst_actions SET status = ?, approved_by = ?, output_data = ?, completed_at = datetime(\'now\') WHERE id = ?'
-  ).bind('approved', approvedBy, JSON.stringify(output), actionId).run();
+    'UPDATE catalyst_actions SET status = ?, approved_by = ?, output_data = ?, completed_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+  ).bind('approved', approvedBy, JSON.stringify(output), actionId, tenantId).run();
 
   // Clean up cached approval
   await cache.delete(`approval:${actionId}`);
@@ -749,14 +752,17 @@ export async function approveAction(
 
 export async function rejectAction(
   actionId: string,
+  tenantId: string,
   rejectedBy: string,
   reason: string,
   db: D1Database,
   cache: KVNamespace,
 ): Promise<void> {
-  await db.prepare(
-    'UPDATE catalyst_actions SET status = ?, approved_by = ?, output_data = ?, completed_at = datetime(\'now\') WHERE id = ?'
-  ).bind('rejected', rejectedBy, JSON.stringify({ rejectionReason: reason }), actionId).run();
+  const result = await db.prepare(
+    'UPDATE catalyst_actions SET status = ?, approved_by = ?, output_data = ?, completed_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+  ).bind('rejected', rejectedBy, JSON.stringify({ rejectionReason: reason }), actionId, tenantId).run();
+
+  if (!result.meta.changes) throw new Error('Action not found');
 
   await cache.delete(`approval:${actionId}`);
 }

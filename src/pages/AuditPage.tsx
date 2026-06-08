@@ -6,6 +6,7 @@ import type { AuditEntry } from "@/lib/api";
 import { Shield, CheckCircle, XCircle, Clock, Filter, Download, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AsyncPageContent, statusFrom } from "@/components/ui/async";
+import { EmptyState } from "@/components/ui/state";
 import { useToast } from "@/components/ui/toast";
 import { ProvenanceVerifyPanel } from "@/components/ProvenanceVerifyPanel";
 import { PageHeader } from "@/components/ui/page-header";
@@ -241,22 +242,20 @@ export function AuditPage() {
  {/* Audit ledger */}
  {entries.length === 0 ? (
  <Card>
- <div className="flex flex-col items-center justify-center py-16">
- <Shield className="w-10 h-10 t-muted mb-3 opacity-40" />
- <p className="text-sm font-medium t-primary">No audit entries found</p>
- <p className="text-xs t-muted mt-1">Audit events will appear here as actions are performed across Atheon.</p>
- </div>
+ <EmptyState
+ icon={Shield}
+ title="No audit entries found"
+ description="Audit events will appear here as actions are performed across Atheon."
+ />
  </Card>
  ) : filteredEntries.length === 0 ? (
  <Card>
- <div className="flex flex-col items-center justify-center py-16">
- <Filter className="w-10 h-10 t-muted mb-3 opacity-40" />
- <p className="text-sm font-medium t-primary">No entries match the current filters</p>
- <p className="text-xs t-muted mt-1">Adjust or clear the filters to see more results.</p>
- {activeFilterCount > 0 && (
- <button onClick={() => { setFilterLayer(''); setFilterOutcome(''); setDateFrom(''); setDateTo(''); }} className="mt-3 text-xs text-accent hover:underline" title="Reset all filters">Clear filters</button>
- )}
- </div>
+ <EmptyState
+ icon={Filter}
+ title="No entries match the current filters"
+ description="Adjust or clear the filters to see more results."
+ action={activeFilterCount > 0 ? { label: 'Clear filters', onClick: () => { setFilterLayer(''); setFilterOutcome(''); setDateFrom(''); setDateTo(''); } } : undefined}
+ />
  </Card>
  ) : viewMode === 'timeline' ? (
  <ProvenanceTimeline entries={filteredEntries} />

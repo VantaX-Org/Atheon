@@ -247,6 +247,14 @@
       column labels, tab labels. Reuses caption sizing. */
   .text-label   { font-size: 11px; line-height: 1.4;  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
 
+  /* Headline aliases — semantic names used across hero headers, cards,
+     dashboards. Mapped onto the same numeric scale so there is one
+     source of truth and no drift between `text-h*` and `text-headline-*`. */
+  .text-headline-xl { font-size: 22px; line-height: 1.2;  font-weight: 700; letter-spacing: -0.01em; }
+  .text-headline-lg { font-size: 18px; line-height: 1.3;  font-weight: 600; letter-spacing: -0.005em; }
+  .text-headline-md { font-size: 16px; line-height: 1.35; font-weight: 600; }
+  .text-headline-sm { font-size: 14px; line-height: 1.4;  font-weight: 600; }
+
   /* Vertical rhythm: section spacing inside a page. */
   .stack-tight  > * + * { margin-top: 12px; }
   .stack        > * + * { margin-top: 16px; }

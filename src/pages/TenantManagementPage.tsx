@@ -171,7 +171,7 @@ export function TenantManagementPage() {
   };
 
   const handleHardDelete = async (tenantId: string) => {
-    if (!confirm(`⚠️ DANGER: PERMANENT DELETION ⚠️\n\nThis will IRREVERSIBLY delete:\n- All tenant data\n- All users\n- All runs, metrics, risks\n- All history and audit logs\n\nThis action CANNOT be undone.\n\nType "DELETE" to confirm:`)) {
+    if (!confirm(`DANGER: PERMANENT DELETION\n\nThis will IRREVERSIBLY delete:\n- All tenant data\n- All users\n- All runs, metrics, risks\n- All history and audit logs\n\nThis action CANNOT be undone.\n\nType "DELETE" to confirm:`)) {
       return;
     }
 

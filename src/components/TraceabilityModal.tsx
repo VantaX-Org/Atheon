@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -46,9 +46,17 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
   };
   const [expandedSection, setExpandedSection] = useState<string | null>('source');
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
+
+  const titleId = `traceability-modal-title-${type}`;
 
   const renderDrillDownPath = () => {
     return (
@@ -182,23 +190,32 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} 
-             className="rounded-md p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-          
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+        onClick={onClose}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          onClick={(e) => e.stopPropagation()}
+          style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }}
+          className="rounded-md p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+        >
+
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {type === 'dimension' ? <Crown size={18} className="text-accent" /> :
                type === 'risk' ? <AlertTriangle size={18} className="text-accent" /> :
                <BarChart3 size={18} className="text-accent" />}
-              <h3 className="text-lg font-semibold t-primary">
+              <h3 id={titleId} className="text-lg font-semibold t-primary">
                 {type === 'dimension' ? `Dimension: ${(data as HealthDimensionTraceResponse).dimension}` :
                  type === 'risk' ? `Risk: ${(data as RiskTraceResponse).riskAlert.title}` :
                  `Metric: ${(data as MetricTraceResponse).metric.name}`}
               </h3>
             </div>
-            <button onClick={onClose} className="t-muted hover:t-secondary">
+            <button onClick={onClose} aria-label="Close dialog" className="t-muted hover:t-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm">
               <X size={18} />
             </button>
           </div>

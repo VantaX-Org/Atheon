@@ -92,7 +92,8 @@ export function FilterBar({
           <div className="relative flex-1 min-w-48 max-w-md">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 t-muted pointer-events-none"
             />
             <input
               aria-label={search.ariaLabel ?? 'Search'}
@@ -105,7 +106,7 @@ export function FilterBar({
               <button
                 type="button"
                 onClick={() => search.onChange('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:t-primary"
+                className="absolute right-2 top-1/2 -translate-y-1/2 t-muted hover:t-primary"
                 aria-label="Clear search"
                 title="Clear search"
               >
@@ -163,7 +164,7 @@ function PillRow({
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {showIcon ? (
-        <Filter size={14} className="text-gray-400" aria-hidden="true" />
+        <Filter size={14} className="t-muted" aria-hidden="true" />
       ) : (
         <span className="w-[14px]" aria-hidden="true" />
       )}

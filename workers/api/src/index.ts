@@ -115,7 +115,38 @@ app.use('*', cors({
 app.use('*', requestIdMiddleware);
 
 // H6: CSRF protection + additional security headers
+// Production-readiness: enforces ENCRYPTION_KEY presence in production (fail-fast
+// instead of silent JWT_SECRET fallback for encrypt/decrypt of secrets).
+const CSP_DEFAULT = [
+  "default-src 'self'",
+  // Swagger UI on /api/v1/docs uses an inline bootstrap script + jsdelivr CDN.
+  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  // Business-case HTML reports use inline styles (print stylesheet generated server-side).
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "img-src 'self' data: https:",
+  "font-src 'self' data: https:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join('; ');
+
+let encryptionKeyEnforced = false;
 app.use('*', async (c, next) => {
+  // Fail-fast: production deployments MUST set ENCRYPTION_KEY (separate from JWT_SECRET).
+  // Checked once per worker isolate; subsequent requests skip the check after success.
+  if (!encryptionKeyEnforced) {
+    const env = c.env as { ENCRYPTION_KEY?: string; ENVIRONMENT?: string };
+    if (env.ENVIRONMENT === 'production' && (!env.ENCRYPTION_KEY || env.ENCRYPTION_KEY.length < 32)) {
+      return c.json(
+        { error: 'Service misconfiguration: ENCRYPTION_KEY required in production' },
+        503,
+      );
+    }
+    encryptionKeyEnforced = true;
+  }
+
   await next();
   // H6: CSRF protection — enforce SameSite=Strict on any Set-Cookie headers
   const existingCookie = c.res.headers.get('Set-Cookie');
@@ -126,6 +157,15 @@ app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.header('Content-Security-Policy', CSP_DEFAULT);
+  c.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  // HSTS — only emit when the request was served over HTTPS. Browsers ignore the
+  // header on plain HTTP, and emitting it on local http://localhost dev surfaces
+  // can pin localhost into HTTPS-only mode in some browsers.
+  const env = c.env as { ENVIRONMENT?: string };
+  if (env.ENVIRONMENT === 'production') {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
 });
 
 // Spec 7 PERF-1 + Roadmap C5: response-time header, slow-request log, KV

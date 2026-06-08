@@ -276,7 +276,7 @@ export function MFAEnrollmentWizard({ onComplete, onCancel }: MFAEnrollmentWizar
             onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && !loading) verify(); }}
             placeholder="000000"
-            className="w-full px-3 py-3 text-center text-2xl font-mono tracking-[0.4em] rounded-md outline-none"
+            className="w-full px-3 py-3 text-center text-2xl font-mono tracking-[0.4em] rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:border-accent"
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
             maxLength={6}
             autoFocus

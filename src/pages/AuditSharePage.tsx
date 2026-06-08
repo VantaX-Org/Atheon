@@ -105,7 +105,8 @@ export default function AuditSharePage(): JSX.Element {
     return (
       <div style={bgStyle}>
         <div style={{ maxWidth: 560, margin: '120px auto', padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 56, marginBottom: 8 }}>🔒</div>
+          <Lock size={48} strokeWidth={1.5} style={{ color: '#475569', marginBottom: 12 }} aria-hidden="true" />
+
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
             {error.status === 410 ? 'This link is no longer valid.' :
              error.status === 404 ? 'Link not found.' :

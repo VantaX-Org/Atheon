@@ -3717,49 +3717,65 @@ catalysts.post('/actions', async (c) => {
 // Step-up MFA: approval releases an action that may post to ERP / claim shared savings.
 catalysts.put('/actions/:id/approve', stepUpMFA(), async (c) => {
   const id = c.req.param('id');
+  const tenantId = getTenantId(c);
   const body = await c.req.json<{ approved_by?: string }>();
 
-  const result = await approveAction(id, body.approved_by || 'system', c.env.DB, c.env.CACHE);
-
-  // Send completion notification to HITL-configured users
   try {
-    const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(id).first();
-    if (action) {
-      await sendHitlNotification(c.env.DB, c.env, action.tenant_id as string, action.cluster_id as string, 'completion', {
-        catalystName: action.catalyst_name as string,
-        action: action.action as string,
-        status: 'approved',
-        confidence: action.confidence as number || 0,
-      });
-    }
-  } catch (err) { console.error('HITL approve notification failed (non-critical):', err); }
+    const result = await approveAction(id, tenantId, body.approved_by || 'system', c.env.DB, c.env.CACHE);
 
-  return c.json(result);
+    // Send completion notification to HITL-configured users
+    try {
+      const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
+      if (action) {
+        await sendHitlNotification(c.env.DB, c.env, tenantId, action.cluster_id as string, 'completion', {
+          catalystName: action.catalyst_name as string,
+          action: action.action as string,
+          status: 'approved',
+          confidence: action.confidence as number || 0,
+        });
+      }
+    } catch (err) { console.error('HITL approve notification failed (non-critical):', err); }
+
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Action not found') {
+      return c.json({ error: 'Action not found' }, 404);
+    }
+    throw err;
+  }
 });
 
 // PUT /api/catalysts/actions/:id/reject - Reject via execution engine
 // Step-up MFA: rejection is auditable; same SoD control as approve.
 catalysts.put('/actions/:id/reject', stepUpMFA(), async (c) => {
   const id = c.req.param('id');
+  const tenantId = getTenantId(c);
   const body = await c.req.json<{ approved_by?: string; reason?: string }>();
 
-  const result = await rejectAction(id, body.approved_by || 'system', body.reason || '', c.env.DB, c.env.CACHE);
-
-  // Send exception notification to HITL-configured users
   try {
-    const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ?').bind(id).first();
-    if (action) {
-      await sendHitlNotification(c.env.DB, c.env, action.tenant_id as string, action.cluster_id as string, 'exception', {
-        catalystName: action.catalyst_name as string,
-        action: action.action as string,
-        status: 'rejected',
-        confidence: action.confidence as number || 0,
-        reason: body.reason,
-      });
-    }
-  } catch (err) { console.error('HITL reject notification failed (non-critical):', err); }
+    const result = await rejectAction(id, tenantId, body.approved_by || 'system', body.reason || '', c.env.DB, c.env.CACHE);
 
-  return c.json(result);
+    // Send exception notification to HITL-configured users
+    try {
+      const action = await c.env.DB.prepare('SELECT * FROM catalyst_actions WHERE id = ? AND tenant_id = ?').bind(id, tenantId).first();
+      if (action) {
+        await sendHitlNotification(c.env.DB, c.env, tenantId, action.cluster_id as string, 'exception', {
+          catalystName: action.catalyst_name as string,
+          action: action.action as string,
+          status: 'rejected',
+          confidence: action.confidence as number || 0,
+          reason: body.reason,
+        });
+      }
+    } catch (err) { console.error('HITL reject notification failed (non-critical):', err); }
+
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Action not found') {
+      return c.json({ error: 'Action not found' }, 404);
+    }
+    throw err;
+  }
 });
 
 // GET /api/catalysts/governance

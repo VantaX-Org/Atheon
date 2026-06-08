@@ -275,11 +275,16 @@ auth.post('/login', async (c) => {
   }
 
   // Verify password — reject login if no password hash exists (e.g. SSO-only or unprovisioned user)
+  // Account-enumeration defense: return the same generic "Invalid credentials" as the
+  // no-account and wrong-password paths so the response shape never reveals whether an
+  // account exists or which auth method it uses. Burn a PBKDF2 to keep timing uniform.
   if (!user.password_hash) {
+    await verifyPassword(body.password, DUMMY_PASSWORD_HASH);
+    await recordFailedLogin(c.env.CACHE, body.email);
     await c.env.DB.prepare(
       'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'login_failed', 'auth', 'session', JSON.stringify({ email: body.email, reason: 'no_password_set' }), 'failure').run();
-    return c.json({ error: 'Password login is not available for this account. Please use SSO or contact your administrator to set a password.' }, 401);
+    return c.json({ error: 'Invalid credentials' }, 401);
   }
 
   const valid = await verifyPassword(body.password, user.password_hash as string);

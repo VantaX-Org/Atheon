@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/toast';
 import { AssessmentFindingsPanel } from '@/components/AssessmentFindingsPanel';
 import { PageHeader } from '@/components/ui/page-header';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Plug, Package, Calculator, FileText, CheckCircle2, XCircle, BarChart3 } from 'lucide-react';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { formatDays } from '@/lib/utils';
@@ -536,11 +536,11 @@ function RunningView({ id, onComplete }: {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stages = [
-    { label: 'Connecting to ERP', icon: '🔌' },
-    { label: 'Collecting volume data', icon: '📦' },
-    { label: 'Scoring catalysts', icon: '🧮' },
-    { label: 'Generating reports', icon: '📄' },
-    { label: 'Complete', icon: '✅' },
+    { label: 'Connecting to ERP', Icon: Plug },
+    { label: 'Collecting volume data', Icon: Package },
+    { label: 'Scoring catalysts', Icon: Calculator },
+    { label: 'Generating reports', Icon: FileText },
+    { label: 'Complete', Icon: CheckCircle2 },
   ];
 
   useEffect(() => {
@@ -581,7 +581,7 @@ function RunningView({ id, onComplete }: {
   if (stage === -1) {
     return (
       <div className="text-center py-20">
-        <div className="text-4xl mb-3">❌</div>
+        <XCircle className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--neg)' }} aria-hidden="true" />
         <h3 className="text-lg font-medium" style={{ color: 'var(--neg)' }}>Assessment Failed</h3>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>An error occurred during processing. Check the logs.</p>
       </div>
@@ -592,7 +592,10 @@ function RunningView({ id, onComplete }: {
     <div className="max-w-md mx-auto py-12">
       <div className="text-center mb-8">
         <div className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center animate-pulse" style={{ background: 'var(--accent-subtle)' }}>
-          <span className="text-2xl">{stages[Math.min(stage, 4)].icon}</span>
+          {(() => {
+            const StageIcon = stages[Math.min(stage, 4)].Icon;
+            return <StageIcon className="w-7 h-7" style={{ color: 'var(--accent)' }} aria-hidden="true" />;
+          })()}
         </div>
         <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Running Assessment</h3>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>This may take 30–60 seconds</p>
@@ -783,7 +786,7 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
           {/* Run Value Assessment button if no data */}
           {!hasValueData && !loadingVA && (
             <div className="rounded-md p-8 text-center" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-              <div className="text-4xl mb-3">📊</div>
+              <BarChart3 className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--accent)' }} aria-hidden="true" />
               <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Run Value Assessment</h3>
               <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
                 Analyse the prospect&apos;s ERP data to discover specific issues, quantify financial impact, and generate an outcome-based pricing proposal.
