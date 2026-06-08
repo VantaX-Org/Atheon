@@ -937,58 +937,59 @@ export function PulsePage() {
             onJumpToTab={setActiveTab}
           />
 
-          {/* TASK-002: Decomposed MetricsGrid sub-component for compact overview */}
-          <MetricsGrid metrics={filteredMetrics} />
-
-          {/* Top Row: Status Strip + Dimensions */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <Card variant="default" className="lg:col-span-1 flex flex-col items-center justify-center">
-              {/* Pulse Status Strip (visual differentiation from Apex ring) */}
-              <p className="text-label mb-2">Operational Health</p>
-              <p className="text-3xl font-bold t-primary mb-3 tabular-nums font-mono">{health.score}<span className="text-sm font-normal t-muted">/100</span></p>
-              <div className="w-full h-3 rounded-full overflow-hidden flex" title={`Green: ${summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length} | Amber: ${summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length} | Red: ${summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length}`}>
-                {(() => {
-                  const green = summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length;
-                  const amber = summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length;
-                  const red = summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length;
-                  const total = green + amber + red || 1;
-                  return (
-                    <>
+          {/* Wave H-4 hero band — Pulse anchors on Operational Health Score (X/100).
+              Status counts and trend live as a supporting ledger on the right so a
+              single number dominates the operational triad page. */}
+          {(() => {
+            const green = summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length;
+            const amber = summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length;
+            const red = summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length;
+            const total = green + amber + red || 1;
+            const trendLabel = health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs attention' : 'Stable';
+            const trendColor = health.trend === 'improving' ? 'var(--positive)' : health.trend === 'declining' ? 'var(--neg)' : 'var(--text-muted)';
+            return (
+              <div className="card-hero p-7 md:p-8 mb-6" data-testid="pulse-hero">
+                <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+                  <div className="min-w-0">
+                    <p className="hero-eyebrow flex items-center gap-2 mb-3">
+                      <Gauge size={11} aria-hidden="true" />
+                      Operational Health · Pulse
+                    </p>
+                    <div className="flex items-baseline gap-2 mb-1.5">
+                      <span className="text-hero t-primary">{health.score}</span>
+                      <span className="text-body-sm t-muted">/100</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {trendIcon(health.trend, 13)}
+                      <span className="text-body-sm" style={{ color: trendColor }}>{trendLabel}</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 lg:max-w-md w-full">
+                    <div className="w-full h-2 rounded-full overflow-hidden flex bg-[var(--bg-secondary)]" title={`Green: ${green} | Amber: ${amber} | Red: ${red}`}>
                       <div className="h-full" style={{ width: `${(green / total) * 100}%`, background: 'var(--positive)' }} />
                       <div className="h-full" style={{ width: `${(amber / total) * 100}%`, background: 'var(--warning)' }} />
                       <div className="h-full" style={{ width: `${(red / total) * 100}%`, background: 'var(--neg)' }} />
-                    </>
-                  );
-                })()}
-              </div>
-              <div className="flex items-center justify-between w-full mt-2 text-caption tabular-nums font-mono">
-                <span style={{ color: 'var(--positive)' }}>{summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length} green</span>
-                <span style={{ color: 'var(--warning)' }}>{summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length} amber</span>
-                <span style={{ color: 'var(--neg)' }}>{summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length} red</span>
-              </div>
-              <div className="flex items-center gap-2 mt-3">
-                {trendIcon(health.trend)}
-                <span className="text-sm" style={health.trend === 'improving' ? { color: 'var(--positive)' } : health.trend === 'declining' ? { color: 'var(--neg)' } : {}}>
-                  {health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs Attention' : 'Stable'}
-                </span>
-              </div>
-              {health.score === 0 && (
-                <p className="text-xs t-muted mt-4 text-center">No health data yet. Run a catalyst to populate metrics.</p>
-              )}
-              <div className="mt-3 pt-2 border-t border-[var(--border-card)] w-full space-y-1.5">
-                {Object.entries(health.dimensions).slice(0, 4).map(([name, dim]) => (
-                  <div key={name} className="flex items-center gap-2">
-                    <span className="text-caption t-secondary w-24 truncate">{name}</span>
-                    <div className="flex-1">
-                      <Progress value={dim.score} color={dim.score >= 80 ? 'emerald' : dim.score >= 60 ? 'amber' : 'red'} size="sm" />
                     </div>
-                    <span className="text-caption font-bold t-primary w-6 text-right">{dim.score}</span>
+                    <div className="flex items-center justify-between w-full mt-2.5 text-caption tabular-nums font-mono">
+                      <span style={{ color: 'var(--positive)' }}>{green} green</span>
+                      <span style={{ color: 'var(--warning)' }}>{amber} amber</span>
+                      <span style={{ color: 'var(--neg)' }}>{red} red</span>
+                    </div>
+                    {health.score === 0 && (
+                      <p className="text-xs t-muted mt-3">No health data yet. Run a catalyst to populate metrics.</p>
+                    )}
                   </div>
-                ))}
+                </div>
               </div>
-            </Card>
+            );
+          })()}
 
-            <Card className="lg:col-span-2">
+          {/* TASK-002: Decomposed MetricsGrid sub-component for compact overview */}
+          <MetricsGrid metrics={filteredMetrics} />
+
+          {/* Operational Dimensions — full width below the hero band */}
+          <div className="mb-6">
+            <Card>
               <h3 className="text-lg font-semibold t-primary mb-4">Operational Dimensions</h3>
               {dimensions.length === 0 || health.score === 0 ? (
                 <div className="flex items-center gap-3 py-6 px-4">
