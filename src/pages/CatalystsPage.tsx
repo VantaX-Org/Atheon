@@ -1129,6 +1129,57 @@ export function CatalystsPage() {
   }
  />
 
+ {/* Wave H-4 hero band — Catalysts anchor is autonomous-execution count.
+     Total tasks completed across all clusters reads at .text-hero scale;
+     active catalysts + exceptions awaiting review live as supporting
+     ledger on the right. */}
+ {(() => {
+  const totalTasks = clusters.reduce((s, c) => s + (Number(c.tasksCompleted) || 0), 0);
+  const activeCount = clusters.filter(c => c.status === 'active').length;
+  const avgTrust = clusters.length > 0
+   ? clusters.reduce((s, c) => s + (Number(c.trustScore) || 0), 0) / clusters.length
+   : 0;
+  return (
+   <div className="card-hero p-7 md:p-8" data-testid="catalysts-hero">
+    <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5">
+     <div className="min-w-0">
+      <p className="hero-eyebrow flex items-center gap-2 mb-3">
+       <Bot size={11} aria-hidden="true" />
+       Autonomous Execution · Lifetime
+      </p>
+      <p className="text-hero t-primary mb-1.5 tabular-nums font-mono">
+       <Numeric value={totalTasks} compact size="lg" />
+      </p>
+      <p className="text-body-sm t-muted">
+       Tasks completed by your catalysts —{' '}
+       <strong className="t-secondary font-semibold">{activeCount} active</strong>
+       {exceptionCount > 0 && (
+        <>{' '}·{' '}
+         <strong className="font-semibold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>
+          {exceptionCount} exception{exceptionCount === 1 ? '' : 's'}
+         </strong>{' '}awaiting review</>
+       )}
+      </p>
+     </div>
+     <div className="flex items-center gap-5 flex-shrink-0">
+      <div className="text-right">
+       <p className="hero-eyebrow mb-1">Actions logged</p>
+       <p className="text-headline-lg font-semibold t-primary tabular-nums font-mono">
+        <Numeric value={actions.length} compact size="md" />
+       </p>
+      </div>
+      <div className="text-right">
+       <p className="hero-eyebrow mb-1">Avg trust</p>
+       <p className="text-headline-lg font-semibold tabular-nums font-mono" style={{ color: avgTrust >= 80 ? 'var(--positive)' : 'var(--text-primary)' }}>
+        {avgTrust.toFixed(0)}<span className="text-caption font-normal">%</span>
+       </p>
+      </div>
+     </div>
+    </div>
+   </div>
+  );
+ })()}
+
  {actionError && (
  <div className="flex items-center gap-3 p-3 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'rgb(var(--neg-rgb) / 0.2)' }}>
  <AlertCircle size={16} style={{ color: 'var(--neg)' }} className="flex-shrink-0" />
