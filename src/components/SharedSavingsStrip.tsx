@@ -9,6 +9,14 @@
  *
  * Hidden only when there's nothing to show (no realised savings yet on a
  * fresh tenant — a "you've recovered R0" banner is noise, not signal).
+ *
+ * Two visual variants:
+ *   - `strip` (default) — slim horizontal banner suitable for drilldown
+ *     pages (Apex, ROI, Pulse, ExecutiveSummary, Catalysts) where the
+ *     page already has its own anchor metric.
+ *   - `hero` — full anchor card using the Wave H-1 .card-hero / .text-hero
+ *     tokens. Use exactly once per screen, only on the Dashboard, where
+ *     this metric IS the anchor.
  */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -26,7 +34,12 @@ function formatCurrency(value: number, currency: string): string {
   }
 }
 
-export function SharedSavingsStrip(): JSX.Element | null {
+export interface SharedSavingsStripProps {
+  /** `strip` = slim banner (default). `hero` = full anchor card. */
+  variant?: 'strip' | 'hero';
+}
+
+export function SharedSavingsStrip({ variant = 'strip' }: SharedSavingsStripProps = {}): JSX.Element | null {
   const [billing, setBilling] = useState<BillingSummary | null>(null);
 
   useEffect(() => {
@@ -44,6 +57,40 @@ export function SharedSavingsStrip(): JSX.Element | null {
   const billed = billing.total_atheon_revenue ?? 0;
   const multiple = billed > 0 ? recovered / billed : 0;
   const currency = billing.currency || 'ZAR';
+
+  if (variant === 'hero') {
+    return (
+      <div
+        className="card-hero p-7 md:p-8 flex flex-col md:flex-row md:items-end md:justify-between gap-5"
+        data-testid="shared-savings-strip"
+        data-variant="hero"
+      >
+        <div className="min-w-0">
+          <p className="hero-eyebrow flex items-center gap-2 mb-3">
+            <TrendingUp size={11} aria-hidden="true" />
+            Shared Savings · Lifetime
+          </p>
+          <p className="text-hero t-primary mb-1.5">{formatCurrency(recovered, currency)}</p>
+          <p className="text-body-sm t-muted">
+            Recovered for your business — Atheon billed{' '}
+            <strong className="t-secondary font-semibold tabular-nums font-mono">{formatCurrency(billed, currency)}</strong>
+            {multiple > 0 && (
+              <>
+                {' '}at a{' '}
+                <strong className="text-accent font-semibold tabular-nums font-mono">{multiple.toFixed(1)}×</strong> return.
+              </>
+            )}
+          </p>
+        </div>
+        <Link
+          to="/roi-dashboard"
+          className="text-body-sm text-accent hover:underline inline-flex items-center gap-1.5 font-medium self-start md:self-end whitespace-nowrap"
+        >
+          See the proof <ArrowRight size={13} />
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div

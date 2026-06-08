@@ -264,10 +264,13 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* CFO-facing shared-savings strip — slim banner showing cumulative
-          recovered + billed + ROI multiple. Hidden for tenants without
-          realised savings yet; dismissible per session. */}
-      <SharedSavingsStrip />
+      {/* Wave H-3: Dashboard is THE executive landing page, and the
+          shared-savings recovered figure IS its anchor metric. Promote
+          the strip to a hero card (.card-hero + .text-hero, 44px tabular
+          number) so the no-brainer financial proof is the first thing
+          executives see. Drilldown pages (Apex, ROI, Pulse,
+          ExecutiveSummary, Catalysts) keep the default slim strip. */}
+      <SharedSavingsStrip variant="hero" />
 
       {/* MASTHEAD — Swiss page-band: letterspaced eyebrow + live tick, the
           greeting set in Archivo display, a single restrained dek, closed by
