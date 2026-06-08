@@ -30,15 +30,15 @@ function StatCell({ label, value, tone }: { label: string; value: string | numbe
     warn: 'var(--warning)',
     bad: 'var(--neg)',
   };
-  const color = tone ? colorMap[tone] : '#0f172a';
+  const color = tone ? colorMap[tone] : 'var(--text-primary)';
   return (
     <div style={{
       padding: '14px 16px',
-      borderRadius: 6,
-      border: '1px solid #e5e7eb',
-      background: '#ffffff',
+      borderRadius: 2,
+      border: '1px solid var(--border-card)',
+      background: 'var(--bg-card)',
     }}>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: '#64748b' }}>{label}</div>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--text-secondary)' }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace', marginTop: 4 }}>{value}</div>
     </div>
   );
@@ -53,19 +53,19 @@ function Section({ icon: Icon, title, code, children }: {
   return (
     <section style={{
       padding: 24,
-      borderRadius: 6,
-      border: '1px solid #e5e7eb',
-      background: '#ffffff',
+      borderRadius: 2,
+      border: '1px solid var(--border-card)',
+      background: 'var(--bg-card)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Icon width={16} height={16} color="#0f4d3a" />
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{title}</h2>
+        <Icon width={16} height={16} color="var(--accent)" />
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
         <span style={{
           marginLeft: 'auto',
           fontSize: 10,
-          color: '#475569',
+          color: 'var(--text-secondary)',
           padding: '3px 8px',
-          background: '#f1f5f9',
+          background: 'var(--bg-secondary)',
           borderRadius: 999,
           letterSpacing: 0.4,
         }}>{code}</span>
@@ -96,23 +96,23 @@ export default function AuditSharePage(): JSX.Element {
 
   const bgStyle: React.CSSProperties = {
     minHeight: '100vh',
-    background: '#f8fafc',
+    background: 'var(--bg-primary)',
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    color: '#0f172a',
+    color: 'var(--text-primary)',
   };
 
   if (error) {
     return (
       <div style={bgStyle}>
         <div style={{ maxWidth: 560, margin: '120px auto', padding: 32, textAlign: 'center' }}>
-          <Lock size={48} strokeWidth={1.5} style={{ color: '#475569', marginBottom: 12 }} aria-hidden="true" />
+          <Lock size={48} strokeWidth={1.5} style={{ color: 'var(--text-secondary)', marginBottom: 12 }} aria-hidden="true" />
 
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
             {error.status === 410 ? 'This link is no longer valid.' :
              error.status === 404 ? 'Link not found.' :
              'Something went wrong.'}
           </h1>
-          <p style={{ color: '#475569', fontSize: 14, marginTop: 10 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 10 }}>
             {error.status === 410
               ? 'It may have been revoked or have expired. Ask the issuer for a new one.'
               : error.status === 404
@@ -127,9 +127,9 @@ export default function AuditSharePage(): JSX.Element {
   if (!data) {
     return (
       <div style={bgStyle}>
-        <div style={{ maxWidth: 560, margin: '160px auto', textAlign: 'center', color: '#64748b' }}>
+        <div style={{ maxWidth: 560, margin: '160px auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <div style={{
-            width: 18, height: 18, border: '2px solid #cbd5e1', borderTopColor: '#0f4d3a',
+            width: 18, height: 18, border: '2px solid var(--border-card)', borderTopColor: 'var(--accent)',
             borderRadius: '50%', margin: '0 auto 12px', animation: 'aspin 800ms linear infinite',
           }} />
           <style>{`@keyframes aspin { to { transform: rotate(360deg) } }`}</style>
@@ -164,17 +164,17 @@ export default function AuditSharePage(): JSX.Element {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 4,
-              background: '#0f4d3a',
+              width: 36, height: 36, borderRadius: 2,
+              background: 'var(--accent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 700, fontSize: 16,
+              color: 'var(--text-on-accent)', fontWeight: 700, fontSize: 16,
             }}>A</div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>Atheon</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>SOC 2 Evidence — Auditor View</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Atheon</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>SOC 2 Evidence — Auditor View</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
             <Clock size={12} />
             Expires in {expiresIn} day{expiresIn === 1 ? '' : 's'}
           </div>
@@ -183,17 +183,17 @@ export default function AuditSharePage(): JSX.Element {
         {/* Hero */}
         <div style={{ marginBottom: 24 }}>
           <h1 style={{
-            fontSize: 32, fontWeight: 700, color: '#0f172a', margin: 0,
+            fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', margin: 0,
             letterSpacing: -0.5,
           }}>
             Evidence Pack
           </h1>
           {label && (
-            <div style={{ marginTop: 6, fontSize: 13, color: '#64748b' }}>
-              Shared as <strong style={{ color: '#0f172a' }}>{label}</strong>
+            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
+              Shared as <strong style={{ color: 'var(--text-primary)' }}>{label}</strong>
             </div>
           )}
-          <div style={{ marginTop: 6, fontSize: 12, color: '#94a3b8' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
             Generated {new Date(pack.generatedAt).toLocaleString()} · Read-only · Aggregated over existing tables
           </div>
         </div>
@@ -224,7 +224,7 @@ export default function AuditSharePage(): JSX.Element {
               <StatCell label="Changes (90d)" value={pack.configChanges.changesLast90d} />
             </div>
             {pack.configChanges.topActions.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12, color: '#475569' }}>
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
                 Top actions: {pack.configChanges.topActions.slice(0, 5).map(a => `${a.action} (${a.count})`).join(' · ')}
               </div>
             )}
@@ -271,7 +271,7 @@ export default function AuditSharePage(): JSX.Element {
               />
               <StatCell label="Provenance chain" value={pack.auditRetention.provenanceChainLength.toLocaleString()} />
             </div>
-            <div style={{ marginTop: 12, fontSize: 12, color: '#475569' }}>
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
               The provenance chain is a separate immutable record (Merkle + HMAC) of every AI
               decision — auditable independently of the audit log.
             </div>
@@ -283,9 +283,9 @@ export default function AuditSharePage(): JSX.Element {
             onClick={downloadJson}
             style={{
               padding: '10px 16px',
-              borderRadius: 6,
-              background: '#0f4d3a',
-              color: '#fff',
+              borderRadius: 2,
+              background: 'var(--accent)',
+              color: 'var(--text-on-accent)',
               border: 'none',
               cursor: 'pointer',
               fontSize: 13,
@@ -298,7 +298,7 @@ export default function AuditSharePage(): JSX.Element {
           >
             Download JSON snapshot
           </button>
-          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             Access logged. This link auto-expires {new Date(expires_at).toLocaleDateString()} and may be revoked at any time.
           </div>
         </div>
