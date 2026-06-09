@@ -1514,7 +1514,16 @@ export const api = {
       request<{ assessments: Assessment[]; total: number }>('/api/assessments'),
     get: (id: string) =>
       request<Assessment>(`/api/assessments/${id}`),
-    create: (data: { prospect_name: string; prospect_industry: string; erp_connection_id?: string; config: Record<string, unknown> }) =>
+    create: (data: {
+      prospect_name: string;
+      prospect_industry: string;
+      erp_connection_id?: string;
+      config: Record<string, unknown>;
+      // Period scoping: when set, the assessment only considers ERP records
+      // dated within the window. NULL on either side = all available data.
+      period_start?: string | null;
+      period_end?: string | null;
+    }) =>
       request<{ id: string; status: string }>('/api/assessments', { method: 'POST', body: JSON.stringify(data) }),
     status: (id: string) =>
       request<{ status: string; progress: string }>(`/api/assessments/${id}/status`),
@@ -3402,6 +3411,11 @@ export interface Assessment {
   businessReportKey: string | null;
   technicalReportKey: string | null;
   excelModelKey: string | null;
+  // Period scoping: when both are set, the assessment was scoped to a date
+  // window (e.g. "last 6 months"). NULL on either side = unbounded for that
+  // side, displayed as "all available data" when both are null.
+  periodStart: string | null;
+  periodEnd: string | null;
   createdBy: string;
   createdAt: string;
   completedAt: string | null;
@@ -4629,6 +4643,20 @@ export interface ValueAssessmentFinding {
   immediate_value: number;
   ongoing_monthly_value: number;
   domain: string;
+  /**
+   * Per-finding LLM-authored narrative (v81). Distinct from the tenant-wide
+   * `executive_narrative` on `assessment_value_summary`. Generation is
+   * best-effort; null when the model call was skipped or failed. UI hides the
+   * block entirely when this is null or empty.
+   */
+  finding_insight?: string | null;
+  /**
+   * ISO 8601 timestamp recording when the insight was authored (v82). Used by
+   * the UI to time-stamp the insight pill. The actual model identifier is
+   * persisted server-side for SOC 2 PI1 audit replay but deliberately not
+   * surfaced via the API (trade-secret per llm-provider.ts:11).
+   */
+  finding_insight_generated_at?: string | null;
   created_at: string;
 }
 

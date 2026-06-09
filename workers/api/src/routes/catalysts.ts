@@ -3718,10 +3718,22 @@ catalysts.post('/actions', async (c) => {
 catalysts.put('/actions/:id/approve', stepUpMFA(), async (c) => {
   const id = c.req.param('id');
   const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
   const body = await c.req.json<{ approved_by?: string }>();
 
   try {
     const result = await approveAction(id, tenantId, body.approved_by || 'system', c.env.DB, c.env.CACHE);
+
+    // SOC 2 CC6: approvals release actions that may post to ERP / claim shared
+    // savings — log the approver so segregation-of-duties can be evidenced.
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), tenantId, auth?.userId || null,
+      'catalyst.action.approved', 'catalysts', id,
+      JSON.stringify({ approved_by: body.approved_by || 'system' }),
+      'success',
+    ).run();
 
     // Send completion notification to HITL-configured users
     try {
@@ -3750,10 +3762,22 @@ catalysts.put('/actions/:id/approve', stepUpMFA(), async (c) => {
 catalysts.put('/actions/:id/reject', stepUpMFA(), async (c) => {
   const id = c.req.param('id');
   const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
   const body = await c.req.json<{ approved_by?: string; reason?: string }>();
 
   try {
     const result = await rejectAction(id, tenantId, body.approved_by || 'system', body.reason || '', c.env.DB, c.env.CACHE);
+
+    // SOC 2 CC6: rejections are an SoD control event — capture rejecter + reason
+    // so refused actions remain traceable in audit.
+    await c.env.DB.prepare(
+      'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), tenantId, auth?.userId || null,
+      'catalyst.action.rejected', 'catalysts', id,
+      JSON.stringify({ rejected_by: body.approved_by || 'system', reason: body.reason || '' }),
+      'success',
+    ).run();
 
     // Send exception notification to HITL-configured users
     try {
@@ -5034,6 +5058,17 @@ catalysts.post('/runs/:runId/retry', stepUpMFA(), async (c) => {
     'SELECT * FROM sub_catalyst_runs WHERE id = ? AND tenant_id = ?'
   ).bind(runId, tenantId).first<{ cluster_id: string; sub_catalyst_name: string }>();
   if (!parentRun) return c.json({ error: 'Run not found' }, 404);
+
+  // SOC 2 CC6: re-running a failed run can re-trigger ERP write-backs, so log
+  // the retry intent against the original run before redirecting to execute.
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, auth.userId,
+    'catalyst.run.retried', 'catalysts', runId,
+    JSON.stringify({ cluster_id: parentRun.cluster_id, sub_catalyst_name: parentRun.sub_catalyst_name }),
+    'success',
+  ).run();
 
   // Redirect to the execute endpoint — caller should POST to execute and pass parent_run_id
   return c.json({ redirect: true, cluster_id: parentRun.cluster_id, sub_catalyst_name: parentRun.sub_catalyst_name, parent_run_id: runId });

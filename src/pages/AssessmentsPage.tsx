@@ -183,7 +183,7 @@ function ListView({ assessments, loading, onView, onDelete }: {
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: 'var(--bg-secondary)' }}>
-            {['Prospect', 'Industry', 'Status', 'Catalysts', 'Est. Saving', 'Date', 'Actions'].map(h => (
+            {['Prospect', 'Industry', 'Status', 'Catalysts', 'Est. Saving', 'Period', 'Date', 'Actions'].map(h => (
               <th key={h} className="px-4 py-2.5 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{h}</th>
             ))}
           </tr>
@@ -204,6 +204,11 @@ function ListView({ assessments, loading, onView, onDelete }: {
                 <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{catalystCount}</td>
                 <td className="px-4 py-3 font-mono tnum font-medium" style={{ color: 'var(--text-primary)' }}>
                   {totalSaving > 0 ? `R ${(totalSaving / 1000).toFixed(0)}k` : '—'}
+                </td>
+                <td className="px-4 py-3 text-xs font-mono tnum" style={{ color: 'var(--text-muted)' }}>
+                  {a.periodStart && a.periodEnd
+                    ? `${a.periodStart} → ${a.periodEnd}`
+                    : 'all data'}
                 </td>
                 <td className="px-4 py-3 text-xs font-mono tnum" style={{ color: 'var(--text-muted)' }}>
                   {new Date(a.createdAt).toLocaleDateString()}
@@ -280,6 +285,13 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
     hybrid_licence_fee_pa: 180000,
   });
 
+  // Step 2: Optional date-range scoping. When both are set, the assessment
+  // engine constrains ERP queries to the window (e.g. "last 6 months") so
+  // demos and shared-savings billing focus on a defined period. Blank on
+  // either side = all available data.
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+
   useEffect(() => {
     // Load default config
     api.assessments.getDefaultConfig().then(d => {
@@ -300,6 +312,14 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
       onError('Prospect name and industry are required');
       return;
     }
+    // Validate the period when both bounds are provided. Half-open ranges
+    // are accepted but silently ignored by the engine (treated as "all data")
+    // — surfacing a soft warning here would just add UI without changing the
+    // outcome, so we let it flow.
+    if (periodStart && periodEnd && periodStart > periodEnd) {
+      onError('Period start must be on or before period end');
+      return;
+    }
     try {
       setSubmitting(true);
       const data = await api.assessments.create({
@@ -307,6 +327,8 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
         prospect_industry: prospectIndustry,
         erp_connection_id: erpConnectionId || undefined,
         config,
+        period_start: periodStart || null,
+        period_end: periodEnd || null,
       });
       onCreated(data.id);
     } catch (err) {
@@ -457,6 +479,44 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
             </div>
           </div>
 
+          {/* Period scoping — optional date window for this assessment.
+              Leaving both blank means "all available data". When set, ERP
+              queries (AR aging, AP, GL, sales, tax) are constrained to the
+              window so demo + shared-savings billing focus on a defined
+              period. */}
+          <div className="pt-2 border-t" style={{ borderColor: 'var(--border-card)' }}>
+            <div className="flex items-baseline justify-between mb-2">
+              <label className="block text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Assessment Period
+              </label>
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                Leave blank for all available data
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Period start</label>
+                <input
+                  type="date"
+                  value={periodStart}
+                  onChange={e => setPeriodStart(e.target.value)}
+                  className="w-full rounded-md px-3 py-2 text-sm"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Period end</label>
+                <input
+                  type="date"
+                  value={periodEnd}
+                  onChange={e => setPeriodEnd(e.target.value)}
+                  className="w-full rounded-md px-3 py-2 text-sm"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <button onClick={() => setStep(1)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
               &larr; Back
@@ -499,6 +559,12 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
             <div className="flex justify-between text-sm">
               <span style={{ color: 'var(--text-muted)' }}>Contract</span>
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{config.contract_years} years</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span style={{ color: 'var(--text-muted)' }}>Assessment Period</span>
+              <span className="font-medium font-mono tnum" style={{ color: 'var(--text-primary)' }}>
+                {periodStart && periodEnd ? `${periodStart} → ${periodEnd}` : 'all available data'}
+              </span>
             </div>
           </div>
 
@@ -982,6 +1048,53 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
                       </div>
                       {expandedFinding === f.id && (
                         <div className="px-4 pb-3 pt-0 ml-6 space-y-2" style={{ borderTop: '1px solid var(--border-card)' }}>
+                          {/*
+                            v81/v82: AI-authored per-finding insight + date stamp.
+                            The pill shows when the insight was authored so an
+                            auditor can replay generation; provider/model name is
+                            never surfaced (trade-secret per llm-provider.ts:11).
+                          */}
+                          {f.finding_insight && f.finding_insight.trim() && (
+                            <div
+                              className="mt-2 px-3 py-2 text-xs italic"
+                              style={{
+                                background: '#fbfaf7',
+                                borderLeft: '2px solid #0a7d4f',
+                                borderRadius: '2px',
+                                color: '#1f2a24',
+                              }}
+                            >
+                              <div className="flex items-center gap-2 mb-1 not-italic">
+                                <span
+                                  className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded-sm"
+                                  style={{ background: '#0a7d4f', color: '#fbfaf7' }}
+                                >
+                                  AI
+                                </span>
+                                <span
+                                  className="text-[10px] font-medium uppercase tracking-wider"
+                                  style={{ color: '#0a7d4f' }}
+                                >
+                                  Insight
+                                </span>
+                                {f.finding_insight_generated_at && (
+                                  <span
+                                    className="text-[10px] font-mono tnum"
+                                    style={{ color: 'var(--text-muted)' }}
+                                    title={f.finding_insight_generated_at}
+                                  >
+                                    {(() => {
+                                      const d = new Date(f.finding_insight_generated_at);
+                                      return Number.isNaN(d.getTime())
+                                        ? ''
+                                        : d.toISOString().slice(0, 10);
+                                    })()}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="leading-relaxed">{f.finding_insight}</p>
+                            </div>
+                          )}
                           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{f.description}</p>
                           {f.root_cause && (
                             <div className="text-xs"><span className="font-medium" style={{ color: 'var(--text-primary)' }}>Root Cause: </span><span style={{ color: 'var(--text-secondary)' }}>{f.root_cause}</span></div>

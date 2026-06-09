@@ -98,11 +98,11 @@ export async function runValueAssessment(
 
     // Phase 1: Data Quality Audit
     progress('data_quality', 'Starting data quality audit...', 5);
-    const dqResults = await runDataQualityAudit(db, tenantId, assessmentId, progress);
+    const dqResults = await runDataQualityAudit(db, ai, tenantId, assessmentId, progress);
 
     // Phase 2: Process Timing Analysis
     progress('process_timing', 'Measuring process cycles...', 25);
-    const timingResults = await runProcessTimingAnalysis(db, tenantId, assessmentId, progress);
+    const timingResults = await runProcessTimingAnalysis(db, ai, tenantId, assessmentId, progress);
 
     // Phase 3: Live Catalyst Runs (skip in quick mode)
     let catalystFindings: number = 0;
@@ -141,7 +141,7 @@ export async function runValueAssessment(
 interface DQResult { totalIssues: number; totalFindings: number; }
 
 async function runDataQualityAudit(
-  db: D1Database, tenantId: string, assessmentId: string,
+  db: D1Database, ai: Ai, tenantId: string, assessmentId: string,
   progress: (phase: string, step: string, pct: number, detail?: string) => void,
 ): Promise<DQResult> {
   let totalIssues = 0;
@@ -231,7 +231,7 @@ async function runDataQualityAudit(
           prescription: 'Deploy automated AR collection catalyst with escalation rules based on aging buckets.',
           category: 'data_issue', immediateValue: overdueValue * 0.3, ongoingMonthlyValue: overdueValue * 0.02,
           domain: 'finance',
-        });
+        }, ai);
         totalFindings++;
       }
 
@@ -295,7 +295,7 @@ async function runDataQualityAudit(
           prescription: 'Implement automated PO lifecycle management with stale PO alerts and auto-close rules.',
           category: 'process_issue', immediateValue: staleValue * 0.15, ongoingMonthlyValue: staleValue * 0.005,
           domain: 'procurement',
-        });
+        }, ai);
         totalFindings++;
       }
 
@@ -331,7 +331,7 @@ async function runDataQualityAudit(
             prescription: 'Deploy duplicate payment detection catalyst with pre-payment verification rules.',
             category: 'control_gap', immediateValue: dupValue * 0.3, ongoingMonthlyValue: dupValue * 0.01,
             domain: 'finance',
-          });
+          }, ai);
           totalFindings++;
         }
       }
@@ -403,7 +403,7 @@ async function runDataQualityAudit(
           prescription: 'Deploy inventory optimization catalyst with dead stock alerts and automated disposition workflows.',
           category: 'data_issue', immediateValue: deadStockValue * 0.15, ongoingMonthlyValue: deadStockValue * 0.005,
           domain: 'supply_chain',
-        });
+        }, ai);
         totalFindings++;
       }
     }
@@ -442,7 +442,7 @@ async function runDataQualityAudit(
 interface TimingResult { delays: number; }
 
 async function runProcessTimingAnalysis(
-  db: D1Database, tenantId: string, assessmentId: string,
+  db: D1Database, ai: Ai, tenantId: string, assessmentId: string,
   progress: (phase: string, step: string, pct: number, detail?: string) => void,
 ): Promise<TimingResult> {
   let delays = 0;
@@ -503,7 +503,7 @@ async function runProcessTimingAnalysis(
         prescription: `Deploy automated AR collection with payment reminder sequences. Target: reduce O2C from ${Math.round(avgO2C)} to ${benchmark} days, recovering R${formatZAR(Math.round(financialImpact))}/year in working capital cost.`,
         category: 'timing_issue', immediateValue: 0, ongoingMonthlyValue: Math.round(financialImpact / 12),
         domain: 'finance',
-      });
+      }, ai);
     }
   }
 
@@ -561,7 +561,7 @@ async function runProcessTimingAnalysis(
         prescription: `Automate PO approval and 3-way matching. Target: reduce P2P from ${Math.round(avgP2P)} to ${benchmark} days.`,
         category: 'timing_issue', immediateValue: 0, ongoingMonthlyValue: Math.round(financialImpact / 12),
         domain: 'procurement',
-      });
+      }, ai);
     }
   }
 
@@ -677,7 +677,7 @@ async function runLiveCatalystAnalysis(
           immediateValue: finding.immediateValue || 0,
           ongoingMonthlyValue: finding.ongoingMonthlyValue || 0,
           domain: dom.domain,
-        });
+        }, ai);
         totalFindings++;
       }
     }
@@ -1116,6 +1116,19 @@ export async function generateValueReportPDF(
   // We generate an HTML report that can be served as-is or converted to PDF
   const reportDate = new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
 
+  // Assessment period — when operator scoped the assessment to a window (e.g.
+  // "last 6 months") we render it on the cover page so the report is clearly
+  // billable against that period. NULL on either side = unbounded, render as
+  // "all available data".
+  const periodRow = await db.prepare(
+    `SELECT period_start, period_end FROM assessments WHERE id = ? LIMIT 1`,
+  ).bind(assessmentId).first<{ period_start: string | null; period_end: string | null }>();
+  const periodStart = periodRow?.period_start ?? null;
+  const periodEnd = periodRow?.period_end ?? null;
+  const periodLine = (periodStart && periodEnd)
+    ? `Assessment period: ${escapeHtml(periodStart)} — ${escapeHtml(periodEnd)}`
+    : 'Assessment period: all available data';
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1186,6 +1199,7 @@ export async function generateValueReportPDF(
   <div class="company">${escapeHtml(prospectName)}</div>
   <div class="meta">${reportDate}</div>
   <div class="meta">Currency: ${config.currency}</div>
+  <div class="meta">${periodLine}</div>
   <div class="live">Based on live analysis of your actual transaction data</div>
 </div>
 
@@ -1279,13 +1293,39 @@ ${Object.entries(valueByDomain).map(([domain, val]: [string, unknown]) => {
     <div style="margin-bottom:3mm;font-size:9pt;color:#64748b">${v.findings} findings | Immediate: R${formatZAR(Math.round(v.immediate))} | Ongoing: R${formatZAR(Math.round(v.ongoing))}/month</div>
     <table>
       <tr><th>Finding</th><th>Severity</th><th>Impact</th><th>Records</th><th>Root Cause</th></tr>
-      ${domainFindings.map(f => `<tr>
+      ${domainFindings.map(f => {
+        // v81/v82: render the LLM-authored insight as an italic blockquote
+        // spanning all columns directly under the finding row. Skip silently
+        // when null. The pill carries a date stamp so an auditor can pinpoint
+        // when the AI authored each claim (SOC 2 PI1); the provider/model name
+        // is deliberately omitted (trade-secret per llm-provider.ts:11).
+        const insight = typeof f.finding_insight === 'string' ? f.finding_insight.trim() : '';
+        const genAtRaw = typeof f.finding_insight_generated_at === 'string'
+          ? f.finding_insight_generated_at
+          : '';
+        const genAtLabel = genAtRaw
+          ? (() => {
+              const d = new Date(genAtRaw);
+              return Number.isNaN(d.getTime())
+                ? ''
+                : d.toISOString().slice(0, 10);
+            })()
+          : '';
+        const insightRow = insight
+          ? `<tr><td colspan="5" style="padding:0 8px 6px 8px;border:none">
+              <div style="background:#fbfaf7;border-left:2px solid #0a7d4f;border-radius:2px;padding:4px 8px;font-style:italic;font-size:8pt;color:#1f2a24;line-height:1.4">
+                <span style="display:inline-block;background:#0a7d4f;color:#fbfaf7;font-style:normal;font-size:7pt;font-weight:600;letter-spacing:0.5px;padding:1px 4px;border-radius:2px;margin-right:6px;vertical-align:middle">AI${genAtLabel ? ` · ${escapeHtml(genAtLabel)}` : ''}</span>${escapeHtml(insight)}
+              </div>
+            </td></tr>`
+          : '';
+        return `<tr>
         <td>${escapeHtml(String(f.title))}</td>
         <td><span class="badge badge-${f.severity}">${String(f.severity).toUpperCase()}</span></td>
         <td style="font-weight:600">R${formatZAR(Math.round(Number(f.financial_impact)))}</td>
         <td>${Number(f.affected_records).toLocaleString()}</td>
         <td style="font-size:8pt">${escapeHtml(String(f.root_cause || '').slice(0, 80))}</td>
-      </tr>`).join('\n      ')}
+      </tr>${insightRow}`;
+      }).join('\n      ')}
     </table>
   </div>`;
 }).join('\n')}
@@ -2014,9 +2054,76 @@ interface CreateFindingData {
   domain: string;
 }
 
+interface FindingInsightProvenance {
+  text: string;
+  // Provider+model identifier stored for SOC 2 PI1 audit replay only — must
+  // NEVER be returned to API clients (trade-secret per llm-provider.ts:11).
+  model: string;
+  generatedAt: string;
+}
+
+/**
+ * Per-finding AI insight (v81/v82). Authored by the same model the tenant-wide
+ * executive narrative uses, but scoped to this one finding so the UI can show
+ * a short business-language read alongside the deterministic
+ * description / root_cause / prescription. Strong-inference principle: when
+ * evidence is thin (sample <25 or mode share weak), the prompt is told to say
+ * so explicitly instead of speculating. Any error → null; never throws.
+ *
+ * v82: returns provenance ({text, model, generatedAt}) so SOC 2 PI1 (processing
+ * integrity for AI-authored output) can be satisfied — an auditor can replay
+ * generation and trace claims back to a specific model + time.
+ */
+async function generateFindingInsight(
+  db: D1Database,
+  ai: Ai | undefined,
+  tenantId: string,
+  data: CreateFindingData,
+): Promise<FindingInsightProvenance | null> {
+  if (!ai) return null;
+  try {
+    const sample = Array.isArray(data.evidence?.sample_records)
+      ? data.evidence.sample_records.length
+      : 0;
+    const lowEvidence = sample > 0 && sample < 25;
+    const llmConfig = await loadLlmConfig(db, tenantId);
+    const result = await llmChatWithFallback(llmConfig, ai, [
+      {
+        role: 'system',
+        content:
+          'You are Atheon Intelligence, a financial analysis AI. Write a single per-finding insight for a CFO. Three short clauses joined with periods: (1) why this matters for this customer in business terms, (2) the operational risk if unaddressed, (3) what the value capture looks like. ZAR (R) format, no marketing language, no preamble. Hard limit 400 characters. If the evidence is thin, explicitly say "Limited evidence" instead of speculating.',
+      },
+      {
+        role: 'user',
+        content: `Finding: ${data.title}
+Severity: ${data.severity}
+Domain: ${data.domain}
+Affected records: ${data.affectedRecords}
+Sample records in evidence: ${sample}${lowEvidence ? ' (low — call this out)' : ''}
+Financial impact (ZAR): R${formatZAR(Math.round(data.financialImpact || 0))}
+Immediate recovery (ZAR): R${formatZAR(Math.round(data.immediateValue || 0))}
+Ongoing monthly (ZAR): R${formatZAR(Math.round(data.ongoingMonthlyValue || 0))}
+Description: ${data.description}
+Root cause: ${data.rootCause}
+Prescription: ${data.prescription}`,
+      },
+    ], { maxTokens: 256 });
+    const text = stripCodeFences(result.text || '').trim();
+    if (!text) return null;
+    // Hard-clip to 400 chars as the schema/UI expects a compact narrative.
+    const clipped = text.length > 400 ? text.slice(0, 397).trimEnd() + '…' : text;
+    const model = `${llmConfig.provider}:${llmConfig.model_id || 'default'}`;
+    return { text: clipped, model, generatedAt: new Date().toISOString() };
+  } catch (err) {
+    console.warn('Finding insight generation skipped:', (err as Error).message);
+    return null;
+  }
+}
+
 async function createFinding(
   db: D1Database, assessmentId: string, tenantId: string,
   runId: string, data: CreateFindingData,
+  ai?: Ai,
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.prepare(
@@ -2029,6 +2136,25 @@ async function createFinding(
     JSON.stringify(data.evidence), data.rootCause, data.prescription,
     data.category, data.immediateValue, data.ongoingMonthlyValue, data.domain,
   ).run();
+
+  // v81/v82: best-effort per-finding insight + provenance. Wrapped in try/catch
+  // and gated on `ai` being present — assessment must never abort on an LLM
+  // hiccup. Provenance columns (model, generated_at) exist solely for SOC 2
+  // PI1 audit replay and are not surfaced to API clients.
+  try {
+    const insight = await generateFindingInsight(db, ai, tenantId, data);
+    if (insight) {
+      await db
+        .prepare(
+          'UPDATE assessment_findings SET finding_insight = ?, finding_insight_model = ?, finding_insight_generated_at = ? WHERE id = ?'
+        )
+        .bind(insight.text, insight.model, insight.generatedAt, id)
+        .run();
+    }
+  } catch (err) {
+    console.warn('Finding insight persistence skipped:', (err as Error).message);
+  }
+
   return id;
 }
 

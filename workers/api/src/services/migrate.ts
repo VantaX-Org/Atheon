@@ -81,7 +81,22 @@
 // per day. dashboard_close_cycles tracks the current period close (status,
 // total/completed/blocking task counts); dashboard_close_tasks holds the
 // individual task list. Pulled into Dashboard.tsx as two new cards.
-export const MIGRATION_VERSION = 'v79-pulse-subscriptions';
+// v80-assessment-period: assessments.period_start + period_end (TEXT,
+// nullable). Lets operators scope a pre-sale assessment to a date window
+// (e.g. last 6 months) so demo data and shared-savings calculations focus
+// on a defined billing period. NULL on either side = unbounded.
+// v81-finding-insight: assessment_findings.finding_insight (TEXT, nullable).
+// Per-finding LLM-authored narrative scoped to that single finding
+// (distinct from the tenant-wide executive_narrative on
+// assessment_value_summary). Generated defensively after the deterministic
+// finding row is inserted — any LLM failure leaves the column NULL and the
+// assessment continues. UI hides the block when null/empty.
+// v82-insight-provenance: assessment_findings.finding_insight_model (TEXT)
+// + finding_insight_generated_at (TEXT). SOC 2 PI1 trust-criterion: any
+// AI-authored output customers will act on must record the model and
+// generation timestamp so the assertion is replayable and auditable.
+// Surfaced as an "AI · <model>" pill in the report and detail panel.
+export const MIGRATION_VERSION = 'v82-insight-provenance';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -215,7 +230,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), recipients TEXT NOT NULL, subject TEXT NOT NULL, html_body TEXT NOT NULL, text_body TEXT, status TEXT NOT NULL DEFAULT 'pending', sent_at TEXT, error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS execution_logs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), action_id TEXT NOT NULL, step_number INTEGER NOT NULL, step_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running', detail TEXT, duration_ms INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS managed_deployments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, deployment_type TEXT NOT NULL DEFAULT 'hybrid', status TEXT NOT NULL DEFAULT 'pending', licence_key TEXT NOT NULL UNIQUE, licence_expires_at TEXT, agent_version TEXT, api_version TEXT, customer_api_url TEXT, region TEXT DEFAULT 'af-south-1', last_heartbeat TEXT, health_score REAL NOT NULL DEFAULT 0, config TEXT NOT NULL DEFAULT '{}', resource_usage TEXT NOT NULL DEFAULT '{}', error_log TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS assessments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), prospect_name TEXT NOT NULL, prospect_industry TEXT NOT NULL, erp_connection_id TEXT REFERENCES erp_connections(id), status TEXT NOT NULL DEFAULT 'pending', config TEXT NOT NULL DEFAULT '{}', data_snapshot TEXT NOT NULL DEFAULT '{}', results TEXT NOT NULL DEFAULT '{}', business_report_key TEXT, technical_report_key TEXT, excel_model_key TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS assessments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), prospect_name TEXT NOT NULL, prospect_industry TEXT NOT NULL, erp_connection_id TEXT REFERENCES erp_connections(id), status TEXT NOT NULL DEFAULT 'pending', config TEXT NOT NULL DEFAULT '{}', data_snapshot TEXT NOT NULL DEFAULT '{}', results TEXT NOT NULL DEFAULT '{}', business_report_key TEXT, technical_report_key TEXT, excel_model_key TEXT, period_start TEXT, period_end TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
     CREATE TABLE IF NOT EXISTS chat_conversations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL DEFAULT 'New Conversation', model_tier TEXT NOT NULL DEFAULT 'tier-1', messages TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS password_reset_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL, key_prefix TEXT, permissions TEXT NOT NULL DEFAULT '["read"]', last_used TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT);
@@ -276,7 +291,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS atheon_score_history (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), score INTEGER NOT NULL, components TEXT NOT NULL DEFAULT '{}', recorded_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS trial_assessments (id TEXT PRIMARY KEY, tenant_id TEXT, company_name TEXT NOT NULL, industry TEXT NOT NULL, contact_name TEXT NOT NULL, contact_email TEXT NOT NULL, data_source TEXT NOT NULL DEFAULT 'csv_upload', status TEXT NOT NULL DEFAULT 'pending', progress INTEGER NOT NULL DEFAULT 0, current_step TEXT, health_score REAL, issues_found INTEGER, estimated_exposure REAL, top_risks TEXT NOT NULL DEFAULT '[]', top_opportunities TEXT NOT NULL DEFAULT '[]', projected_roi REAL, report_r2_key TEXT, ip_address TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT, expires_at TEXT);
     CREATE TABLE IF NOT EXISTS assessment_runs (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, cluster_name TEXT NOT NULL, sub_catalyst_name TEXT NOT NULL, domain TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', source_record_count INTEGER NOT NULL DEFAULT 0, target_record_count INTEGER NOT NULL DEFAULT 0, matched INTEGER NOT NULL DEFAULT 0, discrepancies INTEGER NOT NULL DEFAULT 0, exceptions INTEGER NOT NULL DEFAULT 0, total_source_value REAL NOT NULL DEFAULT 0, total_discrepancy_value REAL NOT NULL DEFAULT 0, total_unmatched_value REAL NOT NULL DEFAULT 0, match_rate REAL NOT NULL DEFAULT 0, discrepancy_rate REAL NOT NULL DEFAULT 0, avg_confidence REAL NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, findings TEXT NOT NULL DEFAULT '[]', root_causes TEXT NOT NULL DEFAULT '[]', prescriptions TEXT NOT NULL DEFAULT '[]', started_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
-    CREATE TABLE IF NOT EXISTS assessment_findings (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, run_id TEXT NOT NULL, tenant_id TEXT NOT NULL, finding_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', title TEXT NOT NULL, description TEXT NOT NULL, affected_records INTEGER NOT NULL DEFAULT 0, financial_impact REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', root_cause TEXT, prescription TEXT, category TEXT NOT NULL, immediate_value REAL NOT NULL DEFAULT 0, ongoing_monthly_value REAL NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT 'general', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS assessment_findings (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, run_id TEXT NOT NULL, tenant_id TEXT NOT NULL, finding_type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'medium', title TEXT NOT NULL, description TEXT NOT NULL, affected_records INTEGER NOT NULL DEFAULT 0, financial_impact REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', root_cause TEXT, prescription TEXT, category TEXT NOT NULL, immediate_value REAL NOT NULL DEFAULT 0, ongoing_monthly_value REAL NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT 'general', finding_insight TEXT, finding_insight_model TEXT, finding_insight_generated_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessment_data_quality (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, table_name TEXT NOT NULL, total_records INTEGER NOT NULL DEFAULT 0, complete_records INTEGER NOT NULL DEFAULT 0, completeness_pct REAL NOT NULL DEFAULT 0, field_scores TEXT NOT NULL DEFAULT '{}', referential_issues INTEGER NOT NULL DEFAULT 0, duplicate_records INTEGER NOT NULL DEFAULT 0, orphan_records INTEGER NOT NULL DEFAULT 0, stale_records INTEGER NOT NULL DEFAULT 0, overall_quality_score REAL NOT NULL DEFAULT 0, issues TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessment_process_timing (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, process_name TEXT NOT NULL, avg_cycle_time_days REAL NOT NULL DEFAULT 0, median_cycle_time_days REAL NOT NULL DEFAULT 0, p90_cycle_time_days REAL NOT NULL DEFAULT 0, benchmark_cycle_time_days REAL NOT NULL DEFAULT 0, bottleneck_step TEXT, bottleneck_avg_days REAL NOT NULL DEFAULT 0, records_analysed INTEGER NOT NULL DEFAULT 0, records_exceeding_benchmark INTEGER NOT NULL DEFAULT 0, financial_impact_of_delay REAL NOT NULL DEFAULT 0, evidence TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessment_value_summary (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL, tenant_id TEXT NOT NULL, total_immediate_value REAL NOT NULL DEFAULT 0, total_ongoing_monthly_value REAL NOT NULL DEFAULT 0, total_ongoing_annual_value REAL NOT NULL DEFAULT 0, total_data_quality_issues INTEGER NOT NULL DEFAULT 0, total_process_delays INTEGER NOT NULL DEFAULT 0, total_findings INTEGER NOT NULL DEFAULT 0, total_critical_findings INTEGER NOT NULL DEFAULT 0, outcome_based_monthly_fee REAL NOT NULL DEFAULT 0, outcome_based_fee_pct REAL NOT NULL DEFAULT 0, payback_days INTEGER NOT NULL DEFAULT 0, value_by_domain TEXT NOT NULL DEFAULT '{}', value_by_category TEXT NOT NULL DEFAULT '{}', executive_narrative TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
@@ -866,6 +881,21 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // can surface them. Additive — old rows default to '[]'.
     { table: 'trial_assessments', column: 'findings_json', definition: "TEXT NOT NULL DEFAULT '[]'" },
     { table: 'trial_assessments', column: 'findings_summary_json', definition: "TEXT NOT NULL DEFAULT '{}'" },
+    // Period scoping on assessments: operators can scope an assessment to a
+    // date window (e.g. "last 6 months") so demos / shared-savings billing
+    // calculations focus on a defined period. Both columns are nullable —
+    // NULL on either side means "all available data" for that bound.
+    { table: 'assessments', column: 'period_start', definition: 'TEXT' },
+    { table: 'assessments', column: 'period_end', definition: 'TEXT' },
+    // v81: per-finding LLM-authored insight. Nullable — generation is
+    // best-effort; if the model call fails we leave the column NULL and the
+    // assessment still completes. Distinct from the tenant-wide
+    // assessment_value_summary.executive_narrative.
+    { table: 'assessment_findings', column: 'finding_insight', definition: 'TEXT' },
+    // v82: AI insight provenance. Records the model that authored the insight
+    // and when, so a future auditor can replay generation and trace claims.
+    { table: 'assessment_findings', column: 'finding_insight_model', definition: 'TEXT' },
+    { table: 'assessment_findings', column: 'finding_insight_generated_at', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'escalation_level', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
     // tenants.industry is intentionally NOT healed here — it is dropped a few

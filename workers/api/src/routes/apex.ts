@@ -518,16 +518,29 @@ apex.get('/risks/:riskId/trace', async (c) => {
 // A4-5: GET /api/apex/risks/:riskId/suggest-causes — LLM-powered root cause suggestions
 apex.get('/risks/:riskId/suggest-causes', async (c) => {
   const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
   const riskId = c.req.param('riskId');
-  
+
   // Get the risk alert
   const risk = await c.env.DB.prepare(
     'SELECT * FROM risk_alerts WHERE id = ? AND tenant_id = ?'
   ).bind(riskId, tenantId).first<Record<string, unknown>>();
-  
+
   if (!risk) {
     return c.json({ error: 'Risk alert not found' }, 404);
   }
+
+  // SOC 2 PI1 + CC6: record that a user requested AI-generated root-cause
+  // suggestions for this risk. Captured at entry so the audit trail shows the
+  // request regardless of which downstream path (LLM/parse/fallback) runs.
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, auth?.userId || null,
+    'apex.risk.ai_suggest_causes', 'apex', riskId,
+    JSON.stringify({ severity: risk.severity, category: risk.category }),
+    'success',
+  ).run();
   
   // Get source attribution
   const sourceRunId = risk.source_run_id as string | null;
@@ -875,16 +888,28 @@ apex.post('/scenarios/agentic', async (c) => {
 // A4-6: GET /api/apex/risks/:riskId/export — Export risk traceability report as CSV
 apex.get('/risks/:riskId/export', async (c) => {
   const tenantId = getTenantId(c);
+  const auth = c.get('auth') as AuthContext | undefined;
   const riskId = c.req.param('riskId');
-  
+
   // Get the risk alert
   const risk = await c.env.DB.prepare(
     'SELECT * FROM risk_alerts WHERE id = ? AND tenant_id = ?'
   ).bind(riskId, tenantId).first<Record<string, unknown>>();
-  
+
   if (!risk) {
     return c.json({ error: 'Risk alert not found' }, 404);
   }
+
+  // SOC 2 CC6: log data-export actions with the requesting user attached, so an
+  // auditor can trace every CSV that left the tenant boundary back to a person.
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, auth?.userId || null,
+    'apex.risk.exported', 'apex', riskId,
+    JSON.stringify({ format: 'csv', severity: risk.severity, category: risk.category }),
+    'success',
+  ).run();
   
   // Get source run and items
   const sourceRunId = risk.source_run_id as string | null;

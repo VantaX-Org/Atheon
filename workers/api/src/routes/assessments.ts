@@ -48,6 +48,10 @@ assessments.post('/', async (c) => {
     prospect_industry: string;
     erp_connection_id?: string;
     config: AssessmentConfig;
+    /** ISO date (YYYY-MM-DD). Optional — null/empty means unbounded start. */
+    period_start?: string | null;
+    /** ISO date (YYYY-MM-DD). Optional — null/empty means unbounded end. */
+    period_end?: string | null;
   }>();
 
   if (!body.prospect_name || !body.prospect_industry) {
@@ -56,6 +60,13 @@ assessments.post('/', async (c) => {
 
   const id = crypto.randomUUID();
   const config = { ...DEFAULT_ASSESSMENT_CONFIG, ...body.config };
+
+  // Normalise period bounds — empty strings become null so the engine's
+  // "both present?" check is unambiguous downstream.
+  const periodStart = body.period_start && body.period_start.trim() !== ''
+    ? body.period_start.trim() : null;
+  const periodEnd = body.period_end && body.period_end.trim() !== ''
+    ? body.period_end.trim() : null;
 
   // For pre-assessment: resolve tenant_id from the ERP connection so we query
   // the prospect's data, not the superadmin's home tenant.
@@ -68,8 +79,8 @@ assessments.post('/', async (c) => {
   }
 
   await c.env.DB.prepare(`
-    INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, erp_connection_id, status, config, created_by)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+    INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, erp_connection_id, status, config, period_start, period_end, created_by)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `).bind(
     id,
     tenantId,
@@ -77,6 +88,8 @@ assessments.post('/', async (c) => {
     body.prospect_industry,
     body.erp_connection_id || null,
     JSON.stringify(config),
+    periodStart,
+    periodEnd,
     auth!.userId
   ).run();
 
@@ -91,6 +104,7 @@ assessments.post('/', async (c) => {
     config,
     body.prospect_industry,
     body.prospect_name,
+    { periodStart, periodEnd },
   );
 
   c.executionCtx.waitUntil(assessmentPromise);
@@ -334,10 +348,16 @@ assessments.get('/:id/findings', async (c) => {
 
   const results = await c.env.DB.prepare(sql).bind(...binds).all<Record<string, unknown>>();
   return c.json({
-    findings: (results.results || []).map(f => ({
-      ...f,
-      evidence: JSON.parse(f.evidence as string || '{}'),
-    })),
+    findings: (results.results || []).map(f => {
+      // SOC 2 PI1 + trade-secret: finding_insight_model is persisted for audit
+      // replay only — never expose it to API clients (llm-provider.ts:11).
+      const { finding_insight_model, ...rest } = f;
+      void finding_insight_model;
+      return {
+        ...rest,
+        evidence: JSON.parse(f.evidence as string || '{}'),
+      };
+    }),
     total: results.results?.length || 0,
   });
 });
@@ -451,8 +471,11 @@ assessments.get('/:id/evidence/:findingId', async (c) => {
 
   if (!finding) return c.json({ error: 'Finding not found' }, 404);
 
+  // SOC 2 PI1 + trade-secret: strip provider/model name (llm-provider.ts:11).
+  const { finding_insight_model, ...rest } = finding;
+  void finding_insight_model;
   return c.json({
-    ...finding,
+    ...rest,
     evidence: JSON.parse(finding.evidence as string || '{}'),
   });
 });
@@ -505,6 +528,9 @@ function formatAssessment(a: Record<string, unknown>) {
     businessReportKey: a.business_report_key,
     technicalReportKey: a.technical_report_key,
     excelModelKey: a.excel_model_key,
+    // Period scoping (nullable on either side; null === "all data" for that bound).
+    periodStart: (a.period_start as string | null) ?? null,
+    periodEnd: (a.period_end as string | null) ?? null,
     createdBy: a.created_by,
     createdAt: a.created_at,
     completedAt: a.completed_at,
