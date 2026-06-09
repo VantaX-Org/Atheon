@@ -652,7 +652,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
         analysis: {
           rootCauses: analysis.rootCauses || [],
           generatedAt: new Date().toISOString(),
-          model: 'llama-3.1-8b-instruct',
+          poweredBy: 'Atheon Intelligence',
         },
       });
     } catch {
@@ -663,7 +663,7 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
         analysis: {
           rawAnalysis: text,
           generatedAt: new Date().toISOString(),
-          model: 'llama-3.1-8b-instruct',
+          poweredBy: 'Atheon Intelligence',
         },
       });
     }
@@ -719,8 +719,9 @@ Respond with JSON: { "rootCauses": [{ "description": string, "confidence": numbe
       analysis: {
         rootCauses: heuristicCauses,
         generatedAt: new Date().toISOString(),
-        model: 'heuristic-fallback',
-        note: 'LLM analysis unavailable, using heuristic analysis',
+        mode: 'heuristic',
+        poweredBy: 'Atheon Intelligence',
+        note: 'AI analysis unavailable, using heuristic analysis',
       },
     });
   }
