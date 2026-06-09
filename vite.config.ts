@@ -104,4 +104,21 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("/react-router")) return "router";
+          if (id.includes("/react-dom/") || id.match(/\/react\/[^/]+\.js$/) || id.includes("/scheduler/")) return "react-vendor";
+          if (id.includes("/recharts/") || id.includes("/d3-")) return "charts";
+          if (id.includes("/@radix-ui/")) return "radix";
+          if (id.includes("/lucide-react/")) return "icons";
+          if (id.includes("/@tanstack/")) return "query";
+          if (id.includes("/date-fns/")) return "date-fns";
+          return undefined;
+        },
+      },
+    },
+  },
 })
