@@ -237,6 +237,9 @@ describe('Catalyst Engine — 24-period × 9 sub-catalyst year-over-year simulat
       'catalyst_run_analytics',
       'run_insights',
       'field_transformations',
+      'run_comments',
+      'sub_catalyst_kpi_values',
+      'catalyst_simulations',
     ];
     for (const t of childTables) {
       try {
