@@ -30,7 +30,7 @@ import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import type { ExecutiveSummaryResponse } from '@/lib/api';
 import {
   AlertCircle, TrendingUp,
-  TrendingDown, Minus, RefreshCw, ArrowRight, FileText, Calendar,
+  TrendingDown, Minus, RefreshCw, ArrowRight,
 } from 'lucide-react';
 
 const formatCurrency = (value: number): string => {
@@ -298,25 +298,6 @@ export function ExecutiveSummaryPage() {
         </Card>
       )}
 
-      {/* Scheduling / Distribution — not yet implemented, called out so the gap is visible */}
-      <Card className="p-5" style={{ borderColor: 'rgb(var(--warning-rgb, 154 107 31) / 0.25)', background: 'rgb(var(--warning-rgb, 154 107 31) / 0.04)' }}>
-        <div className="flex items-start gap-3">
-          <Calendar size={16} className="mt-0.5" style={{ color: 'var(--warning)' }} />
-          <div className="flex-1">
-            <p className="text-sm font-medium t-primary">Scheduled distribution — not yet implemented</p>
-            <p className="text-xs t-muted mt-0.5">
-              Emailing this summary on a schedule (weekly/monthly) and broadcasting to board members requires a delivery backend that hasn&rsquo;t shipped yet.
-              For now, use the board-report generator on Apex for a shareable one-pager.
-            </p>
-            <button
-              onClick={() => navigate('/apex')}
-              className="mt-2 inline-flex items-center gap-1 text-caption text-accent hover:underline"
-            >
-              <FileText size={11} /> Open board report generator
-            </button>
-          </div>
-        </div>
-      </Card>
     </div>
   );
 }

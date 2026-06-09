@@ -719,25 +719,6 @@ function DetailView({ deployment, id, onRefresh, onError, onBack }: {
         </div>
       </div>
 
-      {/* Canary — Not yet implemented */}
-      <div className="rounded-md p-5" style={{ background: 'var(--bg-card-solid)', border: '1px dashed var(--border-card)' }}>
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <h3 className="font-medium mb-1 flex items-center gap-2 t-primary">
-              Canary Promotion
-              <span className="text-label px-1.5 py-0.5 rounded-sm" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', color: 'var(--warning)', border: '1px solid var(--warning)' }}>
-                Not yet implemented
-              </span>
-            </h3>
-            <p className="text-xs t-muted">
-              Canary deployments (rolling out a version to a subset of the fleet first) require a backend endpoint
-              <span className="font-mono"> POST /api/deployments/:id/canary </span>
-              plus an <span className="font-mono">agent_version_history</span> table. Track progress in the Deployments epic.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Delete / Revoke */}
       <div className="rounded-md p-5" style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--neg)' }}>
         <h3 className="font-medium mb-3 text-neg">Delete Deployment</h3>
