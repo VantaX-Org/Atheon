@@ -83,12 +83,12 @@ max_retries = 1
 #          wrangler secret put SETUP_SECRET --env staging
 [env.staging]
 name = "atheon-api-staging"
-# Route binding for the staging API. The DNS record and Cloudflare
-# zone binding for staging.atheon-api.vantax.co.za must exist before
-# `wrangler deploy --env staging` will succeed. Provisioning steps live
-# in docs/runbooks/go-live.md → "Standing staging back up".
+# Custom domain binding — wrangler auto-creates the DNS record on the
+# vantax.co.za zone and provisions Universal SSL. No manual DNS step needed
+# before `wrangler deploy --env staging --config wrangler.toml`. First-time
+# SSL cert can take 1–5 minutes to propagate before the host serves HTTPS.
 routes = [
-  { pattern = "staging.atheon-api.vantax.co.za/*", zone_name = "vantax.co.za" }
+  { pattern = "staging.atheon-api.vantax.co.za", custom_domain = true }
 ]
 
 [env.staging.vars]
@@ -98,14 +98,14 @@ DEPLOYMENT_ROLE = "cloud"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "atheon-db-staging"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "5bee4431-ba4e-4f17-80b0-1377e6395d48"
 
 [env.staging.ai]
 binding = "AI"
 
 [[env.staging.kv_namespaces]]
 binding = "CACHE"
-id = "00000000000000000000000000000000"
+id = "9ade6ea000a74891929ca643ef925cc4"
 
 [[env.staging.r2_buckets]]
 binding = "STORAGE"
