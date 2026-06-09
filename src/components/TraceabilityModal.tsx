@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/button";
-import { Portal } from "@/components/ui/portal";
-import { X, ChevronRight, Link2, AlertTriangle, BarChart3, TrendingUp, TrendingDown, Minus, FileText, ChevronDown, ChevronUp, Crown, Database } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { ChevronRight, Link2, AlertTriangle, BarChart3, TrendingUp, TrendingDown, Minus, FileText, ChevronDown, ChevronUp, Crown, Database } from "lucide-react";
 import type { HealthDimensionTraceResponse, RiskTraceResponse, MetricTraceResponse } from "@/lib/api";
 import { formatCurrency } from "@/lib/format-currency";
 
@@ -44,12 +44,6 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
     if (runId) navigate(`/catalysts/runs/${runId}`);
   };
   const [expandedSection, setExpandedSection] = useState<string | null>('source');
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -187,46 +181,36 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
     }
   };
 
+  const headerIcon =
+    type === 'dimension' ? <Crown size={18} className="text-accent" /> :
+    type === 'risk' ? <AlertTriangle size={18} className="text-accent" /> :
+    <BarChart3 size={18} className="text-accent" />;
+  const headerTitleText =
+    type === 'dimension' ? `Dimension: ${(data as HealthDimensionTraceResponse).dimension}` :
+    type === 'risk' ? `Risk: ${(data as RiskTraceResponse).riskAlert.title}` :
+    `Metric: ${(data as MetricTraceResponse).metric.name}`;
+
   return (
-    <Portal>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        onClick={onClose}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          onClick={(e) => e.stopPropagation()}
-          style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }}
-          className="rounded-md p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto"
-        >
+    <Modal open onClose={onClose} size="lg" labelledBy={titleId}>
+      <Modal.Header
+        titleId={titleId}
+        onClose={onClose}
+        title={
+          <span className="flex items-center gap-3">
+            {headerIcon}
+            <span>{headerTitleText}</span>
+          </span>
+        }
+      />
+      <Modal.Body className="space-y-4">
+        {/* Score/Status */}
+        {renderScoreOrStatus()}
 
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {type === 'dimension' ? <Crown size={18} className="text-accent" /> :
-               type === 'risk' ? <AlertTriangle size={18} className="text-accent" /> :
-               <BarChart3 size={18} className="text-accent" />}
-              <h3 id={titleId} className="text-lg font-semibold t-primary">
-                {type === 'dimension' ? `Dimension: ${(data as HealthDimensionTraceResponse).dimension}` :
-                 type === 'risk' ? `Risk: ${(data as RiskTraceResponse).riskAlert.title}` :
-                 `Metric: ${(data as MetricTraceResponse).metric.name}`}
-              </h3>
-            </div>
-            <button onClick={onClose} aria-label="Close dialog" className="t-muted hover:t-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm">
-              <X size={18} />
-            </button>
-          </div>
+        {/* Drill-down path */}
+        {renderDrillDownPath()}
 
-          {/* Score/Status */}
-          {renderScoreOrStatus()}
-
-          {/* Drill-down path */}
-          {renderDrillDownPath()}
-
-          {/* Expandable Sections */}
-          <div className="space-y-2">
+        {/* Expandable Sections */}
+        <div className="space-y-2">
             {/* Batch Runs — the actual sub-catalyst runs that fed this metric/dimension/risk */}
             {(() => {
               const runs: Array<{ runId: string; subCataulystName: string; status: string; matched: number; discrepancies: number; exceptions: number; totalValue: number; startedAt: string }> =
@@ -366,24 +350,21 @@ export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProp
               )}
             </div>
 
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2 pt-2">
-            <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
-            {type === 'risk' && (data as RiskTraceResponse).sourceRun && (
-              <Button variant="primary" size="sm" onClick={() => navigateToRun((data as RiskTraceResponse).sourceRun?.runId)}>
-                View Run <ChevronRight size={14} />
-              </Button>
-            )}
-            {type === 'metric' && (data as MetricTraceResponse).sourceRun && (
-              <Button variant="primary" size="sm" onClick={() => navigateToRun((data as MetricTraceResponse).sourceRun?.runId)}>
-                View Run <ChevronRight size={14} />
-              </Button>
-            )}
-          </div>
         </div>
-      </div>
-    </Portal>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
+        {type === 'risk' && (data as RiskTraceResponse).sourceRun && (
+          <Button variant="primary" size="sm" onClick={() => navigateToRun((data as RiskTraceResponse).sourceRun?.runId)}>
+            View Run <ChevronRight size={14} />
+          </Button>
+        )}
+        {type === 'metric' && (data as MetricTraceResponse).sourceRun && (
+          <Button variant="primary" size="sm" onClick={() => navigateToRun((data as MetricTraceResponse).sourceRun?.runId)}>
+            View Run <ChevronRight size={14} />
+          </Button>
+        )}
+      </Modal.Footer>
+    </Modal>
   );
 }
