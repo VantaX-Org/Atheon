@@ -180,6 +180,15 @@ export interface FindingsContext {
   companyIds?: string[];
   /** Used for evidence_quality scoring. < 3 → low, 3–6 → medium, ≥ 6 → high. */
   monthsOfData?: number;
+  /**
+   * Optional assessment-period bounds (ISO YYYY-MM-DD). When BOTH are set,
+   * detectors that query a table with a natural date column should add a
+   * `BETWEEN periodStart AND periodEnd` clause via `periodFilter()`. Detectors
+   * that have no natural date column (master-data, balance snapshots) ignore
+   * these — see periodFilter() for the no-op semantics.
+   */
+  periodStart?: string | null;
+  periodEnd?: string | null;
 }
 
 // ── Catalyst mapping ──────────────────────────────────────────────────────
@@ -376,6 +385,33 @@ function companyFilter(
   };
 }
 
+interface PeriodFilterClause {
+  /** Joins onto the SQL string with `AND ${clause}` if non-empty, else ''. */
+  clause: string;
+  /** Bind values appended to the query parameter array. */
+  binds: string[];
+}
+
+/**
+ * Build a `date(<column>) BETWEEN ? AND ?` filter for tables with a natural
+ * date column. Returns empty clause when either bound is unset (= unscoped).
+ * Detectors without a natural date column pass `column: null` to no-op.
+ */
+function periodFilter(
+  ctx: FindingsContext,
+  column: string | null,
+  alias = '',
+): PeriodFilterClause {
+  if (!ctx.periodStart || !ctx.periodEnd || !column) {
+    return { clause: '', binds: [] };
+  }
+  const ref = alias ? `${alias}.${column}` : column;
+  return {
+    clause: `AND date(${ref}) BETWEEN date(?) AND date(?)`,
+    binds: [ctx.periodStart, ctx.periodEnd],
+  };
+}
+
 /** Build a base Finding from required + optional fields. Severity etc. stay caller-controlled. */
 function makeFinding(args: {
   code: FindingCode;
@@ -441,6 +477,7 @@ async function detectAgingBucket(
     ? `${ageExpr} >= ${minDays}`
     : `${ageExpr} >= ${minDays} AND ${ageExpr} < ${maxDays}`;
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   const rows = (await db.prepare(
     `SELECT id, invoice_number, customer_name, invoice_date, due_date,
             total, amount_due, currency, payment_status, status
@@ -450,9 +487,10 @@ async function detectAgingBucket(
         AND due_date IS NOT NULL
         AND ${bucketWhere}
         ${cf.clause}
+        ${pf.clause}
       ORDER BY amount_due DESC
       LIMIT 200`,
-  ).bind(tenantId, ...cf.binds).all<InvoiceRow>()).results || [];
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<InvoiceRow>()).results || [];
   if (rows.length === 0) return null;
 
   let totalZar = 0;
@@ -573,13 +611,14 @@ async function detectArCreditLimitBreach(db: D1Database, tenantId: string, ctx: 
 
 async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   const rows = (await db.prepare(
     `SELECT customer_name, COUNT(*) as inv_count, SUM(amount_due) as outstanding, currency
        FROM erp_invoices
-      WHERE tenant_id = ? AND payment_status != 'paid' ${cf.clause}
+      WHERE tenant_id = ? AND payment_status != 'paid' ${cf.clause} ${pf.clause}
       GROUP BY customer_name, currency
       ORDER BY outstanding DESC`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     customer_name: string; inv_count: number; outstanding: number; currency: string | null;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -636,6 +675,7 @@ async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, 
 
 async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'order_date');
   const rows = (await db.prepare(
     `SELECT id, po_number, supplier_name, order_date, delivery_date, total, currency, status, delivery_status
        FROM erp_purchase_orders
@@ -644,9 +684,10 @@ async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: Fi
         AND date(delivery_date) < date('now')
         AND COALESCE(delivery_status, 'pending') != 'received'
         ${cf.clause}
+        ${pf.clause}
       ORDER BY total DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; po_number: string; supplier_name: string | null;
     order_date: string; delivery_date: string; total: number; currency: string | null;
     status: string | null; delivery_status: string | null;
@@ -694,6 +735,7 @@ async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: Fi
 
 async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   // Heuristic: invoices marked paid but amount_paid != total (off by > R1 or > 0.1%).
   // Real 3-way needs PO+receipt+invoice linkage; we approximate using the paid/total mismatch.
   const rows = (await db.prepare(
@@ -705,9 +747,10 @@ async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: F
         AND ABS(amount_paid - total) > 1
         AND ABS(amount_paid - total) / total > 0.001
         ${cf.clause}
+        ${pf.clause}
       ORDER BY ABS(amount_paid - total) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     total: number; amount_paid: number; currency: string | null; invoice_date: string;
   }>()).results || [];
@@ -751,6 +794,7 @@ async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: F
 
 async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'transaction_date');
   const rows = (await db.prepare(
     `SELECT id, bank_account, transaction_date, description, debit, credit, balance, reference
        FROM erp_bank_transactions
@@ -758,9 +802,10 @@ async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: F
         AND COALESCE(reconciled, 0) = 0
         AND date(transaction_date) < date('now', '-30 days')
         ${cf.clause}
+        ${pf.clause}
       ORDER BY (COALESCE(debit, 0) + COALESCE(credit, 0)) DESC
       LIMIT 200`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; bank_account: string; transaction_date: string;
     description: string | null; debit: number; credit: number; balance: number;
     reference: string | null;
@@ -859,6 +904,7 @@ async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: Fi
 
 async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'journal_date');
   // SQLite strftime('%w', x) returns 0=Sun .. 6=Sat. Hours via strftime('%H').
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by, created_at
@@ -870,9 +916,10 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
           OR CAST(strftime('%H', COALESCE(created_at, journal_date)) AS INTEGER) NOT BETWEEN 7 AND 18
         )
         ${cf.clause}
+        ${pf.clause}
       ORDER BY total_debit DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
     created_at: string | null;
@@ -909,6 +956,7 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
 
 async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'journal_date');
   // Suspiciously round = above R10k AND ends in '000.00' (multiples of 1000).
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by
@@ -918,9 +966,10 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
         AND total_debit >= 10000
         AND ABS(total_debit - ROUND(total_debit, -3)) < 0.01
         ${cf.clause}
+        ${pf.clause}
       ORDER BY total_debit DESC
       LIMIT 50`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
   }>()).results || [];
@@ -956,6 +1005,7 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
 
 async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'journal_date');
   // Heuristic: any journal with posted_by in (manual user list) or description LIKE 'Manual%'
   // and a high count over the last 90 days. We don't have a "source" column,
   // so fall back to description heuristic + count.
@@ -968,8 +1018,9 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
      WHERE tenant_id = ?
        AND status = 'posted'
        AND date(journal_date) >= date('now', '-90 days')
-       ${cf.clause}`,
-  ).bind(tenantId, ...cf.binds).first<{ manual_count: number; total_count: number; manual_value: number }>();
+       ${cf.clause}
+       ${pf.clause}`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds).first<{ manual_count: number; total_count: number; manual_value: number }>();
   if (!r || r.total_count < 20) return null; // not enough data to reason about
   const manualPct = (r.manual_count / r.total_count) * 100;
   if (manualPct < 50) return null;
@@ -1002,6 +1053,7 @@ async function detectProcMaverickSpend(db: D1Database, tenantId: string, ctx: Fi
   // patterns is unreliable, so we treat AP invoices as those with reference IS NULL/empty).
   // Real-world deployments will refine via line_items inspection.
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date', 'i');
   const rows = (await db.prepare(
     `SELECT i.id, i.invoice_number, i.customer_name, i.total, i.amount_due, i.currency, i.invoice_date
        FROM erp_invoices i
@@ -1014,9 +1066,10 @@ async function detectProcMaverickSpend(db: D1Database, tenantId: string, ctx: Fi
              AND p.supplier_name = i.customer_name
         )
         ${cf.clause}
+        ${pf.clause}
       ORDER BY i.total DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     total: number; amount_due: number; currency: string | null; invoice_date: string;
   }>()).results || [];
@@ -1109,15 +1162,17 @@ async function detectProcDuplicateSuppliers(db: D1Database, tenantId: string, ct
 
 async function detectProcSupplierConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'order_date');
   const rows = (await db.prepare(
     `SELECT supplier_name, COUNT(*) as po_count, SUM(total) as spend, currency
        FROM erp_purchase_orders
       WHERE tenant_id = ?
         AND date(order_date) >= date('now', '-12 months')
         ${cf.clause}
+        ${pf.clause}
       GROUP BY supplier_name, currency
       ORDER BY spend DESC`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     supplier_name: string; po_count: number; spend: number; currency: string | null;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -1171,6 +1226,7 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
 
 async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id', 'p');
+  const pf = periodFilter(ctx, 'order_date', 'p');
   const rows = (await db.prepare(
     `SELECT p.id, p.po_number, p.supplier_name, p.order_date, p.total, p.currency, p.delivery_status
        FROM erp_purchase_orders p
@@ -1180,9 +1236,10 @@ async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, c
         AND p.status != 'closed'
         AND COALESCE(p.delivery_status, 'pending') != 'received'
         ${cf.clause}
+        ${pf.clause}
       ORDER BY p.total DESC
       LIMIT 50`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; po_number: string; supplier_name: string;
     order_date: string; total: number; currency: string | null; delivery_status: string | null;
   }>()).results || [];
@@ -1225,6 +1282,11 @@ async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, c
 
 async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  // Period scoping narrows the "recent movement" window from 6 months to the
+  // explicit period when set. Product.created_at is intentionally not period-
+  // bound — we want to flag pre-existing stock that didn't move during the
+  // window, not exclude old SKUs from the assessment.
+  const pf = periodFilter(ctx, 'invoice_date');
   // Stale = active product, stock_on_hand > 0, no recent invoice line referencing the SKU.
   // Without a movements table we approximate with: product.created_at older than 6 months
   // AND product not in any line_items in the last 6 months. Line_items check is an
@@ -1242,11 +1304,12 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
            WHERE erp_invoices.tenant_id = ?
              AND date(invoice_date) >= date('now', '-6 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
+             ${pf.clause}
         )
         ${cf.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId, ...cf.binds).all<{
+  ).bind(tenantId, tenantId, ...pf.binds, ...cf.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number; selling_price: number;
     warehouse: string | null; created_at: string | null;
@@ -1283,6 +1346,7 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
 
 async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   // Dead stock = same as stale but 12+ months. Reuse the same query template.
   const rows = (await db.prepare(
     `SELECT id, sku, name, category, stock_on_hand, cost_price
@@ -1297,11 +1361,12 @@ async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: Finding
            WHERE erp_invoices.tenant_id = ?
              AND date(invoice_date) >= date('now', '-12 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
+             ${pf.clause}
         )
         ${cf.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId, ...cf.binds).all<{
+  ).bind(tenantId, tenantId, ...pf.binds, ...cf.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number;
   }>()).results || [];
@@ -1531,6 +1596,7 @@ async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx:
 
 async function detectSalesCustomerConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   const rows = (await db.prepare(
     `SELECT customer_name, SUM(total) as revenue, currency, COUNT(*) as inv_count
        FROM erp_invoices
@@ -1538,9 +1604,10 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
         AND date(invoice_date) >= date('now', '-12 months')
         AND status NOT IN ('draft', 'cancelled')
         ${cf.clause}
+        ${pf.clause}
       GROUP BY customer_name, currency
       ORDER BY revenue DESC`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     customer_name: string; revenue: number; currency: string | null; inv_count: number;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -1594,6 +1661,7 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
 
 async function detectSalesInactiveWithAr(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id', 'i');
+  const pf = periodFilter(ctx, 'invoice_date', 'i');
   const rows = (await db.prepare(
     `SELECT i.id, i.invoice_number, i.customer_name, c.name as customer_master_name,
             i.amount_due, i.currency, i.invoice_date, c.status as customer_status
@@ -1604,9 +1672,10 @@ async function detectSalesInactiveWithAr(db: D1Database, tenantId: string, ctx: 
         AND i.amount_due > 0
         AND c.status != 'active'
         ${cf.clause}
+        ${pf.clause}
       ORDER BY i.amount_due DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     customer_master_name: string; amount_due: number; currency: string | null;
     invoice_date: string; customer_status: string;
@@ -1808,16 +1877,17 @@ async function detectHrHighPayrollConcentration(db: D1Database, tenantId: string
 }
 
 async function detectTaxOverdueSubmission(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const pf = periodFilter(ctx, 'created_at');
   const rows = (await db.prepare(
     `SELECT id, tax_period, tax_type, output_vat, input_vat, net_vat, status, created_at
        FROM erp_tax_entries
       WHERE tenant_id = ?
         AND status != 'submitted'
         AND date(COALESCE(created_at, '1970-01-01')) < date('now', '-60 days')
+        ${pf.clause}
       ORDER BY created_at ASC
       LIMIT 50`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...pf.binds).all<{
     id: string; tax_period: string; tax_type: string;
     output_vat: number; input_vat: number; net_vat: number;
     status: string; created_at: string | null;
@@ -1899,6 +1969,7 @@ async function detectTaxMissingVatNumbers(db: D1Database, tenantId: string, ctx:
 
 async function detectTaxVatRateAnomaly(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'invoice_date');
   // Anomaly = ZA invoice with non-zero subtotal where vat_amount/subtotal is
   // outside 14% .. 16% (the 15% standard rate ± rounding margin).
   const rows = (await db.prepare(
@@ -1910,9 +1981,10 @@ async function detectTaxVatRateAnomaly(db: D1Database, tenantId: string, ctx: Fi
         AND (vat_amount / subtotal < 0.14 OR vat_amount / subtotal > 0.16)
         AND vat_amount > 0
         ${cf.clause}
+        ${pf.clause}
       ORDER BY ABS(vat_amount - (subtotal * 0.15)) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     subtotal: number; vat_amount: number; total: number;
     currency: string | null; invoice_date: string;
@@ -2004,18 +2076,19 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
 }
 
 async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const pf = periodFilter(ctx, 'order_date');
   // A supplier billed in 2+ currencies in the last 12 months.
   const rows = (await db.prepare(
     `SELECT supplier_name, COUNT(DISTINCT currency) as cur_count, GROUP_CONCAT(DISTINCT currency) as currencies
        FROM erp_purchase_orders
       WHERE tenant_id = ?
         AND date(order_date) >= date('now', '-12 months')
+        ${pf.clause}
       GROUP BY supplier_name
      HAVING cur_count > 1
       ORDER BY cur_count DESC
       LIMIT 50`,
-  ).bind(tenantId).all<{ supplier_name: string; cur_count: number; currencies: string }>()).results || [];
+  ).bind(tenantId, ...pf.binds).all<{ supplier_name: string; cur_count: number; currencies: string }>()).results || [];
   if (rows.length === 0) return null;
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
@@ -2088,6 +2161,7 @@ export async function detectCompanyProfile(
  */
 async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'work_date');
   const summary = await db.prepare(
     `SELECT
        SUM(hours) as total_hours,
@@ -2097,8 +2171,9 @@ async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string,
      FROM erp_time_entries
      WHERE tenant_id = ?
        AND date(work_date) >= date('now', '-90 days')
-       ${cf.clause}`,
-  ).bind(tenantId, ...cf.binds).first<{ total_hours: number; billable_hours: number; billable_value: number; headcount: number }>();
+       ${cf.clause}
+       ${pf.clause}`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds).first<{ total_hours: number; billable_hours: number; billable_value: number; headcount: number }>();
   if (!summary || !summary.total_hours || summary.total_hours < 100) return null;
   const utilPct = (summary.billable_hours / summary.total_hours) * 100;
   if (utilPct >= 50) return null;
@@ -2131,6 +2206,7 @@ async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string,
  */
 async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'work_date');
   const rows = (await db.prepare(
     `SELECT id, employee_number, project_code, work_date, hours, billable_rate, currency, description
        FROM erp_time_entries
@@ -2140,9 +2216,10 @@ async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx:
         AND approval_status = 'approved'
         AND date(work_date) < date('now', '-30 days')
         ${cf.clause}
+        ${pf.clause}
       ORDER BY (hours * billable_rate) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; employee_number: string | null; project_code: string | null;
     work_date: string; hours: number; billable_rate: number;
     currency: string | null; description: string | null;
@@ -2304,6 +2381,7 @@ async function detectSvcProjectMarginNegative(db: D1Database, tenantId: string, 
  */
 async function detectSvcUnapprovedTimeEntries(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const pf = periodFilter(ctx, 'work_date');
   const rows = (await db.prepare(
     `SELECT id, employee_number, project_code, work_date, hours, billable_rate, currency, approval_status
        FROM erp_time_entries
@@ -2311,9 +2389,10 @@ async function detectSvcUnapprovedTimeEntries(db: D1Database, tenantId: string, 
         AND approval_status = 'pending'
         AND date(work_date) < date('now', '-14 days')
         ${cf.clause}
+        ${pf.clause}
       ORDER BY work_date ASC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
     id: string; employee_number: string | null; project_code: string | null;
     work_date: string; hours: number; billable_rate: number; currency: string | null;
     approval_status: string;

@@ -29,7 +29,8 @@ import {
  Crown, TrendingUp, TrendingDown, Minus, AlertTriangle, FileText,
  Play, BarChart3, Shield, Lightbulb, Loader2, AlertCircle, X,
  Plus, ChevronRight, ChevronLeft, Trash2, Link2, ArrowRight, Eye,
- Radar, Globe, Zap, RefreshCw, PinOff, Pin, Sparkles, Target, Briefcase
+ Radar, Globe, Zap, RefreshCw, PinOff, Pin, Sparkles, Target, Briefcase,
+ Download
 } from "lucide-react";
 import { OKRsPanel } from "@/components/apex/OKRsPanel";
 import { PortfolioPanel } from "@/components/apex/PortfolioPanel";
@@ -345,6 +346,12 @@ export function ApexPage() {
  const toggleDimensionCompare = (key: string) =>
   setSelectedDimensions(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
 
+ // Risk export + suggest-causes state — wires api.apex.riskExport / riskSuggestCauses
+ // into the per-risk expanded panel.
+ const [exportingRiskId, setExportingRiskId] = useState<string | null>(null);
+ const [suggestingRiskId, setSuggestingRiskId] = useState<string | null>(null);
+ const [riskCauses, setRiskCauses] = useState<Record<string, Array<{ description: string; confidence: number; immediateAction: string; longTermFix: string; affectedSystems: string[] }>>>({});
+
  // 2.1.3 Risk heat map filter state
  const [riskHeatFilter, setRiskHeatFilter] = useState<{ category: string; severity: string } | null>(null);
  const visibleRisks = riskHeatFilter
@@ -448,6 +455,47 @@ export function ApexPage() {
   } catch (err) {
    console.error('Failed to load risk traceability:', err);
    setActionError('Failed to load risk traceability data.');
+  }
+ };
+
+ // Triggers browser download of the risk export (CSV blob from api.apex.riskExport).
+ const handleRiskExport = async (riskId: string) => {
+  if (exportingRiskId) return;
+  setExportingRiskId(riskId);
+  try {
+   const blob = await api.apex.riskExport(riskId, undefined, companyId || undefined);
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement('a');
+   a.href = url;
+   a.download = `risk-${riskId}.csv`;
+   document.body.appendChild(a);
+   a.click();
+   document.body.removeChild(a);
+   URL.revokeObjectURL(url);
+  } catch (err) {
+   console.error('Failed to export risk:', err);
+   setActionError('Failed to export risk. Please try again.');
+  } finally {
+   setExportingRiskId(null);
+  }
+ };
+
+ // Fetches LLM-generated root causes for a risk and stores them inline under the row.
+ const handleSuggestCauses = async (riskId: string) => {
+  if (suggestingRiskId) return;
+  setSuggestingRiskId(riskId);
+  try {
+   const res = await api.apex.riskSuggestCauses(riskId, undefined, companyId || undefined);
+   const causes = res?.analysis?.rootCauses ?? [];
+   setRiskCauses(prev => ({ ...prev, [riskId]: causes }));
+   if (causes.length === 0) {
+    setActionError('No root causes returned for this risk.');
+   }
+  } catch (err) {
+   console.error('Failed to suggest causes:', err);
+   setActionError('Failed to suggest causes for this risk.');
+  } finally {
+   setSuggestingRiskId(null);
   }
  };
 
@@ -1435,6 +1483,69 @@ export function ApexPage() {
  </div>
  ))}
  </div>
+ </div>
+
+ {/* Risk export + suggested root causes — wires api.apex.riskExport / riskSuggestCauses. */}
+ <div className="p-4 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+  <div className="flex items-center justify-between gap-3 flex-wrap">
+   <div className="flex items-center gap-2">
+    <Sparkles className="w-4 h-4 text-accent" />
+    <h4 className="text-sm font-semibold t-primary">Diagnostics</h4>
+   </div>
+   <div className="flex items-center gap-2">
+    <Button
+     variant="ghost"
+     size="sm"
+     onClick={(e) => { e.stopPropagation(); handleSuggestCauses(risk.id); }}
+     disabled={suggestingRiskId === risk.id}
+     data-testid={`suggest-causes-${risk.id}`}
+     title="Generate likely root causes"
+    >
+     {suggestingRiskId === risk.id
+      ? <Loader2 size={12} className="mr-1 animate-spin" />
+      : <Lightbulb size={12} className="mr-1" />}
+     Suggest causes
+    </Button>
+    <Button
+     variant="ghost"
+     size="sm"
+     onClick={(e) => { e.stopPropagation(); handleRiskExport(risk.id); }}
+     disabled={exportingRiskId === risk.id}
+     data-testid={`export-risk-${risk.id}`}
+     title="Download risk as CSV"
+    >
+     {exportingRiskId === risk.id
+      ? <Loader2 size={12} className="mr-1 animate-spin" />
+      : <Download size={12} className="mr-1" />}
+     Export
+    </Button>
+   </div>
+  </div>
+  {riskCauses[risk.id] && riskCauses[risk.id].length > 0 && (
+   <ul className="mt-3 space-y-2">
+    {riskCauses[risk.id].map((cause, i) => (
+     <li key={i} className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+      <div className="flex items-start justify-between gap-3">
+       <span className="text-sm t-primary flex-1">{cause.description}</span>
+       <span className="text-caption t-muted flex-shrink-0">{Math.round(cause.confidence * 100)}% confidence</span>
+      </div>
+      {cause.immediateAction && (
+       <p className="text-caption t-muted mt-1">
+        <span className="font-medium t-primary">Immediate:</span> {cause.immediateAction}
+       </p>
+      )}
+      {cause.longTermFix && (
+       <p className="text-caption t-muted mt-0.5">
+        <span className="font-medium t-primary">Long-term:</span> {cause.longTermFix}
+       </p>
+      )}
+     </li>
+    ))}
+   </ul>
+  )}
+  {riskCauses[risk.id] && riskCauses[risk.id].length === 0 && (
+   <p className="text-caption t-muted mt-3">No root causes returned.</p>
+  )}
  </div>
 
  {/* A4-3: Source Attribution — drill-through link */}

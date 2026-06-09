@@ -88,6 +88,20 @@ const TENANT_TABLES = [
   // V2 Engine tables — Board Reports & ROI
   'board_reports',
   'roi_tracking',
+  // V2 Engine tables — Closed-loop calibration + billing + provenance
+  // Children before parents: line_items → periods, simulations → calibrations
+  'billable_line_items',
+  'billable_periods',
+  'audit_packs',
+  'catalyst_simulations',
+  'catalyst_calibrations',
+  // Strategic management — children (KRs) before parents (objectives)
+  'strategic_key_results',
+  'strategic_objectives',
+  // Pulse depth — subscriptions and SLA history
+  'pulse_metric_subscriptions',
+  'pulse_sla_measurements',
+  'pulse_sla_definitions',
   // V2 Engine tables — Competitors & Market
   'competitors',
   'market_benchmarks',

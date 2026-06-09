@@ -2303,8 +2303,14 @@ export async function runAssessment(
   config: AssessmentConfig,
   prospectIndustry: string,
   prospectName: string,
+  periodOpts?: { periodStart: string | null; periodEnd: string | null },
 ): Promise<void> {
   const cp = (stage: string) => console.log(`[assessment ${assessmentId}] ${stage}`);
+  const periodStart = periodOpts?.periodStart ?? null;
+  const periodEnd = periodOpts?.periodEnd ?? null;
+  if (periodStart && periodEnd) {
+    console.log(`[Assessment ${assessmentId}] Period: ${periodStart} → ${periodEnd}`);
+  }
   try {
     // 1. Mark running
     cp('1.start');
@@ -2347,6 +2353,8 @@ export async function runAssessment(
       baseCurrency: 'ZAR',
       exchangeRates: { ZAR: 1.0, USD: 18.5, EUR: 20.0, GBP: 23.0 },
       monthsOfData: snapshot.months_of_data,
+      periodStart,
+      periodEnd,
     };
     cp('5.findings.begin');
     const { per_company, consolidated } = await detectAllFindingsByCompany(db, tenantId, findingsContext);

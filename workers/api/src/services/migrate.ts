@@ -1315,6 +1315,17 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     result.errors.push(`Multi-company backfill: ${(err as Error).message}`);
   }
 
+  // ── Bootstrap VantaX tenant row ──
+  // Required for FK-bound user seeds below to succeed on a fresh environment.
+  // Without this, every Seed Users INSERT fails with FOREIGN KEY constraint.
+  try {
+    await db.prepare(
+      "INSERT OR IGNORE INTO tenants (id, name, slug, plan, status, deployment_model, region) VALUES ('vantax','VantaX (Pty) Ltd','vantax','enterprise','active','saas','af-south-1')"
+    ).run();
+  } catch (err) {
+    result.errors.push(`Bootstrap vantax tenant: ${(err as Error).message}`);
+  }
+
   // ── Role Upgrades ──
   try {
     await db.prepare("UPDATE users SET role = 'superadmin' WHERE email = 'admin@vantax.co.za' AND role IN ('admin','support_admin') AND tenant_id = 'vantax'").run();

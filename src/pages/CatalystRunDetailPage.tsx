@@ -10,7 +10,13 @@ import { Numeric } from "@/components/ui/numeric";
 import { MetricSource, type MetricProvenance } from "@/components/ui/metric-source";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
-import type { SubCatalystRunItem, SubCatalystRunItemsResponse, RunComment } from "@/lib/api";
+import type {
+  SubCatalystRunItem,
+  SubCatalystRunItemsResponse,
+  RunComment,
+  SubCatalystRun,
+  SubCatalystRunComparison,
+} from "@/lib/api";
 import { useToast, type ToastApi } from "@/components/ui/toast";
 import { useAppStore } from "@/stores/appStore";
 import { CatalystSimulatorCard } from "@/components/CatalystSimulatorCard";
@@ -24,6 +30,7 @@ import {
   ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle,
   Activity, Database, BarChart3, Download, FileText,
   ThumbsUp, ThumbsDown, MessageCircle, Send, Loader2, Trash2,
+  RotateCcw, GitCompare, GitBranch, Lightbulb, ChevronUp,
 } from "lucide-react";
 
 const ADMIN_ROLES = new Set(['superadmin', 'support_admin', 'admin', 'executive']);
@@ -164,6 +171,17 @@ export function CatalystRunDetailPage() {
   // Export state
   const [exporting, setExporting] = useState(false);
 
+  // Retry / compare / lineage / insights — production hardening
+  const [runMeta, setRunMeta] = useState<SubCatalystRun | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [comparison, setComparison] = useState<SubCatalystRunComparison | null>(null);
+  const [compareExpanded, setCompareExpanded] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const [lineage, setLineage] = useState<SubCatalystRun[]>([]);
+  const [insights, setInsights] = useState<string[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
   const loadRun = useCallback(async () => {
     if (!runId) return;
     setLoading(true);
@@ -217,12 +235,143 @@ export function CatalystRunDetailPage() {
     }
   }, [runId]);
 
+  // Load the SubCatalystRun row (carries parent_run_id, which the
+  // `runDetail()` projection drops). Walked backward to render lineage.
+  const loadRunMetaAndLineage = useCallback(async (clusterId: string, subName: string, currentRunId: string) => {
+    try {
+      const detail = await api.catalysts.getSubCatalystRunDetail(clusterId, subName, currentRunId);
+      setRunMeta(detail.run);
+
+      // Walk parent_run_id backward, max 5 ancestors.
+      const chain: SubCatalystRun[] = [];
+      let cursor = detail.run.parent_run_id;
+      let safety = 0;
+      while (cursor && safety < 5) {
+        try {
+          const parentDetail = await api.catalysts.getSubCatalystRunDetail(clusterId, subName, cursor);
+          chain.push(parentDetail.run);
+          cursor = parentDetail.run.parent_run_id;
+        } catch {
+          break;
+        }
+        safety += 1;
+      }
+      setLineage(chain);
+    } catch (err) {
+      // Non-fatal — page still works without retry/compare/lineage.
+      console.warn('Failed to load run meta for lineage:', err);
+    }
+  }, []);
+
+  const loadInsights = useCallback(async () => {
+    if (!runId) return;
+    setInsightsLoading(true);
+    try {
+      const res = await api.catalysts.runAnalyticsDetail(runId);
+      setInsights(res.analytics?.insights ?? []);
+    } catch (err) {
+      // Run-analytics row may not exist for every run; treat as empty.
+      console.warn('Failed to load run analytics:', err);
+      setInsights([]);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [runId]);
+
   useEffect(() => {
     if (!runId) return;
     loadRun();
     loadItems(0);
     loadComments();
-  }, [runId, loadRun, loadItems, loadComments]);
+    loadInsights();
+  }, [runId, loadRun, loadItems, loadComments, loadInsights]);
+
+  // Once base run is loaded we know clusterId + subCatalystName — fetch
+  // the SubCatalystRun row (parent_run_id) and walk lineage backward.
+  useEffect(() => {
+    if (!run?.clusterId || !run?.subCatalystName || !runId) return;
+    void loadRunMetaAndLineage(run.clusterId, run.subCatalystName, runId);
+  }, [run?.clusterId, run?.subCatalystName, runId, loadRunMetaAndLineage]);
+
+  // ─ Retry ─
+  const handleRetryRun = useCallback(async () => {
+    if (!runId) return;
+    setRetrying(true);
+    try {
+      const res = await api.catalysts.retryRun(runId);
+      // The worker route doesn't echo the new run id, so we refresh in
+      // place; the user can navigate via the cluster's run list if needed.
+      toastRef.current.success('Retry queued', 'A new run has been spawned from this one');
+      // If a redirect target were present we'd nav to it; today we refresh.
+      if ((res as { run_id?: string }).run_id) {
+        navigate(`/catalysts/runs/${(res as { run_id?: string }).run_id}`);
+      } else {
+        await Promise.all([loadRun(), loadItems(0), loadInsights()]);
+      }
+    } catch (err) {
+      console.error('Retry failed:', err);
+      const message = err instanceof Error ? err.message : 'Retry failed';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toastRef.current.error('Retry failed', { message, requestId });
+    } finally {
+      setRetrying(false);
+    }
+  }, [runId, loadRun, loadItems, loadInsights, navigate]);
+
+  // ─ Compare ─
+  // Resolve the run to compare against: prefer parent_run_id, else most
+  // recent prior run on the same cluster/sub-catalyst.
+  const resolvePriorRunId = useCallback(async (): Promise<string | null> => {
+    if (!runMeta) return null;
+    if (runMeta.parent_run_id) return runMeta.parent_run_id;
+    if (!run?.clusterId || !run?.subCatalystName) return null;
+    try {
+      const { runs } = await api.catalysts.getSubCatalystRuns(run.clusterId, run.subCatalystName, { limit: 25 });
+      const startedAt = new Date(runMeta.started_at ?? run.startedAt).getTime();
+      const prior = runs
+        .filter((r) => r.id !== runMeta.id)
+        .filter((r) => new Date(r.started_at).getTime() < startedAt)
+        .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+      return prior[0]?.id ?? null;
+    } catch (err) {
+      console.warn('Failed to resolve prior run:', err);
+      return null;
+    }
+  }, [runMeta, run?.clusterId, run?.subCatalystName, run?.startedAt]);
+
+  const handleCompare = useCallback(async () => {
+    if (!runId) return;
+    setComparing(true);
+    setCompareError(null);
+    try {
+      const priorId = await resolvePriorRunId();
+      if (!priorId) {
+        setCompareError('No prior run available to compare against');
+        setCompareExpanded(true);
+        return;
+      }
+      const res = await api.catalysts.compareRuns(runId, priorId);
+      setComparison(res);
+      setCompareExpanded(true);
+    } catch (err) {
+      console.error('Compare failed:', err);
+      const message = err instanceof Error ? err.message : 'Compare failed';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toastRef.current.error('Compare failed', { message, requestId });
+      setCompareError(message);
+      setCompareExpanded(true);
+    } finally {
+      setComparing(false);
+    }
+  }, [runId, resolvePriorRunId]);
+
+  // Derived: do we have any prior to compare against? Used to disable
+  // the button up-front instead of failing on click.
+  const canCompare = useMemo(() => {
+    if (!runMeta) return true; // unknown — let the click resolve it
+    if (runMeta.parent_run_id) return true;
+    return true; // fall through to runs list at click time
+  }, [runMeta]);
 
   // ─ Client-side filtered items (for search, multi-status, severity) ─
   const filteredItems = useMemo(() => {
@@ -466,6 +615,24 @@ export function CatalystRunDetailPage() {
                 <Clock size={14} />
                 <span>{new Date(run.startedAt).toLocaleString()}</span>
               </div>
+              <Button
+                variant="ghost"
+                onClick={handleRetryRun}
+                disabled={retrying || run.status === 'running'}
+                title={run.status === 'running' ? 'Cannot retry a run that is still executing' : 'Spawn a new run from this one'}
+              >
+                {retrying ? <Loader2 size={14} className="animate-spin mr-2" /> : <RotateCcw size={14} className="mr-2" />}
+                Retry run
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleCompare}
+                disabled={comparing || !canCompare}
+                title="Compare against the previous run for this catalyst"
+              >
+                {comparing ? <Loader2 size={14} className="animate-spin mr-2" /> : <GitCompare size={14} className="mr-2" />}
+                Compare to previous
+              </Button>
               <Button variant="ghost" onClick={handleExportCsv} disabled={exporting || !items}>
                 {exporting ? <Loader2 size={14} className="animate-spin mr-2" /> : <Download size={14} className="mr-2" />}
                 Export CSV
@@ -479,6 +646,176 @@ export function CatalystRunDetailPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Run comparison — expanded after clicking "Compare to previous" */}
+        {compareExpanded && (
+          <Card className="p-5 mb-6" style={{ borderRadius: '2px' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <GitCompare className="w-4 h-4" style={{ color: '#0a7d4f' }} />
+                <h3 className="text-sm font-semibold t-primary tracking-tight">Run comparison</h3>
+                {comparison && comparison.run_b && (
+                  <span className="text-xs t-muted font-mono">
+                    vs run #{comparison.run_b.run_number} • {new Date(comparison.run_b.started_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompareExpanded(false)}
+                className="t-muted hover:t-primary text-xs inline-flex items-center gap-1"
+                aria-label="Collapse comparison"
+              >
+                <ChevronUp size={14} /> Hide
+              </button>
+            </div>
+
+            {compareError ? (
+              <p className="text-sm t-muted">{compareError}</p>
+            ) : comparison ? (
+              (() => {
+                // Pull the four deltas the brief calls out. The worker
+                // returns a Record<string, number>; we tolerate either
+                // snake_case or camelCase since the field naming has
+                // drifted across worker iterations.
+                const d = comparison.delta || {};
+                const pick = (...keys: string[]): number | null => {
+                  for (const k of keys) {
+                    if (typeof d[k] === 'number') return d[k];
+                  }
+                  return null;
+                };
+                const matchedDelta = pick('matched', 'items_matched', 'itemsMatched');
+                const exceptionsDelta = pick('exceptions_raised', 'exceptions', 'exceptionsRaised');
+                const totalValueDelta = pick('total_source_value', 'total_value', 'totalValue', 'totalSourceValue');
+                const automationDelta = pick('automation_rate', 'automationRate');
+
+                const a = comparison.run_a;
+                const b = comparison.run_b;
+                const automationRate = (r: SubCatalystRun | null) => {
+                  if (!r || !r.items_total) return null;
+                  return ((r.items_total - r.items_reviewed) / r.items_total) * 100;
+                };
+
+                type Row = { label: string; current: number | null; prior: number | null; delta: number | null; isPct?: boolean };
+                const rows: Row[] = [
+                  { label: 'Items matched', current: a?.matched ?? null, prior: b?.matched ?? null, delta: matchedDelta },
+                  { label: 'Exceptions', current: a?.exceptions_raised ?? null, prior: b?.exceptions_raised ?? null, delta: exceptionsDelta },
+                  { label: 'Total value', current: a?.total_source_value ?? null, prior: b?.total_source_value ?? null, delta: totalValueDelta },
+                  { label: 'Automation rate', current: automationRate(a), prior: automationRate(b), delta: automationDelta, isPct: true },
+                ];
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {rows.map((row) => {
+                      // Direction colouring: more matched + automation = good;
+                      // more exceptions = bad; total value is neutral.
+                      const isExceptionsRow = row.label === 'Exceptions';
+                      const isNeutralRow = row.label === 'Total value';
+                      const deltaColor = row.delta == null
+                        ? '#64748b'
+                        : isNeutralRow
+                          ? '#334155'
+                          : (row.delta > 0)
+                            ? (isExceptionsRow ? 'var(--neg)' : '#0a7d4f')
+                            : row.delta < 0
+                              ? (isExceptionsRow ? '#0a7d4f' : 'var(--neg)')
+                              : '#334155';
+                      const fmt = (n: number | null) => {
+                        if (n == null) return '—';
+                        if (row.isPct) return `${n.toFixed(1)}%`;
+                        return n.toLocaleString();
+                      };
+                      const fmtDelta = (n: number | null) => {
+                        if (n == null) return '—';
+                        const sign = n > 0 ? '+' : '';
+                        if (row.isPct) return `${sign}${n.toFixed(1)} pts`;
+                        return `${sign}${n.toLocaleString()}`;
+                      };
+                      return (
+                        <div
+                          key={row.label}
+                          className="p-3 bg-[#fbfaf7] border border-[var(--border-card)]"
+                          style={{ borderRadius: '2px' }}
+                        >
+                          <div className="text-caption uppercase tracking-wider t-muted mb-2" style={{ color: '#334155' }}>{row.label}</div>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div>
+                              <div className="text-xs t-muted">This run</div>
+                              <div className="text-base font-semibold t-primary font-mono tnum">{fmt(row.current)}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs t-muted">Prior</div>
+                              <div className="text-sm t-muted font-mono tnum">{fmt(row.prior)}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-[var(--border-card)]">
+                            <span className="text-xs font-mono tnum font-semibold" style={{ color: deltaColor }}>
+                              {fmtDelta(row.delta)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="flex items-center gap-2 t-muted text-sm">
+                <Loader2 size={14} className="animate-spin" /> Loading comparison...
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Run lineage — chain of parent_run_id ancestors (current → oldest) */}
+        {(runMeta?.parent_run_id || lineage.length > 0) && (
+          <Card className="p-4 mb-6" style={{ borderRadius: '2px' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <GitBranch className="w-4 h-4" style={{ color: '#0a7d4f' }} />
+              <h3 className="text-sm font-semibold t-primary tracking-tight">Run lineage</h3>
+              <span className="text-xs t-muted">retried from prior runs</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Current run chip — non-clickable */}
+              <span
+                className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs"
+                style={{
+                  borderRadius: '2px',
+                  background: '#fbfaf7',
+                  borderColor: '#0a7d4f',
+                  color: '#0a7d4f',
+                }}
+              >
+                <span className="font-mono tnum">{new Date(run.startedAt).toLocaleDateString()}</span>
+                <span className="t-muted">•</span>
+                <span>{run.status}</span>
+                <span className="text-caption uppercase tracking-wider opacity-70">current</span>
+              </span>
+              {lineage.map((ancestor) => (
+                <div key={ancestor.id} className="flex items-center gap-2">
+                  <span className="t-muted text-xs">←</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/catalysts/runs/${ancestor.id}`)}
+                    className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs hover:bg-[#fbfaf7] transition-colors"
+                    style={{ borderRadius: '2px', borderColor: 'var(--border-card)', color: '#334155' }}
+                    aria-label={`View ancestor run from ${new Date(ancestor.started_at).toLocaleDateString()}`}
+                  >
+                    <span className="font-mono tnum">{new Date(ancestor.started_at).toLocaleDateString()}</span>
+                    <span className="t-muted">•</span>
+                    <span>{ancestor.status}</span>
+                  </button>
+                </div>
+              ))}
+              {runMeta?.parent_run_id && lineage.length === 0 && (
+                <span className="text-xs t-muted">
+                  <Loader2 size={12} className="animate-spin inline mr-1" /> Loading ancestors...
+                </span>
+              )}
+            </div>
+          </Card>
+        )}
+
         {/* Key Metrics */}
         {/* Run summary KPIs — Stitch bento. Same accent vocabulary as
             the Apex briefing tiles and the Operator Queue dispatch tiles:
@@ -919,6 +1256,39 @@ export function CatalystRunDetailPage() {
               <div className="text-center py-8 text-sm t-muted">
                 No KPIs generated in this run
               </div>
+            )}
+          </Card>
+
+          {/* Insights — surfaced from runAnalyticsDetail(runId).insights */}
+          <Card className="p-6" style={{ borderRadius: '2px' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <Lightbulb className="w-5 h-5" style={{ color: '#0a7d4f' }} />
+              <h3 className="text-lg font-semibold t-primary">Insights ({insights.length})</h3>
+            </div>
+            {insightsLoading ? (
+              <div className="flex items-center gap-2 justify-center p-4 t-muted text-sm">
+                <Loader2 size={14} className="animate-spin" /> Loading insights...
+              </div>
+            ) : insights.length === 0 ? (
+              <div className="text-center py-8 text-sm t-muted">
+                No insights generated for this run yet
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {insights.map((insight, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-sm t-primary leading-relaxed"
+                  >
+                    <span
+                      className="mt-1.5 inline-block w-1.5 h-1.5 flex-shrink-0"
+                      style={{ background: '#0a7d4f', borderRadius: '2px' }}
+                      aria-hidden
+                    />
+                    <span>{insight}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </Card>
 

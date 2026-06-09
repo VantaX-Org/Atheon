@@ -1980,11 +1980,19 @@ seed.post('/seed-vantax', async (c) => {
 
     let totalRunsSeeded = 0;
     let totalItemsSeeded = 0;
+    // Closed-loop calibration accumulators — every seeded run records a paired
+    // simulation (predicted/actual) so Trust & Performance has live calibration
+    // data, and the monthly billable period totals trace back to real runs.
+    let totalRealisedSavings = 0;
+    let totalPredictedSavings = 0;
+    const archetypeRealised: Record<string, { realised: number; predicted: number; clusterId: string; subCatalystName: string }> = {};
     // Six runs per archetype at day offsets -25, -20, -15, -10, -5, 0.
     // Older runs have slightly lower match-rates so trend visualisation shows
     // the gradual improvement from baseline (48) → today (73) seen elsewhere.
     const dayOffsets = [-25, -20, -15, -10, -5, 0];
     for (const ra of runArchetypes) {
+      const archResiduals: number[] = [];
+      let archLastObsAt = '';
       for (let runIdx = 0; runIdx < dayOffsets.length; runIdx++) {
         const offset = dayOffsets[runIdx];
         const completedAt = new Date(Date.now() + offset * 86400000).toISOString();
@@ -2072,9 +2080,143 @@ seed.post('/seed-vantax', async (c) => {
           startedAt, completedAt, durationMs, totalItems, matched, exceptions, escalated, pending, autoApproved,
           avgConf, minConf, maxConf, JSON.stringify(dist), JSON.stringify(insights),
         ));
+
+        // ── Closed-loop simulation row paired with this run ──
+        // Predicted value = total discrepancy fraction; actual converges to
+        // predicted as the calibration model learns (older runs are -12%
+        // under, newer runs are +5% over). Residual = actual / predicted.
+        const predicted = ra.sourceTotalValue * 0.05;
+        const lower = predicted * 0.85;
+        const upper = predicted * 1.15;
+        const accuracyTrend = 0.88 + (runIdx / (dayOffsets.length - 1)) * 0.17;
+        const actualValue = predicted * accuracyTrend;
+        const residual = actualValue / predicted;
+        archResiduals.push(residual);
+        archLastObsAt = completedAt;
+        totalPredictedSavings += predicted;
+        totalRealisedSavings += actualValue;
+        const archKey = `${ra.clusterId}:${ra.subCatalystName}`;
+        const prev = archetypeRealised[archKey];
+        archetypeRealised[archKey] = {
+          realised: (prev?.realised ?? 0) + actualValue,
+          predicted: (prev?.predicted ?? 0) + predicted,
+          clusterId: ra.clusterId,
+          subCatalystName: ra.subCatalystName,
+        };
+
+        seedBatch.push(c.env.DB.prepare(
+          `INSERT INTO catalyst_simulations (id, tenant_id, cluster_id, sub_catalyst_name, predicted_value_zar, lower_bound_zar, upper_bound_zar, confidence_pct, calibration_factor, n_priors, methodology_json, simulated_at, run_id, actual_value_zar, residual, recorded_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(), tenantId, ra.clusterId, ra.subCatalystName,
+          predicted, lower, upper, 95, 1.0, runIdx,
+          JSON.stringify({ algo: 'monte_carlo_v2', samples: 5000, prior_n: runIdx }),
+          startedAt, runId, actualValue, residual, completedAt,
+        ));
       }
+
+      // ── Per-archetype calibration aggregate ──
+      // n_observations ≥ 5 unlocks the "calibrated" tone on TrustPerformancePage.
+      // Welford-style m2 stored so subsequent observations can streaming-update.
+      const n = archResiduals.length;
+      const meanRes = archResiduals.reduce((a, b) => a + b, 0) / n;
+      const m2Res = archResiduals.reduce((a, b) => a + (b - meanRes) ** 2, 0);
+      const stdRes = n > 1 ? Math.sqrt(m2Res / (n - 1)) : 0;
+      const maeRes = archResiduals.reduce((a, b) => a + Math.abs(b - 1), 0) / n;
+      seedBatch.push(c.env.DB.prepare(
+        `INSERT INTO catalyst_calibrations (id, tenant_id, cluster_id, sub_catalyst_name, n_observations, mean_residual, m2_residual, calibration_factor, std_residual, mae, last_observation_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, ra.clusterId, ra.subCatalystName,
+        n, meanRes, m2Res, meanRes, stdRes, maeRes, archLastObsAt, archLastObsAt,
+      ));
     }
     console.log(`[VantaX Seeder] Seeded ${totalRunsSeeded} catalyst runs with ${totalItemsSeeded} items across 30 days`);
+
+    // ── STEP: Seed billable period + per-archetype line items + audit packs ──
+    // Shared-savings revenue model: every claimed dollar traces to a catalyst
+    // simulation (above). Without this block SharedSavingsStrip is hidden on
+    // the dashboard hero — the demo loses its single most important number.
+    console.log('[VantaX Seeder] Seeding closed-loop billing + audit provenance...');
+    const periodEndIso = new Date().toISOString();
+    const periodStartIso = new Date(Date.now() - 30 * 86400000).toISOString();
+    const atheonSharePct = 0.20;
+    const atheonRevenue = Math.round(totalRealisedSavings * atheonSharePct);
+    const billablePeriodId = crypto.randomUUID();
+    const periodGeneratedAt = periodEndIso;
+    seedBatch.push(c.env.DB.prepare(
+      `INSERT INTO billable_periods (id, tenant_id, period_start, period_end, total_realised_savings, atheon_share_pct, atheon_revenue, currency, status, generated_at, invoiced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'ZAR', 'invoiced', ?, ?)`
+    ).bind(
+      billablePeriodId, tenantId, periodStartIso, periodEndIso,
+      Math.round(totalRealisedSavings), atheonSharePct, atheonRevenue,
+      periodGeneratedAt, periodGeneratedAt,
+    ));
+
+    // One line item per archetype — confidence taken from final-period
+    // calibration's mean_residual proximity to 1.0 (clamped to [0.6, 0.98]).
+    for (const [archKey, agg] of Object.entries(archetypeRealised)) {
+      const ratio = agg.predicted > 0 ? agg.realised / agg.predicted : 1;
+      const confidence = Math.min(0.98, Math.max(0.6, 1 - Math.abs(1 - ratio)));
+      seedBatch.push(c.env.DB.prepare(
+        `INSERT INTO billable_line_items (id, period_id, tenant_id, rca_id, metric_name, attributed_savings, currency, confidence, evidence, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'ZAR', ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), billablePeriodId, tenantId, agg.clusterId,
+        agg.subCatalystName, Math.round(agg.realised), confidence,
+        JSON.stringify({ archetype: archKey, runs: dayOffsets.length, predicted: Math.round(agg.predicted) }),
+        periodGeneratedAt,
+      ));
+    }
+
+    // Two audit packs: one for the billable period (revenue-side), one for
+    // the calibration set (model-side). Hashes are deterministic enough to
+    // look real for demo without invoking SubtleCrypto in the seeder.
+    const periodHash = `sha256:${billablePeriodId.replace(/-/g, '')}${tenantId.slice(0, 16).replace(/-/g, '')}`.slice(0, 71);
+    const calibHash = `sha256:cal-${tenantId.slice(0, 16).replace(/-/g, '')}${billablePeriodId.slice(0, 8).replace(/-/g, '')}`.slice(0, 71);
+    seedBatch.push(c.env.DB.prepare(
+      `INSERT INTO audit_packs (id, tenant_id, kind, source_id, hash, signature, r2_key, size_bytes, generated_by, generated_at)
+       VALUES (?, ?, 'billable-period', ?, ?, ?, ?, ?, 'seed-vantax', ?)`
+    ).bind(
+      crypto.randomUUID(), tenantId, billablePeriodId, periodHash,
+      `hmac:${periodHash.slice(7, 39)}`,
+      `audit-packs/${tenantId}/billable-${billablePeriodId}.json`,
+      4096, periodGeneratedAt,
+    ));
+    seedBatch.push(c.env.DB.prepare(
+      `INSERT INTO audit_packs (id, tenant_id, kind, source_id, hash, signature, r2_key, size_bytes, generated_by, generated_at)
+       VALUES (?, ?, 'calibration-set', ?, ?, ?, ?, ?, 'seed-vantax', ?)`
+    ).bind(
+      crypto.randomUUID(), tenantId, billablePeriodId, calibHash,
+      `hmac:${calibHash.slice(7, 39)}`,
+      `audit-packs/${tenantId}/calibration-${billablePeriodId}.json`,
+      8192, periodGeneratedAt,
+    ));
+
+    // ROI tracking — three rolling windows so /board-digest has a non-zero
+    // ROI multiple regardless of which period range the page is asking for.
+    const annualLicence = 1_800_000;
+    const personHoursSaved = totalRunsSeeded * 18;
+    const downstreamLossesPrevented = Math.round(totalRealisedSavings * 0.35);
+    const roiPeriods: Array<{ period: string; mult: number; identified: number; recovered: number }> = [
+      { period: 'last_30d', mult: 1, identified: totalPredictedSavings, recovered: totalRealisedSavings },
+      { period: 'last_90d', mult: 3, identified: totalPredictedSavings * 3, recovered: totalRealisedSavings * 2.9 },
+      { period: 'ytd', mult: 5.5, identified: totalPredictedSavings * 5.5, recovered: totalRealisedSavings * 5.2 },
+    ];
+    for (const rp of roiPeriods) {
+      const roiMultiple = annualLicence > 0 ? (rp.recovered + downstreamLossesPrevented * rp.mult) / annualLicence : 0;
+      seedBatch.push(c.env.DB.prepare(
+        `INSERT INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, total_catalyst_runs, licence_cost_annual, roi_multiple, calculated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), tenantId, rp.period,
+        Math.round(rp.identified), Math.round(rp.recovered),
+        Math.round(downstreamLossesPrevented * rp.mult),
+        personHoursSaved * rp.mult, totalRunsSeeded * rp.mult,
+        annualLicence, roiMultiple, periodGeneratedAt,
+      ));
+    }
+    console.log(`[VantaX Seeder] Seeded billing period R${Math.round(totalRealisedSavings).toLocaleString()} realised → R${atheonRevenue.toLocaleString()} Atheon revenue across ${Object.keys(archetypeRealised).length} line items`);
 
     // ── STEP: Seed §11.7 Atheon Score History ──
     console.log('[VantaX Seeder] Seeding §11 Atheon Score history...');
@@ -2871,6 +3013,128 @@ seed.post('/seed-vantax', async (c) => {
     }
     console.log(`[VantaX Seeder] Seeded ${initiativeSeeds.length} portfolio initiatives`);
 
+    // ── STEP: Seed Strategic OKRs (Apex Wave — executive commitments) ──
+    // Five objectives tied to the same VantaX narrative so the OKRsPanel and
+    // PortfolioPanel reinforce each other on screen. Status mix is intentional:
+    // one off_track + one at_risk to give the by-status summary chips real signal.
+    console.log('[VantaX Seeder] Seeding strategic OKRs (objectives + key results)...');
+    const okrQuarter = (() => {
+      const d = new Date();
+      const q = Math.floor(d.getUTCMonth() / 3) + 1;
+      return `${d.getUTCFullYear()}-Q${q}`;
+    })();
+
+    // Idempotent reseed — wipe children before parents
+    await c.env.DB.prepare('DELETE FROM strategic_key_results WHERE tenant_id = ?').bind(tenantId).run();
+    await c.env.DB.prepare('DELETE FROM strategic_objectives WHERE tenant_id = ?').bind(tenantId).run();
+
+    type KRStatus = 'on_track' | 'at_risk' | 'off_track' | 'achieved';
+    interface KRSeed {
+      description: string;
+      metric: string;
+      target_value: number;
+      current_value: number;
+      unit: string;
+      status: KRStatus;
+      due_offset_days: number;
+    }
+    interface ObjectiveSeed {
+      title: string;
+      description: string;
+      owner: string;
+      status: KRStatus;
+      priority: 'p1' | 'p2' | 'normal';
+      progress_pct: number;
+      key_results: KRSeed[];
+    }
+
+    const objectiveSeeds: ObjectiveSeed[] = [
+      {
+        title: 'Accelerate the period-close cycle',
+        description: 'Bring month-end close in line with top-quartile peers so the CFO publishes the management pack on day 5 every month.',
+        owner: 'CFO',
+        status: 'on_track',
+        priority: 'p1',
+        progress_pct: 68,
+        key_results: [
+          { description: 'Reduce financial close cycle from 8 to 5 business days', metric: 'close_days', target_value: 5, current_value: 6.5, unit: 'days', status: 'on_track', due_offset_days: 21 },
+          { description: 'Auto-clear ≥80% of GR/IR exceptions via Atheon catalysts', metric: 'gr_ir_auto_clear', target_value: 80, current_value: 67, unit: '%', status: 'on_track', due_offset_days: 45 },
+          { description: 'Bank reconciliation posted within 4h of statement', metric: 'bank_rec_sla', target_value: 100, current_value: 92, unit: '%', status: 'at_risk', due_offset_days: 30 },
+        ],
+      },
+      {
+        title: 'Recover working-capital velocity',
+        description: 'Compress DSO and re-clear the stale AR backlog so the company funds growth from operations rather than the revolving credit line.',
+        owner: 'CFO',
+        status: 'at_risk',
+        priority: 'p1',
+        progress_pct: 42,
+        key_results: [
+          { description: 'Reduce DSO from 52 to 38 days', metric: 'dso_days', target_value: 38, current_value: 44, unit: 'days', status: 'at_risk', due_offset_days: 60 },
+          { description: 'AR collection adherence ≥90%', metric: 'ar_adherence', target_value: 90, current_value: 78, unit: '%', status: 'at_risk', due_offset_days: 30 },
+          { description: 'Cut overdue >90d AR from R 4.2M to R 1.5M', metric: 'overdue_90_zar', target_value: 1_500_000, current_value: 2_780_000, unit: 'ZAR', status: 'on_track', due_offset_days: 75 },
+        ],
+      },
+      {
+        title: 'Eliminate inventory variance at JHB-DC',
+        description: 'Close the R 2.2M Q1 audit-flagged variance through cycle-count cadence and bin-location relabelling.',
+        owner: 'COO',
+        status: 'off_track',
+        priority: 'p1',
+        progress_pct: 21,
+        key_results: [
+          { description: 'Cycle-count accuracy ≥99.5%', metric: 'cycle_count_accuracy', target_value: 99.5, current_value: 96.8, unit: '%', status: 'off_track', due_offset_days: 60 },
+          { description: 'Shrinkage <0.4% of stock value', metric: 'shrinkage_pct', target_value: 0.4, current_value: 0.91, unit: '%', status: 'off_track', due_offset_days: 90 },
+          { description: 'Reduce inventory write-offs by 60% YoY', metric: 'writeoff_reduction', target_value: 60, current_value: 18, unit: '%', status: 'at_risk', due_offset_days: 90 },
+        ],
+      },
+      {
+        title: 'Scale Atheon-led catalyst adoption',
+        description: 'Move catalysts from pilot to standing operating procedure. Every catalyst in production produces a calibrated, audit-packed business outcome.',
+        owner: 'CTO',
+        status: 'on_track',
+        priority: 'p2',
+        progress_pct: 72,
+        key_results: [
+          { description: '10 catalysts in production with closed-loop calibration', metric: 'catalysts_in_prod', target_value: 10, current_value: 7, unit: 'count', status: 'on_track', due_offset_days: 60 },
+          { description: 'Predicted-vs-actual calibration accuracy ≥90%', metric: 'calibration_accuracy', target_value: 90, current_value: 86, unit: '%', status: 'on_track', due_offset_days: 45 },
+          { description: 'Audit-pack hand-offs to external auditor (quarter)', metric: 'audit_packs_qtr', target_value: 4, current_value: 2, unit: 'count', status: 'at_risk', due_offset_days: 30 },
+        ],
+      },
+      {
+        title: 'Achieve SOC 2 Type II continuous evidence',
+        description: 'Always-on evidence collection so the SOC 2 audit becomes a one-click pack rather than a one-month scramble.',
+        owner: 'CISO',
+        status: 'achieved',
+        priority: 'p2',
+        progress_pct: 100,
+        key_results: [
+          { description: 'Evidence coverage ≥98% across in-scope controls', metric: 'evidence_coverage', target_value: 98, current_value: 99, unit: '%', status: 'achieved', due_offset_days: -10 },
+          { description: 'Auditor-found exceptions ≤2', metric: 'audit_exceptions', target_value: 2, current_value: 1, unit: 'count', status: 'achieved', due_offset_days: -10 },
+        ],
+      },
+    ];
+
+    let okrKRCount = 0;
+    for (const obj of objectiveSeeds) {
+      const objId = crypto.randomUUID();
+      seedBatch.push(c.env.DB.prepare(
+        `INSERT INTO strategic_objectives (id, tenant_id, title, description, owner, status, priority, quarter, progress_pct)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(objId, tenantId, obj.title, obj.description, obj.owner, obj.status, obj.priority, okrQuarter, obj.progress_pct));
+      for (const kr of obj.key_results) {
+        seedBatch.push(c.env.DB.prepare(
+          `INSERT INTO strategic_key_results (id, tenant_id, objective_id, description, metric, target_value, current_value, unit, status, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(), tenantId, objId, kr.description, kr.metric,
+          kr.target_value, kr.current_value, kr.unit, kr.status, daysFromNow(kr.due_offset_days)
+        ));
+        okrKRCount += 1;
+      }
+    }
+    console.log(`[VantaX Seeder] Seeded ${objectiveSeeds.length} objectives + ${okrKRCount} key results (quarter=${okrQuarter})`);
+
     // ── Wave 3: Dashboard depth — working capital + period close ──
     // 30 days of working-capital snapshots showing a steady improvement:
     // DSO 48d → 36d, AR aging shifts toward current, cash position rises
@@ -3067,6 +3331,64 @@ seed.post('/seed-vantax', async (c) => {
       }
     }
     console.log(`[VantaX Seeder] Seeded ${slaDefs.length} SLA definitions with 30d of measurements`);
+
+    // ── STEP: Seed Pulse Metric Subscriptions ──
+    // Operator-driven threshold watches. Without these, Pulse → "Your watches"
+    // panel is empty and the digest job has nothing to evaluate. We tie each
+    // subscription to a real, already-seeded process_metric so the comparator
+    // and threshold make demo sense (e.g. inventory_accuracy < 80).
+    console.log('[VantaX Seeder] Seeding pulse metric subscriptions...');
+    await flushSeed('before-subscription-users-read');
+    const subUserRows = (await c.env.DB.prepare(
+      `SELECT id, email, role FROM users WHERE tenant_id = ? ORDER BY created_at ASC LIMIT 5`
+    ).bind(tenantId).all<{ id: string; email: string; role: string }>()).results || [];
+    if (subUserRows.length === 0 || metricIds.length < 6) {
+      console.log('[VantaX Seeder] No tenant users or insufficient metrics — skipping subscriptions seed');
+    } else {
+      await c.env.DB.prepare('DELETE FROM pulse_metric_subscriptions WHERE tenant_id = ?').bind(tenantId).run();
+      const subPrimaryUserId = subUserRows[0].id;
+      // metricIds[] is positional from processMetricsData[]:
+      //   0 AP Invoice Match Rate · 1 Bank Rec Rate · 2 Inventory Accuracy
+      //   3 Sales Order Fulfillment · 4 GR/IR Match · 5 Production OEE
+      //   6 Revenue Rec Compliance · 7 Supplier Lead Time
+      //   8 Cash Conversion Cycle · 9 CSAT
+      const subscriptionSeeds: Array<{
+        metricIdx: number; comparator: 'gt' | 'lt' | 'gte' | 'lte';
+        threshold: number; channel: 'email' | 'inapp'; cooldown: number;
+        active: 1 | 0; lastValue?: number; triggeredHoursAgo?: number;
+      }> = [
+        // Inventory Accuracy < 80% → currently 55.6 → already triggering, last fired 6h ago
+        { metricIdx: 2, comparator: 'lt', threshold: 80, channel: 'email', cooldown: 240, active: 1, lastValue: 55.6, triggeredHoursAgo: 6 },
+        // Bank Reconciliation Rate < 85% → currently 68.75 → triggered 2h ago
+        { metricIdx: 1, comparator: 'lt', threshold: 85, channel: 'email', cooldown: 120, active: 1, lastValue: 68.75, triggeredHoursAgo: 2 },
+        // Production OEE < 75% → currently 72.5 → triggered yesterday
+        { metricIdx: 5, comparator: 'lt', threshold: 75, channel: 'email', cooldown: 360, active: 1, lastValue: 72.5, triggeredHoursAgo: 18 },
+        // Supplier Lead Time > 13 days → currently 14.2 → triggered 12h ago
+        { metricIdx: 7, comparator: 'gt', threshold: 13, channel: 'inapp', cooldown: 720, active: 1, lastValue: 14.2, triggeredHoursAgo: 12 },
+        // GR/IR Match Rate < 85% → currently 81.25 → triggered 4h ago
+        { metricIdx: 4, comparator: 'lt', threshold: 85, channel: 'email', cooldown: 180, active: 1, lastValue: 81.25, triggeredHoursAgo: 4 },
+        // Cash Conversion Cycle > 50 days → currently 42 → not triggering (passive watch)
+        { metricIdx: 8, comparator: 'gt', threshold: 50, channel: 'email', cooldown: 1440, active: 1, lastValue: 42 },
+        // CSAT < 70% → currently 78.5 → passive
+        { metricIdx: 9, comparator: 'lt', threshold: 70, channel: 'email', cooldown: 1440, active: 1, lastValue: 78.5 },
+        // Revenue Rec Compliance < 80% → currently 73.7 → triggered 1h ago (recent)
+        { metricIdx: 6, comparator: 'lt', threshold: 80, channel: 'inapp', cooldown: 60, active: 1, lastValue: 73.7, triggeredHoursAgo: 1 },
+      ];
+      for (const sub of subscriptionSeeds) {
+        const triggeredAt = sub.triggeredHoursAgo !== undefined
+          ? new Date(Date.now() - sub.triggeredHoursAgo * 60 * 60 * 1000).toISOString()
+          : null;
+        await c.env.DB.prepare(
+          `INSERT INTO pulse_metric_subscriptions (id, tenant_id, user_id, metric_id, comparator, threshold_value, channel, cooldown_minutes, last_triggered_at, last_observed_value, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(), tenantId, subPrimaryUserId, metricIds[sub.metricIdx],
+          sub.comparator, sub.threshold, sub.channel, sub.cooldown,
+          triggeredAt, sub.lastValue ?? null, sub.active
+        ).run();
+      }
+      console.log(`[VantaX Seeder] Seeded ${subscriptionSeeds.length} pulse metric subscriptions`);
+    }
 
     // ── STEP: Seed Board Reports ──
     // Apex → Board Reports tab needs at least one of each report_type to render.

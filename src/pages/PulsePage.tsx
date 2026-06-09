@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { AsyncPageContent, statusFrom } from "@/components/ui/async";
 import { ErrorState } from "@/components/ui/state";
 import { MetricSource, type MetricProvenance } from "@/components/ui/metric-source";
 
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, isStepUpRequired } from "@/lib/api";
 import { cleanLlmText, formatDuration, formatDays } from "@/lib/utils";
 import type { Metric, AnomalyItem, ProcessItem, CorrelationItem, PulseSummary, CatalystRunItem, CatalystRunSummary, MetricTraceResponse, HealthDimensionTraceResponse, PulseInsightsResponse, DiagnosticSummaryResponse, DiagnosticAnalysisItem, DiagnosticAnalysisDetail, CostOfInactionResponse } from "@/lib/api";
 import { ActionQueuePanel } from "@/components/dashboard/ActionQueuePanel";
@@ -30,7 +30,8 @@ import {
   TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Filter, AlertCircle, Workflow, Play,
-  UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X, DollarSign, Timer
+  UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X, DollarSign, Timer,
+  KeyRound, Send
 } from "lucide-react";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
@@ -613,6 +614,104 @@ export function PulsePage() {
     } finally {
       setAnomalyActionPending(null);
     }
+  }
+
+  // Anomaly → catalyst/sub-catalyst routing for the "Dispatch remediation"
+  // button. We can't ask the user which catalyst to dispatch — they're staring
+  // at an anomaly card, not a catalyst picker — so we map by keyword onto the
+  // three VantaX-seeded clusters (Finance / Supply Chain / Revenue). If a
+  // tenant has renamed clusters, the backend returns 404 and the UI surfaces
+  // it as a toast; the closed-loop intent is preserved either way.
+  function mapAnomalyToCatalyst(metric: string): { catalystName: string; subCatalystName: string } {
+    const m = metric.toLowerCase();
+    if (m.includes('inventory') || m.includes('stock') || m.includes('shrinkage')) {
+      return { catalystName: 'Supply Chain', subCatalystName: 'Inventory Reconciliation' };
+    }
+    if (m.includes('supplier') || m.includes('lead time') || m.includes('procurement')) {
+      return { catalystName: 'Supply Chain', subCatalystName: 'Supplier Validation' };
+    }
+    if (m.includes('production') || m.includes('oee') || m.includes('throughput')) {
+      return { catalystName: 'Supply Chain', subCatalystName: 'PO-to-GR Matching' };
+    }
+    if (m.includes('bank') || m.includes('reconciliation') || m.includes('cash')) {
+      return { catalystName: 'Finance', subCatalystName: 'Bank Reconciliation' };
+    }
+    if (m.includes('invoice') || m.includes('payable') || m.includes('duplicate') || m.startsWith('ap ')) {
+      return { catalystName: 'Finance', subCatalystName: 'AP Invoice Validation' };
+    }
+    if (m.includes('revenue') || m.includes('ifrs') || m.includes('billing')) {
+      return { catalystName: 'Revenue', subCatalystName: 'Revenue Recognition' };
+    }
+    if (m.includes('receivable') || m.includes('credit') || m.includes('aging') || m.startsWith('ar ')) {
+      return { catalystName: 'Revenue', subCatalystName: 'Customer Receivables' };
+    }
+    if (m.includes('sales order') || m.includes('order')) {
+      return { catalystName: 'Revenue', subCatalystName: 'Sales Order Matching' };
+    }
+    return { catalystName: 'Finance', subCatalystName: 'GR/IR Reconciliation' };
+  }
+
+  // ── Dispatch-remediation MFA state ──
+  // The backend route is guarded by stepUpMFA() — the first call may throw a
+  // step-up challenge. We capture the in-flight anomaly + cluster mapping so
+  // the modal can replay the dispatch with a TOTP code without losing context.
+  const [mfaDispatch, setMfaDispatch] = useState<{ anom: AnomalyItem; catalystName: string; subCatalystName: string } | null>(null);
+  const [mfaDispatchCode, setMfaDispatchCode] = useState('');
+  const [mfaDispatchError, setMfaDispatchError] = useState<string | null>(null);
+  const mfaDispatchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (mfaDispatch && mfaDispatchInputRef.current) mfaDispatchInputRef.current.focus();
+  }, [mfaDispatch]);
+
+  async function runDispatch(anom: AnomalyItem, mfaCode?: string) {
+    const { catalystName, subCatalystName } = mapAnomalyToCatalyst(anom.metric);
+    setAnomalyActionPending(`${anom.id}:dispatch`);
+    setMfaDispatchError(null);
+    try {
+      const result = await api.catalysts.dispatchFromPulse({
+        catalystName, subCatalystName,
+        anomalyMetric: anom.metric,
+        severity: anom.severity,
+        hypothesis: anom.hypothesis,
+      }, mfaCode);
+      setMfaDispatch(null);
+      setMfaDispatchCode('');
+      toast.success(
+        'Remediation catalyst dispatched',
+        `${result.subCatalystName} queued for approval (action ${result.actionId.slice(0, 8)}…). Review in the Approvals queue.`,
+      );
+    } catch (err) {
+      if (isStepUpRequired(err)) {
+        setMfaDispatch({ anom, catalystName, subCatalystName });
+        return;
+      }
+      if (err instanceof ApiError && err.status === 401 && mfaCode) {
+        setMfaDispatchError('Invalid TOTP code. Try again.');
+        return;
+      }
+      const message = err instanceof Error ? err.message : 'Unexpected error';
+      const requestId = err instanceof ApiError ? err.requestId : null;
+      toast.error('Dispatch failed', { message, requestId });
+    } finally {
+      setAnomalyActionPending(null);
+    }
+  }
+
+  async function handleAnomalyDispatch(anom: AnomalyItem) {
+    if (anomalyActionPending) return;
+    await runDispatch(anom);
+  }
+
+  async function handleConfirmDispatchMfa() {
+    if (!mfaDispatch || mfaDispatchCode.length !== 6) return;
+    await runDispatch(mfaDispatch.anom, mfaDispatchCode);
+  }
+
+  function cancelDispatchMfa() {
+    setMfaDispatch(null);
+    setMfaDispatchCode('');
+    setMfaDispatchError(null);
   }
 
   // Red-metric "Run Catalyst" — triggers the Pulse refresh which fans out
@@ -1634,12 +1733,38 @@ export function PulsePage() {
                               </button>
                               <button
                                 type="button"
+                                onClick={(e) => { e.stopPropagation(); handleAnomalyDispatch(anom); }}
+                                disabled={anomalyActionPending === `${anom.id}:dispatch` || anom.status === 'resolved'}
+                                className="w-full flex items-start gap-3 p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed text-left transition-colors active:scale-[0.97]"
+                                aria-label={`Dispatch remediation catalyst for ${anom.metric}`}
+                              >
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-caption font-bold flex-shrink-0" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>3</div>
+                                <div className="flex-1">
+                                  <span className="text-sm t-primary flex items-center gap-1.5">
+                                    {anomalyActionPending === `${anom.id}:dispatch` ? (
+                                      <><Loader2 size={12} className="animate-spin" /> Dispatching remediation catalyst…</>
+                                    ) : (
+                                      <><Send size={12} className="t-muted" /> Dispatch remediation catalyst ({mapAnomalyToCatalyst(anom.metric).subCatalystName})</>
+                                    )}
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-caption t-muted">Priority: Immediate</span>
+                                    <span className="text-caption t-muted">|</span>
+                                    <span className="text-caption t-muted">Owner: Catalysts Engine</span>
+                                    <span className="text-caption t-muted">|</span>
+                                    <span className="text-caption t-muted">Requires TOTP re-confirm</span>
+                                  </div>
+                                </div>
+                                <ArrowRight size={14} className="t-muted self-center flex-shrink-0" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={(e) => { e.stopPropagation(); handleAnomalyStatus(anom.id, 'resolved', deviationPct >= 50 ? 'Anomaly escalated + closed' : 'Anomaly resolved'); }}
                                 disabled={anomalyActionPending === `${anom.id}:resolved` || anom.status === 'resolved'}
                                 className="w-full flex items-start gap-3 p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed text-left transition-colors active:scale-[0.97]"
                                 aria-label={deviationPct >= 50 ? 'Escalate to management' : 'Mark resolved'}
                               >
-                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-caption font-bold flex-shrink-0" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>3</div>
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-caption font-bold flex-shrink-0" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>4</div>
                                 <div className="flex-1">
                                   <span className="text-sm t-primary">
                                     {anomalyActionPending === `${anom.id}:resolved`
@@ -2747,6 +2872,59 @@ export function PulsePage() {
           type="dimension"
           onClose={() => { setShowDimTraceModal(false); setDimTraceData(null); }}
         />
+      )}
+
+      {/* Step-up MFA prompt for "Dispatch remediation catalyst".
+          Mirrors the ApprovalQueuePanel TOTP modal so dispatch behaviour
+          matches approve/reject on look-and-feel and accessibility. */}
+      {mfaDispatch && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pulse-dispatch-mfa-title"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm animate-fadeIn"
+          onClick={cancelDispatchMfa}
+        >
+          <div
+            className="w-[min(92vw,440px)] rounded-md border border-[var(--border-card)] bg-[var(--bg-card-solid)] p-5"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: 'pop 200ms cubic-bezier(0.23,1,0.32,1)' }}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <KeyRound size={16} className="text-accent" />
+              <h3 id="pulse-dispatch-mfa-title" className="text-base font-semibold t-primary">Re-confirm with TOTP</h3>
+            </div>
+            <p className="text-caption t-muted mb-3">
+              Dispatching <span className="t-primary font-medium">{mfaDispatch.subCatalystName}</span> queues an action for human approval. Enter the current 6-digit code from your authenticator to proceed.
+            </p>
+            <input
+              ref={mfaDispatchInputRef}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={mfaDispatchCode}
+              onChange={(e) => setMfaDispatchCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && mfaDispatchCode.length === 6) handleConfirmDispatchMfa(); }}
+              className="w-full h-11 px-3 rounded-md border border-[var(--border-card)] bg-[var(--bg-card-solid)] t-primary font-mono text-lg tabular-nums tracking-[0.4em] text-center focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="000000"
+              aria-label="One-time code"
+            />
+            {mfaDispatchError && <p className="text-caption text-neg mt-2">{mfaDispatchError}</p>}
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={cancelDispatchMfa}
+                className="px-3 py-1.5 rounded-md text-xs font-medium t-secondary hover:t-primary transition-[color] duration-[var(--dur-press,160ms)] [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]"
+              >Cancel</button>
+              <button
+                disabled={mfaDispatchCode.length !== 6 || anomalyActionPending !== null}
+                onClick={handleConfirmDispatchMfa}
+                className="px-3 py-1.5 rounded-md text-xs font-semibold bg-accent text-[var(--text-on-accent)] hover:bg-accent/90 transition-[background-color,transform] duration-[var(--dur-press,160ms)] [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:opacity-50"
+              >Confirm dispatch</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
