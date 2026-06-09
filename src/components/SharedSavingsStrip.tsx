@@ -23,16 +23,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, TrendingUp } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { BillingSummary } from '@/lib/api';
-
-function formatCurrency(value: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-ZA', {
-      style: 'currency', currency, maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value).toLocaleString()}`;
-  }
-}
+import { formatCurrency } from '@/lib/format-currency';
 
 export interface SharedSavingsStripProps {
   /** `strip` = slim banner (default). `hero` = full anchor card. */

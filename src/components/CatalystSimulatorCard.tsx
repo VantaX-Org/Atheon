@@ -37,10 +37,9 @@ interface Props {
 
 const MIN_PRIORS_FOR_CI = 5;
 
-function formatZAR(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined || !Number.isFinite(amount)) return '—';
-  return `R ${Math.round(amount).toLocaleString('en-ZA')}`;
-}
+import { formatZarFull } from '@/lib/format-currency';
+
+const formatZAR = formatZarFull;
 
 export function CatalystSimulatorCard({ clusterId, subCatalystName, initialStats, initialHistory }: Props): JSX.Element {
   const toast = useToast();

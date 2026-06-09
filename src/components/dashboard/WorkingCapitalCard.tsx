@@ -5,23 +5,13 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/state';
 import { Wallet, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { formatZarCompact, formatZarDelta } from '@/lib/format-currency';
 import { useAppStore } from '@/stores/appStore';
 
 type WCResp = Awaited<ReturnType<typeof api.dashboard.workingCapital>>;
 
-function fmtZAR(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000_000) return `R ${(n / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `R ${(n / 1_000).toFixed(0)}k`;
-  return `R ${Math.round(n)}`;
-}
-
-function fmtDelta(n: number): string {
-  if (n === 0) return '0';
-  const sign = n > 0 ? '+' : '';
-  return `${sign}${fmtZAR(n)}`;
-}
+const fmtZAR = formatZarCompact;
+const fmtDelta = formatZarDelta;
 
 export function WorkingCapitalCard() {
   const companyId = useAppStore((s) => s.selectedCompanyId);

@@ -70,10 +70,10 @@ const SEVERITY_RANK: Record<AssessmentFindingSeverity, number> = {
   critical: 4, high: 3, medium: 2, low: 1,
 };
 
-function formatZAR(amount: number): string {
-  if (!Number.isFinite(amount)) return 'R 0';
-  return `R ${Math.round(amount).toLocaleString('en-ZA')}`;
-}
+import { formatZarFull } from '@/lib/format-currency';
+
+const formatZAR = (amount: number): string =>
+  Number.isFinite(amount) ? formatZarFull(amount) : 'R 0';
 
 export function AssessmentFindingsPanel({
   findings, summary, findingsByCompany, companyProfile, onDeployCatalyst,

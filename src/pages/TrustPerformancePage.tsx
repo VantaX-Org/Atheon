@@ -24,15 +24,10 @@ import { api, ApiError } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { ProvenanceVerifyResult, FederatedPattern } from '@/lib/api';
 import { formatDays } from '@/lib/utils';
+import { formatZarPrecise as formatZAR } from '@/lib/format-currency';
 
 type CalibrationSummary = Awaited<ReturnType<typeof api.catalysts.getCalibrationSummary>>;
 type ProvenanceRoot = Awaited<ReturnType<typeof api.provenance.root>>;
-
-function formatZAR(n: number): string {
-  if (n >= 1_000_000) return `R${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `R${(n / 1_000).toFixed(1)}k`;
-  return `R${Math.round(n).toLocaleString()}`;
-}
 
 export function TrustPerformancePage(): JSX.Element {
   const toast = useToast();

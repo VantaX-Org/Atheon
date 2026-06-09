@@ -87,14 +87,7 @@ const GATE_LABEL: Record<Gate, string> = {
 
 const GATE_ORDER: Gate[] = ['discovery', 'build', 'scale', 'done', 'killed'];
 
-function fmtZAR(n: number): string {
-  if (n === 0) return 'R 0';
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `R ${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `R ${(n / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `R ${(n / 1e3).toFixed(1)}k`;
-  return `R ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
+import { formatZarPrecise as fmtZAR } from '@/lib/format-currency';
 
 function pct(num: number, denom: number): number {
   if (denom === 0) return 0;

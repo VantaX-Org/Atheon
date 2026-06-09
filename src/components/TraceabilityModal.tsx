@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Portal } from "@/components/ui/portal";
 import { X, ChevronRight, Link2, AlertTriangle, BarChart3, TrendingUp, TrendingDown, Minus, FileText, ChevronDown, ChevronUp, Crown, Database } from "lucide-react";
 import type { HealthDimensionTraceResponse, RiskTraceResponse, MetricTraceResponse } from "@/lib/api";
+import { formatCurrency } from "@/lib/format-currency";
 
-function formatZAR(n: number): string {
-  return new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(n);
-}
+const formatZAR = (n: number): string => formatCurrency(n, 'ZAR');
 function formatRunStarted(iso: string): string {
   try { return new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }); } catch { return iso; }
 }

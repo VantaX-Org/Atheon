@@ -22,6 +22,7 @@
  *   <Numeric value={null} />                                     // —
  */
 import type { CSSProperties } from 'react';
+import { formatZarCompact } from '@/lib/format-currency';
 
 export type NumericTrend = 'up' | 'down' | 'flat' | 'auto';
 
@@ -73,9 +74,12 @@ function isFiniteNumber(v: unknown): v is number {
 }
 
 function formatCompact(n: number, currency?: string): string {
+  // ZAR delegates to the shared helper so JSX and string-context renders
+  // (tooltips, PDF, table cells) match digit-for-digit.
+  if (currency === 'ZAR') return formatZarCompact(n);
   const abs = Math.abs(n);
   const sym = currency && CURRENCY_LOCALES[currency]
-    ? (currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : 'R')
+    ? (currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '')
     : '';
   if (abs >= 1_000_000_000) return `${sym}${(n / 1_000_000_000).toFixed(1)}B`;
   if (abs >= 1_000_000) return `${sym}${(n / 1_000_000).toFixed(1)}M`;
