@@ -666,15 +666,18 @@ async function generateInsightsForTenant(db: D1Database, tenantId: string, catal
           ).bind(tenantId, metricsA[0].name, metricsB[0].name, thirtyDaysAgo).first<{ id: string }>();
           if (existingCorr) continue;
 
+          const lagHours = Math.round(timeDiffHours * 10) / 10;
+          const description = `${metricsA[0].name} (${metricsA[0].status}) and ${metricsB[0].name} (${metricsB[0].status}) both showed degradation within ${Math.round(timeDiffHours)}h, suggesting a linked process dependency.`;
           await db.prepare(
-            'INSERT INTO correlation_events (id, tenant_id, metric_a, metric_b, correlation_type, confidence, lag_hours, description, detected_at, source_run_id, cluster_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO correlation_events (id, tenant_id, source_system, source_event, target_system, target_impact, confidence, lag_days, metric_a, metric_b, correlation_type, lag_hours, description, detected_at, source_run_id, cluster_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
           ).bind(
             crypto.randomUUID(), tenantId,
+            domainKeys[i], metricsA[0].name,
+            domainKeys[j], metricsB[0].name,
+            Math.round(confidence * 100) / 100,
+            Math.round((timeDiffHours / 24) * 10) / 10,
             metricsA[0].name, metricsB[0].name,
-            'temporal', Math.round(confidence * 100) / 100,
-            Math.round(timeDiffHours * 10) / 10,
-            `${metricsA[0].name} (${metricsA[0].status}) and ${metricsB[0].name} (${metricsB[0].status}) both showed degradation within ${Math.round(timeDiffHours)}h, suggesting a linked process dependency.`,
-            now,
+            'temporal', lagHours, description, now,
             sourceRunId || null, clusterId || null
           ).run();
           correlationsInserted++;
