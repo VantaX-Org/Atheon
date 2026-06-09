@@ -115,16 +115,24 @@ export function RevenueUsagePage() {
             <span className="text-label">Estimated MRR</span>
             {summary.pricingIsEstimate && <Badge variant="warning" className="text-caption">EST</Badge>}
           </div>
-          <p className="text-figure font-mono tnum t-primary mt-1">${summary.estMrrUsd.toLocaleString()}</p>
-          <p className="text-caption t-muted">Derived from plan tier</p>
+          <p className="text-figure font-mono tnum t-primary mt-1">
+            {summary.estMrrUsd === null ? '—' : `$${summary.estMrrUsd.toLocaleString()}`}
+          </p>
+          <p className="text-caption t-muted">
+            {summary.estMrrUsd === null ? 'Pending billing integration' : 'Derived from plan tier'}
+          </p>
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-1 mb-1">
             <span className="text-label">Estimated ARR</span>
             {summary.pricingIsEstimate && <Badge variant="warning" className="text-caption">EST</Badge>}
           </div>
-          <p className="text-figure font-mono tnum t-primary mt-1">${summary.estArrUsd.toLocaleString()}</p>
-          <p className="text-caption t-muted">MRR × 12</p>
+          <p className="text-figure font-mono tnum t-primary mt-1">
+            {summary.estArrUsd === null ? '—' : `$${summary.estArrUsd.toLocaleString()}`}
+          </p>
+          <p className="text-caption t-muted">
+            {summary.estArrUsd === null ? 'Pending billing integration' : 'MRR × 12'}
+          </p>
         </Card>
         <Card className="p-3">
           <div className="flex items-center gap-2 mb-1">
@@ -144,7 +152,7 @@ export function RevenueUsagePage() {
         </Card>
       </div>
 
-      {summary.pricingIsEstimate && (
+      {summary.pricingNote && (
         <Card className="p-3 border-l-2" style={{ borderLeftColor: 'var(--warning)' }}>
           <p className="text-caption t-muted flex items-start gap-1.5">
             <AlertCircle size={12} style={{ color: 'var(--warning)' }} className="mt-0.5 flex-shrink-0" />
@@ -171,12 +179,16 @@ export function RevenueUsagePage() {
                     <span className="text-xs t-primary capitalize">{p.plan}</span>
                     <Badge variant="default" className="text-caption">{p.count} tenants</Badge>
                   </div>
-                  <span className="text-xs font-medium t-primary">${p.estMrrUsd.toLocaleString()}/mo</span>
+                  <span className="text-xs font-medium t-primary">
+                    {p.estMrrUsd === null ? '—' : `$${p.estMrrUsd.toLocaleString()}/mo`}
+                  </span>
                 </div>
               ))}
               <div className="border-t border-[var(--border-card)] pt-2 flex justify-between">
                 <span className="text-xs font-medium t-primary">Total (est.)</span>
-                <span className="text-sm font-bold text-accent">${summary.estMrrUsd.toLocaleString()}/mo</span>
+                <span className="text-sm font-bold text-accent">
+                  {summary.estMrrUsd === null ? '—' : `$${summary.estMrrUsd.toLocaleString()}/mo`}
+                </span>
               </div>
             </div>
           </Card>

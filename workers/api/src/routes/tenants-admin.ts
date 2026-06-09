@@ -751,15 +751,22 @@ tenants.get('/revenue-usage', async (c) => {
       ).all().catch(() => ({ results: [] })),
     ]);
 
-    const byPlan: Array<{ plan: string; count: number; estMrrUsd: number }> = [];
-    let estMrrUsd = 0;
+    const revenueEstimateEnabled =
+      c.env.ENABLE_REVENUE_ESTIMATE === '1' || c.env.ENABLE_REVENUE_ESTIMATE === 'true';
+
+    const byPlan: Array<{ plan: string; count: number; estMrrUsd: number | null }> = [];
+    let estMrrUsd: number | null = revenueEstimateEnabled ? 0 : null;
     for (const row of (byPlanRows.results || []) as Array<Record<string, unknown>>) {
       const plan = String(row.plan || 'unknown');
       const count = Number(row.count) || 0;
-      const pricePerMonth = PLAN_PRICING_USD[plan] || 0;
-      const revenue = count * pricePerMonth;
-      estMrrUsd += revenue;
-      byPlan.push({ plan, count, estMrrUsd: revenue });
+      if (revenueEstimateEnabled) {
+        const pricePerMonth = PLAN_PRICING_USD[plan] || 0;
+        const revenue = count * pricePerMonth;
+        estMrrUsd = (estMrrUsd ?? 0) + revenue;
+        byPlan.push({ plan, count, estMrrUsd: revenue });
+      } else {
+        byPlan.push({ plan, count, estMrrUsd: null });
+      }
     }
 
     const totalTenants = Number((totalsRow as Record<string, unknown>)?.tenants || 0);
@@ -793,9 +800,11 @@ tenants.get('/revenue-usage', async (c) => {
         totalTenants,
         totalUsers,
         estMrrUsd,
-        estArrUsd: estMrrUsd * 12,
-        pricingIsEstimate: true,
-        pricingNote: 'MRR/ARR derived from plan-tier pricing lookup. Real pricing should come from billing integration when that lands.',
+        estArrUsd: estMrrUsd === null ? null : estMrrUsd * 12,
+        pricingIsEstimate: revenueEstimateEnabled ? true : null,
+        pricingNote: revenueEstimateEnabled
+          ? 'MRR/ARR derived from plan-tier pricing lookup. Real pricing should come from billing integration when that lands.'
+          : 'Revenue figures hidden until a billing integration provides real pricing. Set ENABLE_REVENUE_ESTIMATE to surface plan-tier estimates internally.',
       },
       byPlan,
       growth: { newTenantsByMonth },

@@ -100,6 +100,14 @@ export interface Env {
   CF_ACCOUNT_ID?: string;
   /** Cloudflare API token with Analytics:Read for the AE SQL API. */
   CF_AE_READ_TOKEN?: string;
+  /**
+   * When set to '1' / 'true', the /admin/revenue-usage endpoint computes
+   * estMrrUsd / estArrUsd from PLAN_PRICING_USD placeholder rates. When unset
+   * (default), revenue dollar figures are returned as null so the superadmin
+   * UI renders "—" instead of invented numbers. Real pricing should come from
+   * a billing integration; this flag exists so internal demos can opt in.
+   */
+  ENABLE_REVENUE_ESTIMATE?: string;
 }
 
 export interface AuthContext {

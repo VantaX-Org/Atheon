@@ -4799,12 +4799,12 @@ export interface RevenueUsageResponse {
   summary: {
     totalTenants: number;
     totalUsers: number;
-    estMrrUsd: number;
-    estArrUsd: number;
-    pricingIsEstimate: boolean;
+    estMrrUsd: number | null;
+    estArrUsd: number | null;
+    pricingIsEstimate: boolean | null;
     pricingNote: string;
   };
-  byPlan: Array<{ plan: string; count: number; estMrrUsd: number }>;
+  byPlan: Array<{ plan: string; count: number; estMrrUsd: number | null }>;
   growth: { newTenantsByMonth: Array<{ month: string; count: number }> };
   llm: {
     totalTokens30d: number;
