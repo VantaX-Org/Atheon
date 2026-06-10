@@ -3,11 +3,10 @@
 @tailwind utilities;
 
 /* ============================================================
-   ATHEON DESIGN SYSTEM — Swiss Calm Authority
-   Warm-white field. Archivo grotesk + IBM Plex Mono.
-   Single ledger-green accent (= positive). Flat surfaces
-   defined by hairline rules, not shadow. Sharp corners.
-   Light-only.
+   ATHEON DESIGN SYSTEM — Obsidian Authority
+   Obsidian field, frosted raised surfaces, bone ink, neon spruce.
+   Archivo grotesk + IBM Plex Mono. Depth via translucent layers
+   and considered shadow — never decoration. Sharp corners. Dark.
    ============================================================ */
 
 /* L6: Font imports consolidated in index.html with font-display:swap for better performance */
@@ -31,124 +30,123 @@
     --dur-medium:   260ms;   /* modal/sheet enter */
     --dur-slow:     360ms;   /* drawer enter, page reveals */
     /* ───────────────────────────────────────────────────────────
-     * SWISS CALM AUTHORITY — warm-white field, ink type, one accent.
-     * Light-only. Flat surfaces defined by hairline rules, not shadow.
-     * Ledger green is the single brand accent and doubles as the
-     * positive signed-delta colour; --neg is reserved for genuine
-     * negatives. Sharp corners. Tabular figures.
+     * OBSIDIAN AUTHORITY — dark field, frosted surfaces, neon spruce.
+     * Depth lives in translucent layers and considered shadow.
+     * Neon spruce is the brand accent and the positive signed-delta;
+     * --neg is reserved for genuine negatives. Sharp corners.
+     * Tabular figures.
      * ─────────────────────────────────────────────────────────── */
     --radius: 0.25rem;
 
     /* ── Field ─────────────────────────────────────────── */
-    --bg-primary: #fbfaf7;     /* warm white */
-    --bg-secondary: #f4f2ec;
-    --bg-pattern: none;        /* Swiss = flat, no atmosphere */
+    --bg-primary: #0a0e14;     /* obsidian */
+    --bg-secondary: #0f141c;
+    --bg-pattern: radial-gradient(1200px 800px at 20% -10%, rgba(20, 184, 122, 0.06), transparent 60%),
+                  radial-gradient(900px 600px at 95% 110%, rgba(20, 184, 122, 0.04), transparent 70%);
     --field-gradient: none;
 
-    /* ── Surfaces (flat; hairline border defines the card) ── */
-    --bg-card: #ffffff;
-    --bg-card-solid: #ffffff;
-    --bg-card-hover: #f7f6f1;
-    --bg-elevated: #ffffff;
-    --bg-sidebar: #fbfaf7;
-    --bg-header: #fbfaf7;
-    --bg-input: #ffffff;
-    --bg-input-focus: #ffffff;
-    --bg-modal: #ffffff;
+    /* ── Surfaces (frosted raised; subtle inner light) ── */
+    --bg-card: #141923;
+    --bg-card-solid: #141923;
+    --bg-card-hover: #1a2030;
+    --bg-elevated: #1a2030;
+    --bg-sidebar: #0a0e14;
+    --bg-header: rgba(10, 14, 20, 0.72);
+    --bg-input: #141923;
+    --bg-input-focus: #1a2030;
+    --bg-modal: #141923;
 
     /* ── Borders / rules ───────────────────────────────── */
-    --border-primary: #e4e2db;  /* hairline */
-    --border-card: #e4e2db;
-    --border-subtle: #eeece5;
-    --divider: #e4e2db;
-    --line-strong: #0f1115;     /* 1.5px section/header rule */
+    --border-primary: rgba(243, 238, 226, 0.08);
+    --border-card: rgba(243, 238, 226, 0.08);
+    --border-subtle: rgba(243, 238, 226, 0.05);
+    --divider: rgba(243, 238, 226, 0.08);
+    --line-strong: #f3eee2;     /* 1.5px section/header rule — bone */
 
     /* ── Text ──────────────────────────────────────────── */
-    --text-primary: #0f1115;    /* ink */
-    --text-secondary: #6c7079;  /* muted */
-    --text-muted: #9a9ea6;      /* faint — eyebrow/label/scale */
-    --text-on-accent: #ffffff;
+    --text-primary: #f3eee2;    /* bone */
+    --text-secondary: #a4a99e;  /* muted */
+    --text-muted: #6c7068;      /* faint — eyebrow/label/scale */
+    --text-on-accent: #04110a;
 
-    /* ── Single accent: ledger green (= positive) ───────── */
-    --accent: #0a7d4f;
-    --accent-rgb: 10, 125, 79;
-    --accent-hover: #096a43;
-    --accent-glow: rgba(10, 125, 79, 0.14);
-    --accent-subtle: rgba(10, 125, 79, 0.07);
-    --accent-dark: #0f1115;
-    --sage: #0a7d4f;            /* legacy alias → accent */
-    --sage-b: #096a43;
-    --bronze: #9a6b1f;          /* chart tertiary / warning family */
-    --sky: #3b3f47;             /* chart secondary / slate */
+    /* ── Single accent: neon spruce (= positive) ───────── */
+    --accent: #14b87a;
+    --accent-rgb: 20, 184, 122;
+    --accent-hover: #1ad08a;
+    --accent-glow: rgba(20, 184, 122, 0.28);
+    --accent-subtle: rgba(20, 184, 122, 0.10);
+    --accent-dark: #0a7d4f;
+    --sage: #14b87a;
+    --sage-b: #0a7d4f;
+    --bronze: #d4a24a;          /* chart tertiary / warning family */
+    --sky: #6c7a8e;             /* chart secondary / slate */
 
     /* ── Reserved negative ─────────────────────────────── */
-    --neg: #b03423;
-    --neg-rgb: 176, 52, 35;
+    --neg: #ef5e4f;
+    --neg-rgb: 239, 94, 79;
 
-    /* ── Elevation — 5-tier Material scale ──────────────
-       Canonical depth tokens. Use the semantic aliases below
-       (--shadow-card, --shadow-raised, --shadow-dropdown,
-       --shadow-modal) in components. Numeric tokens exist for
-       components that need a specific tier explicitly.
+    /* ── Elevation — 5-tier dark scale ──────────────────
+       Cards have real depth on a dark field. The semantic
+       aliases below pick the right tier for the role.
        Tier mapping:
          elev-0 — flat surface (page bg, table rows)
-         elev-1 — cards, panels (near-flat for Swiss Calm)
-         elev-2 — raised buttons, popovers, onboarding cards
+         elev-1 — cards, panels (subtle lift)
+         elev-2 — raised buttons, popovers
          elev-3 — drawers, sheets, dropdowns
-         elev-4 — modals, dialogs (highest layer below toast) */
+         elev-4 — modals, dialogs */
     --elev-0: none;
-    --elev-1: 0 1px 2px rgba(15, 17, 21, 0.04);
-    --elev-2: 0 2px 8px rgba(15, 17, 21, 0.08);
-    --elev-3: 0 16px 40px rgba(15, 17, 21, 0.14);
-    --elev-4: 0 24px 60px rgba(15, 17, 21, 0.18);
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(243, 238, 226, 0.03);
+    --elev-2: 0 6px 20px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(243, 238, 226, 0.04);
+    --elev-3: 0 24px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(243, 238, 226, 0.05);
+    --elev-4: 0 36px 90px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(243, 238, 226, 0.06);
 
     /* Semantic aliases (preferred for component-level usage) */
     --shadow-xs: var(--elev-1);
-    --shadow-card: var(--elev-0);          /* cards stay flat per Swiss Calm */
-    --shadow-card-hover: var(--elev-1);    /* subtle lift on hover */
+    --shadow-card: var(--elev-1);
+    --shadow-card-hover: var(--elev-2);
     --shadow-raised: var(--elev-2);
-    --shadow-glass: none;
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45);
     --shadow-dropdown: var(--elev-3);
     --shadow-modal: var(--elev-4);
 
     /* ── Overlay (floating layers only) ────────────────── */
-    --overlay-bg: rgba(255, 255, 255, 0.82);
-    --overlay-blur: 8px;
-    --overlay-border: var(--border-card);
-    --glass-blur: 8px;
+    --overlay-bg: rgba(20, 25, 35, 0.72);
+    --overlay-blur: 18px;
+    --overlay-border: rgba(243, 238, 226, 0.08);
+    --glass-blur: 14px;
 
     /* ── Form & interaction ────────────────────────────── */
-    --placeholder: #9a9ea6;
-    --option-bg: #ffffff;
-    --scrollbar-thumb: rgba(15, 17, 21, 0.14);
-    --scrollbar-thumb-hover: rgba(15, 17, 21, 0.26);
-    --toggle-bg: #e4e2db;
-    --ring-focus: rgba(10, 125, 79, 0.35);
+    --placeholder: #6c7068;
+    --option-bg: #141923;
+    --scrollbar-thumb: rgba(243, 238, 226, 0.16);
+    --scrollbar-thumb-hover: rgba(243, 238, 226, 0.32);
+    --toggle-bg: #1a2030;
+    --ring-focus: rgba(20, 184, 122, 0.45);
 
     /* ── Semantic — status only ────────────────────────── */
-    --positive: #0a7d4f;
-    --warning: #9a6b1f;
-    --warning-rgb: 154, 107, 31;
-    --critical: #b03423;
-    --info: #3b3f47;
-    --teal: #0a7d4f;
-    --teal-light: rgba(10, 125, 79, 0.08);
-    --teal-dark: #096a43;
+    --positive: #14b87a;
+    --warning: #d4a24a;
+    --warning-rgb: 212, 162, 74;
+    --critical: #ef5e4f;
+    --info: #6c7a8e;
+    --teal: #14b87a;
+    --teal-light: rgba(20, 184, 122, 0.10);
+    --teal-dark: #0a7d4f;
 
-    /* ── Chart theme — restrained: accent + ink + grays ── */
+    /* ── Chart theme — accent + bone + slate ───────────── */
     --chart-primary: var(--accent);
-    --chart-secondary: #3b3f47;
-    --chart-tertiary: #9a9ea6;
+    --chart-secondary: #6c7a8e;
+    --chart-tertiary: #a4a99e;
     --chart-success: var(--accent);
     --chart-warning: var(--warning);
     --chart-danger: var(--neg);
-    --chart-grid: rgba(15, 17, 21, 0.07);
+    --chart-grid: rgba(243, 238, 226, 0.06);
     --chart-text: var(--text-secondary);
-    --chart-tooltip-bg: #ffffff;
-    --chart-tooltip-border: var(--border-card);
+    --chart-tooltip-bg: #141923;
+    --chart-tooltip-border: rgba(243, 238, 226, 0.12);
 
-    /* ── Legacy light-polish aliases (kept; repointed) ──── */
-    --shadow-card-light: none;
+    /* ── Legacy aliases (kept; repointed) ─────────────── */
+    --shadow-card-light: var(--elev-1);
     --bg-page-light: var(--bg-primary);
     --text-primary-light: var(--text-primary);
     --text-secondary-light: var(--text-secondary);
@@ -162,6 +160,8 @@
        applied via .font-mono / Tailwind's mono family on numerals. */
     font-family: "Archivo", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-primary);
+    background-image: var(--bg-pattern);
+    background-attachment: fixed;
     color: var(--text-primary);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
@@ -534,13 +534,36 @@
 .animate-glow-pulse { animation: glow-pulse 3s ease-in-out infinite; }
 .animate-float-3d { animation: float-3d 8s ease-in-out infinite; }
 
-.atheon-dark .text-white { color: var(--text-primary) !important; }
-.atheon-dark .text-gray-100 { color: var(--text-primary) !important; }
-.atheon-dark .text-gray-200 { color: #cbd5e1 !important; }
-.atheon-dark .text-gray-300 { color: #94a3b8 !important; }
-.atheon-dark .text-gray-400 { color: var(--text-secondary) !important; }
-.atheon-dark .text-gray-500 { color: var(--text-muted) !important; }
-.atheon-dark .text-gray-600 { color: #475569 !important; }
+/* Tailwind gray-* utilities sprinkled across legacy screens are
+   remapped to the obsidian token system so type stays readable on
+   the dark field. Both .atheon-dark and the root carry the overrides
+   because the dark scheme is now the default. */
+.atheon-dark .text-white,
+.text-white { color: var(--text-primary) !important; }
+.atheon-dark .text-gray-100,
+.text-gray-100 { color: var(--text-primary) !important; }
+.atheon-dark .text-gray-200,
+.text-gray-200 { color: #e6e0d3 !important; }
+.atheon-dark .text-gray-300,
+.text-gray-300 { color: #c4c8bc !important; }
+.atheon-dark .text-gray-400,
+.text-gray-400 { color: var(--text-secondary) !important; }
+.atheon-dark .text-gray-500,
+.text-gray-500 { color: var(--text-muted) !important; }
+.atheon-dark .text-gray-600,
+.text-gray-600 { color: #8a8f84 !important; }
+.atheon-dark .text-gray-700,
+.text-gray-700 { color: var(--text-secondary) !important; }
+.atheon-dark .text-gray-800,
+.text-gray-800 { color: var(--text-primary) !important; }
+.atheon-dark .text-gray-900,
+.text-gray-900 { color: var(--text-primary) !important; }
+
+/* Background gray utilities — bring them onto the obsidian palette */
+.bg-white { background-color: var(--bg-card) !important; }
+.bg-gray-50 { background-color: var(--bg-secondary) !important; }
+.bg-gray-100 { background-color: var(--bg-card) !important; }
+.bg-gray-200 { background-color: var(--bg-card-hover) !important; }
 
 /* TASK-006: Focus visible styles for accessibility */
 *:focus-visible {

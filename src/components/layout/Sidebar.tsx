@@ -54,6 +54,8 @@ interface NavLeaf {
   label: string;
   /** Material Symbols Outlined ligature name. Falls back to the section glyph. */
   symbol: string;
+  /** Optional one-line role descriptor — rendered below the label for brand-named routes. */
+  descriptor?: string;
   roles?: UserRole[];
 }
 
@@ -71,15 +73,15 @@ const SECTIONS: NavSection[] = [
     label: 'Intelligence',
     symbol: 'insights',
     children: [
-      { path: '/dashboard',         label: 'Dashboard',     symbol: 'dashboard' },
-      { path: '/apex',              label: 'Apex',          symbol: 'workspace_premium', roles: EXECUTIVE_ROLES },
-      { path: '/pulse',             label: 'Pulse',         symbol: 'monitor_heart',     roles: STANDARD_ROLES },
-      { path: '/catalysts',         label: 'Catalysts',     symbol: 'bolt',              roles: OPERATOR_ROLES },
-      { path: '/mind',              label: 'Mind',          symbol: 'psychology',        roles: PLATFORM_ADMIN_ROLES },
-      { path: '/memory',            label: 'Memory',        symbol: 'memory',            roles: MANAGER_ROLES },
-      { path: '/trust',             label: 'Trust',         symbol: 'verified',          roles: STANDARD_ROLES },
-      { path: '/executive-summary', label: 'Exec Briefing', symbol: 'description',       roles: EXECUTIVE_ROLES },
-      { path: '/board-digest',      label: 'Board Digest',  symbol: 'workspaces',        roles: BOARD_DIGEST_ROLES },
+      { path: '/dashboard',         label: 'Dashboard',     symbol: 'dashboard',         descriptor: 'Daily command' },
+      { path: '/apex',              label: 'Apex',          symbol: 'workspace_premium', descriptor: 'Executive view',       roles: EXECUTIVE_ROLES },
+      { path: '/pulse',             label: 'Pulse',         symbol: 'monitor_heart',     descriptor: 'Operations health',    roles: STANDARD_ROLES },
+      { path: '/catalysts',         label: 'Catalysts',     symbol: 'bolt',              descriptor: 'Action queue',         roles: OPERATOR_ROLES },
+      { path: '/mind',              label: 'Mind',          symbol: 'psychology',        descriptor: 'AI workspace',         roles: PLATFORM_ADMIN_ROLES },
+      { path: '/memory',            label: 'Memory',        symbol: 'memory',            descriptor: 'Knowledge base',       roles: MANAGER_ROLES },
+      { path: '/trust',             label: 'Trust',         symbol: 'verified',          descriptor: 'Audit & compliance',   roles: STANDARD_ROLES },
+      { path: '/executive-summary', label: 'Exec Briefing', symbol: 'description',       descriptor: 'Weekly narrative',     roles: EXECUTIVE_ROLES },
+      { path: '/board-digest',      label: 'Board Digest',  symbol: 'workspaces',        descriptor: 'Quarterly readout',    roles: BOARD_DIGEST_ROLES },
     ],
   },
   {
@@ -114,7 +116,7 @@ const SECTIONS: NavSection[] = [
     children: [
       { path: '/control-plane',    label: 'Control Plane',    symbol: 'memory',         roles: PLATFORM_ADMIN_ROLES },
       { path: '/deployments',      label: 'Deployments',      symbol: 'rocket_launch',  roles: SUPERADMIN_ROLES },
-      { path: '/assessments',      label: 'Assessments',      symbol: 'fact_check',     roles: SUPERADMIN_ROLES },
+      { path: '/assessments',      label: 'Assessments',      symbol: 'fact_check',     roles: PLATFORM_ADMIN_ROLES },
       { path: '/platform-health',  label: 'Operations Health', symbol: 'health_metrics', roles: PLATFORM_ADMIN_ROLES },
       { path: '/system-alerts',    label: 'System Alerts',    symbol: 'notifications',  roles: PLATFORM_ADMIN_ROLES },
       { path: '/admin/incidents',  label: 'Incident Manager', symbol: 'report',         roles: SUPPORT_ROLES },
@@ -205,18 +207,23 @@ function SidebarSection({ section, visible, isExpanded, isActiveSection, onToggl
                   to={leaf.path}
                   onClick={closeMobile}
                   className={cn(
-                    'flex items-center gap-2.5 pl-3 pr-2 py-1.5 rounded-md text-body-sm',
+                    'flex items-start gap-2.5 pl-3 pr-2 py-1.5 rounded-md text-body-sm',
                     'transition-[background-color,color,transform] duration-[var(--dur-press)]',
                     '[transition-timing-function:var(--ease-out)] active:scale-[0.98]',
                     isActive
-                      ? 'font-medium border-l-[3px]'
-                      : 't-secondary hover:t-primary hover:bg-[var(--bg-secondary)]',
+                      ? 'font-medium border-l-[3px] bg-[var(--accent-subtle)]'
+                      : 't-secondary hover:t-primary hover:bg-[var(--bg-card-hover)]',
                   )}
-                  style={isActive ? { background: 'var(--text-primary)', color: 'var(--bg-primary)', borderColor: 'var(--accent)' } : undefined}
+                  style={isActive ? { borderColor: 'var(--accent)', color: 'var(--text-primary)' } : undefined}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <MaterialIcon name={leaf.symbol} size={16} className={isActive ? '' : 't-muted'} />
-                  <span className="truncate">{leaf.label}</span>
+                  <MaterialIcon name={leaf.symbol} size={16} className={cn('mt-[2px] shrink-0', isActive ? 'text-accent' : 't-muted')} filled={isActive} />
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('truncate block', isActive && 'font-semibold tracking-tight')}>{leaf.label}</span>
+                    {leaf.descriptor && (
+                      <span className="block text-caption t-muted truncate leading-tight mt-0.5">{leaf.descriptor}</span>
+                    )}
+                  </span>
                 </Link>
               </li>
             );
