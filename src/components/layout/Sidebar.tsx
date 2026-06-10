@@ -221,7 +221,7 @@ function SidebarSection({ section, visible, isExpanded, isActiveSection, onToggl
                   <span className="min-w-0 flex-1">
                     <span className={cn('truncate block', isActive && 'font-semibold tracking-tight')}>{leaf.label}</span>
                     {leaf.descriptor && (
-                      <span className="block text-caption t-muted truncate leading-tight mt-0.5">{leaf.descriptor}</span>
+                      <span aria-hidden="true" className="block text-caption t-muted truncate leading-tight mt-0.5">{leaf.descriptor}</span>
                     )}
                   </span>
                 </Link>
