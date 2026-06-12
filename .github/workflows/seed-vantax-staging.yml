@@ -1,0 +1,197 @@
+name: Seed VantaX (staging)
+
+# One-shot demo reset + reseed + verify for the VantaX tenant on staging.
+# Mirrors the unattended go-live flow: wipe, reseed (with optional persona
+# override), confirm business_report_key is populated, and surface a
+# summary in the Actions UI.
+#
+# Inputs:
+#   prospect_name        — optional persona override (e.g. "Pick n Pay")
+#   prospect_industry    — optional (e.g. "Retail")
+#   prospect_legal_name  — optional
+#   prospect_tax_id      — optional
+#
+# Reuses the same `staging` GitHub environment secrets as staging-e2e:
+#   - E2E_STAGING_BASE_URL    — frontend base URL (only used for context)
+#   - E2E_STAGING_LOGIN_EMAIL
+#   - E2E_STAGING_LOGIN_PASSWORD
+#
+# Also requires the staging API host. Defaults to
+# https://staging.atheon-api.vantax.co.za (from wrangler.toml route).
+# Override with the STAGING_API_BASE_URL secret if it ever differs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      prospect_name:
+        description: 'Prospect display name (optional persona override)'
+        required: false
+        default: ''
+      prospect_industry:
+        description: 'Prospect industry'
+        required: false
+        default: ''
+      prospect_legal_name:
+        description: 'Prospect legal name'
+        required: false
+        default: ''
+      prospect_tax_id:
+        description: 'Prospect tax id'
+        required: false
+        default: ''
+
+concurrency:
+  group: seed-vantax-staging
+  cancel-in-progress: true
+
+jobs:
+  seed:
+    name: Reset + reseed + verify VantaX
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - name: Resolve API base URL
+        id: api
+        env:
+          OVERRIDE: ${{ secrets.STAGING_API_BASE_URL }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            echo "url=$OVERRIDE" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=https://staging.atheon-api.vantax.co.za" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate on required secrets
+        id: gate
+        env:
+          LOGIN_EMAIL: ${{ secrets.E2E_STAGING_LOGIN_EMAIL }}
+          LOGIN_PASSWORD: ${{ secrets.E2E_STAGING_LOGIN_PASSWORD }}
+        run: |
+          if [ -z "$LOGIN_EMAIL" ] || [ -z "$LOGIN_PASSWORD" ]; then
+            {
+              echo "## Seed VantaX — skipped"
+              echo ""
+              echo "Missing required secret(s) in the \`staging\` environment:"
+              echo "- \`E2E_STAGING_LOGIN_EMAIL\`"
+              echo "- \`E2E_STAGING_LOGIN_PASSWORD\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Login → JWT
+        id: login
+        env:
+          API: ${{ steps.api.outputs.url }}
+          LOGIN_EMAIL: ${{ secrets.E2E_STAGING_LOGIN_EMAIL }}
+          LOGIN_PASSWORD: ${{ secrets.E2E_STAGING_LOGIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg e "$LOGIN_EMAIL" --arg p "$LOGIN_PASSWORD" \
+            '{email:$e,password:$p}')
+          resp=$(curl -fsS -X POST "$API/api/v1/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")
+          token=$(echo "$resp" | jq -r '.token // .access_token // empty')
+          if [ -z "$token" ]; then
+            echo "::error::Login response missing token"
+            echo "$resp" | jq -r 'del(.token,.access_token)' || true
+            exit 1
+          fi
+          # Mask + export
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Reset VantaX tenant
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/reset.json -w '%{http_code}' \
+            -X POST "$API/api/v1/seed-vantax/reset" \
+            -H "Authorization: Bearer $TOKEN")
+          echo "Reset HTTP $code"
+          jq '.' /tmp/reset.json || cat /tmp/reset.json
+          [ "$code" = "200" ] || exit 1
+
+      - name: Reseed VantaX (with optional persona override)
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          P_NAME: ${{ inputs.prospect_name }}
+          P_IND:  ${{ inputs.prospect_industry }}
+          P_LEG:  ${{ inputs.prospect_legal_name }}
+          P_TAX:  ${{ inputs.prospect_tax_id }}
+        run: |
+          set -euo pipefail
+          body='{}'
+          if [ -n "$P_NAME" ] || [ -n "$P_IND" ] || [ -n "$P_LEG" ] || [ -n "$P_TAX" ]; then
+            body=$(jq -nc \
+              --arg n "$P_NAME" --arg i "$P_IND" --arg l "$P_LEG" --arg t "$P_TAX" \
+              '{} + (if $n != "" then {prospectName:$n} else {} end)
+                 + (if $i != "" then {prospectIndustry:$i} else {} end)
+                 + (if $l != "" then {prospectLegalName:$l} else {} end)
+                 + (if $t != "" then {prospectTaxId:$t} else {} end)')
+          fi
+          echo "Reseed body: $body"
+          code=$(curl -sS -o /tmp/seed.json -w '%{http_code}' \
+            -X POST "$API/api/v1/seed-vantax" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$body" \
+            --max-time 600)
+          echo "Seed HTTP $code"
+          jq '.' /tmp/seed.json || cat /tmp/seed.json
+          [ "$code" = "200" ] || exit 1
+
+      - name: Verify status + business_report_key
+        id: verify
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+        run: |
+          set -euo pipefail
+          status=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/seed-vantax/vantax-status")
+          echo "Status:"; echo "$status" | jq '.'
+
+          # Pull the va-demo-vantax assessment row and check business_report_key
+          asmts=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments" || echo '{}')
+          report_key=$(echo "$asmts" | jq -r '
+            (.assessments // .data // []) as $rows
+            | ($rows[] | select(.id == "va-demo-vantax") | .business_report_key) // empty')
+          echo "business_report_key: $report_key"
+          if [ -z "$report_key" ]; then
+            echo "::error::business_report_key not set on va-demo-vantax"
+            exit 1
+          fi
+          echo "report_key=$report_key" >> "$GITHUB_OUTPUT"
+
+      - name: Probe catalysts (sanity)
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+        run: |
+          curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/catalysts/actions" | jq '. | length' || true
+          curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/catalysts/clusters" | jq '. | length' || true
+
+      - name: Summary
+        if: always()
+        env:
+          API: ${{ steps.api.outputs.url }}
+          REPORT_KEY: ${{ steps.verify.outputs.report_key }}
+          P_NAME: ${{ inputs.prospect_name }}
+          CONCLUSION: ${{ job.status }}
+        run: |
+          {
+            echo "## Seed VantaX result"
+            echo ""
+            echo "- **API:** $API"
+            echo "- **Persona override:** ${P_NAME:-(none — default VantaX)}"
+            echo "- **business_report_key:** \`${REPORT_KEY:-not set}\`"
+            echo "- **Conclusion:** $CONCLUSION"
+          } >> "$GITHUB_STEP_SUMMARY"
