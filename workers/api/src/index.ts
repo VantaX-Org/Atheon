@@ -159,6 +159,12 @@ app.use('*', async (c, next) => {
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header('Content-Security-Policy', CSP_DEFAULT);
   c.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  // COOP — break window.opener references from cross-origin pages so an
+  // attacker-controlled tab cannot inspect or rewrite this origin. COEP is
+  // intentionally not set to require-corp: Swagger UI loads from jsdelivr CDN
+  // assets that don't advertise Cross-Origin-Resource-Policy headers, and
+  // require-corp would block them. Revisit once we self-host Swagger assets.
+  c.header('Cross-Origin-Opener-Policy', 'same-origin');
   // HSTS — only emit when the request was served over HTTPS. Browsers ignore the
   // header on plain HTTP, and emitting it on local http://localhost dev surfaces
   // can pin localhost into HTTPS-only mode in some browsers.

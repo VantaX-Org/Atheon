@@ -159,9 +159,12 @@ jobs:
           # Pull the va-demo-vantax assessment row and check business_report_key
           asmts=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
             "$API/api/v1/assessments" || echo '{}')
+          # API formatAssessment() emits camelCase keys, so the assessment row
+          # exposes `businessReportKey` (not `business_report_key`). Accept either
+          # for forward-compat in case the API surface changes.
           report_key=$(echo "$asmts" | jq -r '
             (.assessments // .data // []) as $rows
-            | ($rows[] | select(.id == "va-demo-vantax") | .business_report_key) // empty')
+            | ($rows[] | select(.id == "va-demo-vantax") | (.businessReportKey // .business_report_key)) // empty')
           echo "business_report_key: $report_key"
           if [ -z "$report_key" ]; then
             echo "::error::business_report_key not set on va-demo-vantax"

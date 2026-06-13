@@ -367,7 +367,7 @@ export function Header() {
                       <Check size={11} /> Mark all read
                     </button>
                   )}
-                  <button onClick={() => setShowNotifications(false)} className="p-0.5 rounded t-muted hover:t-primary transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]" title="Close notifications">
+                  <button onClick={() => setShowNotifications(false)} className="p-0.5 rounded t-muted hover:t-primary transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]" title="Close notifications" aria-label="Close notifications">
                     <X size={13} />
                   </button>
                 </div>
@@ -446,6 +446,7 @@ export function Header() {
           <button
             onClick={handleLogout}
             title="Sign out"
+            aria-label="Sign out"
             className="p-1 rounded-md t-muted hover:text-[var(--neg)] hover:bg-[rgb(var(--neg-rgb)/0.10)] transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.92]"
           >
             <LogOut size={13} />

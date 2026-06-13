@@ -6,6 +6,7 @@ import { AsyncPageContent, statusFrom } from "@/components/ui/async";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageTabsLayout } from "@/components/ui/page-tabs-layout";
 import { KnowledgeGraphViz } from "@/components/memory/KnowledgeGraphViz";
+import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
 import {
   Plus,
   Search,
@@ -199,6 +200,7 @@ export function MemoryPage() {
 
   return (
     <div className="space-y-6">
+      <SharedSavingsStrip />
       <PageTabsLayout
         variant="segmented"
         ariaLabel="Memory sections"

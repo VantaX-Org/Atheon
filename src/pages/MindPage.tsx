@@ -4,6 +4,7 @@ import type { MindModels, MindStats, MindQueryResult } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageTabsLayout } from "@/components/ui/page-tabs-layout";
+import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
 import {
   Settings2,
   Play,
@@ -139,6 +140,7 @@ export function MindPage() {
 
   return (
     <div className="space-y-6">
+      <SharedSavingsStrip />
       <PageTabsLayout
         variant="segmented"
         ariaLabel="Mind sections"
