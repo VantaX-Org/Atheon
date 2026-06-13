@@ -13,6 +13,18 @@ name: Go-Live Gate
 #   VERIFY_ADMIN_EMAIL     - seeded admin login (accuracy/isolation/rbac/load)
 #   VERIFY_ADMIN_PASSWORD  - its password
 #   CLOUDFLARE_API_KEY     - wrangler auth (Global API Key): accuracy's live D1
+#
+# Mandatory-MFA auth (v40): the admin account is admin-tier, so once its 14-day
+# MFA grace expires a bare password login returns 403 and wedges the gate. Set
+# ONE of these (config.ts/ApiClient.login picks the first that is present):
+#   VERIFY_DEMO_SECRET     - X-Demo-Secret for the prod-disabled demo-login path
+#                            (preferred; must equal the env's DEMO_LOGIN_SECRET).
+#                            Note: demo-login is disabled when ENVIRONMENT=production,
+#                            so for a production gate use the TOTP seed instead.
+#   VERIFY_ADMIN_TOTP_SEED - base32 authenticator seed for the admin account when
+#                            it has MFA enrolled; the gate completes the real
+#                            login -> /mfa/validate challenge. Never weaken the
+#                            MFA control to make the gate pass.
 #                            queries + DR export. Used instead of a scoped token
 #                            because D1 query needs full account access.
 #   CLOUDFLARE_EMAIL       - account email paired with the Global API Key
@@ -83,6 +95,9 @@ jobs:
         env:
           VERIFY_ADMIN_EMAIL: ${{ secrets.VERIFY_ADMIN_EMAIL }}
           VERIFY_ADMIN_PASSWORD: ${{ secrets.VERIFY_ADMIN_PASSWORD }}
+          # Mandatory-MFA auth (see header): set whichever the env uses; unset => ''.
+          VERIFY_DEMO_SECRET: ${{ secrets.VERIFY_DEMO_SECRET }}
+          VERIFY_ADMIN_TOTP_SEED: ${{ secrets.VERIFY_ADMIN_TOTP_SEED }}
           VERIFY_API_URL: ${{ vars.VERIFY_API_URL }}
           VERIFY_APP_URL: ${{ vars.VERIFY_APP_URL }}
           VERIFY_TENANT_SLUG: ${{ vars.VERIFY_TENANT_SLUG }}
@@ -102,6 +117,9 @@ jobs:
         env:
           VERIFY_ADMIN_EMAIL: ${{ secrets.VERIFY_ADMIN_EMAIL }}
           VERIFY_ADMIN_PASSWORD: ${{ secrets.VERIFY_ADMIN_PASSWORD }}
+          # Mandatory-MFA auth (see header): set whichever the env uses; unset => ''.
+          VERIFY_DEMO_SECRET: ${{ secrets.VERIFY_DEMO_SECRET }}
+          VERIFY_ADMIN_TOTP_SEED: ${{ secrets.VERIFY_ADMIN_TOTP_SEED }}
           VERIFY_API_URL: ${{ vars.VERIFY_API_URL }}
           VERIFY_TENANT_SLUG: ${{ vars.VERIFY_TENANT_SLUG }}
 

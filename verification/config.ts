@@ -25,6 +25,17 @@ export const CONFIG = {
   tenantSlug: optionalEnv('VERIFY_TENANT_SLUG', 'vantax'),
   get adminEmail() { return requireEnv('VERIFY_ADMIN_EMAIL'); },
   get adminPassword() { return requireEnv('VERIFY_ADMIN_PASSWORD'); },
+  // v40 mandatory-MFA makes a bare password login for an admin-tier account
+  // return 403 once its 14-day grace expires. Two optional, security-preserving
+  // ways for CI to authenticate without weakening the control for real users:
+  //   1. VERIFY_DEMO_SECRET — the X-Demo-Secret for POST /auth/demo-login, the
+  //      purpose-built automation path (disabled in production, secret-gated).
+  //      Preferred: needs no MFA state on the account.
+  //   2. VERIFY_ADMIN_TOTP_SEED — base32 TOTP seed for the admin account when it
+  //      has MFA enabled; lets the gate complete the real /login -> /mfa/validate
+  //      challenge exactly as a human admin would.
+  demoSecret: optionalEnv('VERIFY_DEMO_SECRET', ''),
+  adminTotpSeed: optionalEnv('VERIFY_ADMIN_TOTP_SEED', ''),
   // Optional — only needed by the second-tenant isolation enhancement.
   superadminEmail: optionalEnv('VERIFY_SUPERADMIN_EMAIL', ''),
   superadminPassword: optionalEnv('VERIFY_SUPERADMIN_PASSWORD', ''),

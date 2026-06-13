@@ -1,4 +1,5 @@
 import { CONFIG } from '../config';
+import { generateTotp } from './totp';
 
 export interface AuthedUser {
   id: string;
@@ -46,12 +47,47 @@ export class ApiClient {
   ) {}
 
   async login(): Promise<void> {
+    // v40 makes a bare password login for an admin-tier account return 403 once
+    // its 14-day MFA grace expires — which is correct for real users but would
+    // wedge the gate. Two security-preserving auth paths, in priority order:
+    //   1. demo-login (X-Demo-Secret) — purpose-built automation path, disabled
+    //      in production, needs no MFA state on the account. Preferred when set.
+    //   2. password login that COMPLETES the real MFA challenge via /mfa/validate
+    //      using a configured TOTP seed — same flow a human admin performs.
+    // Neither weakens the control: demo-login is prod-disabled + secret-gated,
+    // and the TOTP path proves possession of the seeded authenticator.
+    if (CONFIG.demoSecret) {
+      await this.demoLogin();
+      return;
+    }
+    await this.passwordLogin();
+  }
+
+  /** Mint a real admin JWT via the prod-disabled, secret-gated automation path. */
+  private async demoLogin(): Promise<void> {
+    const resp = await fetch(`${this.baseUrl}/api/v1/auth/demo-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Demo-Secret': CONFIG.demoSecret },
+      body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, role: 'admin' }),
+    });
+    if (!resp.ok) {
+      // Body can reflect request material on a failing auth endpoint — log status only.
+      throw new Error(`Demo-login failed (${resp.status}) — check VERIFY_DEMO_SECRET matches staging DEMO_LOGIN_SECRET`);
+    }
+    const data = await resp.json() as { token?: string; user?: AuthedUser };
+    if (!data.token) throw new Error('Demo-login returned no token');
+    this.token = data.token;
+    this.user = data.user ?? null;
+  }
+
+  /** Password login, completing a mandatory-MFA challenge via TOTP when raised. */
+  private async passwordLogin(): Promise<void> {
     // A cold worker / brief D1 hiccup can make the login endpoint return a
     // transient 5xx (observed: one role's login flaked 500 mid-run while the
     // same live API passed the whole RBAC matrix moments earlier). Login is
     // idempotent — a retry only writes one more audit-log row — so retry
     // transient 5xx with backoff rather than flapping the gate. A 4xx is a real
-    // client error (bad credentials, MFA) and is never retried.
+    // client error (bad credentials, MFA-not-enabled) and is never retried.
     const MAX_ATTEMPTS = 3;
     let lastStatus = 0;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -61,13 +97,38 @@ export class ApiClient {
         body: JSON.stringify({ email: this.email, password: this.password, tenant_slug: CONFIG.tenantSlug }),
       });
       if (resp.ok) {
-        const data = await resp.json() as { token?: string; user?: AuthedUser };
-        if (!data.token) throw new Error(`Login returned no token (MFA may be enforced for ${this.email})`);
+        const data = await resp.json() as {
+          token?: string;
+          user?: AuthedUser;
+          mfaRequired?: boolean;
+          mfaChallengeToken?: string;
+        };
+        // MFA-enabled account: server returns a challenge, not a token. Complete
+        // it with a TOTP from the configured seed (no seed => clear error).
+        if (data.mfaRequired && data.mfaChallengeToken) {
+          await this.completeMfa(data.mfaChallengeToken);
+          return;
+        }
+        if (!data.token) {
+          throw new Error(
+            `Login returned no token for ${this.email}. The account likely has mandatory MFA but no ` +
+            `authenticator enrolled, or it raised a challenge without a token. Set VERIFY_DEMO_SECRET ` +
+            `(preferred) or enrol MFA and set VERIFY_ADMIN_TOTP_SEED.`,
+          );
+        }
         this.token = data.token;
         this.user = data.user ?? null;
         return;
       }
       lastStatus = resp.status;
+      if (resp.status === 403) {
+        // v40 mandatory-MFA: admin-tier account past its grace with no MFA enabled.
+        throw new Error(
+          `Login forbidden (403) for ${this.email} — mandatory MFA is enforced for this role and the ` +
+          `grace period has expired. Set VERIFY_DEMO_SECRET (preferred) or enrol MFA on this account ` +
+          `and set VERIFY_ADMIN_TOTP_SEED. Do NOT weaken the MFA control to make the gate pass.`,
+        );
+      }
       if (resp.status < 500 || attempt === MAX_ATTEMPTS) {
         // Do not log the response body: a failing auth endpoint can reflect
         // request material. Status + the configured email is enough to triage.
@@ -76,6 +137,29 @@ export class ApiClient {
       await new Promise<void>(resolve => setTimeout(resolve, attempt * 1000));
     }
     throw new Error(`Login failed after ${MAX_ATTEMPTS} attempts (last ${lastStatus}) for ${this.email}`);
+  }
+
+  /** Exchange an MFA challenge token + generated TOTP for a session token. */
+  private async completeMfa(challengeToken: string): Promise<void> {
+    if (!CONFIG.adminTotpSeed) {
+      throw new Error(
+        `Account ${this.email} raised an MFA challenge but VERIFY_ADMIN_TOTP_SEED is not set. ` +
+        `Set it to the account's base32 authenticator seed, or use VERIFY_DEMO_SECRET instead.`,
+      );
+    }
+    const code = generateTotp(CONFIG.adminTotpSeed);
+    const resp = await fetch(`${this.baseUrl}/api/v1/auth/mfa/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challenge_token: challengeToken, code }),
+    });
+    if (!resp.ok) {
+      throw new Error(`MFA validation failed (${resp.status}) for ${this.email} — check VERIFY_ADMIN_TOTP_SEED`);
+    }
+    const data = await resp.json() as { token?: string; user?: AuthedUser };
+    if (!data.token) throw new Error('MFA validation returned no token');
+    this.token = data.token;
+    this.user = data.user ?? null;
   }
 
   async authedFetch(path: string, init: RequestInit = {}): Promise<Response> {

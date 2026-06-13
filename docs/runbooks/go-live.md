@@ -24,6 +24,31 @@ commit them.
 | `VERIFY_APP_URL` | no | `https://atheon.vantax.co.za` | E2E traceability |
 | `VERIFY_TENANT_SLUG` | no | `vantax` | login |
 | `VERIFY_D1_DB` | no | `atheon-db` | accuracy, DR drill |
+| `VERIFY_DEMO_SECRET` | no* | — | login (preferred MFA bypass) |
+| `VERIFY_ADMIN_TOTP_SEED` | no* | — | login (real MFA completion) |
+
+> **\*Mandatory MFA (v40).** The admin account is admin-tier, so once its 14-day
+> MFA grace expires a bare `VERIFY_ADMIN_PASSWORD` login returns **403** and the
+> gate fails with `Login forbidden (403) … mandatory MFA is enforced`. This is
+> the control working as designed — do **not** weaken it to make the gate pass.
+> Supply ONE of these instead (`ApiClient.login` picks the first present):
+>
+> - **`VERIFY_DEMO_SECRET`** — the `X-Demo-Secret` for the `POST
+>   /api/v1/auth/demo-login` automation path. Must equal that environment's
+>   `DEMO_LOGIN_SECRET` worker secret. Preferred for **staging** because it needs
+>   no MFA state on the account. **Disabled when `ENVIRONMENT=production`**, so a
+>   production gate cannot use it.
+> - **`VERIFY_ADMIN_TOTP_SEED`** — the base32 authenticator seed for the admin
+>   account when it has MFA enrolled. The gate runs the real `login →
+>   /api/v1/auth/mfa/validate` challenge with a generated TOTP, exactly as a
+>   human admin would. Use this for the **production** gate. Same value the
+>   browser E2E suite reads as `E2E_*_LOGIN_TOTP_SEED` — enrol MFA once, set both.
+>
+> Operator one-time setup: (1) enrol an authenticator on the gate's admin
+> account; (2) store its base32 seed as the `VERIFY_ADMIN_TOTP_SEED` (and
+> matching `E2E_*_LOGIN_TOTP_SEED`) secret in the relevant GitHub environment;
+> OR for staging only, set the `DEMO_LOGIN_SECRET` worker secret and the
+> matching `VERIFY_DEMO_SECRET` GitHub secret. Never commit either value.
 
 The DR drill additionally needs **wrangler auth**: either
 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (CI) or a stored `wrangler
@@ -145,6 +170,9 @@ serves a real PDF.
 | Symptom | Likely cause | Action |
 | --- | --- | --- |
 | `Missing required env var VERIFY_ADMIN_*` | creds not exported | export the seeded admin creds |
+| `Login forbidden (403) … mandatory MFA` | v40: admin-tier account past MFA grace | set `VERIFY_DEMO_SECRET` (staging) or `VERIFY_ADMIN_TOTP_SEED` (prod) — see Credentials. Never weaken MFA |
+| `Login returned no token … mandatory MFA but no authenticator` | MFA enforced, account not enrolled | enrol MFA + set `VERIFY_ADMIN_TOTP_SEED`, or use `VERIFY_DEMO_SECRET` |
+| `MFA validation failed (4xx) … check VERIFY_ADMIN_TOTP_SEED` | wrong/stale seed or clock skew | confirm the seed matches the enrolled authenticator; runner clock must be ~UTC |
 | Login 200 but suite empty | wrong `VERIFY_TENANT_SLUG` | confirm `vantax` |
 | DR: "Couldn't find a D1 DB ... in your wrangler.jsonc" | config shadowing | ensure `--config wrangler.toml` (drill already does) |
 | DR: error 7429 on a critical table | transient D1 CPU reset | drill retries 3× with backoff; re-run if persistent |
