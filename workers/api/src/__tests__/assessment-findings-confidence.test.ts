@@ -19,6 +19,7 @@ import {
   FINDING_BASIS,
   FINDING_CATALYST_MAP,
   makeFinding,
+  summariseFindings,
   type FindingCode,
 } from '../services/assessment-findings';
 
@@ -137,5 +138,55 @@ describe('makeFinding confidence wiring', () => {
   it('scales inferred confidence up with sample size', () => {
     const f = makeFinding(baseArgs('proc_supplier_concentration', 65)); // 0.7 + 40/400 = 0.8
     expect(f.confidence).toBe(0.8);
+  });
+});
+
+describe('summariseFindings — confirmed vs unverified split', () => {
+  // A DIRECT finding always passes the gate (confirmed); an INFERRED finding
+  // below the sample minimum (25) fails the gate (unverified/indicative).
+  const confirmed = () => {
+    const a = baseArgs('ar_aging_overdue_90_plus', 3);
+    a.value_at_risk_zar = 4000;
+    const f = makeFinding(a);
+    expect(f.confidence_gate_passed).toBe(true); // sanity: direct = confirmed
+    return f;
+  };
+  const unverified = () => {
+    const a = baseArgs('ar_top_debtor_concentration', 10);
+    a.value_at_risk_zar = 9000;
+    const f = makeFinding(a);
+    expect(f.confidence_gate_passed).toBe(false); // sanity: inferred sub-threshold = gated
+    return f;
+  };
+
+  it('excludes gate-failed value from total_value_at_risk_zar', () => {
+    const s = summariseFindings([confirmed(), unverified()]);
+    expect(s.total_value_at_risk_zar).toBe(4000);
+  });
+
+  it('quarantines gate-failed value into potential_unverified_zar with a count', () => {
+    const s = summariseFindings([confirmed(), unverified()]);
+    expect(s.potential_unverified_zar).toBe(9000);
+    expect(s.unverified_count).toBe(1);
+  });
+
+  it('still counts every finding in total_count', () => {
+    const s = summariseFindings([confirmed(), unverified()]);
+    expect(s.total_count).toBe(2);
+  });
+
+  it('reports no unverified value for a confirmed-only set', () => {
+    const s = summariseFindings([confirmed(), confirmed()]);
+    expect(s.potential_unverified_zar).toBe(0);
+    expect(s.unverified_count).toBe(0);
+    expect(s.total_value_at_risk_zar).toBe(8000);
+  });
+
+  it('counts every finding in by_severity and by_category regardless of gate', () => {
+    const s = summariseFindings([confirmed(), unverified()]);
+    const severityTotal = Object.values(s.by_severity).reduce((sum, n) => sum + n, 0);
+    expect(severityTotal).toBe(2);
+    const categoryTotal = Object.values(s.by_category).reduce((sum, c) => sum + c.count, 0);
+    expect(categoryTotal).toBe(2);
   });
 });

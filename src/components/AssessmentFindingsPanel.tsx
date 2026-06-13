@@ -75,6 +75,34 @@ import { formatZarFull } from '@/lib/format-currency';
 const formatZAR = (amount: number): string =>
   Number.isFinite(amount) ? formatZarFull(amount) : 'R 0';
 
+/**
+ * Option B confidence model. A finding is *unverified* iff its confidence gate
+ * explicitly failed (strict false). DIRECT observations pass; undefined/legacy
+ * findings are treated as confirmed.
+ */
+const isUnverified = (f: AssessmentFinding): boolean => f.confidence_gate_passed === false;
+
+type ConfidenceTone = 'pos' | 'info' | 'warn';
+
+/**
+ * Maps a finding onto a confidence band badge. Gate-failed findings are always
+ * "Indicative — confirm". Otherwise the numeric confidence drives the band; a
+ * finding with no confidence number and a passing/absent gate renders nothing.
+ */
+const confidenceBand = (f: AssessmentFinding): { label: string; tone: ConfidenceTone } | null => {
+  if (isUnverified(f)) return { label: 'Indicative — confirm', tone: 'warn' };
+  if (typeof f.confidence !== 'number') return null;
+  if (f.confidence >= 0.9) return { label: 'Verified', tone: 'pos' };
+  if (f.confidence >= 0.75) return { label: 'High confidence', tone: 'pos' };
+  return { label: 'Medium confidence', tone: 'info' };
+};
+
+const TONE_VARIANT: Record<ConfidenceTone, 'success' | 'info' | 'warning'> = {
+  pos: 'success',
+  info: 'info',
+  warn: 'warning',
+};
+
 export function AssessmentFindingsPanel({
   findings, summary, findingsByCompany, companyProfile, onDeployCatalyst,
 }: Props): JSX.Element {
@@ -114,6 +142,15 @@ export function AssessmentFindingsPanel({
       });
   }, [sourceFindings, severityFilter, categoryFilter, search]);
 
+  const confirmedVisible = useMemo(
+    () => visibleFindings.filter(f => !isUnverified(f)),
+    [visibleFindings],
+  );
+  const indicativeVisible = useMemo(
+    () => visibleFindings.filter(f => isUnverified(f)),
+    [visibleFindings],
+  );
+
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -145,7 +182,206 @@ export function AssessmentFindingsPanel({
     );
   }
 
-  const totalValue = summary?.total_value_at_risk_zar ?? findings.reduce((s, f) => s + f.value_at_risk_zar, 0);
+  // Headline = CONFIRMED value only. When no summary is supplied we derive both
+  // figures from the findings themselves so the fallback path can never re-admit
+  // unverified (gate-failed) rand into the headline — the binding rule.
+  const totalValue =
+    summary?.total_value_at_risk_zar ??
+    findings.reduce((s, f) => (isUnverified(f) ? s : s + f.value_at_risk_zar), 0);
+  const potentialUnverified =
+    summary?.potential_unverified_zar ??
+    findings.reduce((s, f) => (isUnverified(f) ? s + f.value_at_risk_zar : s), 0);
+
+  // Per-card render, extracted so the confirmed + indicative groups share one
+  // markup path (DRY). Indicative findings get muted value styling + a
+  // confidence row that surfaces the statistical basis and ERP source ref.
+  const renderFindingCard = (f: AssessmentFinding): JSX.Element => {
+    const isOpen = expanded.has(f.id);
+    const unverified = isUnverified(f);
+    const band = confidenceBand(f);
+    return (
+      <Card
+        key={f.id}
+        className="overflow-hidden"
+        data-testid={`finding-${f.code}`}
+      >
+        {/* Header row — always visible, click to expand */}
+        <button
+          type="button"
+          className="w-full text-left p-4 flex items-start gap-3 hover:bg-[var(--bg-hover)] transition-colors"
+          onClick={() => toggleExpand(f.id)}
+        >
+          {/* Severity ribbon */}
+          <div className={`w-1 self-stretch rounded-full ${SEVERITY_BAR_COLOR[f.severity]}`} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <StatusPill status={f.severity} size="sm" />
+              <Badge variant="outline" className="text-caption t-muted">
+                {f.category.replace(/_/g, ' ')}
+              </Badge>
+              {f.company_name && (
+                <Badge variant="outline" className="text-caption">
+                  <Building2 size={10} className="inline mr-1" />
+                  {f.company_name}
+                </Badge>
+              )}
+              <span className="text-caption t-muted ml-auto">{f.code}</span>
+            </div>
+            <div className="font-medium t-primary text-sm">{f.title}</div>
+          </div>
+          <div className="text-right whitespace-nowrap">
+            {f.value_at_risk_zar > 0 ? (
+              <>
+                <div className="text-label">{unverified ? 'Potential (unverified)' : 'Value at risk'}</div>
+                <div className={`text-base font-semibold ${unverified ? 't-muted' : 'text-accent'}`}>
+                  {formatZAR(f.value_at_risk_zar)}
+                </div>
+              </>
+            ) : (
+              <div className="text-xs t-muted">Informational</div>
+            )}
+          </div>
+          {isOpen ? <ChevronDown size={16} className="t-muted mt-1" /> : <ChevronRight size={16} className="t-muted mt-1" />}
+        </button>
+
+        {/* Expanded body */}
+        {isOpen && (
+          <div className="px-4 pb-4 pt-1 border-t border-[var(--border-card)] space-y-4">
+            <p className="text-sm t-secondary leading-relaxed">{f.narrative}</p>
+
+            {/* Confidence — statistical basis + ERP source ref */}
+            {band && (
+              <div
+                className="flex items-start gap-2 flex-wrap text-xs"
+                data-testid={`finding-confidence-${f.code}`}
+                aria-label={`Confidence: ${band.label}`}
+              >
+                <Badge variant={TONE_VARIANT[band.tone]} className="text-caption">
+                  {band.label}
+                </Badge>
+                {f.confidence_explanation && (
+                  <span className="t-muted flex-1 min-w-[12rem] leading-relaxed">
+                    {f.confidence_explanation}
+                  </span>
+                )}
+                {f.erp_record_id && (
+                  <span className="t-muted font-mono whitespace-nowrap">
+                    src:{f.erp_record_id}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Methodology */}
+            {f.value_components.length > 0 && (
+              <div>
+                <div className="text-label mb-2">Methodology</div>
+                <div className="space-y-1">
+                  {f.value_components.map((c, i) => (
+                    <div key={i} className="flex items-start gap-3 text-xs">
+                      <span className="t-secondary flex-1">
+                        <strong className="t-primary">{c.label}:</strong>{' '}
+                        <span className="t-muted">{c.methodology}</span>
+                      </span>
+                      <span className="t-primary font-medium whitespace-nowrap">
+                        {formatZAR(c.amount_zar)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sample records */}
+            {f.sample_records.length > 0 && (
+              <div>
+                <div className="text-label mb-2">
+                  Sample records ({f.sample_records.length} of {f.affected_count.toLocaleString()})
+                </div>
+                <div className="rounded-md border border-[var(--border-card)] overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-[var(--bg-secondary)]">
+                      <tr>
+                        <th className="text-left px-3 py-2 t-muted font-medium">Reference</th>
+                        <th className="text-left px-3 py-2 t-muted font-medium">Description</th>
+                        <th className="text-right px-3 py-2 t-muted font-medium">Amount</th>
+                        <th className="text-left px-3 py-2 t-muted font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {f.sample_records.map((r, i) => (
+                        <tr key={i} className="border-t border-[var(--border-card)]">
+                          <td className="px-3 py-2 t-primary font-mono">{r.ref}</td>
+                          <td className="px-3 py-2 t-secondary">{r.description}</td>
+                          <td className="px-3 py-2 text-right t-primary whitespace-nowrap">
+                            {r.amount_native !== undefined && r.currency
+                              ? `${r.currency} ${r.amount_native.toLocaleString()}`
+                              : r.amount_zar !== undefined
+                                ? formatZAR(r.amount_zar)
+                                : '—'}
+                          </td>
+                          <td className="px-3 py-2 t-muted whitespace-nowrap">{r.date || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Currency breakdown if multi-currency */}
+            {Object.keys(f.currency_breakdown).length > 1 && (
+              <div>
+                <div className="text-label mb-2">Currency exposure</div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(f.currency_breakdown).map(([cur, amt]) => (
+                    <Badge key={cur} variant="outline" className="text-xs">
+                      {cur} {amt.toLocaleString()}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Federated peer insights — only renders when DP-noised
+                aggregate exists for (industry, finding_code). Below
+                k-anonymity floor (n < 5) → renders nothing. */}
+            <PeerInsightsBadge findingCode={f.code} />
+
+            {/* Catalyst recommendation footer */}
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--border-card)]">
+              <div className="flex items-center gap-2 text-xs">
+                <TrendingUp size={14} className="text-accent" />
+                <span className="t-muted">Resolved by:</span>
+                <span className="t-primary font-medium">
+                  {f.recommended_catalyst.catalyst}
+                </span>
+                <span className="t-muted">→</span>
+                <span className="t-primary font-medium">
+                  {f.recommended_catalyst.sub_catalyst}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-caption t-muted">
+                  Evidence: <strong className="t-primary">{f.evidence_quality}</strong>
+                </span>
+                {onDeployCatalyst && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onDeployCatalyst(f.recommended_catalyst.catalyst, f.recommended_catalyst.sub_catalyst); }}
+                    data-testid={`deploy-catalyst-${f.code}`}
+                  >
+                    Deploy
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -177,6 +413,11 @@ export function AssessmentFindingsPanel({
               <div className="text-2xl font-semibold text-accent" data-testid="findings-total-value">
                 {formatZAR(totalValue)}
               </div>
+              {potentialUnverified > 0 && (
+                <div className="text-caption t-muted mt-1" data-testid="findings-potential-value">
+                  + {formatZAR(potentialUnverified)} indicative, pending confirmation
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -276,169 +517,34 @@ export function AssessmentFindingsPanel({
           <p className="text-sm t-muted">No findings match the current filters.</p>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {visibleFindings.map(f => {
-            const isOpen = expanded.has(f.id);
-            return (
-              <Card
-                key={f.id}
-                className="overflow-hidden"
-                data-testid={`finding-${f.code}`}
-              >
-                {/* Header row — always visible, click to expand */}
-                <button
-                  type="button"
-                  className="w-full text-left p-4 flex items-start gap-3 hover:bg-[var(--bg-hover)] transition-colors"
-                  onClick={() => toggleExpand(f.id)}
-                >
-                  {/* Severity ribbon */}
-                  <div className={`w-1 self-stretch rounded-full ${SEVERITY_BAR_COLOR[f.severity]}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <StatusPill status={f.severity} size="sm" />
-                      <Badge variant="outline" className="text-caption t-muted">
-                        {f.category.replace(/_/g, ' ')}
-                      </Badge>
-                      {f.company_name && (
-                        <Badge variant="outline" className="text-caption">
-                          <Building2 size={10} className="inline mr-1" />
-                          {f.company_name}
-                        </Badge>
-                      )}
-                      <span className="text-caption t-muted ml-auto">{f.code}</span>
-                    </div>
-                    <div className="font-medium t-primary text-sm">{f.title}</div>
-                  </div>
-                  <div className="text-right whitespace-nowrap">
-                    {f.value_at_risk_zar > 0 ? (
-                      <>
-                        <div className="text-label">Value at risk</div>
-                        <div className="text-base font-semibold text-accent">
-                          {formatZAR(f.value_at_risk_zar)}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-xs t-muted">Informational</div>
-                    )}
-                  </div>
-                  {isOpen ? <ChevronDown size={16} className="t-muted mt-1" /> : <ChevronRight size={16} className="t-muted mt-1" />}
-                </button>
+        <div className="space-y-4">
+          {/* Confirmed group — the defensible, headline-backing findings */}
+          {confirmedVisible.length > 0 && (
+            <div className="space-y-2">
+              {confirmedVisible.map(renderFindingCard)}
+            </div>
+          )}
 
-                {/* Expanded body */}
-                {isOpen && (
-                  <div className="px-4 pb-4 pt-1 border-t border-[var(--border-card)] space-y-4">
-                    <p className="text-sm t-secondary leading-relaxed">{f.narrative}</p>
-
-                    {/* Methodology */}
-                    {f.value_components.length > 0 && (
-                      <div>
-                        <div className="text-label mb-2">Methodology</div>
-                        <div className="space-y-1">
-                          {f.value_components.map((c, i) => (
-                            <div key={i} className="flex items-start gap-3 text-xs">
-                              <span className="t-secondary flex-1">
-                                <strong className="t-primary">{c.label}:</strong>{' '}
-                                <span className="t-muted">{c.methodology}</span>
-                              </span>
-                              <span className="t-primary font-medium whitespace-nowrap">
-                                {formatZAR(c.amount_zar)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Sample records */}
-                    {f.sample_records.length > 0 && (
-                      <div>
-                        <div className="text-label mb-2">
-                          Sample records ({f.sample_records.length} of {f.affected_count.toLocaleString()})
-                        </div>
-                        <div className="rounded-md border border-[var(--border-card)] overflow-hidden">
-                          <table className="w-full text-xs">
-                            <thead className="bg-[var(--bg-secondary)]">
-                              <tr>
-                                <th className="text-left px-3 py-2 t-muted font-medium">Reference</th>
-                                <th className="text-left px-3 py-2 t-muted font-medium">Description</th>
-                                <th className="text-right px-3 py-2 t-muted font-medium">Amount</th>
-                                <th className="text-left px-3 py-2 t-muted font-medium">Date</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {f.sample_records.map((r, i) => (
-                                <tr key={i} className="border-t border-[var(--border-card)]">
-                                  <td className="px-3 py-2 t-primary font-mono">{r.ref}</td>
-                                  <td className="px-3 py-2 t-secondary">{r.description}</td>
-                                  <td className="px-3 py-2 text-right t-primary whitespace-nowrap">
-                                    {r.amount_native !== undefined && r.currency
-                                      ? `${r.currency} ${r.amount_native.toLocaleString()}`
-                                      : r.amount_zar !== undefined
-                                        ? formatZAR(r.amount_zar)
-                                        : '—'}
-                                  </td>
-                                  <td className="px-3 py-2 t-muted whitespace-nowrap">{r.date || '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Currency breakdown if multi-currency */}
-                    {Object.keys(f.currency_breakdown).length > 1 && (
-                      <div>
-                        <div className="text-label mb-2">Currency exposure</div>
-                        <div className="flex flex-wrap gap-2">
-                          {Object.entries(f.currency_breakdown).map(([cur, amt]) => (
-                            <Badge key={cur} variant="outline" className="text-xs">
-                              {cur} {amt.toLocaleString()}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Federated peer insights — only renders when DP-noised
-                        aggregate exists for (industry, finding_code). Below
-                        k-anonymity floor (n < 5) → renders nothing. */}
-                    <PeerInsightsBadge findingCode={f.code} />
-
-                    {/* Catalyst recommendation footer */}
-                    <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--border-card)]">
-                      <div className="flex items-center gap-2 text-xs">
-                        <TrendingUp size={14} className="text-accent" />
-                        <span className="t-muted">Resolved by:</span>
-                        <span className="t-primary font-medium">
-                          {f.recommended_catalyst.catalyst}
-                        </span>
-                        <span className="t-muted">→</span>
-                        <span className="t-primary font-medium">
-                          {f.recommended_catalyst.sub_catalyst}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-caption t-muted">
-                          Evidence: <strong className="t-primary">{f.evidence_quality}</strong>
-                        </span>
-                        {onDeployCatalyst && (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); onDeployCatalyst(f.recommended_catalyst.catalyst, f.recommended_catalyst.sub_catalyst); }}
-                            data-testid={`deploy-catalyst-${f.code}`}
-                          >
-                            Deploy
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+          {/* Indicative group — gate-failed findings, quarantined out of the
+              headline and visually de-emphasised pending customer confirmation. */}
+          {indicativeVisible.length > 0 && (
+            <div className="space-y-2" data-testid="indicative-group">
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle size={15} className="text-[var(--warning)]" />
+                  <h4 className="text-sm font-semibold t-primary">
+                    Indicative — pending your confirmation
+                  </h4>
+                </div>
+                <p className="text-xs t-muted max-w-2xl leading-relaxed">
+                  These findings are based on fewer than 25 records, so their value is
+                  excluded from the headline above. Confirm them with your team to promote
+                  them into your defensible value at risk.
+                </p>
+              </div>
+              {indicativeVisible.map(renderFindingCard)}
+            </div>
+          )}
         </div>
       )}
 

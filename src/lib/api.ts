@@ -3515,7 +3515,12 @@ export interface AssessmentFinding {
 
 export interface AssessmentFindingsSummary {
   total_count: number;
+  /** CONFIRMED value only (direct + gate-passed). The defensible headline number. */
   total_value_at_risk_zar: number;
+  /** Sum of gate-failed (unproven) findings — shown separately, never in the headline. */
+  potential_unverified_zar?: number;
+  /** How many findings fell below the confidence gate. */
+  unverified_count?: number;
   by_severity: Record<AssessmentFindingSeverity, number>;
   by_category: Record<AssessmentFindingCategory, { count: number; value_at_risk_zar: number }>;
   recommended_catalysts: string[];

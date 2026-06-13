@@ -1213,8 +1213,19 @@ export async function generateBusinessReportPDF(
     // Section intro
     doc.setTextColor(...slate);
     doc.setFontSize(9);
-    const totalValue = findings.reduce((s, f) => s + f.value_at_risk_zar, 0);
-    const intro = `${findings.length} findings detected across your ERP data, totalling ${formatCurrency(totalValue, config.currency, config.exchange_rate_to_zar)} of value-at-risk. Each finding is derived from your own records and maps to the Atheon catalyst that resolves it. Sample records are included so you can verify against your source system.`;
+    // A finding is unverified iff its confidence gate failed (strict false).
+    // Direct findings (true) and any without an explicit verdict (undefined)
+    // are treated as confirmed. The headline value-at-risk is confirmed-only;
+    // gate-failed findings render in a separate, clearly-excluded section.
+    const confirmedFindings = findings.filter(f => f.confidence_gate_passed !== false);
+    const indicativeFindings = findings.filter(f => f.confidence_gate_passed === false);
+    const confirmedValue = confirmedFindings.reduce((s, f) => s + f.value_at_risk_zar, 0);
+    const indicativeValue = indicativeFindings.reduce((s, f) => s + f.value_at_risk_zar, 0);
+
+    let intro = `${confirmedFindings.length} confirmed findings detected across your ERP data, totalling ${formatCurrency(confirmedValue, config.currency, config.exchange_rate_to_zar)} of value-at-risk. Each finding is derived from your own records and maps to the Atheon catalyst that resolves it. Sample records are included so you can verify against your source system.`;
+    if (indicativeFindings.length > 0) {
+      intro += ` A further ${indicativeFindings.length} indicative finding${indicativeFindings.length === 1 ? '' : 's'} — based on fewer than 25 records and worth ${formatCurrency(indicativeValue, config.currency, config.exchange_rate_to_zar)} — are listed separately and excluded from the figure above pending your confirmation.`;
+    }
     const introLines = doc.splitTextToSize(intro, pageW - 28);
     doc.text(introLines, 14, fy);
     fy += introLines.length * 4 + 6;
@@ -1235,7 +1246,7 @@ export async function generateBusinessReportPDF(
     // value-at-risk callout, top 3 sample records (so the buyer can verify
     // against their own ERP), and the recommended catalyst footer with a
     // verification hint pointing back into Atheon.
-    const top = findings.slice(0, 25);
+    const top = confirmedFindings.slice(0, 25);
     for (let i = 0; i < top.length; i++) {
       const f = top[i];
 
@@ -1355,16 +1366,100 @@ export async function generateBusinessReportPDF(
     }
 
     // Footer note for trimmed list
-    if (findings.length > top.length) {
+    if (confirmedFindings.length > top.length) {
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
       doc.text(
-        `+ ${findings.length - top.length} additional findings in the technical report and JSON export.`,
+        `+ ${confirmedFindings.length - top.length} additional confirmed findings in the technical report and JSON export.`,
         14, fy + 4,
       );
     }
 
     pageFooter();
+
+    // ═══════════════════════════════════════════════
+    // POTENTIAL — pending your confirmation
+    // Gate-failed findings (fewer than 25 records) shown so nothing is
+    // hidden, but explicitly excluded from the headline value-at-risk.
+    // ═══════════════════════════════════════════════
+    if (indicativeFindings.length > 0) {
+      doc.addPage();
+      pageHeader('Potential — pending your confirmation');
+      let iy = 28;
+
+      doc.setTextColor(...slate);
+      doc.setFontSize(9);
+      const note = `The findings below are based on fewer than 25 records, so we have not yet treated them as confirmed. They are shown here so nothing is hidden, but their value is not included in the headline value-at-risk. Connecting more of your transaction history lets us confirm these and move them into the main figure.`;
+      const noteLines = doc.splitTextToSize(note, pageW - 28);
+      doc.text(noteLines, 14, iy);
+      iy += noteLines.length * 4 + 6;
+
+      // Compact card per indicative finding, capped at 10.
+      const indicativeTop = indicativeFindings.slice(0, 10);
+      for (let i = 0; i < indicativeTop.length; i++) {
+        const f = indicativeTop[i];
+
+        const narrLines = doc.splitTextToSize(f.narrative, pageW - 36).slice(0, 2);
+        const cardH = 24 + (narrLines.length * 4);
+
+        // Page break if we don't have enough room
+        if (iy > pageH - cardH - 10) {
+          pageFooter();
+          doc.addPage();
+          pageHeader('Potential — pending your confirmation (cont.)');
+          iy = 28;
+        }
+
+        // Card background + muted gold ribbon (not the confirmed accent)
+        doc.setFillColor(...lightBg);
+        doc.rect(14, iy, pageW - 28, cardH, 'F');
+        doc.setFillColor(...gold);
+        doc.rect(14, iy, 2, cardH, 'F');
+
+        // "INDICATIVE — CONFIRM" tag + finding code
+        doc.setFontSize(7);
+        doc.setTextColor(...gold);
+        doc.text('INDICATIVE — CONFIRM', 18, iy + 5);
+        doc.setTextColor(160, 160, 160);
+        doc.text(f.code, pageW - 18, iy + 5, { align: 'right' });
+
+        // Title
+        doc.setFontSize(10);
+        doc.setTextColor(...navy);
+        doc.text(doc.splitTextToSize(f.title, pageW - 36).slice(0, 1), 18, iy + 11);
+
+        // Narrative — 1-2 lines
+        doc.setFontSize(8);
+        doc.setTextColor(...slate);
+        doc.text(narrLines, 18, iy + 17);
+
+        // Potential value — muted gold, labelled UNVERIFIED
+        if (f.value_at_risk_zar > 0) {
+          doc.setFontSize(7);
+          doc.setTextColor(120, 120, 120);
+          doc.text('POTENTIAL (UNVERIFIED)', pageW - 18, iy + 11, { align: 'right' });
+          doc.setFontSize(11);
+          doc.setTextColor(...gold);
+          doc.text(
+            formatCurrency(f.value_at_risk_zar, config.currency, config.exchange_rate_to_zar),
+            pageW - 18, iy + 17, { align: 'right' },
+          );
+        }
+
+        iy += cardH + 4;
+      }
+
+      if (indicativeFindings.length > indicativeTop.length) {
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(
+          `+ ${indicativeFindings.length - indicativeTop.length} further indicative finding${indicativeFindings.length - indicativeTop.length === 1 ? '' : 's'} in the technical report and JSON export.`,
+          14, iy + 4,
+        );
+      }
+
+      pageFooter();
+    }
 
     // Per-company summary page (only if there are 2+ entities — single-
     // entity engagements are already covered by the consolidated list).
