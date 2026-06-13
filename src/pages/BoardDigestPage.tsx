@@ -27,6 +27,7 @@ import { api, ApiError } from '@/lib/api';
 import type { HealthScore, BillingSummary, ForecastAccuracyResp } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/appStore';
+import { useToast } from '@/components/ui/toast';
 import { TrendingUp, ShieldCheck, AlertTriangle, Activity, FileDown } from 'lucide-react';
 
 function formatCurrency(value: number, currency = 'ZAR'): string {
@@ -40,6 +41,7 @@ function formatCurrency(value: number, currency = 'ZAR'): string {
 }
 
 export default function BoardDigestPage(): JSX.Element {
+  const toast = useToast();
   const currentRole = useAppStore((s) => s.user)?.role || 'viewer';
   const canExportDigest = ['superadmin', 'support_admin', 'admin', 'executive'].includes(currentRole);
   const canExportFullPack = ['superadmin', 'support_admin', 'admin'].includes(currentRole);
@@ -85,11 +87,14 @@ export default function BoardDigestPage(): JSX.Element {
       const { id, title } = await api.boardDigest.generate();
       await api.boardDigest.downloadPdf(id, title);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to export digest PDF');
+      toast.error('Failed to export digest PDF', {
+        message: e instanceof ApiError ? e.message : undefined,
+        requestId: e instanceof ApiError ? e.requestId : null,
+      });
     } finally {
       setExporting(false);
     }
-  }, []);
+  }, [toast]);
 
   const downloadFullPack = useCallback(async () => {
     setExportingPack(true);
@@ -97,11 +102,14 @@ export default function BoardDigestPage(): JSX.Element {
       const r = await api.boardReport.generate();
       await api.boardReport.downloadPdf(r.id, r.title);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to export full board pack');
+      toast.error('Failed to export full board pack', {
+        message: e instanceof ApiError ? e.message : undefined,
+        requestId: e instanceof ApiError ? e.requestId : null,
+      });
     } finally {
       setExportingPack(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { void load(); }, [load]);
 
