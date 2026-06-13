@@ -288,7 +288,8 @@ export async function persistFindingsToPulseApex(
           f.title, f.narrative, f.severity, f.category,
           // v83: use the finding's real per-finding confidence (direct = 0.95,
           // inferred scales with sample size) instead of the evidence-quality proxy.
-          f.confidence,
+          // Coalesce to null — confidence is optional on Finding and D1 bind rejects undefined.
+          f.confidence ?? null,
           f.value_at_risk_zar, recommendedActions,
         ),
       );
