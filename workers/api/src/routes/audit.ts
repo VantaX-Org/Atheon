@@ -74,6 +74,13 @@ audit.get('/log', async (c) => {
 
 // POST /api/audit/log
 audit.post('/log', async (c) => {
+  // Only admin-tier callers may append audit entries. The read-only `auditor`
+  // persona reaches this namespace (see index.ts) but must never be able to
+  // forge an audit record — that would defeat the log's purpose as evidence.
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || !ADMIN_ROLES.has(auth.role)) {
+    return c.json({ error: 'Forbidden', detail: 'admin role required to write audit entries' }, 403);
+  }
   const tenantId = getTenantId(c);
   const { data: body, errors } = await getValidatedJsonBody<{
     user_id?: string; action: string; layer: string;
