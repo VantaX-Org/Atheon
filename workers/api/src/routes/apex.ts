@@ -326,6 +326,24 @@ apex.get('/risks', async (c) => {
   return c.json({ risks: formatted, total: formatted.length });
 });
 
+// GET /api/apex/risks/count — uncapped tenant total, decoupled from list paging.
+// Reconciles with the board-digest COUNT(*) so the on-screen badge never
+// diverges from the digest when a tenant has many risks.
+apex.get('/risks/count', async (c) => {
+  const tenantId = getTenantId(c);
+  const severity = c.req.query('severity');
+
+  let query = 'SELECT COUNT(*) as count FROM risk_alerts WHERE tenant_id = ?';
+  const binds: unknown[] = [tenantId];
+  if (severity) {
+    query += ' AND severity = ?';
+    binds.push(severity);
+  }
+
+  const row = await c.env.DB.prepare(query).bind(...binds).first<{ count: number }>();
+  return c.json({ count: row?.count ?? 0 });
+});
+
 // POST /api/apex/risks
 apex.post('/risks', async (c) => {
   const tenantId = getTenantId(c);
