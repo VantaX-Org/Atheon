@@ -208,6 +208,24 @@ pulse.get('/anomalies', async (c) => {
   });
 });
 
+// GET /api/pulse/anomalies/count — uncapped tenant total, decoupled from the
+// list endpoint's LIMIT. Reconciles with the board-digest COUNT(*) so the
+// on-screen badge stays correct past the 50-row list page.
+pulse.get('/anomalies/count', async (c) => {
+  const tenantId = getTenantId(c);
+  const severity = c.req.query('severity');
+
+  let query = 'SELECT COUNT(*) as count FROM anomalies WHERE tenant_id = ?';
+  const binds: unknown[] = [tenantId];
+  if (severity) {
+    query += ' AND severity = ?';
+    binds.push(severity);
+  }
+
+  const row = await c.env.DB.prepare(query).bind(...binds).first<{ count: number }>();
+  return c.json({ count: row?.count ?? 0 });
+});
+
 // PUT /api/pulse/anomalies/:id
 pulse.put('/anomalies/:id', async (c) => {
   const id = c.req.param('id');
