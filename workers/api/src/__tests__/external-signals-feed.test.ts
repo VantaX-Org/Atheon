@@ -34,6 +34,12 @@ describe('Phase 10-2 — external signals feed', () => {
     if (res.status !== 200) throw new Error(`migration failed: ${res.status}`);
     await seedTenant(TENANT_A);
     await seedTenant(TENANT_B);
+    // Migration may seed default tenants (e.g. demo). Deactivate every
+    // tenant except the two this suite owns so industry-aware sweeps
+    // only fan out over A + B.
+    await env.DB.prepare(
+      `UPDATE tenants SET status = 'inactive' WHERE id NOT IN (?, ?)`
+    ).bind(TENANT_A, TENANT_B).run();
   });
 
   beforeEach(async () => {

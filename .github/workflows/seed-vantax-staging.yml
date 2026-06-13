@@ -136,7 +136,7 @@ jobs:
           fi
           echo "Reseed body: $body"
           code=$(curl -sS -o /tmp/seed.json -w '%{http_code}' \
-            -X POST "$API/api/v1/seed-vantax" \
+            -X POST "$API/api/v1/seed-vantax/seed-vantax" \
             -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
             -d "$body" \
