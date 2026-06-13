@@ -1224,7 +1224,7 @@ export async function generateBusinessReportPDF(
 
     let intro = `${confirmedFindings.length} confirmed findings detected across your ERP data, totalling ${formatCurrency(confirmedValue, config.currency, config.exchange_rate_to_zar)} of value-at-risk. Each finding is derived from your own records and maps to the Atheon catalyst that resolves it. Sample records are included so you can verify against your source system.`;
     if (indicativeFindings.length > 0) {
-      intro += ` A further ${indicativeFindings.length} indicative findings — based on fewer than 25 records and worth ${formatCurrency(indicativeValue, config.currency, config.exchange_rate_to_zar)} — are listed separately and excluded from the figure above pending your confirmation.`;
+      intro += ` A further ${indicativeFindings.length} indicative finding${indicativeFindings.length === 1 ? '' : 's'} — based on fewer than 25 records and worth ${formatCurrency(indicativeValue, config.currency, config.exchange_rate_to_zar)} — are listed separately and excluded from the figure above pending your confirmation.`;
     }
     const introLines = doc.splitTextToSize(intro, pageW - 28);
     doc.text(introLines, 14, fy);
@@ -1453,7 +1453,7 @@ export async function generateBusinessReportPDF(
         doc.setFontSize(8);
         doc.setTextColor(120, 120, 120);
         doc.text(
-          `+ ${indicativeFindings.length - indicativeTop.length} further indicative findings in the technical report and JSON export.`,
+          `+ ${indicativeFindings.length - indicativeTop.length} further indicative finding${indicativeFindings.length - indicativeTop.length === 1 ? '' : 's'} in the technical report and JSON export.`,
           14, iy + 4,
         );
       }
