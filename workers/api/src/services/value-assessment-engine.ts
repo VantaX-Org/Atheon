@@ -2096,6 +2096,16 @@ interface CreateFindingData {
   immediateValue: number;
   ongoingMonthlyValue: number;
   domain: string;
+  // v83 traceability: source ERP record key for this finding's primary affected
+  // record. Shared-savings billing rule — every claimed dollar must trace to an
+  // ERP record + field mapping + confidence. Optional: detectors backfill it as
+  // they gain record-level provenance; absent → NULL.
+  erpRecordId?: string;
+  // v83 inference strength: 0..1 confidence and the plain-language basis
+  // (sample size, mode share) shown to the customer when we ask them to confirm
+  // a low-confidence finding rather than silently applying a weak rule.
+  confidence?: number;
+  confidenceExplanation?: string;
 }
 
 interface FindingInsightProvenance {
@@ -2171,14 +2181,15 @@ async function createFinding(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await db.prepare(
-    `INSERT INTO assessment_findings (id, assessment_id, run_id, tenant_id, finding_type, severity, title, description, affected_records, financial_impact, evidence, root_cause, prescription, category, immediate_value, ongoing_monthly_value, domain)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO assessment_findings (id, assessment_id, run_id, tenant_id, finding_type, severity, title, description, affected_records, financial_impact, evidence, root_cause, prescription, category, immediate_value, ongoing_monthly_value, domain, erp_record_id, confidence, confidence_explanation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, assessmentId, runId, tenantId,
     data.findingType, data.severity, data.title, data.description,
     data.affectedRecords, data.financialImpact,
     JSON.stringify(data.evidence), data.rootCause, data.prescription,
     data.category, data.immediateValue, data.ongoingMonthlyValue, data.domain,
+    data.erpRecordId ?? null, data.confidence ?? null, data.confidenceExplanation ?? null,
   ).run();
 
   // v81/v82: best-effort per-finding insight + provenance. Wrapped in try/catch
@@ -2188,9 +2199,15 @@ async function createFinding(
   try {
     const insight = await generateFindingInsight(db, ai, tenantId, data);
     if (insight) {
+      // v83 lock invariant: a locked finding (one already billed or surfaced in
+      // a delivered report) is immutable — realised-outcome reconciliation needs
+      // a stable anchor. `AND is_locked = 0` makes every finding UPDATE in this
+      // service honour the lock. Here it is always satisfied (the row was just
+      // inserted unlocked), but it establishes the pattern any future mutation
+      // path must follow.
       await db
         .prepare(
-          'UPDATE assessment_findings SET finding_insight = ?, finding_insight_model = ?, finding_insight_generated_at = ? WHERE id = ?'
+          'UPDATE assessment_findings SET finding_insight = ?, finding_insight_model = ?, finding_insight_generated_at = ? WHERE id = ? AND is_locked = 0'
         )
         .bind(insight.text, insight.model, insight.generatedAt, id)
         .run();

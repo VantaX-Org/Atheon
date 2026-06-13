@@ -96,7 +96,15 @@
 // AI-authored output customers will act on must record the model and
 // generation timestamp so the assertion is replayable and auditable.
 // Surfaced as an "AI · <model>" pill in the report and detail panel.
-export const MIGRATION_VERSION = 'v82-insight-provenance';
+// v83-finding-traceability: assessment_findings gains erp_record_id (TEXT),
+// is_locked (INTEGER DEFAULT 0), confidence (REAL), confidence_explanation
+// (TEXT). Operationalises the shared-savings rule (every claimed dollar traces
+// to a source ERP record) and the strong-inference rule (low-confidence
+// findings carry their basis so we can ask the customer to confirm rather than
+// silently apply a weak rule). is_locked freezes a billed/delivered finding so
+// realised-outcome reconciliation has a stable anchor — enforced by the
+// `AND is_locked = 0` guard on every findings UPDATE in value-assessment-engine.
+export const MIGRATION_VERSION = 'v83-finding-traceability';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -896,6 +904,19 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // and when, so a future auditor can replay generation and trace claims.
     { table: 'assessment_findings', column: 'finding_insight_model', definition: 'TEXT' },
     { table: 'assessment_findings', column: 'finding_insight_generated_at', definition: 'TEXT' },
+    // v83: ERP traceability + finding lock + confidence. Every claimed dollar
+    // must trace to a source ERP record (shared-savings billing rule). erp_record_id
+    // is the source system's record key for the finding's primary affected record.
+    // is_locked freezes a finding once it has been billed / surfaced in a
+    // delivered report so realised-outcome reconciliation has a stable anchor —
+    // see the pre-UPDATE guard in value-assessment-engine.ts. confidence is the
+    // inference-strength score (0..1); confidence_explanation is the plain-language
+    // basis (sample size, mode share) shown to the customer when we ask them to
+    // confirm a low-confidence finding rather than silently applying a weak rule.
+    { table: 'assessment_findings', column: 'erp_record_id', definition: 'TEXT' },
+    { table: 'assessment_findings', column: 'is_locked', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { table: 'assessment_findings', column: 'confidence', definition: 'REAL' },
+    { table: 'assessment_findings', column: 'confidence_explanation', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'escalation_level', definition: 'TEXT' },
     { table: 'catalyst_actions', column: 'retry_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
     // tenants.industry is intentionally NOT healed here — it is dropped a few
