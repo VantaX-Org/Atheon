@@ -105,6 +105,65 @@ export function guardSampleSize(
   return { allow: true, reason: '' };
 }
 
+// ── Confidence scoring (v83) ────────────────────────────────────────────────
+//
+// Every claimed dollar must carry a confidence and an auditor-facing basis (the
+// binding shared-savings rule: ERP record + field mapping + confidence). Two
+// distinct kinds of finding warrant two distinct treatments:
+//
+//   1. DIRECT OBSERVATION — the finding IS the records. "These 40 invoices are
+//      past due and unpaid, worth R2.1m." No rule is inferred; the ERP rows are
+//      the proof. Confidence is high and INDEPENDENT of count — three genuinely
+//      overdue invoices is still a fact. Never suppressed by the sample-size
+//      gate (gating a fact as "insufficient evidence" would be wrong).
+//
+//   2. INFERRED / HEURISTIC — a rule is applied whose reliability degrades with
+//      small samples. "Same amount on the same day is probably a duplicate
+//      payment." "Average cycle exceeds benchmark, so the process is slow."
+//      These are gated below MIN_SAMPLE_SIZE and their confidence scales with n.
+//
+// `confidence_explanation` states the statistical basis only — it NEVER names a
+// model or provider (that stays in finding_insight_model, a trade secret).
+export interface ConfidenceVerdict {
+  confidence: number;       // 0..1, rounded to 2dp
+  explanation: string;      // auditor-facing basis, no model/provider reference
+  gate: { allow: boolean; reason: string };
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Direct ERP observation — high confidence, never gated by sample size. */
+export function directObservationConfidence(sampleSize: number, kind: string): ConfidenceVerdict {
+  return {
+    confidence: 0.95,
+    explanation: `Direct ERP observation of ${sampleSize.toLocaleString()} record(s): ${kind}. No statistical inference applied — the records themselves are the evidence.`,
+    gate: { allow: true, reason: '' },
+  };
+}
+
+/**
+ * Inferred / heuristic finding — reliability scales with sample size and is
+ * suppressed below `minSize`. `basis` describes the rule being applied.
+ */
+export function inferredConfidence(
+  sampleSize: number,
+  detector: string,
+  basis: string,
+  minSize: number = MIN_SAMPLE_SIZE,
+): ConfidenceVerdict {
+  const gate = guardSampleSize(sampleSize, detector, minSize);
+  // Above threshold: ramp from ~0.7 at the minimum toward 0.95 as n grows.
+  // Below threshold (finding will be suppressed): a sub-0.6 score for the audit
+  // trail so the suppressed observation is transparently low-confidence.
+  const confidence = gate.allow
+    ? round2(Math.min(0.95, 0.7 + (sampleSize - minSize) / 400))
+    : round2((sampleSize / minSize) * 0.6);
+  const explanation = gate.allow
+    ? `${basis} Inferred from ${sampleSize.toLocaleString()} records (≥ ${minSize} minimum); confidence scales with sample size.`
+    : `${basis} Only ${sampleSize.toLocaleString()} records (< ${minSize} minimum) — below the inference threshold, so suppressed pending customer confirmation.`;
+  return { confidence, explanation, gate };
+}
+
 // ── Main Entry Point ──────────────────────────────────────────────────────
 
 export async function runValueAssessment(
@@ -257,11 +316,14 @@ async function runDataQualityAudit(
         const sampleOverdue = await queryRows(db,
           `SELECT invoice_number, customer_id, amount_due, due_date FROM ${table.name} WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid' ORDER BY amount_due DESC LIMIT 5`,
           [tenantId]);
+        const overdueConf = directObservationConfidence(overdueCount, 'invoices past due date and unpaid');
         await createFinding(db, assessmentId, tenantId, 'dq-overdue', {
           findingType: 'data_quality', severity: overdueValue > 100000 ? 'critical' : 'high',
           title: `${overdueCount} overdue invoices worth R${formatZAR(overdueValue)}`,
           description: `${overdueCount} invoices are past their due date and remain unpaid. The total outstanding value is R${formatZAR(overdueValue)}. This represents collectible revenue that is being left on the table.`,
           affectedRecords: overdueCount, financialImpact: overdueValue,
+          erpRecordId: sampleOverdue[0]?.invoice_number ? `INV:${sampleOverdue[0].invoice_number}` : undefined,
+          confidence: overdueConf.confidence, confidenceExplanation: overdueConf.explanation,
           evidence: {
             sample_records: sampleOverdue.map(r => ({
               ref: `Invoice #${r.invoice_number}`, source_value: `Due: ${r.due_date}`,
@@ -321,11 +383,14 @@ async function runDataQualityAudit(
         const sampleStale = await queryRows(db,
           `SELECT po_number, supplier_id, total, order_date FROM ${table.name} WHERE tenant_id = ? AND status = 'open' AND order_date < datetime('now', '-90 days') ORDER BY total DESC LIMIT 5`,
           [tenantId]);
+        const staleConf = directObservationConfidence(staleRecords, 'purchase orders open more than 90 days');
         await createFinding(db, assessmentId, tenantId, 'dq-stale-po', {
           findingType: 'data_quality', severity: 'high',
           title: `${staleRecords} stale purchase orders locking R${formatZAR(staleValue)}`,
           description: `${staleRecords} purchase orders have been open for more than 90 days without completion. This locks R${formatZAR(staleValue)} in committed budget that may never be spent.`,
           affectedRecords: staleRecords, financialImpact: staleValue,
+          erpRecordId: sampleStale[0]?.po_number ? `PO:${sampleStale[0].po_number}` : undefined,
+          confidence: staleConf.confidence, confidenceExplanation: staleConf.explanation,
           evidence: {
             sample_records: sampleStale.map(r => ({
               ref: `PO #${r.po_number}`, source_value: `Opened: ${r.order_date}`,
@@ -363,14 +428,30 @@ async function runDataQualityAudit(
           [tenantId, tenantId]);
         issues.push({ field: 'amount', issue: `${duplicates} potential duplicate payments on same day (R${formatZAR(dupValue)})`, count: duplicates, severity: 'critical', financialImpact: dupValue * 0.5 });
 
-        const dupGate = guardSampleSize(duplicates, 'dq-dup-payments');
-        if (dupValue > 0 && dupGate.allow) {
+        const dupConf = inferredConfidence(
+          duplicates, 'dq-dup-payments',
+          'Identical amount paid on the same day is a duplicate-payment signal that requires AP confirmation (a legitimate split or instalment can look the same).',
+        );
+        if (dupValue > 0 && dupConf.gate.allow) {
+          // Representative ERP rows so the claim traces to specific transactions.
+          const sampleDup = await queryRows(db,
+            `SELECT t.transaction_id, t.amount, t.transaction_date, t.reference FROM ${table.name} t INNER JOIN (SELECT amount, transaction_date FROM ${table.name} WHERE tenant_id = ? AND amount > 0 GROUP BY amount, transaction_date HAVING COUNT(*) > 1) d ON t.amount = d.amount AND t.transaction_date = d.transaction_date WHERE t.tenant_id = ? ORDER BY t.amount DESC LIMIT 6`,
+            [tenantId, tenantId]);
           await createFinding(db, assessmentId, tenantId, 'dq-dup-payments', {
             findingType: 'discrepancy', severity: 'critical',
             title: `${duplicates} potential duplicate payments worth R${formatZAR(dupValue)}`,
             description: `${duplicates} instances of identical payment amounts on the same day were detected. These are potential duplicate payments totalling R${formatZAR(dupValue)}.`,
             affectedRecords: duplicates, financialImpact: dupValue * 0.5,
-            evidence: { sample_records: [], pattern: 'Same amount on same date paid to same or different beneficiaries', first_occurrence: 'Multiple dates', frequency: 'Sporadic' },
+            erpRecordId: sampleDup[0]?.transaction_id ? `TXN:${sampleDup[0].transaction_id}` : undefined,
+            confidence: dupConf.confidence, confidenceExplanation: dupConf.explanation,
+            evidence: {
+              sample_records: sampleDup.map(r => ({
+                ref: `Txn ${r.transaction_id}${r.reference ? ` (${r.reference})` : ''}`,
+                source_value: `Paid: ${r.transaction_date}`,
+                target_value: 'Same amount, same day', difference: Number(r.amount) || 0,
+              })),
+              pattern: 'Same amount on same date paid to same or different beneficiaries', first_occurrence: 'Multiple dates', frequency: 'Sporadic',
+            },
             rootCause: 'Lack of duplicate payment detection controls. Manual payment processing without automated matching.',
             prescription: 'Deploy duplicate payment detection catalyst with pre-payment verification rules.',
             category: 'control_gap', immediateValue: dupValue * 0.3, ongoingMonthlyValue: dupValue * 0.01,
@@ -437,12 +518,27 @@ async function runDataQualityAudit(
       if (staleRecords > 0 && deadStockValue > 0) {
         issues.push({ field: 'stock_on_hand', issue: `${staleRecords} products with no movement in 12+ months (R${formatZAR(deadStockValue)} dead stock)`, count: staleRecords, severity: 'high', financialImpact: deadStockValue * 0.2 });
 
+        // Direct ERP observation — the non-moving products are themselves the evidence.
+        const deadStockConf = directObservationConfidence(staleRecords, 'products with no movement in 12+ months');
+        const sampleDead = await queryRows(db,
+          `SELECT product_code, product_name, stock_on_hand, cost_price, last_purchase_date FROM ${table.name} WHERE tenant_id = ? AND is_active = 1 AND stock_on_hand > 0 AND (last_purchase_date IS NULL OR last_purchase_date < datetime('now', '-12 months')) ORDER BY (stock_on_hand * cost_price) DESC LIMIT 6`,
+          [tenantId]);
+
         await createFinding(db, assessmentId, tenantId, 'dq-dead-stock', {
           findingType: 'data_quality', severity: 'high',
           title: `R${formatZAR(deadStockValue)} in dead stock across ${staleRecords} products`,
           description: `${staleRecords} products have had no purchase or sales movement for over 12 months while maintaining stock on hand valued at R${formatZAR(deadStockValue)}. This capital is locked in non-moving inventory.`,
           affectedRecords: staleRecords, financialImpact: deadStockValue,
-          evidence: { sample_records: [], pattern: 'Products with stock but no movement for 12+ months', first_occurrence: '12+ months ago', frequency: 'Chronic' },
+          erpRecordId: sampleDead[0]?.product_code ? `SKU:${sampleDead[0].product_code}` : undefined,
+          confidence: deadStockConf.confidence, confidenceExplanation: deadStockConf.explanation,
+          evidence: {
+            sample_records: sampleDead.map(r => ({
+              ref: `${r.product_code}${r.product_name ? ` — ${r.product_name}` : ''}`,
+              source_value: `Last movement: ${r.last_purchase_date || 'never'}`,
+              target_value: `${r.stock_on_hand} on hand`, difference: (Number(r.stock_on_hand) || 0) * (Number(r.cost_price) || 0),
+            })),
+            pattern: 'Products with stock but no movement for 12+ months', first_occurrence: '12+ months ago', frequency: 'Chronic',
+          },
           rootCause: 'No automated dead stock identification or disposition process. Stock review is manual and infrequent.',
           prescription: 'Deploy inventory optimization catalyst with dead stock alerts and automated disposition workflows.',
           category: 'data_issue', immediateValue: deadStockValue * 0.15, ongoingMonthlyValue: deadStockValue * 0.005,
@@ -536,12 +632,19 @@ async function runProcessTimingAnalysis(
       Math.round(financialImpact), JSON.stringify({ totalAR, costOfCapital: 0.08 }),
     ).run();
 
-    if (daysOverBenchmark > 5) {
+    // Aggregate inference: the benchmark comparison is only credible over a
+    // large enough population of completed cycles. Gate on o2cRecords.
+    const o2cConf = inferredConfidence(
+      o2cRecords, 'timing-o2c',
+      `Average cycle of ${Math.round(avgO2C)} days measured across ${o2cRecords} completed invoice cycles, compared to the ${benchmark}-day SA industry benchmark.`,
+    );
+    if (daysOverBenchmark > 5 && o2cConf.gate.allow) {
       await createFinding(db, assessmentId, tenantId, 'timing-o2c', {
         findingType: 'process_delay', severity: daysOverBenchmark > 20 ? 'critical' : 'high',
         title: `Order-to-Cash cycle ${Math.round(avgO2C)} days vs ${benchmark} day benchmark`,
         description: `Your average Order-to-Cash cycle is ${Math.round(avgO2C)} days, which is ${Math.round(daysOverBenchmark)} days longer than the industry benchmark of ${benchmark} days. This delay locks R${formatZAR(totalAR)} in working capital longer than necessary.`,
         affectedRecords: exceedingBenchmark, financialImpact: Math.round(financialImpact),
+        confidence: o2cConf.confidence, confidenceExplanation: o2cConf.explanation,
         evidence: { sample_records: [], pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every invoice cycle' },
         rootCause: 'Manual invoice follow-up processes, lack of automated dunning, and inconsistent payment terms enforcement.',
         prescription: `Deploy automated AR collection with payment reminder sequences. Target: reduce O2C from ${Math.round(avgO2C)} to ${benchmark} days, recovering R${formatZAR(Math.round(financialImpact))}/year in working capital cost.`,
@@ -594,12 +697,17 @@ async function runProcessTimingAnalysis(
       Math.round(financialImpact), JSON.stringify({ totalOpenPO, costOfCapital: 0.08 }),
     ).run();
 
-    if (daysOverBenchmark > 5) {
+    const p2pConf = inferredConfidence(
+      p2pRecords, 'timing-p2p',
+      `Average cycle of ${Math.round(avgP2P)} days measured across ${p2pRecords} completed purchase-order cycles, compared to the ${benchmark}-day benchmark.`,
+    );
+    if (daysOverBenchmark > 5 && p2pConf.gate.allow) {
       await createFinding(db, assessmentId, tenantId, 'timing-p2p', {
         findingType: 'process_delay', severity: daysOverBenchmark > 15 ? 'critical' : 'high',
         title: `Procure-to-Pay cycle ${Math.round(avgP2P)} days vs ${benchmark} day benchmark`,
         description: `Your average Procure-to-Pay cycle is ${Math.round(avgP2P)} days, ${Math.round(daysOverBenchmark)} days above the benchmark. Late payments risk supplier relationship damage and potential early payment discount losses.`,
         affectedRecords: exceedingBenchmark, financialImpact: Math.round(financialImpact),
+        confidence: p2pConf.confidence, confidenceExplanation: p2pConf.explanation,
         evidence: { sample_records: [], pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every PO cycle' },
         rootCause: 'Manual PO approval workflows, lack of 3-way match automation, and delayed goods receipt confirmation.',
         prescription: `Automate PO approval and 3-way matching. Target: reduce P2P from ${Math.round(avgP2P)} to ${benchmark} days.`,
@@ -710,11 +818,21 @@ async function runLiveCatalystAnalysis(
 
       // Create findings from each run
       for (const finding of result.findings) {
+        // Confidence: a catalyst finding inherits its run's reconciliation
+        // confidence unless the detector set a finding-specific value. The
+        // first evidence sample row gives the ERP record the claim traces to.
+        const firstSample = finding.evidence?.sample_records?.[0];
+        const erpRef = finding.erpRecordId
+          || (firstSample?.ref ? String(firstSample.ref) : undefined);
+        const runConf = typeof finding.confidence === 'number' ? finding.confidence : result.avgConfidence;
+        const confExpl = finding.confidenceExplanation
+          || `${subCat} reconciliation over ${result.sourceCount.toLocaleString()} source record(s); run match rate ${result.matchRate}%. Confidence reflects the reconciliation strength of this catalyst run.`;
         await createFinding(db, assessmentId, tenantId, runId, {
           findingType: finding.type as 'discrepancy' | 'exception' | 'data_quality' | 'process_delay' | 'risk',
           severity: finding.severity as 'critical' | 'high' | 'medium' | 'low',
           title: finding.title, description: finding.description,
           affectedRecords: finding.affectedRecords, financialImpact: finding.financialImpact,
+          erpRecordId: erpRef, confidence: runConf, confidenceExplanation: confExpl,
           evidence: finding.evidence || { sample_records: [], pattern: '', first_occurrence: '', frequency: '' },
           rootCause: finding.rootCause || '', prescription: finding.prescription || '',
           category: finding.category || 'data_issue',
@@ -741,6 +859,7 @@ interface SubCatalystResult {
     affectedRecords: number; financialImpact: number;
     evidence?: FindingEvidence; rootCause?: string; prescription?: string;
     category?: string; immediateValue?: number; ongoingMonthlyValue?: number;
+    confidence?: number; confidenceExplanation?: string; erpRecordId?: string;
   }>;
   rootCauses: string[];
   prescriptions: string[];
@@ -1362,13 +1481,27 @@ ${Object.entries(valueByDomain).map(([domain, val]: [string, unknown]) => {
               </div>
             </td></tr>`
           : '';
+        // v83 traceability: every claimed dollar shows the ERP record it traces
+        // to, a confidence score, and the auditor-facing statistical basis. This
+        // is the binding shared-savings invariant rendered for the customer.
+        const erpRecordId = typeof f.erp_record_id === 'string' ? f.erp_record_id.trim() : '';
+        const confVal = f.confidence == null ? null : Number(f.confidence);
+        const confExpl = typeof f.confidence_explanation === 'string' ? f.confidence_explanation.trim() : '';
+        const confPct = confVal != null && !Number.isNaN(confVal) ? `${Math.round(confVal * 100)}%` : '';
+        const traceRow = (erpRecordId || confPct || confExpl)
+          ? `<tr><td colspan="5" style="padding:0 8px 6px 8px;border:none">
+              <div style="font-size:7.5pt;color:#475569;line-height:1.4">
+                ${erpRecordId ? `<span style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:2px;margin-right:6px">${escapeHtml(erpRecordId)}</span>` : ''}${confPct ? `<span style="font-weight:600;color:#0a7d4f;margin-right:6px">Confidence ${confPct}</span>` : ''}${confExpl ? escapeHtml(confExpl) : ''}
+              </div>
+            </td></tr>`
+          : '';
         return `<tr>
         <td>${escapeHtml(String(f.title))}</td>
         <td><span class="badge badge-${f.severity}">${String(f.severity).toUpperCase()}</span></td>
         <td style="font-weight:600">R${formatZAR(Math.round(Number(f.financial_impact)))}</td>
         <td>${Number(f.affected_records).toLocaleString()}</td>
         <td style="font-size:8pt">${escapeHtml(String(f.root_cause || '').slice(0, 80))}</td>
-      </tr>${insightRow}`;
+      </tr>${traceRow}${insightRow}`;
       }).join('\n      ')}
     </table>
   </div>`;
@@ -1905,6 +2038,23 @@ async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
     doc.text(`Immediate: R${formatZAR(Math.round(Number(f.immediate_value)))}`, pageW - 18, cardTop + 18, { align: 'right' });
     doc.text(`Ongoing: R${formatZAR(Math.round(Number(f.ongoing_monthly_value)))}/mo`, pageW - 18, cardTop + 22, { align: 'right' });
 
+    // v83 traceability (right column): confidence + the ERP record this dollar
+    // traces to. The binding shared-savings invariant, made visible per finding.
+    const confValPdf = f.confidence == null ? null : Number(f.confidence);
+    const erpIdPdf = typeof f.erp_record_id === 'string' ? f.erp_record_id.trim() : '';
+    if (confValPdf != null && !Number.isNaN(confValPdf)) {
+      setText(SAGE_DEEP);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(`Confidence ${Math.round(confValPdf * 100)}%`, pageW - 18, cardTop + 27, { align: 'right' });
+    }
+    if (erpIdPdf) {
+      setText(MUTED);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(erpIdPdf.slice(0, 28), pageW - 18, cardTop + 31, { align: 'right' });
+    }
+
     cy += 8;
 
     // Description
@@ -1955,6 +2105,21 @@ async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
         }
       }
     } catch { /* evidence parse failed — skip */ }
+
+    // Confidence basis footer — the auditor-facing statistical justification.
+    // States the basis only; never names a model/provider (trade secret).
+    const confExplPdf = typeof f.confidence_explanation === 'string' ? f.confidence_explanation.trim() : '';
+    if (confExplPdf) {
+      setText(SAGE_DEEP);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text('CONFIDENCE BASIS', 20, cardTop + cardH - 9);
+      setText(MUTED);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      const explLines = doc.splitTextToSize(confExplPdf, pageW - 40) as string[];
+      explLines.slice(0, 2).forEach((ln, j) => doc.text(ln, 20, cardTop + cardH - 5.5 + j * 3.2));
+    }
 
     y = cardTop + cardH + 6;
   }
