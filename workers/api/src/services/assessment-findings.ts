@@ -1197,6 +1197,33 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
 
   // Each manual journal costs ~R150 (FTE labour). Automation reclaims ~70% of that.
   const automatedSaving = r.manual_count * 4 * 150 * 0.7; // annualise the 90d count ×4
+
+  // Representative manual journals so the claim anchors to specific ERP rows
+  // (v83 traceability — erp_record_id resolves to a real journal).
+  const manualRows = (await db.prepare(
+    `SELECT journal_number, journal_date, description, total_debit, posted_by
+       FROM erp_journal_entries
+      WHERE tenant_id = ?
+        AND status = 'posted'
+        AND date(journal_date) >= date('now', '-90 days')
+        AND (LOWER(COALESCE(description, '')) LIKE 'manual%' OR posted_by NOT LIKE '%system%')
+        ${cf.clause}
+        ${pf.clause}
+      ORDER BY total_debit DESC
+      LIMIT 10`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+    journal_number: string; journal_date: string; description: string | null;
+    total_debit: number; posted_by: string | null;
+  }>()).results || [];
+  const manualSample: SampleRecord[] = manualRows.map(j => ({
+    ref: j.journal_number,
+    description: j.description || `Manual journal posted by ${j.posted_by || 'unknown'}`,
+    amount_native: j.total_debit,
+    currency: 'ZAR',
+    amount_zar: j.total_debit,
+    date: j.journal_date,
+  }));
+
   return makeFinding({
     code: 'gl_high_manual_volume',
     title: `${manualPct.toFixed(0)}% of journals are manual (${r.manual_count} of ${r.total_count} in 90 days)`,
@@ -1214,7 +1241,7 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
       methodology: `${r.manual_count} 90-day count × 4 → ${r.manual_count * 4} annual × R150/journal × 70% automatable`,
     }],
     currency_breakdown: { ZAR: r.manual_value || 0 },
-    sample_records: [],
+    sample_records: manualSample,
     severity: manualPct >= 80 ? 'high' : 'medium',
     ctx,
   });
@@ -2368,6 +2395,34 @@ async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string,
   const gapHours = Math.max(0, targetHours - summary.billable_hours);
   const avgRate = summary.billable_hours > 0 ? summary.billable_value / summary.billable_hours : 1500;
   const annualUplift = gapHours * avgRate * (365 / 90); // annualise from 90d window
+
+  // The consultants driving the low utilisation, so the claim anchors to
+  // specific ERP rows (v83 traceability — erp_record_id resolves to a real
+  // employee).
+  const utilRows = (await db.prepare(
+    `SELECT employee_id,
+            SUM(hours) as total_h,
+            SUM(CASE WHEN billable = 1 THEN hours ELSE 0 END) as billable_h
+       FROM erp_time_entries
+      WHERE tenant_id = ?
+        AND date(work_date) >= date('now', '-90 days')
+        ${cf.clause}
+        ${pf.clause}
+      GROUP BY employee_id
+      HAVING total_h > 0
+      ORDER BY (billable_h * 1.0 / total_h) ASC
+      LIMIT 10`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+    employee_id: string; total_h: number; billable_h: number;
+  }>()).results || [];
+  const utilSample: SampleRecord[] = utilRows.map(e => {
+    const pct = e.total_h > 0 ? (e.billable_h / e.total_h) * 100 : 0;
+    return {
+      ref: e.employee_id,
+      description: `${pct.toFixed(0)}% billable (${Math.round(e.billable_h)} of ${Math.round(e.total_h)} hours, 90d)`,
+    };
+  });
+
   return makeFinding({
     code: 'svc_low_billable_utilisation',
     title: `Billable utilisation ${utilPct.toFixed(0)}% — below 50% threshold`,
@@ -2380,7 +2435,7 @@ async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string,
       methodology: `(65% target − ${utilPct.toFixed(0)}% actual) × ${Math.round(summary.total_hours).toLocaleString()} hours × ${formatZAR(avgRate)}/hr × 365/90`,
     }],
     currency_breakdown: {},
-    sample_records: [],
+    sample_records: utilSample,
     severity: maxSeverity(severityFromValue(annualUplift), 'high'),
     ctx,
   });
