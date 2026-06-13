@@ -1,0 +1,86 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import { env } from 'cloudflare:test';
+import { createTestUser, loginUser, authedRequest, request } from './helpers';
+import { ensureMigrated } from './setup';
+
+const TENANT = 'tenant-bdigest';
+
+// createTestTenant in helpers.ts uses an `industry` column not present in the
+// test schema; other tests bypass it by inserting directly — mirror that pattern.
+async function createTenant() {
+  await ensureMigrated();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO tenants (id, name, slug, plan, status) VALUES (?, ?, ?, 'enterprise', 'active')`
+  ).bind(TENANT, 'VantaX Digest Co', TENANT).run();
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO tenant_entitlements (tenant_id, layers, catalyst_clusters, max_agents, max_users)
+     VALUES (?, '["apex","pulse","mind","memory"]', '["finance","hr","operations"]', 50, 100)`
+  ).bind(TENANT).run();
+}
+
+async function seedBilling() {
+  // billable_periods requires period_start + period_end (NOT NULL)
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO billable_periods
+       (id, tenant_id, period_start, period_end, total_realised_savings, atheon_revenue, currency)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind('bp-1', TENANT, '2026-01-01', '2026-06-30', 4_000_000, 1_000_000, 'ZAR').run();
+}
+
+describe('board-digest endpoints', () => {
+  let execToken = '';
+  let boardToken = '';
+  let managerToken = '';
+
+  beforeAll(async () => {
+    await createTenant();
+    await createTestUser({ email: 'exec@bd.test', password: 'Passw0rd!23', name: 'Exec', role: 'executive', tenantId: TENANT });
+    await createTestUser({ email: 'board@bd.test', password: 'Passw0rd!23', name: 'Board', role: 'board_member', tenantId: TENANT });
+    await createTestUser({ email: 'mgr@bd.test', password: 'Passw0rd!23', name: 'Mgr', role: 'manager', tenantId: TENANT });
+    await seedBilling();
+    execToken = (await loginUser('exec@bd.test', 'Passw0rd!23')) ?? '';
+    boardToken = (await loginUser('board@bd.test', 'Passw0rd!23')) ?? '';
+    managerToken = (await loginUser('mgr@bd.test', 'Passw0rd!23')) ?? '';
+  });
+
+  it('rejects unauthenticated generate with 401', async () => {
+    const res = await request('/api/board-digest/generate', { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('allows executive to generate (201) and writes a board_digest row + audit log', async () => {
+    const res = await authedRequest('/api/board-digest/generate', execToken, { method: 'POST' });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { id: string; pdfUrl?: string };
+    expect(body.id).toBeTruthy();
+
+    const row = await env.DB.prepare(
+      "SELECT report_type FROM board_reports WHERE id = ?"
+    ).bind(body.id).first<{ report_type: string }>();
+    expect(row?.report_type).toBe('board_digest');
+
+    const audit = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'board_report.digest' AND outcome = 'success' AND tenant_id = ?"
+    ).bind(TENANT).first<{ n: number }>();
+    expect((audit?.n ?? 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('forbids board_member (403)', async () => {
+    const res = await authedRequest('/api/board-digest/generate', boardToken, { method: 'POST' });
+    expect(res.status).toBe(403);
+  });
+
+  it('forbids manager (403)', async () => {
+    const res = await authedRequest('/api/board-digest/generate', managerToken, { method: 'POST' });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /:id/pdf returns 404 for a non-digest board_report id', async () => {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO board_reports (id, tenant_id, title, report_type, content, r2_key, generated_at)
+       VALUES (?, ?, ?, 'monthly', '{}', ?, ?)`
+    ).bind('full-pack-1', TENANT, 'Full Pack', 'reports/x/full-pack-1.pdf', new Date().toISOString()).run();
+    const res = await authedRequest('/api/board-digest/full-pack-1/pdf', execToken, { method: 'GET' });
+    expect(res.status).toBe(404);
+  });
+});
