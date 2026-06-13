@@ -48,7 +48,7 @@ Add a **2-page Board Digest PDF** — deterministic (no LLM), Atheon-branded, au
 | `company` (tenant name) | tenant record for `tenantId` |
 | `recovered` (`total_realised_savings`), `billed` (`total_atheon_revenue`), `currency` | billing summary — `SUM(realised_savings_zar)`, `SUM(atheon_revenue_zar)` FROM `billable_periods` |
 | `roiMultiple` | `recovered / billed` (0 when `billed === 0`) |
-| `overallScore`, `qoqDelta` | health score service (`apex.health`) |
+| `overallScore` | health score service (`apex.health`) — overall score only; the page renders no QoQ delta, so the digest carries none either |
 | `withinBandRate` | forecast accuracy service |
 | `risksCount` | risks service |
 | `anomaliesCount` | pulse anomalies service |
@@ -94,7 +94,7 @@ Add `'board-digest'` to `protectedPrefixes`, add `tenantIsolation` for the prefi
 - Atheon wordmark (chrome `pageHeader`).
 - Title "Board Digest"; **active tenant name** large beneath; report date + period ("Cumulative since first sync").
 - Shared-savings hero: Recovered (`formatZAR`) as the dominant figure; Billed + ROI multiple as a supporting ledger.
-- Atheon health score (overall) + QoQ delta.
+- Atheon health score (overall score only — matches the page, which renders no QoQ delta).
 
 **Page 2 — Governance**
 - Critical risks count + active anomalies count.
