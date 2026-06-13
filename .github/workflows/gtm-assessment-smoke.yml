@@ -187,13 +187,20 @@ jobs:
               -H "Authorization: Bearer $TOKEN" \
               "$API/api/v1/assessments/$AID/value-summary" || echo "000")
             if [ "$sum" = "200" ]; then
-              total=$(jq -r '(.total_value_usd // .total_value // 0)' /tmp/sum.json)
+              # Engine returns total_immediate_value + total_ongoing_annual_value (ZAR).
+              # Accept the engine's actual field names + the legacy aliases so
+              # this poll never regresses if the response shape evolves.
+              total=$(jq -r '(.total_immediate_value // .total_value_usd // .total_value // 0)' /tmp/sum.json)
+              ongoing=$(jq -r '(.total_ongoing_annual_value // 0)' /tmp/sum.json)
+              findings=$(jq -r '(.total_findings // 0)' /tmp/sum.json)
               if [ -n "$total" ] && [ "$total" != "null" ] && [ "$total" != "0" ]; then
-                echo "value-summary ready: total=$total"
+                echo "value-summary ready: immediate=$total ongoing_annual=$ongoing findings=$findings"
                 echo "total=$total" >> "$GITHUB_OUTPUT"
+                echo "ongoing=$ongoing" >> "$GITHUB_OUTPUT"
+                echo "findings=$findings" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-              last="value-summary 200 but total=$total"
+              last="value-summary 200 but immediate=$total ongoing=$ongoing"
             else
               last="value-summary HTTP $sum"
             fi

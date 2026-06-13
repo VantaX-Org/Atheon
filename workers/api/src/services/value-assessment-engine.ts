@@ -74,6 +74,37 @@ function formatZAR(n: number): string {
   return n.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// ── Inference-strength gate ───────────────────────────────────────────────
+// Memory rule (binding, shared-savings billing): a detector may only emit a
+// billable finding when the underlying sample is statistically credible. The
+// platform must prefer false negatives (under-claim + flag for human review)
+// over weak rules silently inflating the assessment.
+//
+// Threshold: a finding is gated unless the affected record count is at least
+// MIN_SAMPLE_SIZE (25). Below that we deliberately drop the finding rather
+// than emit it at reduced confidence — the engine currently has no
+// per-finding confidence column to express the reduction, so the safest
+// auditor-defensible posture is to suppress. The data-quality `issues`
+// array still records the underlying observation so it shows up in the
+// completeness penalty and on the GTM report's "below threshold" line.
+//
+// Callers should log via `gateReason` for telemetry / debug parity.
+export const MIN_SAMPLE_SIZE = 25;
+
+export function guardSampleSize(
+  affectedCount: number,
+  detector: string,
+  minSize: number = MIN_SAMPLE_SIZE,
+): { allow: boolean; reason: string } {
+  if (affectedCount < minSize) {
+    return {
+      allow: false,
+      reason: `${detector}: sample size ${affectedCount} below threshold ${minSize} — suppressing finding (insufficient evidence)`,
+    };
+  }
+  return { allow: true, reason: '' };
+}
+
 // ── Main Entry Point ──────────────────────────────────────────────────────
 
 export async function runValueAssessment(
@@ -332,7 +363,8 @@ async function runDataQualityAudit(
           [tenantId, tenantId]);
         issues.push({ field: 'amount', issue: `${duplicates} potential duplicate payments on same day (R${formatZAR(dupValue)})`, count: duplicates, severity: 'critical', financialImpact: dupValue * 0.5 });
 
-        if (dupValue > 0) {
+        const dupGate = guardSampleSize(duplicates, 'dq-dup-payments');
+        if (dupValue > 0 && dupGate.allow) {
           await createFinding(db, assessmentId, tenantId, 'dq-dup-payments', {
             findingType: 'discrepancy', severity: 'critical',
             title: `${duplicates} potential duplicate payments worth R${formatZAR(dupValue)}`,
