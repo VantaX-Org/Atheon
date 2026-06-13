@@ -4,6 +4,10 @@ import { collectDigestData, generateBoardDigestPDF, type DigestData } from '../b
 // Minimal D1-shaped mock: prepare().bind().first() returns canned rows in call order.
 // getForecastAccuracyStats uses .all() (not .first()), so it gets {results:[]} and
 // resolves to { total_graded: 0, within_band_rate: null, ... } harmlessly.
+// NOTE: load-bearing call order. collectDigestData issues first() in this order:
+// tenant → billing → health → risks → anomalies. getForecastAccuracyStats uses
+// all() (returns {results:[]}), so it does NOT consume a first() row. If that
+// changes, the shared `i` counter desyncs and the canned rows shift silently.
 function mockDB(rows: unknown[]) {
   let i = 0;
   const stmt = {
@@ -31,6 +35,8 @@ describe('collectDigestData', () => {
     expect(data.roiMultiple).toBe(4);
     expect(data.currency).toBe('ZAR');
     expect(data.overallScore).toBe(82);
+    expect(data.risksCount).toBe(3);
+    expect(data.anomaliesCount).toBe(5);
   });
 
   it('roiMultiple is 0 when billed is 0', async () => {

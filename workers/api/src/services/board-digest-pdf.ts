@@ -50,8 +50,8 @@ export async function collectDigestData(db: D1Database, tenantId: string): Promi
     'SELECT COUNT(*) AS n FROM anomalies WHERE tenant_id = ?'
   ).bind(tenantId).first<{ n: number }>();
 
-  const recovered = billing?.recovered ?? 0;
-  const billed = billing?.billed ?? 0;
+  const recovered = Number(billing?.recovered ?? 0);
+  const billed = Number(billing?.billed ?? 0);
 
   return {
     company: tenant?.name || 'Your Organisation',
@@ -59,10 +59,10 @@ export async function collectDigestData(db: D1Database, tenantId: string): Promi
     billed,
     roiMultiple: billed > 0 ? recovered / billed : 0,
     currency: billing?.currency || 'ZAR',
-    overallScore: Math.round(health?.overall_score ?? 0),
-    withinBandRate: forecast?.within_band_rate ?? null,
-    risksCount: risksRow?.n ?? 0,
-    anomaliesCount: anomaliesRow?.n ?? 0,
+    overallScore: Math.round(Number(health?.overall_score ?? 0)),
+    withinBandRate: forecast?.within_band_rate == null ? null : Number(forecast.within_band_rate),
+    risksCount: Number(risksRow?.n ?? 0),
+    anomaliesCount: Number(anomaliesRow?.n ?? 0),
   };
 }
 
