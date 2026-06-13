@@ -26,8 +26,28 @@ boardReport.post('/generate', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
   try {
     const result = await generateBoardReport(c.env.DB, tenantId, c.env, auth?.email || undefined);
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null, 'board_report.generate', 'governance', 'board_reports',
+        JSON.stringify({ reportId: (result as { id?: string } | null)?.id ?? null, actor: auth?.email || null }),
+        'success'
+      ).run();
+    } catch (auditErr) {
+      console.error('board_report audit log failed:', auditErr);
+    }
     return c.json(result, 201);
   } catch (err) {
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null, 'board_report.generate', 'governance', 'board_reports',
+        JSON.stringify({ error: (err as Error).message, actor: auth?.email || null }),
+        'failure'
+      ).run();
+    } catch { /* swallow */ }
     return c.json({ error: 'Board report generation failed', detail: (err as Error).message }, 500);
   }
 });

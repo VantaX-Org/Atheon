@@ -138,6 +138,7 @@ const ALLOWED_TABLES = VANTAX_TENANT_TABLES;
  */
 seed.post('/seed-vantax', async (c) => {
   const tenantId = await getVantaXTenantId(c);
+  const auth = c.get('auth') as { userId?: string; email?: string } | undefined;
   if (!tenantId) {
     return c.json({ error: 'Access denied', message: 'This endpoint is restricted to VantaX (Pty) Ltd demo environment' }, 403);
   }
@@ -3707,6 +3708,18 @@ seed.post('/seed-vantax', async (c) => {
     // Products: SAP (18) + PHYSICAL_COUNT (18) = 36; Invoices: SAP (80) + SAP-AR (72) = 152
     const totalErpRecords = SA_SUPPLIERS.length + SA_CUSTOMERS.length + (SA_PRODUCTS.length * 2) + 80 + 72 + 80 + 80 + GL_ACCOUNTS.length + 40;
 
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null, 'demo.seed_vantax.completed', 'platform', 'tenants',
+        JSON.stringify({ persona: prospectName, industry: prospectIndustry, totalErpRecords, actor: auth?.email || null, assessmentId: vaAssessmentId, reportKey: vaReportKey }),
+        'success'
+      ).run();
+    } catch (auditErr) {
+      console.error('seed-vantax audit log failed:', auditErr);
+    }
+
     return c.json({
       success: true,
       message: `VantaX tenant seeded with realistic SAP S/4HANA demo data (persona: ${prospectName})`,
@@ -3830,6 +3843,7 @@ seed.post('/seed-vantax', async (c) => {
  */
 seed.post('/reset', async (c) => {
   const tenantId = await getVantaXTenantId(c);
+  const auth = c.get('auth') as { userId?: string; email?: string } | undefined;
   if (!tenantId) {
     return c.json({
       error: 'Access denied',
@@ -3839,6 +3853,17 @@ seed.post('/reset', async (c) => {
   try {
     const { count, tables } = await cleanupVantaxTenant(c.env.DB, tenantId);
     console.log(`[VantaX Reset] Cleaned ${count} rows across ${tables} tables for ${tenantId}`);
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), tenantId, auth?.userId || null, 'demo.seed_vantax.reset', 'platform', 'tenants',
+        JSON.stringify({ tables, recordsRemoved: count, actor: auth?.email || null }),
+        'success'
+      ).run();
+    } catch (auditErr) {
+      console.error('seed-vantax reset audit log failed:', auditErr);
+    }
     return c.json({
       success: true,
       tenant: { id: tenantId, slug: 'vantax' },

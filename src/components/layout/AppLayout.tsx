@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { DemoEnvironmentBanner } from "./DemoEnvironmentBanner";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { HelpButton } from "@/components/common/HelpButton";
 import { cn } from "@/lib/utils";
@@ -96,6 +97,7 @@ export function AppLayout() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-md focus:bg-[var(--accent)] focus:text-[var(--text-on-accent)] focus:text-sm">
         Skip to main content
       </a>
+      <DemoEnvironmentBanner />
       <Sidebar />
       <Header />
       <main
