@@ -2956,10 +2956,24 @@ export async function detectAllFindingsByCompany(
   return { per_company, consolidated };
 }
 
-/** Tally findings into a category-grouped summary for the report cover page. */
+/**
+ * Tally findings into a category-grouped summary for the report cover page.
+ *
+ * `total_value_at_risk_zar` is CONFIRMED-ONLY: it sums only findings whose
+ * confidence gate passed (DIRECT ERP observations + inferred findings backed by
+ * a large-enough sample). Gate-failed findings (`confidence_gate_passed === false`)
+ * are "indicative/unverified" — their rand value is quarantined into
+ * `potential_unverified_zar` (with `unverified_count`) and kept OUT of the
+ * headline. This keeps the headline a defensible shared-savings basis: every
+ * claimed dollar traces to an ERP record set that cleared the ≥25-record gate.
+ * `by_severity` / `by_category` / `recommended_catalysts` still count EVERY
+ * finding — they drive the filter UX, not the billing total.
+ */
 export function summariseFindings(findings: Finding[]): {
   total_count: number;
   total_value_at_risk_zar: number;
+  potential_unverified_zar: number;
+  unverified_count: number;
   by_severity: Record<Severity, number>;
   by_category: Record<FindingCategory, { count: number; value_at_risk_zar: number }>;
   recommended_catalysts: string[];
@@ -2977,16 +2991,25 @@ export function summariseFindings(findings: Finding[]): {
   };
   const catalysts = new Set<string>();
   let totalValue = 0;
+  let unverifiedValue = 0;
+  let unverifiedCount = 0;
   for (const f of findings) {
     by_severity[f.severity]++;
     by_category[f.category].count++;
     by_category[f.category].value_at_risk_zar += f.value_at_risk_zar;
     catalysts.add(f.recommended_catalyst.catalyst);
-    totalValue += f.value_at_risk_zar;
+    if (f.confidence_gate_passed === false) {
+      unverifiedValue += f.value_at_risk_zar;
+      unverifiedCount++;
+    } else {
+      totalValue += f.value_at_risk_zar;
+    }
   }
   return {
     total_count: findings.length,
     total_value_at_risk_zar: totalValue,
+    potential_unverified_zar: unverifiedValue,
+    unverified_count: unverifiedCount,
     by_severity,
     by_category,
     recommended_catalysts: Array.from(catalysts).sort(),
