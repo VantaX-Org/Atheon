@@ -307,6 +307,20 @@ assessments.post('/:id/run-value-assessment', async (c) => {
   ).bind(assessmentId).first<Record<string, unknown>>();
   if (!assessment) return c.json({ error: 'Not found' }, 404);
 
+  // Reject concurrent kick-offs. Without this, two POSTs land
+  // back-to-back, both set status='running', both fire the engine,
+  // and findings/dq/timing/value_summary rows duplicate. The engine
+  // itself does a per-run DELETE, but a true overlap would still
+  // interleave inserts.
+  if ((assessment.status as string) === 'running') {
+    return c.json({
+      error: 'assessment_in_progress',
+      message: 'A value assessment for this record is already running.',
+      id: assessmentId,
+      status: 'running',
+    }, 409);
+  }
+
   const tenantId = assessment.tenant_id as string;
   const config: ValueAssessmentConfig = {
     ...DEFAULT_VALUE_ASSESSMENT_CONFIG,

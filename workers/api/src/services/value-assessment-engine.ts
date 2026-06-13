@@ -93,8 +93,20 @@ export async function runValueAssessment(
   };
 
   try {
-    // Update assessment status
-    await db.prepare("UPDATE assessments SET status = 'running' WHERE id = ?").bind(assessmentId).run();
+    // Idempotency: a re-run of the same assessment must REPLACE the prior
+    // result, not append to it. The route layer rejects overlapping calls
+    // (409 if status='running'), so this is the serial re-run path —
+    // typically after a 'failed' or 'complete' status, or a fresh run on a
+    // freshly-seeded VantaX. Clear every artefact this engine writes plus
+    // the report key so /report/value can't serve a stale PDF mid-run.
+    await db.batch([
+      db.prepare('DELETE FROM assessment_findings WHERE assessment_id = ?').bind(assessmentId),
+      db.prepare('DELETE FROM assessment_data_quality WHERE assessment_id = ?').bind(assessmentId),
+      db.prepare('DELETE FROM assessment_process_timing WHERE assessment_id = ?').bind(assessmentId),
+      db.prepare('DELETE FROM assessment_value_summary WHERE assessment_id = ?').bind(assessmentId),
+      db.prepare('DELETE FROM assessment_runs WHERE assessment_id = ?').bind(assessmentId),
+      db.prepare("UPDATE assessments SET status = 'running', business_report_key = NULL, results = '{}' WHERE id = ?").bind(assessmentId),
+    ]);
 
     // Phase 1: Data Quality Audit
     progress('data_quality', 'Starting data quality audit...', 5);

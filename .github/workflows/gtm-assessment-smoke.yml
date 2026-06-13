@@ -1,0 +1,316 @@
+name: GTM Assessment Smoke (staging)
+
+# End-to-end smoke of the assessment mechanism — our primary go-to-market
+# product surface. Exercises the full chain on staging:
+#
+#   reset (optional) → reseed (optional) → run-value-assessment →
+#   poll findings + value-summary → download value report →
+#   generate board report → fetch board PDF.
+#
+# Fails loud at the first broken link so we catch regressions in the
+# customer-facing assessment flow before they hit prod.
+#
+# Reuses the `staging` GitHub environment secrets:
+#   - E2E_STAGING_LOGIN_EMAIL
+#   - E2E_STAGING_LOGIN_PASSWORD
+#   - STAGING_API_BASE_URL (optional override)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reset_first:
+        description: 'Reset + reseed VantaX before running (yes/no)'
+        required: false
+        default: 'no'
+      prospect_name:
+        description: 'Persona override (only when reset_first=yes)'
+        required: false
+        default: ''
+      prospect_industry:
+        description: 'Industry override (only when reset_first=yes)'
+        required: false
+        default: ''
+      mode:
+        description: 'Value-assessment mode: full | quick'
+        required: false
+        default: 'full'
+      poll_seconds:
+        description: 'Max seconds to wait for findings + value-summary'
+        required: false
+        default: '300'
+
+concurrency:
+  group: gtm-assessment-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Assessment mechanism end-to-end
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 25
+    steps:
+      - name: Resolve API base URL
+        id: api
+        env:
+          OVERRIDE: ${{ secrets.STAGING_API_BASE_URL }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            echo "url=$OVERRIDE" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=https://staging.atheon-api.vantax.co.za" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate on required secrets
+        env:
+          LOGIN_EMAIL: ${{ secrets.E2E_STAGING_LOGIN_EMAIL }}
+          LOGIN_PASSWORD: ${{ secrets.E2E_STAGING_LOGIN_PASSWORD }}
+        run: |
+          if [ -z "$LOGIN_EMAIL" ] || [ -z "$LOGIN_PASSWORD" ]; then
+            {
+              echo "## GTM Assessment Smoke — skipped"
+              echo ""
+              echo "Missing required secret(s) in the \`staging\` environment:"
+              echo "- \`E2E_STAGING_LOGIN_EMAIL\`"
+              echo "- \`E2E_STAGING_LOGIN_PASSWORD\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Login → JWT
+        id: login
+        env:
+          API: ${{ steps.api.outputs.url }}
+          LOGIN_EMAIL: ${{ secrets.E2E_STAGING_LOGIN_EMAIL }}
+          LOGIN_PASSWORD: ${{ secrets.E2E_STAGING_LOGIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg e "$LOGIN_EMAIL" --arg p "$LOGIN_PASSWORD" \
+            '{email:$e,password:$p}')
+          resp=$(curl -fsS -X POST "$API/api/v1/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")
+          token=$(echo "$resp" | jq -r '.token // .access_token // empty')
+          if [ -z "$token" ]; then
+            echo "::error::Login response missing token"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Optional reset + reseed
+        if: ${{ inputs.reset_first == 'yes' }}
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          P_NAME: ${{ inputs.prospect_name }}
+          P_IND:  ${{ inputs.prospect_industry }}
+        run: |
+          set -euo pipefail
+          echo "→ Resetting VantaX"
+          code=$(curl -sS -o /tmp/reset.json -w '%{http_code}' \
+            -X POST "$API/api/v1/seed-vantax/reset" \
+            -H "Authorization: Bearer $TOKEN")
+          echo "Reset HTTP $code"
+          jq '.' /tmp/reset.json || cat /tmp/reset.json
+          [ "$code" = "200" ] || exit 1
+
+          body='{}'
+          if [ -n "$P_NAME" ] || [ -n "$P_IND" ]; then
+            body=$(jq -nc \
+              --arg n "$P_NAME" --arg i "$P_IND" \
+              '{} + (if $n != "" then {prospectName:$n} else {} end)
+                 + (if $i != "" then {prospectIndustry:$i} else {} end)')
+          fi
+          echo "→ Reseeding VantaX (body: $body)"
+          code=$(curl -sS -o /tmp/seed.json -w '%{http_code}' \
+            -X POST "$API/api/v1/seed-vantax/seed-vantax" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$body" \
+            --max-time 600)
+          echo "Seed HTTP $code"
+          jq '.' /tmp/seed.json || cat /tmp/seed.json
+          [ "$code" = "200" ] || exit 1
+
+      - name: Locate va-demo-vantax assessment
+        id: locate
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+        run: |
+          set -euo pipefail
+          asmts=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments")
+          aid=$(echo "$asmts" | jq -r '
+            (.assessments // .data // []) as $rows
+            | ($rows[] | select(.id == "va-demo-vantax") | .id) // empty')
+          if [ -z "$aid" ]; then
+            echo "::error::va-demo-vantax assessment not found. Run with reset_first=yes."
+            echo "$asmts" | jq -r '(.assessments // .data // []) | map(.id) | .[]' | head -20
+            exit 1
+          fi
+          echo "assessment_id=$aid" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger run-value-assessment
+        id: trigger
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          AID: ${{ steps.locate.outputs.assessment_id }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg m "$MODE" '{mode:$m, outcomeFeePercent:20}')
+          code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
+            -X POST "$API/api/v1/assessments/$AID/run-value-assessment" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")
+          echo "Trigger HTTP $code"
+          jq '.' /tmp/run.json || cat /tmp/run.json
+          [ "$code" = "200" ] || [ "$code" = "201" ] || exit 1
+
+      - name: Poll until value-summary populated
+        id: poll
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          AID: ${{ steps.locate.outputs.assessment_id }}
+          POLL_SECONDS: ${{ inputs.poll_seconds }}
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + POLL_SECONDS ))
+          last="(no response)"
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            sum=$(curl -sS -o /tmp/sum.json -w '%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" \
+              "$API/api/v1/assessments/$AID/value-summary" || echo "000")
+            if [ "$sum" = "200" ]; then
+              total=$(jq -r '(.total_value_usd // .total_value // 0)' /tmp/sum.json)
+              if [ -n "$total" ] && [ "$total" != "null" ] && [ "$total" != "0" ]; then
+                echo "value-summary ready: total=$total"
+                echo "total=$total" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              last="value-summary 200 but total=$total"
+            else
+              last="value-summary HTTP $sum"
+            fi
+            sleep 5
+          done
+          echo "::error::Timed out waiting for value-summary. Last: $last"
+          jq '.' /tmp/sum.json || cat /tmp/sum.json || true
+          exit 1
+
+      - name: Findings + data-quality + process-timing
+        id: artefacts
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          AID: ${{ steps.locate.outputs.assessment_id }}
+        run: |
+          set -euo pipefail
+          F=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments/$AID/findings")
+          DQ=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments/$AID/data-quality")
+          PT=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments/$AID/process-timing")
+          f_count=$(echo "$F" | jq -r '.total // (.findings | length) // 0')
+          dq_count=$(echo "$DQ" | jq -r '.total // (.dataQuality | length) // 0')
+          pt_count=$(echo "$PT" | jq -r '.total // (.processTiming | length) // 0')
+          echo "findings=$f_count, data_quality=$dq_count, process_timing=$pt_count"
+          echo "findings=$f_count" >> "$GITHUB_OUTPUT"
+          echo "dq=$dq_count" >> "$GITHUB_OUTPUT"
+          echo "pt=$pt_count" >> "$GITHUB_OUTPUT"
+          if [ "$f_count" -lt 1 ]; then
+            echo "::error::Zero findings — assessment engine produced no output"
+            exit 1
+          fi
+
+      - name: Download value report
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          AID: ${{ steps.locate.outputs.assessment_id }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/value-report -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/assessments/$AID/report/value")
+          size=$(wc -c < /tmp/value-report | tr -d ' ')
+          echo "Value report HTTP $code, $size bytes"
+          if [ "$code" != "200" ] || [ "$size" -lt 1000 ]; then
+            echo "::error::Value report download failed or suspiciously small ($size bytes)"
+            head -c 500 /tmp/value-report || true
+            exit 1
+          fi
+
+      - name: Generate board report
+        id: board
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/board.json -w '%{http_code}' \
+            -X POST "$API/api/v1/board-report/generate" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d '{}' --max-time 300)
+          echo "Board report generate HTTP $code"
+          jq '.' /tmp/board.json || cat /tmp/board.json
+          if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+            exit 1
+          fi
+          rid=$(jq -r '.id // empty' /tmp/board.json)
+          echo "report_id=$rid" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch board PDF
+        if: ${{ steps.board.outputs.report_id != '' }}
+        env:
+          API: ${{ steps.api.outputs.url }}
+          TOKEN: ${{ steps.login.outputs.token }}
+          RID: ${{ steps.board.outputs.report_id }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/board.pdf -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/board-report/$RID/pdf")
+          size=$(wc -c < /tmp/board.pdf | tr -d ' ')
+          echo "Board PDF HTTP $code, $size bytes"
+          if [ "$code" != "200" ] || [ "$size" -lt 1000 ]; then
+            echo "::warning::Board PDF download returned $code / $size bytes (may be acceptable if storage not bound)"
+          fi
+
+      - name: Summary
+        if: always()
+        env:
+          API: ${{ steps.api.outputs.url }}
+          AID: ${{ steps.locate.outputs.assessment_id }}
+          TOTAL: ${{ steps.poll.outputs.total }}
+          F: ${{ steps.artefacts.outputs.findings }}
+          DQ: ${{ steps.artefacts.outputs.dq }}
+          PT: ${{ steps.artefacts.outputs.pt }}
+          RID: ${{ steps.board.outputs.report_id }}
+          MODE: ${{ inputs.mode }}
+          RESET: ${{ inputs.reset_first }}
+          CONCLUSION: ${{ job.status }}
+        run: |
+          {
+            echo "## GTM Assessment Smoke — result"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| API | $API |"
+            echo "| Assessment | \`$AID\` |"
+            echo "| Mode | $MODE |"
+            echo "| Reset-first | $RESET |"
+            echo "| Total value (USD) | \`${TOTAL:-?}\` |"
+            echo "| Findings | $F |"
+            echo "| Data-quality rows | $DQ |"
+            echo "| Process-timing rows | $PT |"
+            echo "| Board report id | \`${RID:-not generated}\` |"
+            echo "| Conclusion | $CONCLUSION |"
+          } >> "$GITHUB_STEP_SUMMARY"
