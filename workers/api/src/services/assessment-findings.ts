@@ -1201,6 +1201,11 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
     code: 'gl_high_manual_volume',
     title: `${manualPct.toFixed(0)}% of journals are manual (${r.manual_count} of ${r.total_count} in 90 days)`,
     narrative: `${r.manual_count} of the last ${r.total_count} posted journals (${manualPct.toFixed(0)}%) appear manual based on description / posted_by patterns. Manual journals cost ~R150 each in labour and a multiple of that in error-rate cost. Automating the recurring patterns reclaims roughly ${formatZAR(automatedSaving)}/year.`,
+    // v83 gate: the finding sells a SAVING that scales with manual_count
+    // (automatedSaving ∝ manual_count), so count, value and gate sample size
+    // all key off manual_count — not total_count. Gating on manual_count
+    // suppresses small-saving cases (<25 automatable journals), which is the
+    // intended conservative behaviour.
     affected_count: r.manual_count,
     value_at_risk_zar: automatedSaving,
     value_components: [{
@@ -2237,6 +2242,11 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
     code: 'fx_currency_exposure',
     title: `${rows.length} foreign currencies with ${formatZAR(totalZarExposure)} unhedged AR exposure`,
     narrative: `Unpaid invoices in ${rows.length} non-base currencies expose ${formatZAR(totalZarExposure)} (ZAR-equivalent) to FX volatility. A 10% currency move (${formatZAR(volatility)}) reprices the receivables instantly. Forward cover or natural hedging through matched-currency payables eliminates the surface.`,
+    // v83 gate: exposure-MAGNITUDE finding, not a concentration ratio. The
+    // value sums every foreign-currency open invoice, so the gate sample size
+    // is that same invoice count — NOT rows.length (distinct currencies, ~2-5),
+    // which would sit permanently below the 25 minimum and suppress every FX
+    // finding. Count, value and sample size all share the invoice basis.
     affected_count: rows.reduce((s, r) => s + r.cnt, 0),
     value_at_risk_zar: volatility,
     value_components: [{
