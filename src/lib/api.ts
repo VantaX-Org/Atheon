@@ -1907,7 +1907,7 @@ export const api = {
       const url = URL.createObjectURL(blob);
       const safeName = (title || 'board-digest').replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);
       const a = document.createElement('a'); a.href = url; a.download = `${safeName}.pdf`; a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     },
   },
 
