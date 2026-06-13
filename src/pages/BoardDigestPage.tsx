@@ -25,7 +25,9 @@ import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
 import { api, ApiError } from '@/lib/api';
 import type { HealthScore, BillingSummary, ForecastAccuracyResp } from '@/lib/api';
-import { TrendingUp, ShieldCheck, AlertTriangle, Activity } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/stores/appStore';
+import { TrendingUp, ShieldCheck, AlertTriangle, Activity, FileDown } from 'lucide-react';
 
 function formatCurrency(value: number, currency = 'ZAR'): string {
   try {
@@ -38,6 +40,10 @@ function formatCurrency(value: number, currency = 'ZAR'): string {
 }
 
 export default function BoardDigestPage(): JSX.Element {
+  const currentRole = useAppStore((s) => s.user)?.role || 'viewer';
+  const canExportDigest = ['superadmin', 'support_admin', 'admin', 'executive'].includes(currentRole);
+  const canExportFullPack = ['superadmin', 'support_admin', 'admin'].includes(currentRole);
+
   const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [forecast, setForecast] = useState<ForecastAccuracyResp | null>(null);
   const [health, setHealth] = useState<HealthScore | null>(null);
@@ -46,6 +52,8 @@ export default function BoardDigestPage(): JSX.Element {
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportingPack, setExportingPack] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +76,30 @@ export default function BoardDigestPage(): JSX.Element {
       setError(e instanceof ApiError ? e.message : 'Failed to load digest');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const downloadDigest = useCallback(async () => {
+    setExporting(true);
+    try {
+      const { id, title } = await api.boardDigest.generate();
+      await api.boardDigest.downloadPdf(id, title);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to export digest PDF');
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
+  const downloadFullPack = useCallback(async () => {
+    setExportingPack(true);
+    try {
+      const r = await api.boardReport.generate();
+      await api.boardReport.downloadPdf(r.id, r.title);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to export full board pack');
+    } finally {
+      setExportingPack(false);
     }
   }, []);
 
@@ -109,6 +141,34 @@ export default function BoardDigestPage(): JSX.Element {
         eyebrow="Board · Digest"
         title="Board digest"
         dek="Quarterly outcomes — shared-savings, health, risk"
+        actions={
+          <>
+            {canExportDigest && (
+              <Button
+                variant="primary"
+                size="sm"
+                loading={exporting}
+                leading={<FileDown size={14} />}
+                onClick={() => { void downloadDigest(); }}
+                data-testid="board-digest-download"
+              >
+                Download PDF
+              </Button>
+            )}
+            {canExportFullPack && (
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={exportingPack}
+                leading={<FileDown size={14} />}
+                onClick={() => { void downloadFullPack(); }}
+                data-testid="board-digest-fullpack"
+              >
+                Full board pack
+              </Button>
+            )}
+          </>
+        }
       />
 
       {/* Wave H-3: Board-level anchor. The 3-column equal-weight grid
@@ -277,9 +337,6 @@ export default function BoardDigestPage(): JSX.Element {
         </Card>
       </div>
 
-      <div className="text-caption t-muted text-center pt-2">
-        Digest reflects the latest available snapshot. For a quarter-boundary cut, ask your platform admin to download a Board Pack PDF from /apex.
-      </div>
     </div>
   );
 }
