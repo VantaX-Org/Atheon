@@ -65,14 +65,16 @@ export default function BoardDigestPage(): JSX.Element {
         api.insightsStats.billingSummary(),
         api.insightsStats.forecastAccuracy(),
         api.apex.health(),
-        api.apex.risks(),
-        api.pulse.anomalies(),
+        api.apex.risksCount(),
+        api.pulse.anomaliesCount(),
       ]);
       if (b.status === 'fulfilled') setBilling(b.value);
       if (f.status === 'fulfilled') setForecast(f.value);
       if (h.status === 'fulfilled') setHealth(h.value);
-      if (r.status === 'fulfilled') setRisksCount(r.value.risks.length);
-      if (a.status === 'fulfilled') setAnomaliesCount(a.value.anomalies.length);
+      // Uncapped totals so the on-screen figures match the digest PDF's COUNT(*)
+      // even when a tenant has >50 risks/anomalies (the list endpoints page).
+      if (r.status === 'fulfilled') setRisksCount(r.value.count);
+      if (a.status === 'fulfilled') setAnomaliesCount(a.value.count);
       setLoadedAt(new Date().toISOString());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load digest');

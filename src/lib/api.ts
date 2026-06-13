@@ -525,6 +525,10 @@ export const api = {
       request<Briefing>(`/api/apex/briefing${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     risks: (tenantId?: string, industry?: string, companyId?: string) =>
       request<{ risks: Risk[]; total: number }>(`/api/apex/risks${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    // Uncapped tenant total, decoupled from list paging — reconciles with the
+    // board-digest COUNT(*). Use this for badges/counts, not list .length.
+    risksCount: (tenantId?: string, severity?: string, companyId?: string) =>
+      request<{ count: number }>(`/api/apex/risks/count${qs({ tenant_id: tenantId, severity, company_id: companyId })}`),
     scenarios: (tenantId?: string, industry?: string, companyId?: string) =>
       request<{ scenarios: ScenarioItem[]; total: number }>(`/api/apex/scenarios${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     createScenario: (data: Record<string, unknown>) =>
@@ -747,6 +751,10 @@ export const api = {
       request<{ metrics: Metric[]; total: number }>(`/api/pulse/metrics${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
     anomalies: (tenantId?: string, industry?: string, companyId?: string) =>
       request<{ anomalies: AnomalyItem[]; total: number }>(`/api/pulse/anomalies${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined, company_id: companyId })}`),
+    // Uncapped tenant total, decoupled from the list LIMIT — reconciles with the
+    // board-digest COUNT(*). Use this for badges/counts, not list .length.
+    anomaliesCount: (tenantId?: string, severity?: string, companyId?: string) =>
+      request<{ count: number }>(`/api/pulse/anomalies/count${qs({ tenant_id: tenantId, severity, company_id: companyId })}`),
     detectAnomalies: (metricId?: string, sensitivity?: 'low' | 'medium' | 'high', tenantId?: string, companyId?: string) =>
       request<{ success: boolean; statistics: { mean: number; stdDev: number; dataPoints: number; period: string }; detected: unknown[]; count: number }>(`/api/pulse/anomalies/detect${qs({ tenant_id: tenantId, company_id: companyId })}`, { method: 'POST', body: JSON.stringify({ metric_id: metricId, sensitivity }) }),
     updateAnomalyStatus: (anomalyId: string, status: 'open' | 'investigating' | 'resolved') =>
