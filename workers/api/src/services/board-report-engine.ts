@@ -8,6 +8,7 @@
 import { loadLlmConfig, llmChatWithFallback } from './llm-provider';
 import type { LlmMessage } from './llm-provider';
 import { computeStrategicContext } from './radar-engine-v2';
+import { PALETTE, formatZAR, createPdfChrome } from './board-report-pdf-chrome';
 
 interface BoardReportData {
   company: string;
@@ -19,12 +20,6 @@ interface BoardReportData {
   diagnostics: { activeRCAs: number; pendingPrescriptions: number };
   roi: { identified: number; recovered: number; roiMultiple: number; personHours: number } | null;
   effectiveness: Array<{ subCatalyst: string; runs: number; recoveryRate: number; valueFound: number }>;
-}
-
-function formatZAR(value: number): string {
-  if (value >= 1_000_000) return `R ${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `R ${(value / 1_000).toFixed(0)}K`;
-  return `R ${value.toFixed(0)}`;
 }
 
 /**
@@ -40,80 +35,9 @@ async function generateBoardReportPDF(
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
 
-  // ── Atheon colour palette ──
-  const navy  = [15, 23, 42] as const;     // #0F172A
-  const teal  = [0, 150, 136] as const;    // #009688
-  const gold  = [255, 179, 0] as const;    // #FFB300
-  const chalk = [241, 245, 249] as const;  // #F1F5F9
-  const slate = [100, 116, 139] as const;  // #64748B
-  const white = [255, 255, 255] as const;
-  const red   = [239, 68, 68] as const;    // #EF4444
-  const amber = [245, 158, 11] as const;   // #F59E0B
-  const green = [16, 185, 129] as const;   // #10B981
-
-  function pageHeader(title: string) {
-    doc.setFillColor(...navy);
-    doc.rect(0, 0, pageW, 18, 'F');
-    doc.setFillColor(...teal);
-    doc.rect(0, 18, pageW, 1.5, 'F');
-    doc.setTextColor(...white);
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text(title, 14, 12);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${data.company} | Confidential`, pageW - 14, 12, { align: 'right' });
-  }
-
-  function pageFooter() {
-    doc.setFontSize(6);
-    doc.setTextColor(...slate);
-    doc.text('Prepared by Atheon Intelligence Platform | GONXT Technology (Pty) Ltd', 14, pageH - 8);
-    doc.text(`Generated ${new Date(reportDate).toLocaleDateString('en-ZA')}`, pageW - 14, pageH - 8, { align: 'right' });
-  }
-
-  function sectionTitle(y: number, title: string): number {
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...navy);
-    doc.text(title, 14, y);
-    doc.setFillColor(...teal);
-    doc.rect(14, y + 1.5, 40, 0.6, 'F');
-    return y + 8;
-  }
-
-  function bodyText(y: number, text: string, maxWidth = pageW - 28): number {
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(30, 41, 59);
-    const lines = doc.splitTextToSize(text, maxWidth);
-    for (const line of lines) {
-      if (y > pageH - 20) {
-        doc.addPage();
-        pageHeader('Board Report — continued');
-        pageFooter();
-        y = 28;
-      }
-      doc.text(line, 14, y);
-      y += 4.5;
-    }
-    return y;
-  }
-
-  function kpiCard(x: number, y: number, w: number, label: string, value: string, color: readonly [number, number, number]) {
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(x, y, w, 22, 2, 2, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(x, y, w, 22, 2, 2, 'S');
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...slate);
-    doc.text(label.toUpperCase(), x + w / 2, y + 7, { align: 'center' });
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...color);
-    doc.text(value, x + w / 2, y + 17, { align: 'center' });
-  }
+  const { navy, teal, gold, chalk, slate, white, red, amber, green } = PALETTE;
+  const { pageHeader, pageFooter, sectionTitle, bodyText, kpiCard } =
+    createPdfChrome(doc, pageW, pageH, { company: data.company, reportDate });
 
   // ═══════════════════════════════════════════════
   // PAGE 1 — Cover
