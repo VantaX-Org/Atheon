@@ -27,13 +27,13 @@ boardDigest.post('/generate', async (c) => {
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
   const auth = c.get('auth') as AuthContext | undefined;
 
+  let r2Key: string | null = null;
   try {
     const data = await collectDigestData(c.env.DB, tenantId);
     const now = new Date().toISOString();
     const reportId = crypto.randomUUID();
     const title = `Board Digest — ${data.company} — ${now.substring(0, 10)}`;
 
-    let r2Key: string | null = null;
     if (c.env.STORAGE) {
       const pdf = await generateBoardDigestPDF(data, now);
       r2Key = `reports/${tenantId}/digest-${reportId}.pdf`;
@@ -58,6 +58,11 @@ boardDigest.post('/generate', async (c) => {
 
     return c.json({ id: reportId, title, pdfUrl: r2Key ? `/api/board-digest/${reportId}/pdf` : undefined }, 201);
   } catch (err) {
+    console.error('board_digest generation failed:', err);
+    // Roll back any orphaned R2 object — the board_reports row never landed.
+    if (r2Key && c.env.STORAGE) {
+      try { await c.env.STORAGE.delete(r2Key); } catch { /* best-effort */ }
+    }
     try {
       await c.env.DB.prepare(
         'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -66,7 +71,7 @@ boardDigest.post('/generate', async (c) => {
         JSON.stringify({ error: (err as Error).message, actor: auth?.email || null }), 'failure'
       ).run();
     } catch { /* swallow */ }
-    return c.json({ error: 'Board digest generation failed', detail: (err as Error).message }, 500);
+    return c.json({ error: 'Board digest generation failed' }, 500);
   }
 });
 
