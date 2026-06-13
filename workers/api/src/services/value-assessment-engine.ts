@@ -643,13 +643,17 @@ async function runProcessTimingAnalysis(
       `Average cycle of ${Math.round(avgO2C)} days measured across ${o2cRecords} completed invoice cycles, compared to the ${benchmark}-day SA industry benchmark.`,
     );
     if (daysOverBenchmark > 5 && o2cConf.gate.allow) {
+      const sampleO2C = await queryRows(db,
+        `SELECT invoice_number, amount_due, due_date FROM erp_invoices WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid' ORDER BY due_date ASC LIMIT 6`,
+        [tenantId]);
       await createFinding(db, assessmentId, tenantId, 'timing-o2c', {
         findingType: 'process_delay', severity: daysOverBenchmark > 20 ? 'critical' : 'high',
         title: `Order-to-Cash cycle ${Math.round(avgO2C)} days vs ${benchmark} day benchmark`,
         description: `Your average Order-to-Cash cycle is ${Math.round(avgO2C)} days, which is ${Math.round(daysOverBenchmark)} days longer than the industry benchmark of ${benchmark} days. This delay locks R${formatZAR(totalAR)} in working capital longer than necessary.`,
         affectedRecords: exceedingBenchmark, financialImpact: Math.round(financialImpact),
+        erpRecordId: sampleO2C[0]?.invoice_number ? `INV:${sampleO2C[0].invoice_number}` : undefined,
         confidence: o2cConf.confidence, confidenceExplanation: o2cConf.explanation,
-        evidence: { sample_records: [], pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every invoice cycle' },
+        evidence: { sample_records: sampleO2C.map(r => ({ ref: `INV:${r.invoice_number}`, source_value: `Due ${r.due_date}`, target_value: 'Outstanding', difference: Number(r.amount_due) || 0 })), pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every invoice cycle' },
         rootCause: 'Manual invoice follow-up processes, lack of automated dunning, and inconsistent payment terms enforcement.',
         prescription: `Deploy automated AR collection with payment reminder sequences. Target: reduce O2C from ${Math.round(avgO2C)} to ${benchmark} days, recovering R${formatZAR(Math.round(financialImpact))}/year in working capital cost.`,
         category: 'timing_issue', immediateValue: 0, ongoingMonthlyValue: Math.round(financialImpact / 12),
@@ -706,13 +710,17 @@ async function runProcessTimingAnalysis(
       `Average cycle of ${Math.round(avgP2P)} days measured across ${p2pRecords} completed purchase-order cycles, compared to the ${benchmark}-day benchmark.`,
     );
     if (daysOverBenchmark > 5 && p2pConf.gate.allow) {
+      const sampleP2P = await queryRows(db,
+        `SELECT po_number, total, order_date FROM erp_purchase_orders WHERE tenant_id = ? AND status = 'open' ORDER BY order_date ASC LIMIT 6`,
+        [tenantId]);
       await createFinding(db, assessmentId, tenantId, 'timing-p2p', {
         findingType: 'process_delay', severity: daysOverBenchmark > 15 ? 'critical' : 'high',
         title: `Procure-to-Pay cycle ${Math.round(avgP2P)} days vs ${benchmark} day benchmark`,
         description: `Your average Procure-to-Pay cycle is ${Math.round(avgP2P)} days, ${Math.round(daysOverBenchmark)} days above the benchmark. Late payments risk supplier relationship damage and potential early payment discount losses.`,
         affectedRecords: exceedingBenchmark, financialImpact: Math.round(financialImpact),
+        erpRecordId: sampleP2P[0]?.po_number ? `PO:${sampleP2P[0].po_number}` : undefined,
         confidence: p2pConf.confidence, confidenceExplanation: p2pConf.explanation,
-        evidence: { sample_records: [], pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every PO cycle' },
+        evidence: { sample_records: sampleP2P.map(r => ({ ref: `PO:${r.po_number}`, source_value: `Opened ${r.order_date}`, target_value: 'Open / committed', difference: Number(r.total) || 0 })), pattern: `${Math.round(daysOverBenchmark)} days above benchmark`, first_occurrence: 'Systematic', frequency: 'Every PO cycle' },
         rootCause: 'Manual PO approval workflows, lack of 3-way match automation, and delayed goods receipt confirmation.',
         prescription: `Automate PO approval and 3-way matching. Target: reduce P2P from ${Math.round(avgP2P)} to ${benchmark} days.`,
         category: 'timing_issue', immediateValue: 0, ongoingMonthlyValue: Math.round(financialImpact / 12),
@@ -986,12 +994,16 @@ async function analyseSubCatalyst(
         `SELECT COALESCE(SUM(ABS(amount)), 0) FROM erp_bank_transactions WHERE tenant_id = ? AND (reference IS NULL OR reference = '')`, [tenantId]);
 
       if (unreconciledCount > 0) {
+        const sampleUnrec = await queryRows(db,
+          `SELECT transaction_id, amount, transaction_date FROM erp_bank_transactions WHERE tenant_id = ? AND (reference IS NULL OR reference = '') ORDER BY ABS(amount) DESC LIMIT 6`,
+          [tenantId]);
         findings.push({
           type: 'discrepancy', severity: unreconciledValue > 50000 ? 'high' : 'medium',
           title: `${unreconciledCount} unreconciled bank transactions (R${formatZAR(unreconciledValue)})`,
           description: `${unreconciledCount} bank transactions totalling R${formatZAR(unreconciledValue)} have no matching reference to invoices or POs.`,
           affectedRecords: unreconciledCount, financialImpact: unreconciledValue * 0.05,
-          evidence: { sample_records: [], pattern: 'Transactions without matching references', first_occurrence: 'Current period', frequency: 'Ongoing' },
+          erpRecordId: sampleUnrec[0]?.transaction_id ? `TXN:${sampleUnrec[0].transaction_id}` : undefined,
+          evidence: { sample_records: sampleUnrec.map(r => ({ ref: `TXN:${r.transaction_id}`, source_value: `${r.transaction_date}`, target_value: 'No matching reference', difference: Math.abs(Number(r.amount) || 0) })), pattern: 'Transactions without matching references', first_occurrence: 'Current period', frequency: 'Ongoing' },
           rootCause: 'Manual reconciliation process lacks automated matching rules.',
           prescription: 'Deploy automated bank reconciliation with AI-powered transaction matching.',
           category: 'process_issue', immediateValue: unreconciledValue * 0.02, ongoingMonthlyValue: unreconciledValue * 0.003,
@@ -1022,12 +1034,16 @@ async function analyseSubCatalyst(
         [tenantId]);
 
       if (inactiveSupplierPOs > 0) {
+        const sampleInactivePO = await queryRows(db,
+          `SELECT po.po_number, po.total, po.supplier_id FROM erp_purchase_orders po WHERE po.tenant_id = ? AND po.status = 'open' AND EXISTS (SELECT 1 FROM erp_suppliers s WHERE s.tenant_id = po.tenant_id AND s.supplier_id = po.supplier_id AND s.status != 'active') ORDER BY po.total DESC LIMIT 6`,
+          [tenantId]);
         findings.push({
           type: 'risk', severity: 'high',
           title: `${inactiveSupplierPOs} open POs to inactive suppliers`,
           description: `${inactiveSupplierPOs} purchase orders are still open against suppliers that are no longer marked as active. This creates procurement risk and potential payment issues.`,
           affectedRecords: inactiveSupplierPOs, financialImpact: 25000,
-          evidence: { sample_records: [], pattern: 'Open POs to inactive suppliers', first_occurrence: 'Ongoing', frequency: 'Accumulated' },
+          erpRecordId: sampleInactivePO[0]?.po_number ? `PO:${sampleInactivePO[0].po_number}` : undefined,
+          evidence: { sample_records: sampleInactivePO.map(r => ({ ref: `PO:${r.po_number}`, source_value: `Supplier ${r.supplier_id}`, target_value: 'Inactive supplier', difference: Number(r.total) || 0 })), pattern: 'Open POs to inactive suppliers', first_occurrence: 'Ongoing', frequency: 'Accumulated' },
           rootCause: 'Supplier lifecycle management not integrated with procurement. Supplier deactivation does not cascade to open orders.',
           prescription: 'Implement automated supplier lifecycle checks before PO creation and payment release.',
           category: 'configuration_issue', immediateValue: 10000, ongoingMonthlyValue: 2000,
@@ -1061,12 +1077,16 @@ async function analyseSubCatalyst(
         `SELECT COUNT(*) FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND (department IS NULL OR department = '')`, [tenantId]);
 
       if (missingDept > 0) {
+        const sampleMissingDept = await queryRows(db,
+          `SELECT employee_id FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND (department IS NULL OR department = '') ORDER BY employee_id LIMIT 6`,
+          [tenantId]);
         findings.push({
           type: 'data_quality', severity: 'medium',
           title: `${missingDept} employees with missing department assignment`,
           description: `${missingDept} active employees have no department assigned, making cost allocation impossible and creating audit risk.`,
           affectedRecords: missingDept, financialImpact: missingDept * 1000,
-          evidence: { sample_records: [], pattern: 'Active employees without department', first_occurrence: 'Ongoing', frequency: 'Static' },
+          erpRecordId: sampleMissingDept[0]?.employee_id ? `EMP:${sampleMissingDept[0].employee_id}` : undefined,
+          evidence: { sample_records: sampleMissingDept.map(r => ({ ref: `EMP:${r.employee_id}`, source_value: 'Active', target_value: 'No department assigned', difference: 0 })), pattern: 'Active employees without department', first_occurrence: 'Ongoing', frequency: 'Static' },
           rootCause: 'Employee onboarding does not enforce department assignment. HR master data incomplete.',
           prescription: 'Enforce mandatory department assignment in employee master data and deploy periodic data quality checks.',
           category: 'data_issue', immediateValue: 0, ongoingMonthlyValue: missingDept * 100,
@@ -1099,12 +1119,16 @@ async function analyseSubCatalyst(
       const zeroCost = await queryNum(db, `SELECT COUNT(*) FROM erp_products WHERE tenant_id = ? AND is_active = 1 AND (cost_price IS NULL OR cost_price = 0)`, [tenantId]);
 
       if (negStock > 0) {
+        const sampleNeg = await queryRows(db,
+          `SELECT product_code, product_name, stock_on_hand FROM erp_products WHERE tenant_id = ? AND stock_on_hand < 0 ORDER BY stock_on_hand ASC LIMIT 6`,
+          [tenantId]);
         findings.push({
           type: 'data_quality', severity: 'critical',
           title: `${negStock} products with negative stock quantities`,
           description: `${negStock} products show negative stock-on-hand, indicating data integrity issues in inventory management.`,
           affectedRecords: negStock, financialImpact: negStock * 5000,
-          evidence: { sample_records: [], pattern: 'Negative stock quantities', first_occurrence: 'Current', frequency: 'Ongoing' },
+          erpRecordId: sampleNeg[0]?.product_code ? `SKU:${sampleNeg[0].product_code}` : undefined,
+          evidence: { sample_records: sampleNeg.map(r => ({ ref: `SKU:${r.product_code}`, source_value: String(r.product_name || 'product'), target_value: `${r.stock_on_hand} on hand`, difference: Number(r.stock_on_hand) || 0 })), pattern: 'Negative stock quantities', first_occurrence: 'Current', frequency: 'Ongoing' },
           rootCause: 'Stock movements not properly sequenced. Goods issues processed before goods receipts.',
           prescription: 'Deploy inventory reconciliation catalyst with real-time stock validation.',
           category: 'data_issue', immediateValue: negStock * 2000, ongoingMonthlyValue: negStock * 200,
