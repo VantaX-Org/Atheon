@@ -3479,6 +3479,14 @@ export interface AssessmentFinding {
   recommended_catalyst: { catalyst: string; sub_catalyst: string };
   metric_signature: string;
   evidence_quality: 'high' | 'medium' | 'low';
+  /** v83 per-finding confidence in [0,1]. Direct observations are 0.95. */
+  confidence?: number;
+  /** Auditor-facing statistical basis for `confidence`. Never names a model/provider. */
+  confidence_explanation?: string;
+  /** False when an inferred finding fell below the sample-size minimum (dollar unproven). */
+  confidence_gate_passed?: boolean;
+  /** ERP source id (first sample record's ref) for traceback. */
+  erp_record_id?: string;
   detected_at: string;
   company_id?: string;
   company_name?: string;

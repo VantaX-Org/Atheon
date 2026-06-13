@@ -286,7 +286,9 @@ export async function persistFindingsToPulseApex(
         ).bind(
           alertId, tenantId,
           f.title, f.narrative, f.severity, f.category,
-          f.evidence_quality === 'high' ? 0.9 : f.evidence_quality === 'medium' ? 0.7 : 0.5,
+          // v83: use the finding's real per-finding confidence (direct = 0.95,
+          // inferred scales with sample size) instead of the evidence-quality proxy.
+          f.confidence,
           f.value_at_risk_zar, recommendedActions,
         ),
       );

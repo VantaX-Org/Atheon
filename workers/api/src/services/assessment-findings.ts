@@ -26,7 +26,23 @@
  * Multi-company: when `ctx.companyIds` is set, every query scopes to those
  * companies via `erp_*.company_id IN (…)`. Tables that don't yet have a
  * `company_id` column degrade gracefully — the column is filtered if present.
+ *
+ * Per-finding confidence (v83): every finding carries a numeric `confidence`,
+ * an auditor-facing `confidence_explanation`, and the `erp_record_id` of its
+ * first sample record, so every claimed rand traces back to a source row. The
+ * confidence is computed centrally in `makeFinding` from two approved, unit-
+ * tested helpers reused from the value-assessment engine — DIRECT observations
+ * (overdue, dead-stock, terminated-in-payroll …) are facts at 0.95 and are
+ * never gated; INFERRED / heuristic findings (concentration ratios, off-hours
+ * journals, maverick spend …) scale with sample size and gate below the
+ * minimum. The explanation states the STATISTICAL BASIS only — it never names
+ * a model or provider (trade secret).
  */
+
+import {
+  directObservationConfidence,
+  inferredConfidence,
+} from './value-assessment-engine';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -146,6 +162,24 @@ export interface Finding {
   /** Pulse-compatible metric key — same shape as the code, useful for cross-reference. */
   metric_signature: string;
   evidence_quality: EvidenceQuality;
+  /**
+   * v83 per-finding confidence in [0,1], 2dp. DIRECT observations are 0.95;
+   * INFERRED findings scale with sample size and drop below 0.6 when gated.
+   */
+  confidence: number;
+  /** Auditor-facing statistical basis for `confidence`. Never names a model/provider. */
+  confidence_explanation: string;
+  /**
+   * `false` when an INFERRED finding fell below the sample-size minimum — the
+   * dollar is unproven and the report must flag it pending customer
+   * confirmation rather than claim it. Always `true` for direct observations.
+   */
+  confidence_gate_passed: boolean;
+  /**
+   * ERP source id of the first sample record (its `ref`), so a reviewer can
+   * pull the originating row. Undefined only when a finding carries no samples.
+   */
+  erp_record_id?: string;
   detected_at: string;
   /** LLM-authored business commentary attached during report generation.
    *  Two short sentences: (1) why this matters in plain business language,
@@ -298,6 +332,127 @@ const CATEGORY_MAP: Record<FindingCode, FindingCategory> = {
   svc_inactive_employee_billed_time: 'service_delivery',
 };
 
+/**
+ * Confidence classification for every finding code (v83).
+ *
+ *  - `direct`   — the records ARE the evidence (overdue, mismatch, dead-stock,
+ *                 terminated-in-payroll, missing-on-file). Confidence is a flat
+ *                 0.95 and is NEVER suppressed: three genuinely overdue invoices
+ *                 is still a fact.
+ *  - `inferred` — a heuristic or aggregate statistic (concentration ratios,
+ *                 off-hours / round-amount journals, maverick spend, fuzzy
+ *                 duplicate matching, margin/utilisation trends, FX projection).
+ *                 Confidence scales with sample size and gates below the minimum.
+ *
+ * Every FindingCode MUST appear here (compile-time `Record` exhaustiveness +
+ * the `every-finding-code-is-classified` test). When adding a detector, classify
+ * it honestly: if a human auditor would call the rows themselves the proof, it
+ * is `direct`; if the signal is a ratio, trend, threshold, or fuzzy match, it is
+ * `inferred`.
+ */
+export const FINDING_INFERENCE_KIND: Record<FindingCode, 'direct' | 'inferred'> = {
+  // AR — aging/breach are observed facts; debtor concentration is a ratio.
+  ar_aging_overdue_30_60: 'direct',
+  ar_aging_overdue_60_90: 'direct',
+  ar_aging_overdue_90_plus: 'direct',
+  ar_credit_limit_breach: 'direct',
+  ar_top_debtor_concentration: 'inferred',
+  // AP — all three are observed mismatches/overdues.
+  ap_overdue_delivery: 'direct',
+  ap_three_way_mismatch: 'direct',
+  ap_unreconciled_bank: 'direct',
+  // GL — suspense balance is a fact; the rest are anomaly heuristics.
+  gl_suspense_balance: 'direct',
+  gl_journal_off_hours: 'inferred',
+  gl_round_amount_journals: 'inferred',
+  gl_high_manual_volume: 'inferred',
+  // Procurement — inactive-with-open-POs is a fact; the rest are heuristics.
+  proc_maverick_spend: 'inferred',
+  proc_duplicate_suppliers: 'inferred',
+  proc_supplier_concentration: 'inferred',
+  proc_inactive_with_open_pos: 'direct',
+  // Inventory — quantity/movement facts; margin erosion is a trend.
+  inv_stale_stock: 'direct',
+  inv_dead_stock: 'direct',
+  inv_negative_stock: 'direct',
+  inv_below_reorder: 'direct',
+  inv_margin_erosion: 'inferred',
+  inv_inactive_with_value: 'direct',
+  // Sales — concentration is a ratio; the rest are observed facts.
+  sales_customer_concentration: 'inferred',
+  sales_inactive_with_ar: 'direct',
+  sales_credit_no_check: 'direct',
+  // Workforce — terminated-in-payroll is a fact; concentration is a ratio.
+  hr_terminated_in_payroll: 'direct',
+  hr_high_payroll_concentration: 'inferred',
+  // Tax — overdue/missing are facts; rate anomaly is a heuristic.
+  tax_overdue_submission: 'direct',
+  tax_missing_vat_numbers: 'direct',
+  tax_vat_rate_anomaly: 'inferred',
+  // FX — dual-use is a data-quality fact; exposure is a volatility projection.
+  fx_currency_exposure: 'inferred',
+  fx_dual_use_currency: 'direct',
+  // Service — utilisation/recognition-lag are inferred; the rest are facts.
+  svc_low_billable_utilisation: 'inferred',
+  svc_unbilled_time_aging: 'direct',
+  svc_project_overrun: 'direct',
+  svc_project_margin_negative: 'direct',
+  svc_unapproved_time_entries: 'direct',
+  svc_revenue_recognition_lag: 'inferred',
+  svc_zero_hours_active_project: 'direct',
+  svc_inactive_employee_billed_time: 'direct',
+};
+
+/**
+ * Auditor-facing basis phrase per code. For `direct` codes it is the noun
+ * phrase describing WHAT was observed (slots into "Direct ERP observation of N
+ * record(s): <phrase>"). For `inferred` codes it is the rule sentence (slots in
+ * front of "Inferred from N records…"). Stated as a statistical/business basis
+ * only — never names a model or provider.
+ */
+export const FINDING_BASIS: Record<FindingCode, string> = {
+  ar_aging_overdue_30_60: 'invoices 30–60 days past due and unpaid',
+  ar_aging_overdue_60_90: 'invoices 60–90 days past due and unpaid',
+  ar_aging_overdue_90_plus: 'invoices 90+ days past due and unpaid',
+  ar_credit_limit_breach: 'customer balances exceeding their assigned credit limit',
+  ar_top_debtor_concentration: 'Revenue concentration in a small set of top debtors elevates collection risk.',
+  ap_overdue_delivery: 'purchase orders past their expected delivery date',
+  ap_three_way_mismatch: 'invoices where the PO, goods-receipt and invoice values disagree',
+  ap_unreconciled_bank: 'bank transactions with no matching ledger entry',
+  gl_suspense_balance: 'suspense-account balances not yet cleared to a final account',
+  gl_journal_off_hours: 'Journals posted outside business hours are a recognised anomaly signal.',
+  gl_round_amount_journals: 'Clustering of round-number journals is a recognised manipulation signal.',
+  gl_high_manual_volume: 'A high share of manual journals signals weak automation control.',
+  proc_maverick_spend: 'Spend outside approved PO channels is classified against procurement policy.',
+  proc_duplicate_suppliers: 'Near-duplicate supplier records are matched by fuzzy similarity.',
+  proc_supplier_concentration: 'Spend concentration in a few suppliers elevates supply risk.',
+  proc_inactive_with_open_pos: 'inactive suppliers still carrying open purchase orders',
+  inv_stale_stock: 'stock items with no movement over the staleness window',
+  inv_dead_stock: 'stock items with no movement in 12+ months',
+  inv_negative_stock: 'stock items recorded at a negative on-hand quantity',
+  inv_below_reorder: 'stock items below their defined reorder point',
+  inv_margin_erosion: 'Declining unit margins are inferred from a price-versus-cost trend.',
+  inv_inactive_with_value: 'discontinued items still carrying balance-sheet value',
+  sales_customer_concentration: 'Revenue concentration in a few customers elevates dependency risk.',
+  sales_inactive_with_ar: 'inactive customers still carrying an open AR balance',
+  sales_credit_no_check: 'credit sales recorded with no credit check on file',
+  hr_terminated_in_payroll: 'terminated employees still present on the payroll',
+  hr_high_payroll_concentration: 'Payroll concentration in a few roles is inferred from the pay distribution.',
+  tax_overdue_submission: 'tax submissions past their statutory deadline',
+  tax_missing_vat_numbers: 'VAT-registered suppliers missing a VAT number on file',
+  tax_vat_rate_anomaly: 'VAT rates deviating from the expected rate are flagged as anomalies.',
+  fx_currency_exposure: 'Foreign-currency exposure is projected against rate volatility.',
+  fx_dual_use_currency: 'a single currency used inconsistently across records',
+  svc_low_billable_utilisation: 'Billable utilisation below target is inferred against a benchmark.',
+  svc_unbilled_time_aging: 'billable time entries aging unbilled in work-in-progress',
+  svc_project_overrun: 'projects with actual cost exceeding the approved budget',
+  svc_project_margin_negative: 'projects running at a negative margin',
+  svc_unapproved_time_entries: 'time entries posted without the required approval',
+  svc_revenue_recognition_lag: 'Recognition lag is inferred against the applicable revenue policy.',
+  svc_zero_hours_active_project: 'active projects with zero hours logged',
+  svc_inactive_employee_billed_time: 'inactive employees with billed time recorded',
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /**
@@ -413,7 +568,7 @@ function periodFilter(
 }
 
 /** Build a base Finding from required + optional fields. Severity etc. stay caller-controlled. */
-function makeFinding(args: {
+export function makeFinding(args: {
   code: FindingCode;
   title: string;
   narrative: string;
@@ -425,6 +580,14 @@ function makeFinding(args: {
   severity: Severity;
   ctx: FindingsContext;
 }): Finding {
+  // v83 confidence: DIRECT observations are facts (0.95, never gated); INFERRED
+  // findings scale with sample size. `affected_count` is the population the
+  // finding is drawn from, so it is the sample size for the gate.
+  const basis = FINDING_BASIS[args.code];
+  const verdict =
+    FINDING_INFERENCE_KIND[args.code] === 'direct'
+      ? directObservationConfidence(args.affected_count, basis)
+      : inferredConfidence(args.affected_count, args.code, basis);
   return {
     id: makeFindingId(),
     code: args.code,
@@ -440,6 +603,10 @@ function makeFinding(args: {
     recommended_catalyst: FINDING_CATALYST_MAP[args.code],
     metric_signature: args.code,
     evidence_quality: evidenceQualityFromMonths(args.ctx.monthsOfData),
+    confidence: verdict.confidence,
+    confidence_explanation: verdict.explanation,
+    confidence_gate_passed: verdict.gate.allow,
+    erp_record_id: args.sample_records[0]?.ref,
     detected_at: new Date().toISOString(),
   };
 }
