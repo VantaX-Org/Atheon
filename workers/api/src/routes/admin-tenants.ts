@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AuthContext, AppBindings } from '../types';
+import { prodSafeError } from '../services/http-errors';
 
 const tenants = new Hono<AppBindings>();
 tenants.use('/*', cors());
@@ -56,8 +57,7 @@ tenants.get('/', async (c) => {
       tenants: data,
     });
   } catch (err) {
-    console.error('Failed to list tenants:', err);
-    return c.json({ error: 'Failed to list tenants', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to list tenants', layer: 'admin' }), 500);
   }
 });
 
@@ -110,8 +110,7 @@ tenants.get('/:id', async (c) => {
       },
     });
   } catch (err) {
-    console.error('Failed to get tenant:', err);
-    return c.json({ error: 'Failed to get tenant', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to get tenant', layer: 'admin' }), 500);
   }
 });
 
@@ -175,8 +174,7 @@ tenants.post('/:id/soft-delete', async (c) => {
       },
     });
   } catch (err) {
-    console.error('Failed to soft-delete tenant:', err);
-    return c.json({ error: 'Failed to delete tenant', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to delete tenant', layer: 'admin' }), 500);
   }
 });
 
@@ -226,8 +224,7 @@ tenants.post('/:id/reactivate', async (c) => {
       },
     });
   } catch (err) {
-    console.error('Failed to reactivate tenant:', err);
-    return c.json({ error: 'Failed to reactivate tenant', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to reactivate tenant', layer: 'admin' }), 500);
   }
 });
 
@@ -301,8 +298,7 @@ tenants.post('/:id/export', async (c) => {
       downloadUrl: `/api/v1/admin/tenants/${tenantId}/export/download`,
     });
   } catch (err) {
-    console.error('Failed to export tenant:', err);
-    return c.json({ error: 'Failed to export tenant', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to export tenant', layer: 'admin' }), 500);
   }
 });
 
@@ -365,8 +361,7 @@ tenants.get('/:id/export/download', async (c) => {
       'Content-Disposition': `attachment; filename="${filename}"`,
     });
   } catch (err) {
-    console.error('Failed to download export:', err);
-    return c.json({ error: 'Failed to download export', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to download export', layer: 'admin' }), 500);
   }
 });
 
@@ -456,8 +451,7 @@ tenants.delete('/:id/permanent-delete', async (c) => {
       warning: 'This action cannot be undone',
     });
   } catch (err) {
-    console.error('Failed to permanent-delete tenant:', err);
-    return c.json({ error: 'Failed to delete tenant', details: (err as Error).message }, 500);
+    return c.json(prodSafeError(err, c.env.ENVIRONMENT, { error: 'Failed to delete tenant', layer: 'admin' }), 500);
   }
 });
 
