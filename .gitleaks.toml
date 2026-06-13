@@ -1,0 +1,26 @@
+# Atheon gitleaks config.
+# Extends the default ruleset; add project-specific allowlist entries below.
+# Run locally via the pre-commit hook installed by `npm run setup:hooks`.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Atheon repo allowlist — entries below are vetted false-positives."
+paths = [
+  # Generated fixtures and demo seed data — no real secrets.
+  '''workers/api/src/routes/seed-vantax\.ts''',
+  '''(^|/)__fixtures__/''',
+  '''(^|/)test/fixtures/''',
+  # Lockfiles — package metadata, not credentials.
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)yarn\.lock$''',
+]
+# regexTarget = "match"
+regexes = [
+  # Demo/seed placeholder tokens used in the VantaX persona.
+  '''(?i)demo[-_]?(api[-_]?key|token|secret)''',
+  # Cloudflare doc example values that look like keys but aren't.
+  '''00000000-0000-0000-0000-000000000000''',
+]

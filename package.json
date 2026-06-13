@@ -16,7 +16,8 @@
     "verify:rbac": "vitest run --config vitest.verification.config.ts verification/rbac",
     "verify:matrices": "vitest run --config vitest.verification.config.ts",
     "verify:load": "tsx verification/load/load-gate.ts",
-    "verify:dr": "tsx verification/dr/restore-drill.ts"
+    "verify:dr": "tsx verification/dr/restore-drill.ts",
+    "setup:hooks": "bash scripts/install-hooks.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
