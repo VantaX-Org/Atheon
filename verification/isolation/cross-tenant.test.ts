@@ -13,8 +13,11 @@ import { ApiClient } from '../lib/client';
  *
  *   2. tenant_id query override — a non-cross-tenant role passing
  *      `?tenant_id=<foreign>` must not pivot into another tenant's data. The
- *      override is silently ignored, so the foreign UUID must never appear in
- *      the response body.
+ *      tenant middleware now REJECTS the override with 403 for non-cross-tenant
+ *      roles (stronger than silently ignoring it); where an endpoint still
+ *      serves 200, the foreign UUID must never appear in the response body.
+ *      Either outcome proves no pivot — only a 200 that echoes the foreign id
+ *      would be a leak.
  *
  * HONEST SCOPE NOTE: with only vantax-admin credentials we cannot prove the
  * converse — that tenant B's rows are withheld from a tenant-A caller — because
@@ -61,12 +64,15 @@ describe('tenant isolation (vantax admin token)', () => {
     expect(resp.status).not.toBe(200);
   });
 
-  it.each(OVERRIDE_PROBES)('override: $label ignores ?tenant_id and leaks no foreign data', async ({ path }) => {
+  it.each(OVERRIDE_PROBES)('override: $label rejects or ignores ?tenant_id, never leaks foreign data', async ({ path }) => {
     const resp = await client.authedFetch(path);
-    // The override is ignored, not rejected — so 200 is expected here. What must
-    // hold is that the foreign tenant id is nowhere in the response body.
-    expect(resp.status).toBe(200);
-    const body = await resp.text();
-    expect(body).not.toContain(FOREIGN);
+    // A non-cross-tenant role is either 403'd at the tenant middleware (preferred,
+    // stronger) or served its OWN tenant's 200 with the override ignored. Both are
+    // safe; a 200 that contained the foreign id would be the only failure.
+    expect([200, 403]).toContain(resp.status);
+    if (resp.status === 200) {
+      const body = await resp.text();
+      expect(body).not.toContain(FOREIGN);
+    }
   });
 });

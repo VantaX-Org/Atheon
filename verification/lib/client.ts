@@ -44,7 +44,18 @@ export class ApiClient {
     private readonly email = CONFIG.adminEmail,
     private readonly password = CONFIG.adminPassword,
     private readonly baseUrl = CONFIG.apiUrl,
+    /**
+     * When demo-login is used (default-admin creds + VERIFY_DEMO_SECRET set),
+     * mint a token for THIS role instead of 'admin'. Lets a suite exercise a
+     * superadmin-gated endpoint without standing up real MFA on a superadmin.
+     */
+    private readonly demoRole = 'admin',
   ) {}
+
+  /** True when the caller passed real, non-default credentials (a minted user). */
+  private get hasExplicitCreds(): boolean {
+    return this.email !== CONFIG.adminEmail || this.password !== CONFIG.adminPassword;
+  }
 
   async login(): Promise<void> {
     // v40 makes a bare password login for an admin-tier account return 403 once
@@ -56,19 +67,24 @@ export class ApiClient {
     //      using a configured TOTP seed — same flow a human admin performs.
     // Neither weakens the control: demo-login is prod-disabled + secret-gated,
     // and the TOTP path proves possession of the seeded authenticator.
-    if (CONFIG.demoSecret) {
+    //
+    // Explicit (minted) credentials always take the password path: demo-login
+    // would mint an ADMIN token regardless of email, masking the very role
+    // boundary an RBAC suite means to probe. Freshly minted non-admin users are
+    // inside their MFA grace, so the bare password login returns a token.
+    if (CONFIG.demoSecret && !this.hasExplicitCreds) {
       await this.demoLogin();
       return;
     }
     await this.passwordLogin();
   }
 
-  /** Mint a real admin JWT via the prod-disabled, secret-gated automation path. */
+  /** Mint a real JWT (default role 'admin') via the prod-disabled, secret-gated automation path. */
   private async demoLogin(): Promise<void> {
     const resp = await fetch(`${this.baseUrl}/api/v1/auth/demo-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Demo-Secret': CONFIG.demoSecret },
-      body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, role: 'admin' }),
+      body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, role: this.demoRole }),
     });
     if (!resp.ok) {
       // Body can reflect request material on a failing auth endpoint — log status only.

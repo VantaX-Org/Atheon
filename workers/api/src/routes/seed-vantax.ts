@@ -1790,8 +1790,13 @@ seed.post('/seed-vantax', async (c) => {
       ]},
     ];
 
+    // Captured so billable_line_items can reference a REAL root_cause_analyses
+    // row (the traceability invariant requires every line item's rca_id to
+    // resolve — a catalyst cluster id does not).
+    const seededRcaIds: string[] = [];
     for (const rca of rcaData) {
       const rcaId = crypto.randomUUID();
+      seededRcaIds.push(rcaId);
       seedBatch.push(c.env.DB.prepare(
         `INSERT INTO root_cause_analyses (id, tenant_id, metric_id, metric_name, trigger_status, causal_chain, confidence, impact_summary, status, generated_at)
          VALUES (?, ?, ?, ?, ?, '[]', 85, ?, 'active', ?)`
@@ -2142,7 +2147,12 @@ seed.post('/seed-vantax', async (c) => {
     const periodEndIso = new Date().toISOString();
     const periodStartIso = new Date(Date.now() - 30 * 86400000).toISOString();
     const atheonSharePct = 0.20;
-    const atheonRevenue = Math.round(totalRealisedSavings * atheonSharePct);
+    // Period total is the EXACT sum of the (rounded) line items below, not a
+    // separately-rounded grand total — otherwise per-item rounding drift can
+    // exceed the billing invariant's 1-unit reconciliation tolerance.
+    const lineItemsTotal = Object.values(archetypeRealised)
+      .reduce((acc, agg) => acc + Math.round(agg.realised), 0);
+    const atheonRevenue = Math.round(lineItemsTotal * atheonSharePct);
     const billablePeriodId = crypto.randomUUID();
     const periodGeneratedAt = periodEndIso;
     seedBatch.push(c.env.DB.prepare(
@@ -2150,22 +2160,29 @@ seed.post('/seed-vantax', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, 'ZAR', 'invoiced', ?, ?)`
     ).bind(
       billablePeriodId, tenantId, periodStartIso, periodEndIso,
-      Math.round(totalRealisedSavings), atheonSharePct, atheonRevenue,
+      lineItemsTotal, atheonSharePct, atheonRevenue,
       periodGeneratedAt, periodGeneratedAt,
     ));
 
     // One line item per archetype — confidence taken from final-period
     // calibration's mean_residual proximity to 1.0 (clamped to [0.6, 0.98]).
+    // rca_id round-robins over the real RCA rows seeded above so every claimed
+    // Rand traces to a resolvable root_cause_analyses row (billing invariant).
+    let archIdx = 0;
     for (const [archKey, agg] of Object.entries(archetypeRealised)) {
       const ratio = agg.predicted > 0 ? agg.realised / agg.predicted : 1;
       const confidence = Math.min(0.98, Math.max(0.6, 1 - Math.abs(1 - ratio)));
+      const rcaId = seededRcaIds.length > 0
+        ? seededRcaIds[archIdx % seededRcaIds.length]
+        : null;
+      archIdx++;
       seedBatch.push(c.env.DB.prepare(
         `INSERT INTO billable_line_items (id, period_id, tenant_id, rca_id, metric_name, attributed_savings, currency, confidence, evidence, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'ZAR', ?, ?, ?)`
       ).bind(
-        crypto.randomUUID(), billablePeriodId, tenantId, agg.clusterId,
+        crypto.randomUUID(), billablePeriodId, tenantId, rcaId,
         agg.subCatalystName, Math.round(agg.realised), confidence,
-        JSON.stringify({ archetype: archKey, runs: dayOffsets.length, predicted: Math.round(agg.predicted) }),
+        JSON.stringify({ archetype: archKey, cluster_id: agg.clusterId, runs: dayOffsets.length, predicted: Math.round(agg.predicted) }),
         periodGeneratedAt,
       ));
     }

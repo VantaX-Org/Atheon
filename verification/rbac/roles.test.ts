@@ -11,8 +11,9 @@ import { CONFIG } from '../config';
  *   - every role can READ apex/health (dashboards are universally visible);
  *   - only an executive may EXECUTE a catalyst (others get 403 before lookup);
  *   - a viewer cannot create users (admin-only write);
- *   - an auditor cannot read the raw audit log (audit access is admin-gated —
- *     the "auditor" role name does NOT imply audit-log read; verified live).
+ *   - an auditor CAN read the raw audit log (seeded with the "audit.read"
+ *     permission) while a viewer (no audit grant) is denied — access is gated
+ *     by the granted permission, not by the role name.
  *
  * Minting real users is destructive-ish but the vantax tenant is a disposable
  * demo, and the emails are randomised so reruns never collide.
@@ -20,6 +21,20 @@ import { CONFIG } from '../config';
 
 const ROLES = ['executive', 'manager', 'analyst', 'operator', 'auditor', 'viewer'] as const;
 type Role = (typeof ROLES)[number];
+
+/**
+ * Permissions each minted persona carries — mirrors the production seed
+ * (migrate.ts). The API gates on the granted permission, not the role name, so
+ * these decide outcomes: only `auditor` holds `audit.read`.
+ */
+const ROLE_PERMISSIONS: Record<Role, string[]> = {
+  executive: ['apex.read', 'pulse.read', 'catalysts.read', 'catalysts.execute', 'mind.query'],
+  manager: ['pulse.read', 'pulse.write', 'catalysts.read', 'catalysts.execute', 'mind.query', 'memory.read'],
+  analyst: ['pulse.read', 'mind.query'],
+  operator: ['apex.read', 'pulse.read', 'catalysts.read', 'catalysts.execute', 'mind.query'],
+  auditor: ['compliance.read', 'audit.read'],
+  viewer: ['dashboard.read'],
+};
 
 /** A non-existent cluster id — executive passes the role gate then 404s on lookup. */
 const EXECUTE_PATH = '/api/v1/catalysts/clusters/__none__/sub-catalysts/x/execute';
@@ -36,7 +51,7 @@ describe('RBAC role matrix (live API)', () => {
       const mint = await admin.authedFetch('/api/v1/iam/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name: `Verify ${role}`, role }),
+        body: JSON.stringify({ email, name: `Verify ${role}`, role, permissions: ROLE_PERMISSIONS[role] }),
       });
       if (mint.status !== 201) {
         throw new Error(`mint ${role} failed (${mint.status}): ${await mint.text()}`);
@@ -78,8 +93,11 @@ describe('RBAC role matrix (live API)', () => {
     expect(resp.status).toBe(403);
   });
 
-  it('auditor cannot read the raw audit log (audit-log read is admin-gated)', async () => {
-    const resp = await clients.get('auditor')!.authedFetch('/api/v1/audit/log');
-    expect(resp.status).toBe(403);
+  it('auditor (audit.read) reads the audit log; viewer (no grant) is denied', async () => {
+    const auditorResp = await clients.get('auditor')!.authedFetch('/api/v1/audit/log');
+    expect(auditorResp.status, 'auditor holds audit.read → allowed').toBe(200);
+
+    const viewerResp = await clients.get('viewer')!.authedFetch('/api/v1/audit/log');
+    expect(viewerResp.status, 'viewer lacks audit.read → denied').toBe(403);
   });
 });
