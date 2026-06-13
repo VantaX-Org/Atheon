@@ -177,6 +177,7 @@ export async function cleanupTenant(tenantId: string): Promise<void> {
     'correlation_events', 'erp_connections', 'mind_queries',
     'notifications', 'webhooks', 'documents', 'email_queue',
     'execution_logs', 'managed_deployments', 'assessments',
+    'board_reports', 'billable_periods',
     'audit_log', 'users', 'tenant_entitlements', 'tenants',
   ];
 

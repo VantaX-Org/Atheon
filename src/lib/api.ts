@@ -1890,6 +1890,27 @@ export const api = {
     },
   },
 
+  // ── Board Digest (Quick win #7 — executive+ 2-page leave-behind) ──
+  boardDigest: {
+    generate: (tenantId?: string) =>
+      request<{ id: string; title: string; pdfUrl?: string }>(
+        `/api/board-digest/generate${qs({ tenant_id: tenantId })}`, { method: 'POST' },
+      ),
+    downloadPdf: async (id: string, title?: string) => {
+      const requestId = generateRequestId();
+      const headers: Record<string, string> = { 'X-Request-ID': requestId };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch(`${API_URL}/api/board-digest/${id}/pdf`, { headers });
+      const responseRequestId = captureRequestId(res);
+      if (!res.ok) throw new ApiError(res.status, 'Failed to download board digest PDF', responseRequestId);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const safeName = (title || 'board-digest').replace(/["\r\n\\/:*?<>|]/g, '_').slice(0, 100);
+      const a = document.createElement('a'); a.href = url; a.download = `${safeName}.pdf`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    },
+  },
+
   // ── Onboarding (Spec §9.2) ─────────────────────────────────
   onboarding: {
     progress: () =>

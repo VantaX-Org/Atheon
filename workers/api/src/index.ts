@@ -51,6 +51,7 @@ import insightsStatsRoutes from './routes/insights-stats';
 import catalystIntelligence from './routes/catalyst-intelligence';
 import roi from './routes/roi';
 import boardReport from './routes/board-report';
+import boardDigest from './routes/board-digest';
 import onboarding from './routes/onboarding';
 import freshness from './routes/freshness';
 import atheonScore from './routes/atheon-score';
@@ -504,7 +505,7 @@ app.get('/healthz', async (c) => {
 
 // Tenant isolation middleware for protected routes (supports both /api/ and /api/v1/ prefixes)
 // Auth routes are excluded (login/register don't have JWT yet)
-const protectedPrefixes = ['tenants', 'iam', 'apex', 'dashboard', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks', 'system-alerts', 'support', 'inferences', 'billing', 'dsar', 'orchestration', 'insights-stats'];
+const protectedPrefixes = ['tenants', 'iam', 'apex', 'dashboard', 'pulse', 'catalysts', 'memory', 'mind', 'erp', 'controlplane', 'audit', 'connectivity', 'notifications', 'storage', 'realtime', 'assessments', 'deployments', 'ai-costs', 'radar', 'diagnostics', 'catalyst-intelligence', 'roi', 'board-report', 'board-digest', 'onboarding', 'freshness', 'atheon-score', 'baseline', 'targets', 'executive-summary', 'webhooks', 'system-alerts', 'support', 'inferences', 'billing', 'dsar', 'orchestration', 'insights-stats'];
 for (const prefix of protectedPrefixes) {
   app.use(`/api/${prefix}/*`, tenantIsolation());
   app.use(`/api/v1/${prefix}/*`, tenantIsolation());
@@ -539,6 +540,11 @@ for (const p of ['/api/audit/*', '/api/v1/audit/*']) {
 for (const p of ['/api/board-report/*', '/api/v1/board-report/*']) {
   app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
 }
+// board-digest: executive+ — exec/sales leave-behind. board_member views on
+// screen only (button hidden client-side); they do not export.
+for (const p of ['/api/board-digest/*', '/api/v1/board-digest/*']) {
+  app.use(p, requireRole('superadmin', 'support_admin', 'admin', 'executive'));
+}
 // v45-alerts: system-alerts (admin+) — CRUD/silence/test on alert rules
 for (const p of ['/api/system-alerts/*', '/api/v1/system-alerts/*']) {
   app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
@@ -562,7 +568,7 @@ const routeModules: [string, typeof auth][] = [
   ['orchestration', orchestrationRoutes],
   ['insights-stats', insightsStatsRoutes],
   ['catalyst-intelligence', catalystIntelligence],
-  ['roi', roi], ['board-report', boardReport],
+  ['roi', roi], ['board-report', boardReport], ['board-digest', boardDigest],
   ['onboarding', onboarding], ['freshness', freshness],
   ['atheon-score', atheonScore], ['baseline', baselineRoutes],
   ['targets', targetRoutes], ['executive-summary', executiveSummary],
