@@ -181,4 +181,12 @@ describe('summariseFindings — confirmed vs unverified split', () => {
     expect(s.unverified_count).toBe(0);
     expect(s.total_value_at_risk_zar).toBe(8000);
   });
+
+  it('counts every finding in by_severity and by_category regardless of gate', () => {
+    const s = summariseFindings([confirmed(), unverified()]);
+    const severityTotal = Object.values(s.by_severity).reduce((sum, n) => sum + n, 0);
+    expect(severityTotal).toBe(2);
+    const categoryTotal = Object.values(s.by_category).reduce((sum, c) => sum + c.count, 0);
+    expect(categoryTotal).toBe(2);
+  });
 });
