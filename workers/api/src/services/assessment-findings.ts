@@ -826,7 +826,10 @@ async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, 
     code: 'ar_top_debtor_concentration',
     title: `Top 5 customers hold ${top5Pct.toFixed(0)}% of AR (${formatZAR(top5Total)})`,
     narrative: `Concentration risk: just 5 customers account for ${top5Pct.toFixed(0)}% (${formatZAR(top5Total)}) of total outstanding AR (${formatZAR(totalAr)}). A single default in this group materially impacts working capital. A ${formatZAR(concentrationRisk)} bad-debt provision (5% of the top-5 balance) reflects a conservative single-customer-default scenario.`,
-    affected_count: top5.length,
+    // v83 gate: the inference is drawn from the full debtor population, so the
+    // sample size is the number of distinct debtors — NOT the 5 shown (which
+    // would always sit below the 25-record minimum and suppress the finding).
+    affected_count: sorted.length,
     value_at_risk_zar: concentrationRisk,
     value_components: [{
       label: 'Concentration default risk',
@@ -1377,7 +1380,9 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
     code: 'proc_supplier_concentration',
     title: `Top 5 suppliers absorb ${top5Pct.toFixed(0)}% of 12-month spend (${formatZAR(top5Total)})`,
     narrative: `Just 5 suppliers absorb ${top5Pct.toFixed(0)}% (${formatZAR(top5Total)}) of trailing-12-month spend. A single-supplier disruption against this concentration is conservatively a 2% impact (${formatZAR(disruptionRisk)}) — supply diversification, dual-sourcing, and continuity planning are warranted.`,
-    affected_count: top5.length,
+    // v83 gate: inference drawn from the full supplier population — use the
+    // distinct-supplier count, not the 5 shown (which would always suppress).
+    affected_count: sorted.length,
     value_at_risk_zar: disruptionRisk,
     value_components: [{
       label: 'Single-supplier disruption risk',
@@ -1812,7 +1817,9 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
     code: 'sales_customer_concentration',
     title: `Top 5 customers generate ${top5Pct.toFixed(0)}% of revenue (${formatZAR(top5Total)})`,
     narrative: `${top5Pct.toFixed(0)}% (${formatZAR(top5Total)}) of trailing-12-month revenue comes from just 5 customers. Losing one is conservatively a 5% revenue impact (${formatZAR(lossRisk)}). Account-tier strategies, contract lengthening, and active diversification are warranted.`,
-    affected_count: 5,
+    // v83 gate: inference drawn from the full customer population — use the
+    // distinct-customer count, not the literal 5 (which would always suppress).
+    affected_count: sorted.length,
     value_at_risk_zar: lossRisk,
     value_components: [{
       label: 'Single-customer-loss revenue exposure',
@@ -2029,7 +2036,9 @@ async function detectHrHighPayrollConcentration(db: D1Database, tenantId: string
     code: 'hr_high_payroll_concentration',
     title: `Top 5 earners take ${top5Pct.toFixed(0)}% of monthly payroll`,
     narrative: `Top 5 active monthly earners account for ${top5Pct.toFixed(0)}% (${formatZAR(top5Total)}) of the total monthly payroll across ${summary.headcount} employees. Compensation concentration at this level warrants a structural compensation review — particularly when annualised it is ${formatZAR(top5Total * 12)} of fixed cost.`,
-    affected_count: 5,
+    // v83 gate: inference drawn from the full active-headcount population — use
+    // headcount, not the literal 5 (which would always suppress the finding).
+    affected_count: summary.headcount,
     value_at_risk_zar: 0,
     value_components: [{
       label: 'Annualised top-5 cost',
