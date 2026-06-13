@@ -182,8 +182,15 @@ export function AssessmentFindingsPanel({
     );
   }
 
-  const totalValue = summary?.total_value_at_risk_zar ?? findings.reduce((s, f) => s + f.value_at_risk_zar, 0);
-  const potentialUnverified = summary?.potential_unverified_zar ?? 0;
+  // Headline = CONFIRMED value only. When no summary is supplied we derive both
+  // figures from the findings themselves so the fallback path can never re-admit
+  // unverified (gate-failed) rand into the headline — the binding rule.
+  const totalValue =
+    summary?.total_value_at_risk_zar ??
+    findings.reduce((s, f) => (isUnverified(f) ? s : s + f.value_at_risk_zar), 0);
+  const potentialUnverified =
+    summary?.potential_unverified_zar ??
+    findings.reduce((s, f) => (isUnverified(f) ? s + f.value_at_risk_zar : s), 0);
 
   // Per-card render, extracted so the confirmed + indicative groups share one
   // markup path (DRY). Indicative findings get muted value styling + a

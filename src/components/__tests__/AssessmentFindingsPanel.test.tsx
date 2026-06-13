@@ -142,4 +142,26 @@ describe("AssessmentFindingsPanel — Option B confidence render", () => {
     const row = screen.getByTestId("finding-confidence-FIN-UNV");
     expect(row).toHaveTextContent("Indicative — confirm");
   });
+
+  it("excludes unverified value from the headline even with no summary supplied", () => {
+    // Fallback path (summary undefined): headline must still be derived from
+    // confirmed findings only, never re-admitting gate-failed rand.
+    render(<AssessmentFindingsPanel findings={[confirmed, unverified]} />);
+    const headline = screen.getByTestId("findings-total-value");
+    const toPattern = (n: number): RegExp =>
+      new RegExp(
+        Math.round(n)
+          .toLocaleString("en-ZA")
+          .replace(/[^\d]/g, "[\\s ,.]?"),
+      );
+    // confirmed.value_at_risk_zar present; combined confirmed+unverified absent.
+    expect(headline).toHaveTextContent(toPattern(confirmed.value_at_risk_zar));
+    expect(headline).not.toHaveTextContent(
+      toPattern(confirmed.value_at_risk_zar + unverified.value_at_risk_zar),
+    );
+    // Secondary indicative figure is computed from findings, not hardcoded to 0.
+    expect(screen.getByTestId("findings-potential-value")).toHaveTextContent(
+      /indicative, pending confirmation/i,
+    );
+  });
 });
