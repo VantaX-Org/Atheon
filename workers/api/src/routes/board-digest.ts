@@ -73,6 +73,7 @@ boardDigest.post('/generate', async (c) => {
 // GET /api/board-digest/:id/pdf — only board_digest rows for this tenant
 boardDigest.get('/:id/pdf', async (c) => {
   const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
   const reportId = c.req.param('id');
   const report = await c.env.DB.prepare(
     "SELECT r2_key, title FROM board_reports WHERE id = ? AND tenant_id = ? AND report_type = 'board_digest'"
