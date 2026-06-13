@@ -44,6 +44,22 @@ const CRITICAL_TABLES = [
 
 type Scope = '--remote' | '--local';
 
+/**
+ * The local restore target. `--remote` resolves any D1 by name via the account
+ * API, so the export reads the real (possibly staging) DB by CONFIG.d1DatabaseName.
+ * `--local`, however, resolves the name against the DEFAULT-env wrangler.toml,
+ * where only the top-level binding (`atheon-db`) exists — `atheon-db-staging`
+ * lives under `[env.staging]` and is invisible without `--env staging`. The local
+ * DB is ephemeral and identity-agnostic (we wipe + reimport it), so we always
+ * restore into the default binding. Override with VERIFY_LOCAL_D1_DB if renamed.
+ */
+const LOCAL_DB_NAME = process.env.VERIFY_LOCAL_D1_DB || 'atheon-db';
+
+/** The DB name wrangler expects for a given scope (see LOCAL_DB_NAME). */
+function dbNameFor(scope: Scope): string {
+  return scope === '--local' ? LOCAL_DB_NAME : CONFIG.d1DatabaseName;
+}
+
 async function wrangler(args: string[]): Promise<string> {
   // Pin the config explicitly: a stray wrangler.jsonc higher in the tree (e.g.
   // the SPA's) otherwise shadows workers/api/wrangler.toml and hides the D1
@@ -57,7 +73,7 @@ async function wrangler(args: string[]): Promise<string> {
 }
 
 async function d1Query<T = Record<string, unknown>>(scope: Scope, sql: string): Promise<T[]> {
-  const out = await wrangler(['d1', 'execute', CONFIG.d1DatabaseName, scope, '--json', '--command', sql]);
+  const out = await wrangler(['d1', 'execute', dbNameFor(scope), scope, '--json', '--command', sql]);
   const parsed = JSON.parse(out) as Array<{ results?: T[] }>;
   return parsed[0]?.results ?? [];
 }
@@ -104,7 +120,7 @@ async function main(): Promise<void> {
 
   // 2. Wipe LOCAL state (ephemeral) and restore the dump into a clean local DB.
   await rm(LOCAL_D1_STATE, { recursive: true, force: true });
-  await wrangler(['d1', 'execute', CONFIG.d1DatabaseName, '--local', '--file', dump]);
+  await wrangler(['d1', 'execute', dbNameFor('--local'), '--local', '--file', dump]);
   console.log('[dr] backup restored into a clean local D1');
 
   // 3. Full-restore integrity from the local copy (free, no CPU limit).

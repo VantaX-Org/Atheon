@@ -520,10 +520,18 @@ for (const prefix of platformAdminPrefixes) {
   app.use(`/api/${prefix}/*`, requireRole('superadmin'));
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin'));
 }
-const platformAdminRoutePrefixes = ['iam', 'controlplane', 'erp', 'audit', 'connectivity'];
+const platformAdminRoutePrefixes = ['iam', 'controlplane', 'erp', 'connectivity'];
 for (const prefix of platformAdminRoutePrefixes) {
   app.use(`/api/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
+}
+// Audit namespace: admins manage it, and the read-only `auditor` persona may
+// reach it too — the auditor's whole job is reading the audit trail. The
+// namespace gate only admits them past the door; the read handlers still gate
+// on the `audit.read` permission and the mutating POST /log re-checks admin, so
+// an auditor can read/verify but never forge an audit entry.
+for (const p of ['/api/audit/*', '/api/v1/audit/*']) {
+  app.use(p, requireRole('superadmin', 'support_admin', 'admin', 'auditor'));
 }
 
 // §9.6 Permission model for V3 routes

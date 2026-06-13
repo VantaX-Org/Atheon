@@ -6,6 +6,25 @@ const audit = new Hono<AppBindings>();
 
 /** Superadmin/support_admin can override tenant via ?tenant_id= query param */
 const CROSS_TENANT_ROLES = new Set(['superadmin', 'support_admin']);
+
+/** Admin-tier roles implicitly hold every permission. */
+const ADMIN_ROLES = new Set(['superadmin', 'support_admin', 'admin', 'system_admin']);
+
+/**
+ * Does this auth context satisfy `required` (e.g. "audit.read")? A permission
+ * grants access when it is "*", the exact string, or the namespace wildcard
+ * ("audit.*"). Admin-tier roles bypass the permission list entirely. This is
+ * what lets the `auditor` persona (seeded with "audit.read") read the log while
+ * roles without it (viewer, operator) are denied — the role NAME is irrelevant,
+ * the granted permission is what gates.
+ */
+function hasPermission(c: { get: (key: string) => unknown }, required: string): boolean {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth) return false;
+  if (ADMIN_ROLES.has(auth.role)) return true;
+  const ns = required.split('.')[0];
+  return (auth.permissions || []).some((p) => p === '*' || p === required || p === `${ns}.*`);
+}
 function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: string) => string | undefined } }): string {
   const auth = c.get('auth') as AuthContext | undefined;
   const defaultTenantId = auth?.tenantId || c.req.query('tenant_id') || '';
@@ -17,6 +36,9 @@ function getTenantId(c: { get: (key: string) => unknown; req: { query: (key: str
 
 // GET /api/audit/log
 audit.get('/log', async (c) => {
+  if (!hasPermission(c, 'audit.read')) {
+    return c.json({ error: 'Forbidden', detail: 'audit.read permission required' }, 403);
+  }
   const tenantId = getTenantId(c);
   const layer = c.req.query('layer');
   const action = c.req.query('action');
@@ -52,6 +74,13 @@ audit.get('/log', async (c) => {
 
 // POST /api/audit/log
 audit.post('/log', async (c) => {
+  // Only admin-tier callers may append audit entries. The read-only `auditor`
+  // persona reaches this namespace (see index.ts) but must never be able to
+  // forge an audit record — that would defeat the log's purpose as evidence.
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!auth || !ADMIN_ROLES.has(auth.role)) {
+    return c.json({ error: 'Forbidden', detail: 'admin role required to write audit entries' }, 403);
+  }
   const tenantId = getTenantId(c);
   const { data: body, errors } = await getValidatedJsonBody<{
     user_id?: string; action: string; layer: string;

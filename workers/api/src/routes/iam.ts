@@ -141,6 +141,12 @@ iam.get('/users', async (c) => {
 
 // POST /api/iam/users
 iam.post('/users', async (c) => {
+  // Creating users is an admin-only write. The privilege-escalation check below
+  // only stops a caller assigning a role above their own; without this base gate
+  // a non-admin (e.g. viewer) could still mint same-or-lower-level users.
+  const gate = requireAdmin(c);
+  if (!gate.ok) return c.json({ error: gate.error }, gate.error === 'Unauthorized' ? 401 : 403);
+
   const tenantId = getTenantId(c);
   const { data: body, errors } = await getValidatedJsonBody<{
     email: string; name: string; role?: string; permissions?: string[]; send_welcome_email?: boolean;

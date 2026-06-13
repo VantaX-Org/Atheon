@@ -19,6 +19,28 @@ const LOGIN_TENANT = process.env.LOAD_TENANT || 'vantax';
 const HAS_CREDS = LOGIN_EMAIL !== '' && LOGIN_PASSWORD !== '';
 const LOGIN_BODY = { email: LOGIN_EMAIL, password: LOGIN_PASSWORD, tenant_slug: LOGIN_TENANT };
 
+// v40 mandatory-MFA: an admin-tier account's bare password login returns 403
+// once its grace expires, which would make EVERY auth request an "error" and
+// wedge the load gate on a control that is working as designed. When a demo
+// secret is supplied (the same secret-gated, prod-disabled path the matrices
+// use) we authenticate — and load-test the auth endpoint — via /auth/demo-login
+// instead, which returns a real token without weakening the MFA control.
+const LOGIN_DEMO_SECRET = process.env.LOAD_DEMO_SECRET ?? '';
+const LOGIN_DEMO_ROLE = process.env.LOAD_DEMO_ROLE || 'admin';
+const HAS_DEMO_SECRET = LOGIN_DEMO_SECRET !== '';
+const DEMO_LOGIN_BODY = { tenant_slug: LOGIN_TENANT, role: LOGIN_DEMO_ROLE };
+
+/** The auth endpoint exercised under load + used to acquire the warmup token. */
+const AUTH_ENDPOINT = HAS_DEMO_SECRET
+  ? {
+      method: 'POST',
+      path: '/api/v1/auth/demo-login',
+      auth: false,
+      body: DEMO_LOGIN_BODY as Record<string, string>,
+      headers: { 'X-Demo-Secret': LOGIN_DEMO_SECRET },
+    }
+  : { method: 'POST', path: '/api/v1/auth/login', auth: false, body: LOGIN_BODY };
+
 interface LoadTestResult {
   endpoint: string;
   totalRequests: number;
@@ -36,7 +58,7 @@ interface LoadTestResult {
 const ENDPOINTS = [
   { method: 'GET', path: '/healthz', auth: false },
   { method: 'GET', path: '/', auth: false },
-  { method: 'POST', path: '/api/v1/auth/login', auth: false, body: LOGIN_BODY },
+  AUTH_ENDPOINT,
   { method: 'GET', path: '/api/v1/apex/health', auth: true },
   { method: 'GET', path: '/api/v1/pulse/metrics', auth: true },
   { method: 'GET', path: '/api/v1/catalysts/clusters', auth: true },
@@ -51,11 +73,11 @@ const ENDPOINTS = [
  * @returns Latency in milliseconds, or -1 on error
  */
 async function makeRequest(
-  endpoint: { method: string; path: string; auth: boolean; body?: Record<string, string> },
+  endpoint: { method: string; path: string; auth: boolean; body?: Record<string, string>; headers?: Record<string, string> },
   token: string | null,
 ): Promise<{ latencyMs: number; success: boolean; status: number }> {
   const url = `${BASE_URL}${endpoint.path}`;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(endpoint.headers || {}) };
   if (endpoint.auth && token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -100,21 +122,25 @@ async function runLoadTest(): Promise<void> {
   console.log(`   Duration:    ${DURATION_SECONDS}s`);
   console.log(`   Endpoints:   ${ENDPOINTS.length}\n`);
 
-  // Step 1: Get auth token (only when creds are supplied via env)
+  // Step 1: Get auth token. Use the same AUTH_ENDPOINT exercised under load —
+  // demo-login (+ X-Demo-Secret) when a demo secret is supplied, else the bare
+  // password path. Either a demo secret OR email+password is enough to proceed.
   let token: string | null = null;
-  if (!HAS_CREDS) {
-    console.log('   Auth: LOAD_EMAIL/LOAD_PASSWORD unset — public endpoints only\n');
+  if (!HAS_DEMO_SECRET && !HAS_CREDS) {
+    console.log('   Auth: no LOAD_DEMO_SECRET and no LOAD_EMAIL/PASSWORD — public endpoints only\n');
   } else {
     try {
-      const loginResp = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+      const loginResp = await fetch(`${BASE_URL}${AUTH_ENDPOINT.path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(LOGIN_BODY),
+        headers: { 'Content-Type': 'application/json', ...(AUTH_ENDPOINT.headers || {}) },
+        body: JSON.stringify(AUTH_ENDPOINT.body),
       });
       if (loginResp.ok) {
         const loginData = await loginResp.json() as { token?: string };
         token = loginData.token || null;
-        console.log(`   Auth: ${token ? 'Token acquired' : 'No token (auth endpoints will fail)'}\n`);
+        console.log(`   Auth: ${token ? `Token acquired via ${AUTH_ENDPOINT.path}` : 'No token (auth endpoints will fail)'}\n`);
+      } else {
+        console.log(`   Auth: ${AUTH_ENDPOINT.path} returned ${loginResp.status} (proceeding with public endpoints only)\n`);
       }
     } catch {
       console.log('   Auth: Login failed (proceeding with public endpoints only)\n');

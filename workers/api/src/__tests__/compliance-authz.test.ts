@@ -6,7 +6,8 @@
  * Audit Log tab — is populated entirely by GET /api/v1/compliance/evidence-pack,
  * so an auditor MUST be able to read it for its own tenant. Lower-privilege
  * roles, and an auditor reaching across tenants, stay forbidden. The raw
- * /api/v1/audit/log endpoint remains admin-gated (see verification/rbac).
+ * /api/v1/audit/log endpoint is gated on the `audit.read` permission, which the
+ * auditor persona holds and the viewer does not (see verification/rbac).
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { randomUUID } from 'node:crypto';

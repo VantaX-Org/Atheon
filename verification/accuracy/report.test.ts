@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ApiClient } from '../lib/client';
+import { CONFIG } from '../config';
 
 const ASSESSMENT_ID = 'va-demo-vantax';
 
@@ -7,9 +8,13 @@ const ASSESSMENT_ID = 'va-demo-vantax';
  * The value-assessment PDF is a billing artefact. globalSetup has reseeded (which
  * regenerates the report); here we confirm the key is persisted and the endpoint
  * serves a real PDF.
+ *
+ * Both endpoints are superadmin-gated by design (assessments are billing
+ * artefacts managed by Atheon staff, not tenant admins), so authenticate as
+ * superadmin — an admin token correctly 403s here.
  */
 describe('value-assessment report availability', () => {
-  const client = new ApiClient();
+  const client = new ApiClient(undefined, undefined, CONFIG.apiUrl, 'superadmin');
   beforeAll(async () => { await client.login(); });
 
   it('business_report_key is populated after seed', async () => {
