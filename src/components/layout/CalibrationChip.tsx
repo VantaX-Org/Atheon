@@ -23,8 +23,8 @@ export function CalibrationChip(): JSX.Element | null {
   async function refresh() {
     try {
       const res = await api.catalysts.getCalibrationSummary();
-      setAccuracy(res.accuracyPct);
-      setObservations(res.simulationsWithOutcomes);
+      setAccuracy(typeof res?.accuracyPct === 'number' ? res.accuracyPct : null);
+      setObservations(typeof res?.simulationsWithOutcomes === 'number' ? res.simulationsWithOutcomes : 0);
     } catch {
       // Quiet failure — calibration chip should never block the header.
     }
@@ -38,7 +38,7 @@ export function CalibrationChip(): JSX.Element | null {
     return () => window.clearInterval(interval);
   }, []);
 
-  if (accuracy === null || observations === 0) return null;
+  if (typeof accuracy !== 'number' || !observations) return null;
 
   // Tone follows the same thresholds as the Trust page card.
   const tone = accuracy >= 80

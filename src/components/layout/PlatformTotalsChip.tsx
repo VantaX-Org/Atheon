@@ -52,10 +52,11 @@ export function PlatformTotalsChip(): JSX.Element | null {
     return () => window.clearInterval(interval);
   }, []);
 
-  // Cold-start guard: nothing has ever happened, hide.
-  if (!totals || totals.runs.total === 0) return null;
+  // Cold-start / malformed-response guard: hide if any required shape missing.
+  if (!totals || !totals.runs || !totals.savings || !totals.items || !totals.risks || !totals.anomalies) return null;
+  if (!totals.runs.total) return null;
 
-  const realised = totals.savings.total_realised;
+  const realised = totals.savings.total_realised ?? 0;
   const hasSavings = realised > 0;
 
   // Pick the headline metric: realised savings if we have any, else
