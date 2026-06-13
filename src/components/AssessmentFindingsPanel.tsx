@@ -247,6 +247,7 @@ export function AssessmentFindingsPanel({
               <div
                 className="flex items-start gap-2 flex-wrap text-xs"
                 data-testid={`finding-confidence-${f.code}`}
+                aria-label={`Confidence: ${band.label}`}
               >
                 <Badge variant={TONE_VARIANT[band.tone]} className="text-caption">
                   {band.label}

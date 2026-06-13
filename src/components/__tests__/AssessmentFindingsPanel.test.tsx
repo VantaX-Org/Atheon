@@ -86,6 +86,38 @@ describe("AssessmentFindingsPanel — Option B confidence render", () => {
     expect(screen.getByTestId("findings-potential-value")).toHaveTextContent(/indicative, pending confirmation/i);
   });
 
+  it("headline value equals the confirmed total only, excluding the unverified value", () => {
+    render(<AssessmentFindingsPanel findings={[confirmed, unverified]} summary={summary} />);
+    const headline = screen.getByTestId("findings-total-value");
+    // Build separator-agnostic patterns from the digit groups so we don't depend
+    // on the host ICU group separator (space vs narrow-no-break space).
+    const toPattern = (n: number): RegExp =>
+      new RegExp(
+        Math.round(n)
+          .toLocaleString("en-ZA")
+          .replace(/[^\d]/g, "[\\s ,.]?"),
+      );
+    // Confirmed-only: 2,000,000 (summary.total_value_at_risk_zar).
+    expect(headline).toHaveTextContent(toPattern(summary.total_value_at_risk_zar));
+    // Confirmed + unverified combined: 2,750,000 — must NOT appear.
+    const combined = summary.total_value_at_risk_zar + summary.potential_unverified_zar;
+    expect(headline).not.toHaveTextContent(toPattern(combined));
+  });
+
+  it("renders no confidence badge for a confirmed finding with no confidence number", () => {
+    const noConfidence = baseFinding({
+      id: "noconf-1",
+      code: "FIN-NOCONF",
+      title: "Confirmed but unscored",
+      value_at_risk_zar: 500_000,
+      confidence: undefined,
+      confidence_gate_passed: true,
+    });
+    render(<AssessmentFindingsPanel findings={[noConfidence]} summary={summary} />);
+    fireEvent.click(screen.getByText("Confirmed but unscored"));
+    expect(screen.queryByTestId("finding-confidence-FIN-NOCONF")).toBeNull();
+  });
+
   it("quarantines gate-failed findings into the indicative group", () => {
     render(<AssessmentFindingsPanel findings={[confirmed, unverified]} summary={summary} />);
     const group = screen.getByTestId("indicative-group");
