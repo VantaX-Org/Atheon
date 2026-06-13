@@ -418,10 +418,14 @@ async function runDataQualityAudit(
     }
 
     if (table.name === 'erp_bank_transactions') {
-      // Potential double payments (same amount, same day)
+      // Potential double payments (same amount, same day). Count the affected
+      // TRANSACTIONS, not the duplicate groups, so the headline count, the
+      // summed value (dupValue, below), and the sample-size gate all share one
+      // basis — an auditor pulling the rows must find exactly `duplicates` of
+      // them.
       duplicates = await queryNum(db,
-        `SELECT COUNT(*) FROM (SELECT amount, transaction_date FROM ${table.name} WHERE tenant_id = ? AND amount > 0 GROUP BY amount, transaction_date HAVING COUNT(*) > 1)`,
-        [tenantId]);
+        `SELECT COUNT(*) FROM ${table.name} t INNER JOIN (SELECT amount, transaction_date FROM ${table.name} WHERE tenant_id = ? AND amount > 0 GROUP BY amount, transaction_date HAVING COUNT(*) > 1) d ON t.amount = d.amount AND t.transaction_date = d.transaction_date WHERE t.tenant_id = ?`,
+        [tenantId, tenantId]);
       if (duplicates > 0) {
         const dupValue = await queryNum(db,
           `SELECT COALESCE(SUM(t.amount), 0) FROM ${table.name} t INNER JOIN (SELECT amount, transaction_date FROM ${table.name} WHERE tenant_id = ? AND amount > 0 GROUP BY amount, transaction_date HAVING COUNT(*) > 1) d ON t.amount = d.amount AND t.transaction_date = d.transaction_date WHERE t.tenant_id = ?`,
