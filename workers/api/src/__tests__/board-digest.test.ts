@@ -55,9 +55,14 @@ describe('board-digest endpoints', () => {
     expect(body.id).toBeTruthy();
 
     const row = await env.DB.prepare(
-      "SELECT report_type FROM board_reports WHERE id = ?"
-    ).bind(body.id).first<{ report_type: string }>();
+      "SELECT report_type, r2_key FROM board_reports WHERE id = ?"
+    ).bind(body.id).first<{ report_type: string; r2_key: string | null }>();
     expect(row?.report_type).toBe('board_digest');
+    // When STORAGE is bound the PDF is written under reports/<tenant>/digest-*.
+    // pdfUrl is only returned once that R2 write succeeds, so gate on it.
+    if (body.pdfUrl) {
+      expect(row?.r2_key).toBe(`reports/${TENANT}/digest-${body.id}.pdf`);
+    }
 
     const audit = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'board_report.digest' AND outcome = 'success' AND tenant_id = ?"
