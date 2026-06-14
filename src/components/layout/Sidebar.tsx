@@ -30,7 +30,15 @@ import { useMemo, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { Link, useLocation } from "react-router-dom";
-import { X, ChevronDown } from "lucide-react";
+import {
+  X, ChevronDown,
+  LayoutDashboard, ShieldCheck, PiggyBank, ClipboardCheck, FileText, Settings,
+  Gem, Activity, LayoutGrid, MemoryStick, Brain,
+  Network, Webhook, Inbox, Cable, PlugZap, BadgeCheck, KeyRound, UserCog,
+  UserPlus, Building2, LifeBuoy, Cpu, Rocket, ClipboardList, HeartPulse, Bell,
+  AlertTriangle, Flag, CreditCard, Headset, ListFilter, UserSearch,
+  type LucideIcon,
+} from "lucide-react";
 import type { UserRole } from "@/types";
 
 const MONO = "'Space Mono', ui-monospace, monospace";
@@ -54,8 +62,8 @@ interface NavItem {
   path: string;
   /** UPPERCASE display label (rendered in Space Mono). */
   label: string;
-  /** Material Symbols Outlined ligature name. */
-  symbol: string;
+  /** Bundled lucide-react icon (SVG — no remote font dependency, PWA-safe). */
+  icon: LucideIcon;
   roles?: UserRole[];
 }
 
@@ -68,11 +76,11 @@ interface NavGroup {
 
 // The curated six-item executive rail (mockup v4-01).
 const PRIMARY: NavItem[] = [
-  { path: '/dashboard',         label: 'Dashboard',  symbol: 'dashboard',      roles: STANDARD_ROLES },
-  { path: '/trust',             label: 'Assurance',  symbol: 'verified_user',  roles: STANDARD_ROLES },
-  { path: '/roi-dashboard',     label: 'Savings',    symbol: 'savings',        roles: EXECUTIVE_ROLES },
-  { path: '/catalysts',         label: 'Findings',   symbol: 'fact_check',     roles: OPERATOR_ROLES },
-  { path: '/executive-summary', label: 'Reports',    symbol: 'description',    roles: EXECUTIVE_ROLES },
+  { path: '/dashboard',         label: 'Dashboard',  icon: LayoutDashboard, roles: STANDARD_ROLES },
+  { path: '/trust',             label: 'Assurance',  icon: ShieldCheck,     roles: STANDARD_ROLES },
+  { path: '/roi-dashboard',     label: 'Savings',    icon: PiggyBank,       roles: EXECUTIVE_ROLES },
+  { path: '/catalysts',         label: 'Findings',   icon: ClipboardCheck,  roles: OPERATOR_ROLES },
+  { path: '/executive-summary', label: 'Reports',    icon: FileText,        roles: EXECUTIVE_ROLES },
 ];
 
 // Product pages beyond the core six — collapsed by default so the rail stays
@@ -81,11 +89,11 @@ const WORKSPACE: NavGroup = {
   key: 'workspace',
   label: 'Workspace',
   children: [
-    { path: '/apex',         label: 'Apex',         symbol: 'workspace_premium', roles: EXECUTIVE_ROLES },
-    { path: '/pulse',        label: 'Pulse',        symbol: 'monitor_heart',     roles: STANDARD_ROLES },
-    { path: '/board-digest', label: 'Board Digest', symbol: 'workspaces',        roles: BOARD_DIGEST_ROLES },
-    { path: '/memory',       label: 'Memory',       symbol: 'memory',            roles: MANAGER_ROLES },
-    { path: '/mind',         label: 'Mind',         symbol: 'psychology',        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/apex',         label: 'Apex',         icon: Gem,         roles: EXECUTIVE_ROLES },
+    { path: '/pulse',        label: 'Pulse',        icon: Activity,    roles: STANDARD_ROLES },
+    { path: '/board-digest', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
+    { path: '/memory',       label: 'Memory',       icon: MemoryStick, roles: MANAGER_ROLES },
+    { path: '/mind',         label: 'Mind',         icon: Brain,       roles: PLATFORM_ADMIN_ROLES },
   ],
 };
 
@@ -96,32 +104,32 @@ const ADMIN: NavGroup = {
   label: 'Admin',
   roles: PLATFORM_ADMIN_ROLES,
   children: [
-    { path: '/integrations',       label: 'Integrations',       symbol: 'hub',                  roles: PLATFORM_ADMIN_ROLES },
-    { path: '/webhooks',           label: 'Webhooks',           symbol: 'webhook',              roles: PLATFORM_ADMIN_ROLES },
-    { path: '/action-layer',       label: 'Operator Queue',     symbol: 'inbox',                roles: PLATFORM_ADMIN_ROLES },
-    { path: '/connectivity',       label: 'Connectivity',       symbol: 'lan',                  roles: PLATFORM_ADMIN_ROLES },
-    { path: '/integration-health', label: 'Integration Health', symbol: 'cable',                roles: PLATFORM_ADMIN_ROLES },
-    { path: '/compliance',         label: 'Compliance',         symbol: 'verified',             roles: PLATFORM_ADMIN_ROLES },
-    { path: '/iam',                label: 'IAM',                symbol: 'admin_panel_settings', roles: PLATFORM_ADMIN_ROLES },
-    { path: '/custom-roles',       label: 'Custom Roles',       symbol: 'manage_accounts',      roles: PLATFORM_ADMIN_ROLES },
-    { path: '/bulk-users',         label: 'Bulk Users',         symbol: 'group_add',            roles: PLATFORM_ADMIN_ROLES },
-    { path: '/tenants',            label: 'Clients',            symbol: 'apartment',            roles: SUPERADMIN_ROLES },
-    { path: '/support-tickets',    label: 'Support',            symbol: 'support',              roles: PLATFORM_ADMIN_ROLES },
-    { path: '/control-plane',      label: 'Control Plane',      symbol: 'memory',               roles: PLATFORM_ADMIN_ROLES },
-    { path: '/deployments',        label: 'Deployments',        symbol: 'rocket_launch',        roles: SUPERADMIN_ROLES },
-    { path: '/assessments',        label: 'Assessments',        symbol: 'fact_check',           roles: SUPERADMIN_ROLES },
-    { path: '/platform-health',    label: 'Operations Health',  symbol: 'health_metrics',       roles: PLATFORM_ADMIN_ROLES },
-    { path: '/system-alerts',      label: 'System Alerts',      symbol: 'notifications',        roles: PLATFORM_ADMIN_ROLES },
-    { path: '/admin/incidents',    label: 'Incident Manager',   symbol: 'report',               roles: SUPPORT_ROLES },
-    { path: '/feature-flags',      label: 'Feature Flags',      symbol: 'flag',                 roles: SUPERADMIN_ROLES },
-    { path: '/revenue',            label: 'Revenue',            symbol: 'payments',             roles: SUPERADMIN_ROLES },
-    { path: '/support',            label: 'Support Console',    symbol: 'support_agent',        roles: SUPPORT_ROLES },
-    { path: '/support-triage',     label: 'Support Triage',     symbol: 'inbox_customize',      roles: PLATFORM_ADMIN_ROLES },
-    { path: '/impersonate',        label: 'Impersonate',        symbol: 'manage_search',        roles: SUPPORT_ROLES },
+    { path: '/integrations',       label: 'Integrations',       icon: Network,        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/webhooks',           label: 'Webhooks',           icon: Webhook,        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/action-layer',       label: 'Operator Queue',     icon: Inbox,          roles: PLATFORM_ADMIN_ROLES },
+    { path: '/connectivity',       label: 'Connectivity',       icon: Cable,          roles: PLATFORM_ADMIN_ROLES },
+    { path: '/integration-health', label: 'Integration Health', icon: PlugZap,        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/compliance',         label: 'Compliance',         icon: BadgeCheck,     roles: PLATFORM_ADMIN_ROLES },
+    { path: '/iam',                label: 'IAM',                icon: KeyRound,       roles: PLATFORM_ADMIN_ROLES },
+    { path: '/custom-roles',       label: 'Custom Roles',       icon: UserCog,        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/bulk-users',         label: 'Bulk Users',         icon: UserPlus,       roles: PLATFORM_ADMIN_ROLES },
+    { path: '/tenants',            label: 'Clients',            icon: Building2,      roles: SUPERADMIN_ROLES },
+    { path: '/support-tickets',    label: 'Support',            icon: LifeBuoy,       roles: PLATFORM_ADMIN_ROLES },
+    { path: '/control-plane',      label: 'Control Plane',      icon: Cpu,            roles: PLATFORM_ADMIN_ROLES },
+    { path: '/deployments',        label: 'Deployments',        icon: Rocket,         roles: SUPERADMIN_ROLES },
+    { path: '/assessments',        label: 'Assessments',        icon: ClipboardList,  roles: SUPERADMIN_ROLES },
+    { path: '/platform-health',    label: 'Operations Health',  icon: HeartPulse,     roles: PLATFORM_ADMIN_ROLES },
+    { path: '/system-alerts',      label: 'System Alerts',      icon: Bell,           roles: PLATFORM_ADMIN_ROLES },
+    { path: '/admin/incidents',    label: 'Incident Manager',   icon: AlertTriangle,  roles: SUPPORT_ROLES },
+    { path: '/feature-flags',      label: 'Feature Flags',      icon: Flag,           roles: SUPERADMIN_ROLES },
+    { path: '/revenue',            label: 'Revenue',            icon: CreditCard,     roles: SUPERADMIN_ROLES },
+    { path: '/support',            label: 'Support Console',    icon: Headset,        roles: SUPPORT_ROLES },
+    { path: '/support-triage',     label: 'Support Triage',     icon: ListFilter,     roles: PLATFORM_ADMIN_ROLES },
+    { path: '/impersonate',        label: 'Impersonate',        icon: UserSearch,     roles: SUPPORT_ROLES },
   ],
 };
 
-const SETTINGS_ITEM: NavItem = { path: '/settings', label: 'Settings', symbol: 'settings' };
+const SETTINGS_ITEM: NavItem = { path: '/settings', label: 'Settings', icon: Settings };
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -142,24 +150,6 @@ function roleLabel(role: UserRole | undefined): string {
 // ──────────────────────────────────────────────────────────────
 // Components
 // ──────────────────────────────────────────────────────────────
-function MaterialIcon({ name, className = '', filled = false, size = 18 }: { name: string; className?: string; filled?: boolean; size?: number }) {
-  return (
-    <span
-      className={cn('material-symbols-outlined', className)}
-      style={{
-        fontVariationSettings: filled
-          ? "'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24"
-          : "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
-        fontSize: `${size}px`,
-        lineHeight: 1,
-      }}
-      aria-hidden="true"
-    >
-      {name}
-    </span>
-  );
-}
-
 /** Flat primary/footer row — small icon + Space-Mono uppercase label. */
 function NavRow({ item, pathname, onNavigate }: { item: NavItem; pathname: string; onNavigate?: () => void }) {
   const active = isActivePath(pathname, item.path);
@@ -184,7 +174,12 @@ function NavRow({ item, pathname, onNavigate }: { item: NavItem; pathname: strin
             style={{ background: 'var(--accent)' }}
           />
         )}
-        <MaterialIcon name={item.symbol} size={18} filled={active} className={active ? 'text-accent' : 't-muted group-hover:t-secondary'} />
+        <item.icon
+          size={18}
+          strokeWidth={active ? 2.25 : 1.75}
+          className={cn('shrink-0', active ? 'text-accent' : 't-muted group-hover:t-secondary')}
+          aria-hidden="true"
+        />
         <span
           className={cn('text-[11px] tracking-[0.14em] uppercase', active ? 'font-bold text-accent' : 'font-medium')}
           style={{ fontFamily: MONO }}
@@ -258,10 +253,10 @@ export function Sidebar() {
 
   const primaryItems = useMemo<NavItem[]>(() => {
     if (userRole === 'auditor') {
-      return [{ path: '/compliance', label: 'Assurance', symbol: 'verified_user' }];
+      return [{ path: '/compliance', label: 'Assurance', icon: ShieldCheck }];
     }
     if (userRole === 'board_member') {
-      return [{ path: '/board-digest', label: 'Reports', symbol: 'description' }];
+      return [{ path: '/board-digest', label: 'Reports', icon: FileText }];
     }
     return visibleFor(PRIMARY, userRole);
   }, [userRole]);
