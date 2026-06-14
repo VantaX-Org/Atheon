@@ -5665,14 +5665,22 @@ catalysts.get('/value-ledger', async (c) => {
     status: string; generated_at: string;
   };
 
-  const [effRes, clusterRes, lineRes, periodRes] = await Promise.all([
+  // Itemized ledger is a billing artefact: never silently truncate it. We cap the
+  // returned rows for response size, but expose the true count + summed savings of
+  // ALL line items in the period (uncapped) plus a `truncated` flag so the figure
+  // still reconciles and the UI can point auditors to the full audit pack.
+  const LINE_ITEM_CAP = 500;
+  const [effRes, clusterRes, lineRes, lineTotalsRes, periodRes] = await Promise.all([
     c.env.DB.prepare(
       `SELECT id, cluster_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, avg_duration_ms, total_value_processed, total_exceptions, improvement_trend, roi_estimate FROM catalyst_effectiveness WHERE tenant_id = ? AND period_end >= ? ORDER BY total_value_processed DESC`
     ).bind(tenantId, startISO).all<EffRow>(),
     c.env.DB.prepare(`SELECT id, cluster_name, domain FROM catalyst_clusters WHERE tenant_id = ?`).bind(tenantId).all<ClusterRow>(),
     c.env.DB.prepare(
-      `SELECT id, period_id, rca_id, metric_name, attributed_savings, confidence, evidence, created_at FROM billable_line_items WHERE tenant_id = ? AND created_at >= ? ORDER BY attributed_savings DESC LIMIT 100`
-    ).bind(tenantId, startISO).all<LineItemRow>(),
+      `SELECT id, period_id, rca_id, metric_name, attributed_savings, confidence, evidence, created_at FROM billable_line_items WHERE tenant_id = ? AND created_at >= ? ORDER BY attributed_savings DESC LIMIT ?`
+    ).bind(tenantId, startISO, LINE_ITEM_CAP).all<LineItemRow>(),
+    c.env.DB.prepare(
+      `SELECT COUNT(*) as count, COALESCE(SUM(attributed_savings), 0) as total FROM billable_line_items WHERE tenant_id = ? AND created_at >= ?`
+    ).bind(tenantId, startISO).first<{ count: number; total: number }>(),
     c.env.DB.prepare(
       `SELECT id, period_start, period_end, total_realised_savings, atheon_share_pct, atheon_revenue, status, generated_at FROM billable_periods WHERE tenant_id = ? AND period_end >= ? ORDER BY period_start DESC`
     ).bind(tenantId, startISO).all<PeriodRow>(),
@@ -5756,6 +5764,10 @@ catalysts.get('/value-ledger', async (c) => {
     };
   });
 
+  const lineItemsTotalCount = lineTotalsRes?.count ?? lineItems.length;
+  const lineItemsTotalSavingsZar = Math.round(lineTotalsRes?.total ?? 0);
+  const lineItemsTruncated = lineItemsTotalCount > lineItems.length;
+
   const billingPeriods = periodRes.results.map((p) => ({
     id: p.id,
     periodStart: p.period_start,
@@ -5780,6 +5792,13 @@ catalysts.get('/value-ledger', async (c) => {
     },
     catalysts,
     lineItems,
+    lineItemsMeta: {
+      returned: lineItems.length,
+      total: lineItemsTotalCount,
+      totalSavingsZar: lineItemsTotalSavingsZar,
+      truncated: lineItemsTruncated,
+      cap: LINE_ITEM_CAP,
+    },
     billingPeriods,
   });
 });

@@ -51,7 +51,6 @@ function getGreeting(name?: string): string {
   return name ? `${g}, ${name}` : g;
 }
 
-type TimeRange = "today" | "7d" | "30d" | "90d";
 
 // DashCard + TintedCard were local re-implementations of the Card primitive
 // (ui/card.tsx) — having both made Dashboard "feel like a different system"
@@ -74,7 +73,6 @@ export function Dashboard() {
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [cpHealth, setCpHealth] = useState<ControlPlaneHealth | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [loading, setLoading] = useState(true);
   // Tabs removed per UI cleanup spec — overview is now the entire page
   // UX-05: Silent auto-refresh every 60s (no user-facing toggle)
@@ -288,7 +286,7 @@ export function Dashboard() {
           greeting set in Archivo display, a single restrained dek, closed by
           a 1.5px ink rule. The signature figures move into the MetricGrid
           band below; the masthead carries identity, not numbers. Operating
-          controls (time range + refresh) sit in the actions slot. */}
+          controls (freshness + refresh) sit in the actions slot. */}
       <PageHeader
         eyebrow="Atheon · Enterprise Intelligence"
         live
@@ -297,18 +295,6 @@ export function Dashboard() {
         actions={
           <div className="flex items-center gap-2">
             <SectionFreshness section="Health" />
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-              className="px-2 py-1 rounded-md text-xs t-secondary"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
-              aria-label="Time range"
-            >
-              <option value="today">Today</option>
-              <option value="7d">7 Days</option>
-              <option value="30d">30 Days</option>
-              <option value="90d">90 Days</option>
-            </select>
             <span className="text-caption tnum t-muted transition-colors duration-500" style={refreshFlash ? { color: 'var(--positive)' } : undefined}>
               Updated: {lastRefreshed.toLocaleTimeString()}
             </span>
