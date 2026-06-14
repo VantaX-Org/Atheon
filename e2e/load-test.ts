@@ -30,16 +30,28 @@ const LOGIN_DEMO_ROLE = process.env.LOAD_DEMO_ROLE || 'admin';
 const HAS_DEMO_SECRET = LOGIN_DEMO_SECRET !== '';
 const DEMO_LOGIN_BODY = { tenant_slug: LOGIN_TENANT, role: LOGIN_DEMO_ROLE };
 
-/** The auth endpoint exercised under load + used to acquire the warmup token. */
-const AUTH_ENDPOINT = HAS_DEMO_SECRET
-  ? {
-      method: 'POST',
-      path: '/api/v1/auth/demo-login',
-      auth: false,
-      body: DEMO_LOGIN_BODY as Record<string, string>,
-      headers: { 'X-Demo-Secret': LOGIN_DEMO_SECRET },
-    }
-  : { method: 'POST', path: '/api/v1/auth/login', auth: false, body: LOGIN_BODY };
+type AuthEndpoint = { method: string; path: string; auth: boolean; body?: Record<string, string>; headers?: Record<string, string> };
+
+const DEMO_AUTH_ENDPOINT: AuthEndpoint = {
+  method: 'POST',
+  path: '/api/v1/auth/demo-login',
+  auth: false,
+  body: DEMO_LOGIN_BODY as Record<string, string>,
+  headers: { 'X-Demo-Secret': LOGIN_DEMO_SECRET },
+};
+const PASSWORD_AUTH_ENDPOINT: AuthEndpoint = {
+  method: 'POST',
+  path: '/api/v1/auth/login',
+  auth: false,
+  body: LOGIN_BODY,
+};
+
+// The auth endpoint exercised under load is resolved at RUNTIME (see resolveAuth):
+// prefer demo-login, but in production it returns 404 (disabled) so we fall back
+// to the password login. Resolving by probing — instead of statically by which
+// env vars are present — keeps the load endpoint pointed at a path that actually
+// returns 200, so a prod-disabled demo route doesn't poison the error rate.
+let AUTH_ENDPOINT: AuthEndpoint = HAS_DEMO_SECRET ? DEMO_AUTH_ENDPOINT : PASSWORD_AUTH_ENDPOINT;
 
 interface LoadTestResult {
   endpoint: string;
@@ -54,17 +66,20 @@ interface LoadTestResult {
   requestsPerSecond: number;
 }
 
-/** Endpoints to test (public + authenticated) */
-const ENDPOINTS = [
-  { method: 'GET', path: '/healthz', auth: false },
-  { method: 'GET', path: '/', auth: false },
-  AUTH_ENDPOINT,
-  { method: 'GET', path: '/api/v1/apex/health', auth: true },
-  { method: 'GET', path: '/api/v1/pulse/metrics', auth: true },
-  { method: 'GET', path: '/api/v1/catalysts/clusters', auth: true },
-  { method: 'GET', path: '/api/v1/erp/adapters', auth: true },
-  { method: 'GET', path: '/api/v1/notifications', auth: true },
-];
+/** Endpoints to test (public + authenticated). Built after auth is resolved so
+ *  the auth slot points at the path that actually returns 200. */
+function buildEndpoints(authEp: AuthEndpoint) {
+  return [
+    { method: 'GET', path: '/healthz', auth: false },
+    { method: 'GET', path: '/', auth: false },
+    authEp,
+    { method: 'GET', path: '/api/v1/apex/health', auth: true },
+    { method: 'GET', path: '/api/v1/pulse/metrics', auth: true },
+    { method: 'GET', path: '/api/v1/catalysts/clusters', auth: true },
+    { method: 'GET', path: '/api/v1/erp/adapters', auth: true },
+    { method: 'GET', path: '/api/v1/notifications', auth: true },
+  ];
+}
 
 /**
  * Perform a single HTTP request and measure latency.
@@ -120,32 +135,50 @@ async function runLoadTest(): Promise<void> {
   console.log(`   Base URL:    ${BASE_URL}`);
   console.log(`   Concurrency: ${CONCURRENCY}`);
   console.log(`   Duration:    ${DURATION_SECONDS}s`);
-  console.log(`   Endpoints:   ${ENDPOINTS.length}\n`);
+  console.log(`   Endpoints:   ${buildEndpoints(AUTH_ENDPOINT).length}\n`);
 
-  // Step 1: Get auth token. Use the same AUTH_ENDPOINT exercised under load —
-  // demo-login (+ X-Demo-Secret) when a demo secret is supplied, else the bare
-  // password path. Either a demo secret OR email+password is enough to proceed.
+  // Step 1: Resolve the auth path by probing, then acquire the warmup token.
+  // Order: demo-login first (if a secret is supplied), and on a 404 — demo-login
+  // is disabled in production — fall back to the bare password login. Whichever
+  // returns 200 becomes AUTH_ENDPOINT, so the path exercised under load is one
+  // that actually succeeds (a prod-disabled demo route would otherwise count as
+  // an error on every hit and wedge the gate).
+  async function attemptLogin(ep: AuthEndpoint): Promise<{ status: number; token: string | null }> {
+    const resp = await fetch(`${BASE_URL}${ep.path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(ep.headers || {}) },
+      body: JSON.stringify(ep.body),
+    });
+    if (!resp.ok) return { status: resp.status, token: null };
+    const data = await resp.json() as { token?: string };
+    return { status: resp.status, token: data.token || null };
+  }
+
   let token: string | null = null;
-  if (!HAS_DEMO_SECRET && !HAS_CREDS) {
+  const candidates: AuthEndpoint[] = [];
+  if (HAS_DEMO_SECRET) candidates.push(DEMO_AUTH_ENDPOINT);
+  if (HAS_CREDS) candidates.push(PASSWORD_AUTH_ENDPOINT);
+
+  if (candidates.length === 0) {
     console.log('   Auth: no LOAD_DEMO_SECRET and no LOAD_EMAIL/PASSWORD — public endpoints only\n');
   } else {
-    try {
-      const loginResp = await fetch(`${BASE_URL}${AUTH_ENDPOINT.path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(AUTH_ENDPOINT.headers || {}) },
-        body: JSON.stringify(AUTH_ENDPOINT.body),
-      });
-      if (loginResp.ok) {
-        const loginData = await loginResp.json() as { token?: string };
-        token = loginData.token || null;
-        console.log(`   Auth: ${token ? `Token acquired via ${AUTH_ENDPOINT.path}` : 'No token (auth endpoints will fail)'}\n`);
-      } else {
-        console.log(`   Auth: ${AUTH_ENDPOINT.path} returned ${loginResp.status} (proceeding with public endpoints only)\n`);
+    for (const ep of candidates) {
+      try {
+        const { status, token: t } = await attemptLogin(ep);
+        if (t) {
+          token = t;
+          AUTH_ENDPOINT = ep;
+          console.log(`   Auth: Token acquired via ${ep.path}\n`);
+          break;
+        }
+        console.log(`   Auth: ${ep.path} returned ${status} — ${ep === candidates[candidates.length - 1] ? 'proceeding with public endpoints only' : 'trying next auth path'}\n`);
+      } catch {
+        console.log(`   Auth: ${ep.path} request failed — ${ep === candidates[candidates.length - 1] ? 'proceeding with public endpoints only' : 'trying next auth path'}\n`);
       }
-    } catch {
-      console.log('   Auth: Login failed (proceeding with public endpoints only)\n');
     }
   }
+
+  const ENDPOINTS = buildEndpoints(AUTH_ENDPOINT);
 
   const results: Map<string, number[]> = new Map();
   const errors: Map<string, number> = new Map();
