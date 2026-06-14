@@ -1,5 +1,5 @@
 import { useAppStore } from "@/stores/appStore";
-import { Bell, ChevronDown, Menu, LogOut, Settings, X, Check, Building2, Factory } from "lucide-react";
+import { Bell, ChevronDown, Menu, LogOut, Settings, X, Check, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, setToken, setTenantOverride } from "@/lib/api";
 import type { NotificationItem, Tenant } from "@/lib/api";
@@ -49,7 +49,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export function Header() {
-  const { user, industry, setIndustry, setMobileSidebarOpen, setUser, activeTenantId, activeTenantName, setActiveTenant } = useAppStore();
+  const { user, setIndustry, setMobileSidebarOpen, setUser, activeTenantId, activeTenantName, setActiveTenant } = useAppStore();
   const navigate = useNavigate();
   const isPlatformAdmin = user?.role && PLATFORM_ADMIN_ROLES.includes(user.role);
 
@@ -179,9 +179,6 @@ export function Header() {
     window.location.reload();
   };
 
-  // Get display industry for the header badge
-  const displayIndustry = industries.find(i => i.value === industry);
-
   return (
     <header
       className="fixed top-0 right-0 z-30 h-header-height flex items-center justify-between px-4 sm:px-5 transition-colors duration-200 left-0 md:left-sidebar-expanded"
@@ -285,29 +282,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-0.5">
-        {/* Industry Selector for platform admins / Industry Display for regular users */}
-        {isPlatformAdmin ? (
-          <div className="relative hidden md:block">
-            <select
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value as IndustryVertical)}
-              className="appearance-none rounded-md pl-2.5 pr-6 py-1 text-caption t-secondary cursor-pointer focus:outline-none transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
-              title="Filter analytics by industry vertical"
-            >
-              {industries.map(i => (
-                <option key={i.value} value={i.value}>{i.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 t-muted pointer-events-none" />
-          </div>
-        ) : displayIndustry && displayIndustry.value !== 'general' ? (
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}>
-            <Factory size={11} className="flex-shrink-0 t-muted" />
-            <span className="text-caption font-medium t-secondary">{displayIndustry.label}</span>
-          </div>
-        ) : null}
-
         {/* Multi-company switcher (PR #219/#220/#232) — self-hides when tenant has ≤1 company */}
         <div className="hidden sm:block">
           <CompanySwitcher />

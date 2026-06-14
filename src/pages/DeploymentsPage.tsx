@@ -243,29 +243,6 @@ function OverviewView({ deployments, loading, statusColor, openDetail, openLogs 
         </div>
       )}
 
-      {/* Search / filter strip (visual structure matches the release-pipeline masthead) */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <div
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
-          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m21 21-4.3-4.3M11 18a7 7 0 100-14 7 7 0 000 14z" /></svg>
-          <span className="text-label">Search Deploys</span>
-        </div>
-        <div
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
-          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
-        >
-          <span className="text-label">Filter by Environment</span>
-        </div>
-        <div
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
-          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
-        >
-          <span className="text-label">Filter by Status</span>
-        </div>
-      </div>
-
       {/* Numbered release ledger */}
       <div
         className="rounded-2xl overflow-hidden"

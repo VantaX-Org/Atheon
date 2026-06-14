@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
 import type { SupportTicket, SupportTicketReply } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
-import { ArrowLeft, Link as LinkIcon, Loader2, Paperclip, Send } from 'lucide-react';
+import { ArrowLeft, Loader2, Send } from 'lucide-react';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
   open: 'info',
@@ -210,13 +210,7 @@ export function SupportTicketDetailPage() {
                   />
                 </label>
                 <div className="flex items-center justify-between gap-3 pt-1">
-                  <div className="flex items-center gap-3 t-muted">
-                    <span className="text-sm font-bold" aria-hidden="true">B</span>
-                    <span className="text-sm italic" aria-hidden="true">I</span>
-                    <LinkIcon size={15} aria-hidden="true" />
-                    <Paperclip size={15} aria-hidden="true" />
-                    <span className="text-caption font-mono ml-1">{replyBody.length} / 10000</span>
-                  </div>
+                  <span className="text-caption font-mono t-muted">{replyBody.length} / 10000</span>
                   <Button
                     type="submit"
                     variant="primary"

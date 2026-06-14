@@ -66,9 +66,7 @@ export function PlatformTotalsChip(): JSX.Element | null {
     : `${totals.runs.total.toLocaleString()}`;
   const headlineLabel = hasSavings ? 'realised' : 'runs';
 
-  const tone = hasSavings
-    ? 'text-accent border-[var(--border-card)] bg-[rgb(var(--accent-rgb)/0.1)]'
-    : 'text-accent border-[var(--border-card)] bg-[rgb(var(--accent-rgb)/0.1)]';
+  const tone = 'text-accent border-[var(--border-card)] bg-[rgb(var(--accent-rgb)/0.1)]';
 
   // Tooltip carries the full breakdown so an operator can hover for the
   // detail without clicking through to the ROI dashboard.
