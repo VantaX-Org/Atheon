@@ -192,26 +192,6 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Material Symbols Outlined — used in the Stitch design for inline
-     iconography (we ship lucide-react too; both coexist, and per-page
-     adoption migrates from lucide → material as screens are ported). */
-  .material-symbols-outlined {
-    font-family: 'Material Symbols Outlined';
-    font-weight: normal;
-    font-style: normal;
-    line-height: 1;
-    letter-spacing: normal;
-    text-transform: none;
-    display: inline-block;
-    white-space: nowrap;
-    word-wrap: normal;
-    direction: ltr;
-    -webkit-font-feature-settings: 'liga';
-    font-feature-settings: 'liga';
-    -webkit-font-smoothing: antialiased;
-    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-  }
-
   /* Honour the OS "reduce motion" setting: collapse all animation and
      transition to a near-instant pass so the UI stays responsive
      without removing state changes entirely. */

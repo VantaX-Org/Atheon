@@ -13,6 +13,7 @@ import type { Risk } from '@/lib/api';
 import { recommendForRisk, catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { useNavigate } from 'react-router-dom';
 import { Numeric } from '@/components/ui/numeric';
+import { TriangleAlert } from 'lucide-react';
 
 interface Props {
   risks: Risk[];
@@ -34,18 +35,13 @@ export function ExecutiveActionsCallout({ risks, onTrace }: Props): JSX.Element 
       style={{ borderLeft: '3px solid var(--neg)' }}
       aria-labelledby="exec-actions-required"
     >
-      <span
-        className="material-symbols-outlined absolute opacity-10 pointer-events-none"
-        style={{
-          top: 4,
-          right: 4,
-          fontSize: 120,
-          color: 'var(--neg)',
-        }}
+      <TriangleAlert
+        className="absolute opacity-10 pointer-events-none"
+        style={{ top: 4, right: 4, color: 'var(--neg)' }}
+        size={120}
+        strokeWidth={1.5}
         aria-hidden="true"
-      >
-        warning
-      </span>
+      />
       <div className="relative z-10 flex flex-col md:flex-row gap-6 md:items-start">
         <div
           className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center border"
@@ -54,13 +50,7 @@ export function ExecutiveActionsCallout({ risks, onTrace }: Props): JSX.Element 
             borderColor: 'rgb(var(--neg-rgb) / 0.30)',
           }}
         >
-          <span
-            className="material-symbols-outlined text-neg"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-            aria-hidden="true"
-          >
-            priority_high
-          </span>
+          <TriangleAlert className="text-neg" size={22} strokeWidth={2.25} aria-hidden="true" />
         </div>
         <div className="flex-1 min-w-0">
           <h2

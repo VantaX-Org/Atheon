@@ -2,7 +2,7 @@
  * `<GlobalSearch>` — top-bar route palette.
  *
  * Lifted from the Stitch "Athens Executive Interface" top bar: a rounded
- * input with a leading Material Symbols search glyph. On focus / typing it
+ * input with a leading lucide search glyph. On focus / typing it
  * surfaces a dropdown of route matches across the 5 sidebar sections.
  *
  * Keyboard:
@@ -18,6 +18,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
 import type { UserRole } from '@/types';
+import {
+  Search, ArrowRight,
+  LayoutDashboard, Gem, Activity, Zap, Brain, MemoryStick, ShieldCheck, FileText, TrendingUp,
+  Network, Webhook, Inbox, Cable, PlugZap, BadgeCheck,
+  KeyRound, UserCog, UserPlus, Building2, LifeBuoy, Settings,
+  Cpu, Rocket, ClipboardList, HeartPulse, Bell, Flag,
+  CreditCard, Headset, ListFilter, UserSearch,
+  type LucideIcon,
+} from 'lucide-react';
 
 const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
 const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
@@ -34,48 +43,48 @@ interface RouteHit {
   section: string;
   /** Lower-cased haystack for the fuzzy match. */
   haystack: string;
-  /** Material Symbols glyph for the dropdown row. */
-  symbol?: string;
+  /** Bundled lucide icon for the dropdown row (SVG — no remote font). */
+  Icon?: LucideIcon;
   roles?: UserRole[];
 }
 
 const ROUTES: RouteHit[] = [
   // Intelligence
-  { section: 'Intelligence', label: 'Dashboard',     path: '/dashboard',         haystack: 'dashboard home overview', symbol: 'dashboard' },
-  { section: 'Intelligence', label: 'Apex',          path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', symbol: 'workspace_premium', roles: EXECUTIVE_ROLES },
-  { section: 'Intelligence', label: 'Pulse',         path: '/pulse',             haystack: 'pulse process intelligence anomalies metrics', symbol: 'monitor_heart', roles: STANDARD_ROLES },
-  { section: 'Intelligence', label: 'Catalysts',     path: '/catalysts',         haystack: 'catalysts autonomous execution clusters', symbol: 'bolt', roles: OPERATOR_ROLES },
-  { section: 'Intelligence', label: 'Mind',          path: '/mind',              haystack: 'mind ai model governance configuration', symbol: 'psychology', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Intelligence', label: 'Memory',        path: '/memory',            haystack: 'memory knowledge graph entities relationships', symbol: 'memory', roles: MANAGER_ROLES },
-  { section: 'Intelligence', label: 'Trust',         path: '/trust',             haystack: 'trust calibration provenance peers', symbol: 'verified', roles: STANDARD_ROLES },
-  { section: 'Intelligence', label: 'Exec Briefing', path: '/executive-summary', haystack: 'executive summary one page briefing', symbol: 'description', roles: EXECUTIVE_ROLES },
-  { section: 'Intelligence', label: 'ROI Dashboard', path: '/roi-dashboard',     haystack: 'roi financial proof savings shared', symbol: 'trending_up', roles: EXECUTIVE_ROLES },
+  { section: 'Intelligence', label: 'Dashboard',     path: '/dashboard',         haystack: 'dashboard home overview', Icon: LayoutDashboard },
+  { section: 'Intelligence', label: 'Apex',          path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', Icon: Gem, roles: EXECUTIVE_ROLES },
+  { section: 'Intelligence', label: 'Pulse',         path: '/pulse',             haystack: 'pulse process intelligence anomalies metrics', Icon: Activity, roles: STANDARD_ROLES },
+  { section: 'Intelligence', label: 'Catalysts',     path: '/catalysts',         haystack: 'catalysts autonomous execution clusters', Icon: Zap, roles: OPERATOR_ROLES },
+  { section: 'Intelligence', label: 'Mind',          path: '/mind',              haystack: 'mind ai model governance configuration', Icon: Brain, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Intelligence', label: 'Memory',        path: '/memory',            haystack: 'memory knowledge graph entities relationships', Icon: MemoryStick, roles: MANAGER_ROLES },
+  { section: 'Intelligence', label: 'Trust',         path: '/trust',             haystack: 'trust calibration provenance peers', Icon: ShieldCheck, roles: STANDARD_ROLES },
+  { section: 'Intelligence', label: 'Exec Briefing', path: '/executive-summary', haystack: 'executive summary one page briefing', Icon: FileText, roles: EXECUTIVE_ROLES },
+  { section: 'Intelligence', label: 'ROI Dashboard', path: '/roi-dashboard',     haystack: 'roi financial proof savings shared', Icon: TrendingUp, roles: EXECUTIVE_ROLES },
   // Data
-  { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', symbol: 'hub', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Webhooks',           path: '/webhooks',            haystack: 'webhooks event subscriptions hmac', symbol: 'webhook', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Operator Queue',     path: '/action-layer',        haystack: 'operator queue action layer dispatch erp approve reject', symbol: 'inbox', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Connectivity',       path: '/connectivity',        haystack: 'connectivity live protocols sync', symbol: 'lan', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Integration Health', path: '/integration-health',  haystack: 'integration health sync monitoring circuit breakers', symbol: 'cable', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Compliance',         path: '/compliance',          haystack: 'compliance soc2 evidence audit governance dsar', symbol: 'verified_user', roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Webhooks',           path: '/webhooks',            haystack: 'webhooks event subscriptions hmac', Icon: Webhook, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Operator Queue',     path: '/action-layer',        haystack: 'operator queue action layer dispatch erp approve reject', Icon: Inbox, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Connectivity',       path: '/connectivity',        haystack: 'connectivity live protocols sync', Icon: Cable, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Integration Health', path: '/integration-health',  haystack: 'integration health sync monitoring circuit breakers', Icon: PlugZap, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Compliance',         path: '/compliance',          haystack: 'compliance soc2 evidence audit governance dsar', Icon: BadgeCheck, roles: PLATFORM_ADMIN_ROLES },
   // Administration
-  { section: 'Administration', label: 'IAM',          path: '/iam',             haystack: 'iam users roles policies access', symbol: 'admin_panel_settings', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Custom Roles', path: '/custom-roles',    haystack: 'custom roles permissions builder', symbol: 'manage_accounts', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Bulk Users',   path: '/bulk-users',      haystack: 'bulk users csv import', symbol: 'group_add', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Clients',      path: '/tenants',         haystack: 'clients tenants management', symbol: 'apartment', roles: SUPERADMIN_ROLES },
-  { section: 'Administration', label: 'Support',      path: '/support-tickets', haystack: 'support tickets file track', symbol: 'support' },
-  { section: 'Administration', label: 'Settings',     path: '/settings',        haystack: 'settings preferences account profile', symbol: 'settings' },
+  { section: 'Administration', label: 'IAM',          path: '/iam',             haystack: 'iam users roles policies access', Icon: KeyRound, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Administration', label: 'Custom Roles', path: '/custom-roles',    haystack: 'custom roles permissions builder', Icon: UserCog, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Administration', label: 'Bulk Users',   path: '/bulk-users',      haystack: 'bulk users csv import', Icon: UserPlus, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Administration', label: 'Clients',      path: '/tenants',         haystack: 'clients tenants management', Icon: Building2, roles: SUPERADMIN_ROLES },
+  { section: 'Administration', label: 'Support',      path: '/support-tickets', haystack: 'support tickets file track', Icon: LifeBuoy },
+  { section: 'Administration', label: 'Settings',     path: '/settings',        haystack: 'settings preferences account profile', Icon: Settings },
   // Platform Ops
-  { section: 'Platform Ops',   label: 'Control Plane',     path: '/control-plane',    haystack: 'control plane agent deployments', symbol: 'memory', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Deployments',       path: '/deployments',      haystack: 'deployments hybrid on-premise', symbol: 'rocket_launch', roles: SUPERADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Assessments',       path: '/assessments',      haystack: 'assessments pre-sale discovery', symbol: 'fact_check', roles: SUPERADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Operations Health', path: '/platform-health',  haystack: 'operations platform health infrastructure', symbol: 'health_metrics', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'System Alerts',     path: '/system-alerts',    haystack: 'system alerts rules silence', symbol: 'notifications', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Feature Flags',     path: '/feature-flags',    haystack: 'feature flags rollout tenants', symbol: 'flag', roles: SUPERADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'Control Plane',     path: '/control-plane',    haystack: 'control plane agent deployments', Icon: Cpu, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'Deployments',       path: '/deployments',      haystack: 'deployments hybrid on-premise', Icon: Rocket, roles: SUPERADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'Assessments',       path: '/assessments',      haystack: 'assessments pre-sale discovery', Icon: ClipboardList, roles: SUPERADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'Operations Health', path: '/platform-health',  haystack: 'operations platform health infrastructure', Icon: HeartPulse, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'System Alerts',     path: '/system-alerts',    haystack: 'system alerts rules silence', Icon: Bell, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Platform Ops',   label: 'Feature Flags',     path: '/feature-flags',    haystack: 'feature flags rollout tenants', Icon: Flag, roles: SUPERADMIN_ROLES },
   // Admin Tooling
-  { section: 'Admin Tooling',  label: 'Revenue',         path: '/revenue',         haystack: 'revenue usage mrr plan llm', symbol: 'payments', roles: SUPERADMIN_ROLES },
-  { section: 'Admin Tooling',  label: 'Support Console', path: '/support',         haystack: 'support console tenant cross', symbol: 'support_agent', roles: SUPPORT_ROLES },
-  { section: 'Admin Tooling',  label: 'Support Triage',  path: '/support-triage',  haystack: 'support triage queue', symbol: 'inbox_customize', roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Admin Tooling',  label: 'Impersonate',     path: '/impersonate',     haystack: 'impersonate view-as user debug', symbol: 'manage_search', roles: SUPPORT_ROLES },
+  { section: 'Admin Tooling',  label: 'Revenue',         path: '/revenue',         haystack: 'revenue usage mrr plan llm', Icon: CreditCard, roles: SUPERADMIN_ROLES },
+  { section: 'Admin Tooling',  label: 'Support Console', path: '/support',         haystack: 'support console tenant cross', Icon: Headset, roles: SUPPORT_ROLES },
+  { section: 'Admin Tooling',  label: 'Support Triage',  path: '/support-triage',  haystack: 'support triage queue', Icon: ListFilter, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Admin Tooling',  label: 'Impersonate',     path: '/impersonate',     haystack: 'impersonate view-as user debug', Icon: UserSearch, roles: SUPPORT_ROLES },
 ];
 
 function scoreHit(query: string, h: RouteHit): number {
@@ -179,13 +188,7 @@ export function GlobalSearch({ onNavigate }: GlobalSearchProps): JSX.Element | n
           minWidth: 280,
         }}
       >
-        <span
-          className="material-symbols-outlined t-muted mr-2"
-          style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 400" }}
-          aria-hidden="true"
-        >
-          search
-        </span>
+        <Search className="t-muted mr-2 shrink-0" size={18} strokeWidth={1.75} aria-hidden="true" />
         <input
           ref={inputRef}
           type="text"
@@ -256,19 +259,18 @@ export function GlobalSearch({ onNavigate }: GlobalSearchProps): JSX.Element | n
                         borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
                       }}
                     >
-                      <span
-                        className="material-symbols-outlined"
-                        style={{
-                          fontSize: 18,
-                          color: active ? 'var(--accent)' : 'var(--text-muted)',
-                          fontVariationSettings: active
-                            ? "'FILL' 1, 'wght' 500"
-                            : "'FILL' 0, 'wght' 400",
-                        }}
-                        aria-hidden="true"
-                      >
-                        {r.symbol ?? 'arrow_forward'}
-                      </span>
+                      {(() => {
+                        const RowIcon = r.Icon ?? ArrowRight;
+                        return (
+                          <RowIcon
+                            className="shrink-0"
+                            size={18}
+                            strokeWidth={active ? 2.25 : 1.75}
+                            style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
+                            aria-hidden="true"
+                          />
+                        );
+                      })()}
                       <span className="flex-1 min-w-0">
                         <span className={`text-body-sm ${active ? 'font-semibold t-primary' : 't-secondary'} truncate`}>
                           {r.label}
