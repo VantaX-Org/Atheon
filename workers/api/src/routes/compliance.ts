@@ -151,23 +151,30 @@ compliance.get('/share', async (c) => {
     return c.json({ error: 'Forbidden: admin role required' }, 403);
   }
 
-  const rows = await c.env.DB.prepare(
-    `SELECT id, label, expires_at, revoked_at, access_count, last_accessed_at, last_accessed_ip, created_at, created_by_user_id
-     FROM audit_share_tokens
-     WHERE tenant_id = ?
-     ORDER BY created_at DESC
-     LIMIT 50`
-  ).bind(auth.tenantId).all<{
-    id: string;
-    label: string | null;
-    expires_at: string;
-    revoked_at: string | null;
-    access_count: number;
-    last_accessed_at: string | null;
-    last_accessed_ip: string | null;
-    created_at: string;
-    created_by_user_id: string;
-  }>();
+  // Share tokens are an access-control audit trail: cap the page but expose the
+  // true total so an admin can tell the list is partial.
+  const SHARE_TOKEN_CAP = 50;
+  const [rows, countRow] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT id, label, expires_at, revoked_at, access_count, last_accessed_at, last_accessed_ip, created_at, created_by_user_id
+       FROM audit_share_tokens
+       WHERE tenant_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`
+    ).bind(auth.tenantId, SHARE_TOKEN_CAP).all<{
+      id: string;
+      label: string | null;
+      expires_at: string;
+      revoked_at: string | null;
+      access_count: number;
+      last_accessed_at: string | null;
+      last_accessed_ip: string | null;
+      created_at: string;
+      created_by_user_id: string;
+    }>(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM audit_share_tokens WHERE tenant_id = ?')
+      .bind(auth.tenantId).first<{ count: number }>(),
+  ]);
 
   const now = Date.now();
   const links = (rows.results || []).map((r) => ({
@@ -177,7 +184,11 @@ compliance.get('/share', async (c) => {
       : (new Date(r.expires_at).getTime() < now ? 'expired' : 'active'),
   }));
 
-  return c.json({ links });
+  const total = countRow?.count ?? links.length;
+  return c.json({
+    links,
+    meta: { returned: links.length, total, truncated: total > links.length, cap: SHARE_TOKEN_CAP },
+  });
 });
 
 compliance.delete('/share/:id', async (c) => {

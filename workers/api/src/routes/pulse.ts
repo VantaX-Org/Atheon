@@ -188,23 +188,37 @@ pulse.get('/anomalies', async (c) => {
     LIMIT ?
   `;
 
-  const results = await c.env.DB.prepare(query)
-    .bind(tenantId, ...(severity ? [severity] : []), limit)
-    .all<Record<string, unknown>>();
+  const countQuery = `SELECT COUNT(*) as count FROM anomalies a WHERE a.tenant_id = ?${severity ? ' AND a.severity = ?' : ''}`;
+
+  const [results, countRow] = await Promise.all([
+    c.env.DB.prepare(query)
+      .bind(tenantId, ...(severity ? [severity] : []), limit)
+      .all<Record<string, unknown>>(),
+    c.env.DB.prepare(countQuery)
+      .bind(tenantId, ...(severity ? [severity] : []))
+      .first<{ count: number }>(),
+  ]);
+
+  const returned = (results.results || []).map((a: Record<string, unknown>) => ({
+    id: a.id,
+    metric: a.metric,
+    metricName: a.metric_name,
+    currentValue: a.current_value,
+    deviation: a.deviation,
+    severity: a.severity,
+    description: a.description,
+    status: a.status,
+    detectedAt: a.detected_at,
+  }));
+  // `total` is the true tenant count (uncapped); `returned` is this page. Older
+  // clients read `total` as the badge value — now it no longer undercounts.
+  const total = countRow?.count ?? returned.length;
 
   return c.json({
-    anomalies: (results.results || []).map((a: Record<string, unknown>) => ({
-      id: a.id,
-      metric: a.metric,
-      metricName: a.metric_name,
-      currentValue: a.current_value,
-      deviation: a.deviation,
-      severity: a.severity,
-      description: a.description,
-      status: a.status,
-      detectedAt: a.detected_at,
-    })),
-    total: results.results?.length || 0,
+    anomalies: returned,
+    total,
+    returned: returned.length,
+    truncated: total > returned.length,
   });
 });
 

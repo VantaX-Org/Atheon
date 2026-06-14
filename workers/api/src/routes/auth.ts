@@ -29,6 +29,60 @@ const BACKUP_CODE_COUNT = 8;
 const BACKUP_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // no 0/o/1/l/i to avoid ambiguity
 const BACKUP_CODE_PATTERN = /^[a-z0-9]{4}-[a-z0-9]{4}$/;
 
+// ── Notification preferences ──
+// Stable keys persisted per-user in user_preferences.notification_prefs (JSON).
+// Frontend Settings page renders these; unknown keys are ignored on write.
+const NOTIFICATION_PREF_KEYS = [
+  'risk_critical',
+  'catalyst_approvals',
+  'exec_briefings',
+  'anomaly_detection',
+  'system_health',
+] as const;
+const DEFAULT_NOTIFICATION_PREFS: Record<string, boolean> = {
+  risk_critical: true,
+  catalyst_approvals: true,
+  exec_briefings: true,
+  anomaly_detection: false,
+  system_health: true,
+};
+
+/** Ensure the preferences table exists (self-heal if migration 0006 not yet applied). */
+async function ensureUserPrefsTable(db: D1Database): Promise<void> {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS user_preferences (
+       user_id TEXT PRIMARY KEY,
+       tenant_id TEXT NOT NULL,
+       notification_prefs TEXT NOT NULL DEFAULT '{}',
+       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+     )`
+  ).run();
+}
+
+/** Read a user's notification prefs merged over defaults. */
+async function readNotificationPrefs(db: D1Database, userId: string): Promise<Record<string, boolean>> {
+  try {
+    await ensureUserPrefsTable(db);
+    const row = await db.prepare('SELECT notification_prefs FROM user_preferences WHERE user_id = ?')
+      .bind(userId).first<{ notification_prefs: string }>();
+    const stored = row ? (JSON.parse(row.notification_prefs || '{}') as Record<string, boolean>) : {};
+    return { ...DEFAULT_NOTIFICATION_PREFS, ...stored };
+  } catch {
+    return { ...DEFAULT_NOTIFICATION_PREFS };
+  }
+}
+
+/** Keep only known pref keys, coerced to boolean. */
+function sanitizeNotificationPrefs(input: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (input && typeof input === 'object') {
+    for (const key of NOTIFICATION_PREF_KEYS) {
+      if (key in (input as Record<string, unknown>)) out[key] = Boolean((input as Record<string, unknown>)[key]);
+    }
+  }
+  return out;
+}
+
 /** Generate a single human-friendly backup code like "a8h3-k1m9". */
 function generateBackupCode(): string {
   const pick = (n: number): string => {
@@ -737,6 +791,8 @@ auth.get('/me', async (c) => {
       return c.json({ error: 'User not found' }, 404);
     }
 
+    const notificationPrefs = await readNotificationPrefs(c.env.DB, user.id as string);
+
     return c.json({
       id: user.id,
       email: user.email,
@@ -746,6 +802,7 @@ auth.get('/me', async (c) => {
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
       permissions: JSON.parse(user.permissions as string || '[]'),
+      notificationPrefs,
       brand: {
         logoUrl: user.tenant_logo_url || null,
         primaryColor: user.tenant_brand_primary_color || null,
@@ -755,6 +812,94 @@ auth.get('/me', async (c) => {
   } catch {
     return c.json({ error: 'Invalid token' }, 401);
   }
+});
+
+// PATCH /api/auth/me — update own profile (display name, email) and notification prefs.
+auth.patch('/me', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  let payload;
+  try {
+    payload = await verifyToken(authHeader.replace('Bearer ', ''), c.env.JWT_SECRET);
+  } catch {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
+  if (!payload) return c.json({ error: 'Invalid token' }, 401);
+  const userId = String(payload.sub);
+
+  let body: { name?: unknown; email?: unknown; notificationPrefs?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const current = await c.env.DB.prepare('SELECT id, tenant_id, name, email FROM users WHERE id = ?')
+    .bind(userId).first<{ id: string; tenant_id: string; name: string; email: string }>();
+  if (!current) return c.json({ error: 'User not found' }, 404);
+
+  // ── Profile fields ──
+  const updates: string[] = [];
+  const binds: unknown[] = [];
+
+  if (typeof body.name === 'string') {
+    const name = body.name.trim();
+    if (name.length < 1 || name.length > 120) {
+      return c.json({ error: 'Name must be 1–120 characters' }, 400);
+    }
+    updates.push('name = ?');
+    binds.push(name);
+  }
+
+  if (typeof body.email === 'string') {
+    const email = body.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({ error: 'Invalid email address' }, 400);
+    }
+    if (email !== current.email.toLowerCase()) {
+      const clash = await c.env.DB.prepare(
+        'SELECT id FROM users WHERE tenant_id = ? AND lower(email) = ? AND id != ?'
+      ).bind(current.tenant_id, email, userId).first();
+      if (clash) return c.json({ error: 'Email already in use' }, 409);
+      updates.push('email = ?');
+      binds.push(email);
+    }
+  }
+
+  if (updates.length > 0) {
+    binds.push(userId);
+    await c.env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...binds).run();
+  }
+
+  // ── Notification prefs ──
+  if (body.notificationPrefs !== undefined) {
+    await ensureUserPrefsTable(c.env.DB);
+    const incoming = sanitizeNotificationPrefs(body.notificationPrefs);
+    const merged = { ...(await readNotificationPrefs(c.env.DB, userId)), ...incoming };
+    const now = new Date().toISOString();
+    await c.env.DB.prepare(
+      `INSERT INTO user_preferences (user_id, tenant_id, notification_prefs, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET notification_prefs = excluded.notification_prefs, updated_at = excluded.updated_at`
+    ).bind(userId, current.tenant_id, JSON.stringify(merged), now).run();
+  }
+
+  // Return the refreshed profile (same shape as GET /me, minus brand which is unchanged).
+  const updated = await c.env.DB.prepare('SELECT id, email, name, role, tenant_id, permissions FROM users WHERE id = ?')
+    .bind(userId).first();
+  const notificationPrefs = await readNotificationPrefs(c.env.DB, userId);
+  return c.json({
+    id: updated?.id,
+    email: updated?.email,
+    name: updated?.name,
+    role: updated?.role,
+    tenantId: updated?.tenant_id,
+    permissions: JSON.parse((updated?.permissions as string) || '[]'),
+    notificationPrefs,
+  });
 });
 
 // GET /api/auth/sso/:tenant_slug (SSO config for tenant)

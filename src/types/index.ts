@@ -22,6 +22,8 @@ export interface User {
   tenantName?: string;
   avatarUrl?: string;
   permissions: string[];
+  /** Per-user notification toggles — populated by /api/auth/me. */
+  notificationPrefs?: Record<string, boolean>;
   /** Per-tenant whitelabel — populated by /api/auth/me. */
   brand?: TenantBrandConfig;
 }

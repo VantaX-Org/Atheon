@@ -16,10 +16,21 @@ import {
 } from "lucide-react";
 
 interface NotificationPref {
+ key: string;
  label: string;
  desc: string;
  enabled: boolean;
 }
+
+// Default toggle state — mirrors backend DEFAULT_NOTIFICATION_PREFS; overridden
+// by the user's saved prefs from /api/auth/me on mount.
+const NOTIFICATION_DEFS: NotificationPref[] = [
+ { key: 'risk_critical', label: 'Risk alerts (critical)', desc: 'Immediate notification for critical risk alerts', enabled: true },
+ { key: 'catalyst_approvals', label: 'Catalyst approvals', desc: 'When a catalyst action requires approval', enabled: true },
+ { key: 'exec_briefings', label: 'Executive briefings', desc: 'Daily morning briefing notification', enabled: true },
+ { key: 'anomaly_detection', label: 'Anomaly detection', desc: 'When Pulse detects process anomalies', enabled: false },
+ { key: 'system_health', label: 'System health', desc: 'Uptime and performance degradation alerts', enabled: true },
+];
 
 export function SettingsPage() {
  const toast = useToast();
@@ -30,16 +41,39 @@ export function SettingsPage() {
  const [saved, setSaved] = useState(false);
  const [saveError, setSaveError] = useState<string | null>(null);
 
- const [notifications, setNotifications] = useState<NotificationPref[]>([
- { label: 'Risk alerts (critical)', desc: 'Immediate notification for critical risk alerts', enabled: true },
- { label: 'Catalyst approvals', desc: 'When a catalyst action requires approval', enabled: true },
- { label: 'Executive briefings', desc: 'Daily morning briefing notification', enabled: true },
- { label: 'Anomaly detection', desc: 'When Pulse detects process anomalies', enabled: false },
- { label: 'System health', desc: 'Uptime and performance degradation alerts', enabled: true },
- ]);
+ const applyPrefs = (prefs?: Record<string, boolean>): NotificationPref[] =>
+ NOTIFICATION_DEFS.map(d => ({ ...d, enabled: prefs && d.key in prefs ? prefs[d.key] : d.enabled }));
+
+ const [notifications, setNotifications] = useState<NotificationPref[]>(() => applyPrefs(user?.notificationPrefs));
+ const [notifsDirty, setNotifsDirty] = useState(false);
+ const [savingNotifs, setSavingNotifs] = useState(false);
+
+ // Hydrate from the authoritative server copy (store may predate this field).
+ useEffect(() => {
+ let live = true;
+ api.auth.me()
+ .then(me => { if (live && me.notificationPrefs) setNotifications(applyPrefs(me.notificationPrefs)); })
+ .catch(() => { /* keep defaults */ });
+ return () => { live = false; };
+ }, []);
 
  const toggleNotification = (index: number) => {
  setNotifications(prev => prev.map((n, i) => i === index ? { ...n, enabled: !n.enabled } : n));
+ setNotifsDirty(true);
+ };
+
+ const handleSaveNotifications = async () => {
+ setSavingNotifs(true);
+ try {
+ const prefs = Object.fromEntries(notifications.map(n => [n.key, n.enabled]));
+ const updated = await api.auth.updateMe({ notificationPrefs: prefs });
+ if (user) setUser({ ...user, notificationPrefs: updated.notificationPrefs });
+ setNotifsDirty(false);
+ toast.success('Notification preferences saved');
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Failed to save preferences');
+ }
+ setSavingNotifs(false);
  };
 
  const handleSaveProfile = async () => {
@@ -47,8 +81,9 @@ export function SettingsPage() {
  setSaved(false);
  setSaveError(null);
  try {
+ const updated = await api.auth.updateMe({ name: displayName, email });
  if (user) {
- setUser({ ...user, name: displayName, email });
+ setUser({ ...user, name: updated.name, email: updated.email });
  }
  setSaved(true);
  setTimeout(() => setSaved(false), 3000);
@@ -340,6 +375,18 @@ export function SettingsPage() {
  </button>
  </div>
  ))}
+ </div>
+ <div className="flex justify-end mt-4">
+ <Button
+  variant="secondary"
+  size="sm"
+  onClick={handleSaveNotifications}
+  disabled={savingNotifs || !notifsDirty}
+  title="Save notification preferences"
+ >
+ {savingNotifs ? <Loader2 size={14} className="animate-spin" /> : null}
+ {notifsDirty ? 'Save Preferences' : 'Saved'}
+ </Button>
  </div>
  </Card>
 

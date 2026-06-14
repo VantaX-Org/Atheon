@@ -313,6 +313,9 @@ export const api = {
         body: JSON.stringify({ new_password: newPassword, current_password: currentPassword }),
       }),
     me: () => request<AuthUser>('/api/auth/me'),
+    /** Update own profile (name/email) and/or notification prefs; returns refreshed profile. */
+    updateMe: (data: { name?: string; email?: string; notificationPrefs?: Record<string, boolean> }) =>
+      request<AuthUser>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
     ssoLogin: (provider: string) =>
       request<{ token: string; user: AuthUser }>('/api/auth/sso', {
         method: 'POST',
@@ -2441,6 +2444,8 @@ export interface AuthUser {
   tenantName?: string;
   tenantSlug?: string;
   permissions: string[];
+  /** Per-user notification toggles — populated by /api/auth/me. */
+  notificationPrefs?: Record<string, boolean>;
   /** Per-tenant whitelabel — populated by /api/auth/me. */
   brand?: TenantBrand;
 }
