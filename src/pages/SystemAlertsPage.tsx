@@ -377,7 +377,7 @@ export function SystemAlertsPage() {
                   <div className="flex flex-col items-end gap-2 shrink-0">
                     <Button
                       size="sm"
-                      variant={r.enabled ? 'default' : 'outline'}
+                      variant={r.enabled ? 'primary' : 'outline'}
                       onClick={() => toggleRuleEnabled(r)}
                       disabled={savingId === r.id}
                       title={r.enabled ? 'Disable rule' : 'Enable rule'}
