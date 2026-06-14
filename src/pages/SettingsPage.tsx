@@ -12,7 +12,7 @@ import type { LlmConfigResponse } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { FormError } from "@/components/ui/state";
 import {
- User, Bell, Palette, Cpu, Loader2, Check, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle
+ User, Bell, Palette, Cpu, Loader2, Check, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle, HelpCircle
 } from "lucide-react";
 
 interface NotificationPref {
@@ -210,20 +210,24 @@ export function SettingsPage() {
  <div className="space-y-6 animate-fadeIn">
  <PageHeader
   eyebrow="Account · Settings"
-  title="Settings"
+  title="Organization Settings"
   dek="Platform configuration & preferences"
  />
 
- {/* Stitch "Settings — Account & Preferences" sticky sub-nav.
-     Horizontal chip strip that jumps to a section card via anchor scroll.
-     Sticks just below the global header on scroll. */}
+ {/* Editorial three-column scaffold (matches v4-49 mockup):
+     left = sticky section index rail · centre = settings cards ·
+     right = frosted help-tip + live system-status aside. */}
+ <div className="grid grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)_236px] gap-6 items-start">
+
+ {/* ── Section index rail ─────────────────────────────────────── */}
  <nav
   aria-label="Settings sections"
-  className="sticky z-20 -mx-1 px-1 py-2 flex flex-wrap gap-2"
+  className="lg:sticky lg:self-start rounded-[var(--radius)] p-2 flex flex-row lg:flex-col flex-wrap gap-1"
   style={{
-   top: 'calc(var(--header-height, 48px) + 1px)',
-   background: 'var(--bg-primary)',
-   borderBottom: '1px solid var(--border-card)',
+   top: 'calc(var(--header-height, 48px) + 16px)',
+   background: 'var(--bg-card-solid)',
+   border: '1px solid var(--border-card)',
+   boxShadow: 'var(--shadow-card)',
   }}
  >
   {[
@@ -234,19 +238,25 @@ export function SettingsPage() {
    { id: 'api',           label: 'API Key' },
    { id: 'privacy',       label: 'Data & Privacy' },
    { id: 'platform',      label: 'Platform' },
-  ].map((s) => (
+  ].map((s, i) => (
    <a
     key={s.id}
     href={`#${s.id}`}
-    className="text-caption font-medium px-3 py-1 rounded-full t-secondary hover:t-primary transition-colors"
-    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
+    aria-current={i === 0 ? 'page' : undefined}
+    className="text-label !text-[10px] px-3 py-2 rounded-md transition-colors"
+    style={
+     i === 0
+      ? { background: 'var(--accent-subtle)', color: 'var(--accent)' }
+      : { color: 'var(--text-muted)' }
+    }
    >
     {s.label}
    </a>
   ))}
  </nav>
 
- <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 scroll-mt-24">
+ {/* ── Settings cards ─────────────────────────────────────────── */}
+ <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 scroll-mt-24">
  {/* Profile */}
  <Card><span id="profile" className="sr-only">Profile</span>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
@@ -309,12 +319,12 @@ export function SettingsPage() {
  {notifications.map((notif, index) => (
  <div
  key={notif.label}
- className="flex items-center justify-between p-3 rounded-md"
- style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}
+ className="flex items-center justify-between py-3 last:border-0"
+ style={{ borderBottom: '1px solid var(--divider)' }}
  >
- <div>
- <span className="text-sm t-primary">{notif.label}</span>
- <p className="text-caption t-muted">{notif.desc}</p>
+ <div className="pr-4">
+ <span className="text-sm font-medium t-primary">{notif.label}</span>
+ <p className="text-caption t-muted mt-0.5">{notif.desc}</p>
  </div>
  <button
  onClick={() => toggleNotification(index)}
@@ -469,8 +479,8 @@ export function SettingsPage() {
  </h3>
  <div className="space-y-4">
    <div className="p-3 rounded-md" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
-     <p className="text-xs font-medium t-primary mb-1">Information Officer</p>
-     <p className="text-xs t-muted">{user?.name || 'Not configured'} — {user?.email || 'Contact your administrator'}</p>
+     <p className="text-label !text-[10px] mb-1.5">Information Officer</p>
+     <p className="text-sm t-primary font-medium">{user?.name || 'Not configured'} — {user?.email || 'Contact your administrator'}</p>
      <p className="text-xs t-muted">In terms of POPIA (Protection of Personal Information Act), you have the right to access and delete your personal data.</p>
    </div>
    <div className="flex gap-3">
@@ -578,12 +588,45 @@ export function SettingsPage() {
  { label: 'AI Engine', value: 'Atheon Intelligence' },
  ].map(item => (
  <div key={item.label} className="flex items-center justify-between py-2 last:border-0" style={{ borderBottom: '1px solid var(--divider)' }}>
- <span className="text-sm t-muted">{item.label}</span>
+ <span className="text-label !text-[10px]">{item.label}</span>
  <span className="text-sm t-primary font-medium">{item.value}</span>
  </div>
  ))}
  </div>
  </Card>
+ </div>
+
+ {/* ── Help-tip + live system-status aside ────────────────────── */}
+ <aside
+  className="lg:sticky lg:self-start glass-card p-4 space-y-4"
+  style={{ top: 'calc(var(--header-height, 48px) + 16px)' }}
+  aria-label="Help and system status"
+ >
+  <div className="flex items-start gap-2">
+   <div
+    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+    style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+   >
+    <HelpCircle size={15} aria-hidden />
+   </div>
+   <p className="text-label !text-[10px] mt-1.5 t-accent">Help Tip</p>
+  </div>
+  <p className="text-body-sm t-muted">
+   Manage your organization's profile and preferences. Ensure your contact details and security settings are up-to-date for optimal assurance and compliance.
+  </p>
+  <div className="pt-3" style={{ borderTop: '1px solid var(--divider)' }}>
+   <div className="flex items-center gap-2">
+    <span
+     aria-hidden
+     className="inline-block w-1.5 h-1.5 rounded-full"
+     style={{ background: 'var(--rag-healthy)' }}
+    />
+    <span className="text-label !text-[10px]" style={{ color: 'var(--rag-healthy)' }}>
+     System Status · Optimal
+    </span>
+   </div>
+  </div>
+ </aside>
  </div>
  </div>
  );

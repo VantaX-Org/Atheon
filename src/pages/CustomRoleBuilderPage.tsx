@@ -12,7 +12,6 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { LoadingState, EmptyState } from '@/components/ui/state';
@@ -247,17 +246,17 @@ export function CustomRoleBuilderPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
-        <Card className="p-3">
+        <Card className="p-4">
           <p className="text-label">Custom Roles</p>
-          <p className="text-xl font-bold t-primary">{roles.length}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{roles.length}</p>
         </Card>
-        <Card className="p-3">
+        <Card className="p-4">
           <p className="text-label">Assigned Users</p>
-          <p className="text-xl font-bold t-primary">{roles.reduce((sum, r) => sum + r.userCount, 0)}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{roles.reduce((sum, r) => sum + r.userCount, 0)}</p>
         </Card>
-        <Card className="p-3">
+        <Card className="p-4">
           <p className="text-label">Permission Surface</p>
-          <p className="text-xl font-bold t-primary">{allPermissions.length}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{allPermissions.length}</p>
         </Card>
       </div>
 
@@ -271,59 +270,59 @@ export function CustomRoleBuilderPage() {
           description="Create a role to grant a tailored permission surface to users."
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {roles.map((role) => (
-            <Card key={role.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3 flex-1">
-                  <div className="w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center mt-0.5">
-                    <Shield size={14} className="text-accent" />
+            <Card key={role.id} className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center mt-0.5 flex-shrink-0">
+                    <Shield size={16} className="text-accent" />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium t-primary">{role.name}</p>
+                      <p className="text-base font-semibold t-primary tracking-tight">{role.name}</p>
                       {role.inheritsFrom && (
-                        <Badge variant="info" className="text-caption">inherits {role.inheritsFrom}</Badge>
+                        <span className="pill-accent inline-flex items-center rounded-full border px-2 py-0.5 text-caption" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+                          INHERITS {role.inheritsFrom.toUpperCase()}
+                        </span>
                       )}
-                      <Badge variant="default" className="text-caption">
-                        {role.permissions.length + role.inheritedPermissions.length} perms
-                      </Badge>
                     </div>
-                    {role.description && <p className="text-xs t-muted mt-0.5">{role.description}</p>}
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    {role.description && <p className="text-sm t-secondary mt-1">{role.description}</p>}
+                    <div className="flex flex-wrap gap-1.5 mt-3">
                       {role.inheritedPermissions.slice(0, 3).map(p => (
-                        <Badge key={`inh-${p}`} variant="info" className="text-caption">{p}</Badge>
+                        <span key={`inh-${p}`} className="inline-flex items-center rounded-md border px-2 py-0.5 text-caption text-accent" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--accent-subtle)', borderColor: 'rgb(var(--accent-rgb) / 0.20)' }}>{p}</span>
                       ))}
                       {role.permissions.slice(0, 5).map(p => (
-                        <Badge key={p} variant="default" className="text-caption">{p}</Badge>
+                        <span key={p} className="inline-flex items-center rounded-md border px-2 py-0.5 text-caption t-secondary" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}>{p}</span>
                       ))}
                       {(role.permissions.length + role.inheritedPermissions.length) > 8 && (
-                        <Badge variant="default" className="text-caption">
-                          +{(role.permissions.length + role.inheritedPermissions.length) - 8} more
-                        </Badge>
+                        <span className="inline-flex items-center rounded-md border px-2 py-0.5 text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}>
+                          +{(role.permissions.length + role.inheritedPermissions.length) - 8} MORE
+                        </span>
                       )}
                     </div>
-                    <p className="text-caption t-muted mt-2 flex items-center gap-3">
-                      <span className="flex items-center gap-1"><Users size={10} /> {role.userCount} user{role.userCount === 1 ? '' : 's'}</span>
-                      <span>Created {new Date(role.createdAt).toLocaleDateString()}</span>
-                    </p>
+                    <div className="flex items-center gap-4 mt-3 text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+                      <span className="flex items-center gap-1.5"><Users size={11} /> {role.userCount} USER{role.userCount === 1 ? '' : 'S'}</span>
+                      <span className="flex items-center gap-1.5"><Shield size={11} /> {role.permissions.length + role.inheritedPermissions.length} PERMS</span>
+                      <span>CREATED {new Date(role.createdAt).toLocaleDateString()}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 ml-2">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => startEdit(role)}
-                    className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted hover:t-primary transition-colors active:scale-[0.97]"
+                    className="p-2 rounded-md hover:bg-[var(--bg-secondary)] t-muted hover:t-primary transition-colors active:scale-[0.97]"
                     title="Edit"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={15} />
                   </button>
                   <button
                     onClick={() => handleDelete(role)}
                     disabled={deletingId === role.id || role.userCount > 0}
-                    className="p-1.5 rounded-md hover:bg-[rgb(var(--neg-rgb)/0.08)] t-muted hover:text-[var(--neg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
+                    className="p-2 rounded-md hover:bg-[rgb(var(--neg-rgb)/0.08)] t-muted hover:text-[var(--neg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
                     title={role.userCount > 0 ? `${role.userCount} user(s) assigned — cannot delete` : 'Delete'}
                   >
-                    {deletingId === role.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    {deletingId === role.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                   </button>
                 </div>
               </div>
@@ -334,26 +333,43 @@ export function CustomRoleBuilderPage() {
 
       {/* Create / Edit modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-overlay,rgb(0_0_0/0.4))] p-4" onClick={() => !saving && setShowForm(false)}>
-          <div className="bg-[var(--bg-modal)] rounded-md border border-[var(--border-card)] p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold t-primary mb-4">
-              {editingRole ? `Edit Role — ${editingRole.name}` : 'Create Custom Role'}
-            </h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--bg-overlay,rgb(0_0_0/0.4))] p-4 backdrop-blur-sm" onClick={() => !saving && setShowForm(false)}>
+          <div
+            className="rounded-xl border shadow-xl max-w-5xl w-full max-h-[92vh] overflow-y-auto"
+            style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Editorial header */}
+            <div className="px-7 pt-7 pb-5 border-b" style={{ borderColor: 'var(--border-card)' }}>
+              <p className="text-label">
+                Custom Role Builder · {editingRole ? editingRole.name : 'New Role'}
+              </p>
+              <input
+                className="mt-2 w-full bg-transparent text-3xl font-bold tracking-tight t-primary outline-none placeholder:text-[var(--text-muted)] border-b-2 border-transparent focus:border-[var(--accent)] transition-colors"
+                value={form.name}
+                onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="Enter Role Name"
+                aria-label="Role Name"
+              />
+              <textarea
+                className="mt-3 w-full bg-transparent text-sm t-secondary outline-none resize-none placeholder:text-[var(--text-muted)]"
+                rows={2}
+                value={form.description}
+                onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
+                placeholder="Define what this role can do across the platform."
+                aria-label="Description"
+              />
+            </div>
+
+            {/* Two-column editorial body */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 p-7">
+              {/* Left: permission matrix */}
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-xs font-medium t-primary mb-1">Role Name</label>
-                  <input
-                    className="w-full px-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
-                    value={form.name}
-                    onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g., Department Lead"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium t-primary mb-1">Inherits from</label>
+                  <label className="text-label">Inherits From</label>
                   <select
-                    className="w-full px-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
+                    className="mt-1.5 w-full px-3 py-2 rounded-lg border text-sm t-primary"
+                    style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}
                     value={form.inheritsFrom}
                     onChange={(e) => setForm(p => ({ ...p, inheritsFrom: e.target.value }))}
                   >
@@ -363,103 +379,147 @@ export function CustomRoleBuilderPage() {
                     ))}
                   </select>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium t-primary mb-1">Description</label>
-                <textarea
-                  className="w-full px-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
-                  rows={2}
-                  value={form.description}
-                  onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
-                  placeholder="Describe what this role can do..."
-                />
-              </div>
 
-              {/* Permission matrix */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium t-primary">Permissions</label>
-                  <span className="text-caption t-muted">
-                    {form.permissions.length + inheritedPerms.size} selected
-                    {inheritedPerms.size > 0 && <span> (incl. {inheritedPerms.size} inherited)</span>}
-                  </span>
-                </div>
-                <div className="border border-[var(--border-card)] rounded-md bg-[var(--bg-secondary)] p-3 space-y-3">
-                  {Object.entries(permissionGroups).map(([ns, perms]) => {
-                    const togglable = perms.filter(p => !isInherited(p));
-                    const allChecked = togglable.length > 0 && togglable.every(p => form.permissions.includes(p));
-                    return (
-                      <div key={ns}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-xs font-semibold t-primary uppercase tracking-wide">{ns}</p>
-                          {togglable.length > 0 && (
-                            <button
-                              type="button"
-                              className="text-caption text-accent hover:underline"
-                              onClick={() => toggleGroup(perms)}
-                            >
-                              {allChecked ? 'deselect all' : 'select all'}
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                          {perms.map(p => {
-                            const granted = isGranted(p);
-                            const inherited = isInherited(p);
-                            return (
-                              <label
-                                key={p}
-                                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors ${
-                                  inherited
-                                    ? 'bg-[var(--accent-subtle)] cursor-not-allowed opacity-90'
-                                    : 'hover:bg-[var(--bg-modal)] cursor-pointer'
-                                } active:scale-[0.97]`}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-label">Permission Levels</p>
+                    <span className="text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+                      {form.permissions.length + inheritedPerms.size} GRANTED
+                      {inheritedPerms.size > 0 && <span> · {inheritedPerms.size} INHERITED</span>}
+                    </span>
+                  </div>
+                  <div className="rounded-lg border divide-y" style={{ borderColor: 'var(--border-card)' }}>
+                    {Object.entries(permissionGroups).map(([ns, perms]) => {
+                      const togglable = perms.filter(p => !isInherited(p));
+                      const allChecked = togglable.length > 0 && togglable.every(p => form.permissions.includes(p));
+                      return (
+                        <div key={ns} className="p-4" style={{ borderColor: 'var(--border-card)' }}>
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-label" style={{ color: 'var(--text-primary)' }}>{ns}</p>
+                            {togglable.length > 0 && (
+                              <button
+                                type="button"
+                                className="text-caption text-accent hover:underline"
+                                onClick={() => toggleGroup(perms)}
+                                style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={granted}
+                                {allChecked ? 'DESELECT ALL' : 'SELECT ALL'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            {perms.map(p => {
+                              const granted = isGranted(p);
+                              const inherited = isInherited(p);
+                              return (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={granted}
+                                  aria-label={p}
                                   disabled={inherited}
-                                  onChange={() => togglePermission(p)}
-                                  className="rounded"
-                                />
-                                <span className={`font-mono ${inherited ? 'text-accent' : 't-primary'}`}>{p}</span>
-                                {inherited && <span className="text-caption t-muted">(inherited)</span>}
-                              </label>
-                            );
-                          })}
+                                  onClick={() => togglePermission(p)}
+                                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-colors active:scale-[0.99] ${
+                                    inherited ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--bg-secondary)]'
+                                  }`}
+                                  style={inherited ? { background: 'var(--accent-subtle)' } : undefined}
+                                >
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={inherited ? 'text-accent' : (granted ? 't-primary' : 't-secondary')}
+                                      style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+                                    >
+                                      {p}
+                                    </span>
+                                    {inherited && (
+                                      <span className="text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>INHERITED</span>
+                                    )}
+                                  </span>
+                                  {/* Toggle track */}
+                                  <span
+                                    className="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
+                                    style={{
+                                      background: granted ? 'var(--accent)' : 'var(--border-card)',
+                                      opacity: inherited ? 0.7 : 1,
+                                    }}
+                                  >
+                                    <span
+                                      className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                                      style={{ transform: granted ? 'translateX(18px)' : 'translateX(2px)' }}
+                                    />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {editingRole && editingRole.userCount > 0 && (
+                  <div className="flex items-start gap-2 rounded-lg border p-3" style={{ borderColor: 'var(--warning)', background: 'rgb(var(--warning-rgb,180 120 40)/0.08)' }}>
+                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--warning)' }} />
+                    <p className="text-xs t-primary">
+                      {editingRole.userCount} user(s) currently have this role. Changes will apply to them immediately.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Preview */}
-              <div className="rounded-md border border-[var(--border-card)] bg-[var(--bg-secondary)] p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle size={12} className="text-accent" />
-                  <p className="text-xs font-medium t-primary">A user with this role can:</p>
-                </div>
-                <p className="text-xs t-muted break-words">{previewSummary}</p>
-              </div>
-
-              {editingRole && editingRole.userCount > 0 && (
-                <div className="flex items-start gap-2 rounded-md border p-3" style={{ borderColor: 'var(--warning)', background: 'rgb(var(--warning-rgb,180 120 40)/0.08)' }}>
-                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--warning)' }} />
-                  <p className="text-xs t-primary">
-                    {editingRole.userCount} user(s) currently have this role. Changes will apply to them immediately.
+              {/* Right: Effective Permissions Preview panel */}
+              <aside className="lg:sticky lg:top-0 h-fit">
+                <div className="rounded-xl border p-5" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}>
+                  <p className="text-label">Effective Permissions Preview</p>
+                  <p
+                    className="mt-3 text-5xl font-bold t-primary leading-none"
+                    style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+                  >
+                    {form.permissions.length + inheritedPerms.size}
                   </p>
+                  <p className="mt-1 text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+                    PERMISSIONS GRANTED
+                    {inheritedPerms.size > 0 && <span> · {inheritedPerms.size} INHERITED</span>}
+                  </p>
+
+                  <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-card)' }}>
+                    <p className="text-xs t-secondary leading-relaxed break-words">{previewSummary}</p>
+                  </div>
+
+                  <div className="mt-5 flex items-center gap-2">
+                    {form.permissions.length + inheritedPerms.size > 0 ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-caption"
+                        style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'rgb(var(--rag-healthy-rgb) / 0.10)', color: 'var(--rag-healthy)', borderColor: 'rgb(var(--rag-healthy-rgb) / 0.24)' }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--rag-healthy)' }} />
+                        HEALTHY CONFIGURATION
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-caption"
+                        style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'rgb(var(--warning-rgb,180 120 40) / 0.10)', color: 'var(--warning)', borderColor: 'rgb(var(--warning-rgb,180 120 40) / 0.24)' }}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--warning)' }} />
+                        NO PERMISSIONS
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
+              </aside>
             </div>
-            <div className="flex justify-end gap-2 mt-5">
+
+            {/* Footer actions */}
+            <div className="flex justify-end gap-2 px-7 py-5 border-t" style={{ borderColor: 'var(--border-card)' }}>
               <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving} title="Cancel role changes">Cancel</Button>
               <Button
                 onClick={saveRole}
                 disabled={saving || !form.name.trim() || (form.permissions.length + inheritedPerms.size === 0)}
               >
                 {saving ? <Loader2 size={14} className="animate-spin mr-1" /> : <CheckCircle size={14} className="mr-1" />}
-                {editingRole ? 'Save Changes' : 'Create Role'}
+                {editingRole ? 'Save Role' : 'Create Role'}
               </Button>
             </div>
           </div>

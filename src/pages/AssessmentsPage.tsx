@@ -10,6 +10,8 @@ import { ClipboardList, Plug, Package, Calculator, FileText, CheckCircle2, XCirc
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { formatDays } from '@/lib/utils';
+import { useTenantCurrency } from '@/stores/appStore';
+import { formatCompactCurrency } from '@/lib/format-currency';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -82,7 +84,7 @@ export function AssessmentsPage() {
       {view !== 'list' && (
         <button
           onClick={() => { setView('list'); setSelectedId(null); setSelectedAssessment(null); loadAssessments(); }}
-          className="px-3 py-1.5 text-sm rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
+          className="px-3 py-2 text-sm rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
           style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
         >
           &larr; Back
@@ -90,8 +92,8 @@ export function AssessmentsPage() {
       )}
       <button
         onClick={() => setView('new')}
-        className="px-4 py-1.5 text-sm font-medium rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
-        style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
+        className="px-5 py-2 text-label rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
+        style={{ background: 'var(--accent)', color: 'var(--text-on-accent)', letterSpacing: '0.08em' }}
       >
         + New Assessment
       </button>
@@ -149,6 +151,8 @@ function ListView({ assessments, loading, onView, onDelete }: {
   onView: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const currency = useTenantCurrency();
+  const [query, setQuery] = useState('');
   const status = statusFrom({ loading, error: null, isEmpty: assessments.length === 0 });
   if (status !== 'success') {
     return (
@@ -169,91 +173,164 @@ function ListView({ assessments, loading, onView, onDelete }: {
     );
   }
 
-  const statusStyle = (s: string) => {
+  // ── RAG status pill mapping. Status is operational lifecycle, not health,
+  //    so 'complete' reads as accent (a delivered engagement), 'running' as
+  //    watch/amber (in-flight), 'failed' as risk/red. Pure presentation.
+  const statusPill = (s: string) => {
     switch (s) {
-      case 'complete': return { background: 'rgb(var(--accent-rgb) / 0.1)', color: 'var(--accent)' };
-      case 'running': return { background: 'var(--bg-secondary)', color: 'var(--warning)' };
-      case 'failed': return { background: 'rgb(var(--neg-rgb) / 0.1)', color: 'var(--neg)' };
-      default: return { background: 'var(--bg-secondary)', color: 'var(--text-muted)' };
+      case 'complete': return 'pill pill-success';
+      case 'running': return 'pill pill-warning';
+      case 'pending': return 'pill pill-warning';
+      case 'failed': return 'pill pill-danger';
+      default: return 'pill pill-muted';
     }
   };
 
-  return (
-    <div className="rounded-md overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
-      <table className="w-full text-sm">
-        <thead>
-          <tr style={{ background: 'var(--bg-secondary)' }}>
-            {['Prospect', 'Industry', 'Status', 'Catalysts', 'Est. Saving', 'Period', 'Date', 'Actions'].map(h => (
-              <th key={h} className="px-4 py-2.5 text-left text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
-          {assessments.map(a => {
-            const results = a.results as AssessmentResults | null;
-            const catalystCount = results?.catalyst_scores?.length || 0;
-            const totalSaving = results?.catalyst_scores?.reduce((sum: number, c: CatalystScore) => sum + (c.estimated_annual_saving_zar || 0), 0) || 0;
+  // ── Hero strip aggregates. These are presentational roll-ups of figures
+  //    already rendered per-row below (no new data, no new query).
+  const activeCount = assessments.length;
+  const totalFindings = assessments.reduce((sum, a) => {
+    const r = a.results as AssessmentResults | null;
+    return sum + (r?.findings?.length || r?.catalyst_scores?.length || 0);
+  }, 0);
+  const riskExposure = assessments.reduce((sum, a) => {
+    const r = a.results as AssessmentResults | null;
+    return sum + (r?.catalyst_scores?.reduce((s: number, c: CatalystScore) => s + (c.estimated_annual_saving_zar || 0), 0) || 0);
+  }, 0);
 
-            return (
-              <tr key={a.id} className="hover:bg-black/5 transition-[background-color,color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]">
-                <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>{a.prospectName}</td>
-                <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{a.prospectIndustry}</td>
-                <td className="px-4 py-3">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={statusStyle(a.status)}>{a.status}</span>
-                </td>
-                <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{catalystCount}</td>
-                <td className="px-4 py-3 font-mono tnum font-medium" style={{ color: 'var(--text-primary)' }}>
-                  {totalSaving > 0 ? `R ${(totalSaving / 1000).toFixed(0)}k` : '—'}
-                </td>
-                <td className="px-4 py-3 text-xs font-mono tnum" style={{ color: 'var(--text-muted)' }}>
-                  {a.periodStart && a.periodEnd
-                    ? `${a.periodStart} → ${a.periodEnd}`
-                    : 'all data'}
-                </td>
-                <td className="px-4 py-3 text-xs font-mono tnum" style={{ color: 'var(--text-muted)' }}>
-                  {new Date(a.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => onView(a.id)}
-                      className="text-xs px-2 py-1 rounded-sm"
-                      style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
-                    >
-                      View
-                    </button>
-                    {a.status === 'complete' && (
-                      <>
-                        <button
-                          onClick={() => api.assessments.downloadBusiness(a.id, a)}
-                          className="text-xs px-2 py-1 rounded-sm"
-                          style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
-                        >
-                          PDF
-                        </button>
-                        <button
-                          onClick={() => api.assessments.downloadExcel(a.id, a)}
-                          className="text-xs px-2 py-1 rounded-sm"
-                          style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
-                        >
-                          Excel
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => onDelete(a.id)}
-                      className="text-xs px-2 py-1 rounded-sm"
-                      style={{ background: 'rgb(var(--neg-rgb) / 0.08)', color: 'var(--neg)' }}
-                    >
-                      Del
-                    </button>
-                  </div>
-                </td>
+  const hero: Array<{ label: string; value: string }> = [
+    { label: 'Active Assessments', value: activeCount.toString() },
+    { label: 'Total Findings', value: totalFindings.toString() },
+    { label: 'Risk Exposure', value: formatCompactCurrency(riskExposure, currency) },
+  ];
+
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? assessments.filter(a =>
+        a.prospectName?.toLowerCase().includes(q) ||
+        a.prospectIndustry?.toLowerCase().includes(q))
+    : assessments;
+
+  return (
+    <div className="space-y-6">
+      {/* Hero metric strip — the big editorial numbers from the mockup */}
+      <div className="flex flex-wrap items-start gap-x-12 gap-y-6">
+        {hero.map(m => (
+          <div key={m.label} className="min-w-[140px]">
+            <p className="text-label">{m.label}</p>
+            <p className="text-display t-primary tnum mt-1.5" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{m.value}</p>
+          </div>
+        ))}
+        <div className="ml-auto self-center">
+          <label className="sr-only" htmlFor="assessment-search">Search assessments</label>
+          <input
+            id="assessment-search"
+            type="search"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search"
+            className="rounded-md px-3 py-2 text-sm w-56 transition-[border-color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
+            style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
+          />
+        </div>
+      </div>
+
+      {/* Assessments list card */}
+      <div className="card-swiss overflow-hidden">
+        <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border-card)' }}>
+          <h2 className="text-label">Assessments List</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+                {['Name', 'ERP Source', 'Date', 'Finding Count', 'Verified', 'Status', ''].map((h, i) => (
+                  <th
+                    key={h || `actions-${i}`}
+                    className={`px-5 py-3 text-label font-normal ${i === 6 ? 'text-right' : 'text-left'}`}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {visible.map(a => {
+                const results = a.results as AssessmentResults | null;
+                const findingCount = results?.findings?.length || results?.catalyst_scores?.length || 0;
+                const totalSaving = results?.catalyst_scores?.reduce((sum: number, c: CatalystScore) => sum + (c.estimated_annual_saving_zar || 0), 0) || 0;
+
+                return (
+                  <tr
+                    key={a.id}
+                    className="border-b last:border-0 hover:bg-[var(--accent-subtle)] cursor-pointer transition-[background-color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
+                    style={{ borderColor: 'var(--border-card)' }}
+                    onClick={() => onView(a.id)}
+                  >
+                    <td className="px-5 py-3.5 font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {a.prospectName}
+                      <span className="block text-xs font-normal mt-0.5" style={{ color: 'var(--text-muted)' }}>{a.prospectIndustry}</span>
+                    </td>
+                    <td className="px-5 py-3.5" style={{ color: 'var(--text-secondary)' }}>
+                      {a.periodStart && a.periodEnd
+                        ? <span className="font-mono tnum text-xs">{`${a.periodStart} → ${a.periodEnd}`}</span>
+                        : <span style={{ color: 'var(--text-muted)' }}>All data</span>}
+                    </td>
+                    <td className="px-5 py-3.5 font-mono tnum text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {new Date(a.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3.5 font-mono tnum" style={{ color: 'var(--text-secondary)' }}>
+                      {findingCount}
+                    </td>
+                    <td className="px-5 py-3.5 font-mono tnum font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {totalSaving > 0 ? formatCompactCurrency(totalSaving, currency) : '—'}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={statusPill(a.status)}>{a.status}</span>
+                    </td>
+                    <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex gap-1 justify-end">
+                        {a.status === 'complete' && (
+                          <>
+                            <button
+                              onClick={() => api.assessments.downloadBusiness(a.id, a)}
+                              className="text-label px-2.5 py-1 rounded-sm hover:opacity-90 transition-opacity"
+                              style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+                            >
+                              PDF
+                            </button>
+                            <button
+                              onClick={() => api.assessments.downloadExcel(a.id, a)}
+                              className="text-label px-2.5 py-1 rounded-sm hover:opacity-90 transition-opacity"
+                              style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+                            >
+                              Excel
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => onDelete(a.id)}
+                          className="text-label px-2.5 py-1 rounded-sm hover:opacity-90 transition-opacity"
+                          style={{ background: 'rgb(var(--neg-rgb) / 0.08)', color: 'var(--neg)' }}
+                        >
+                          Del
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                    No assessments match &ldquo;{query}&rdquo;.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

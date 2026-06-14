@@ -108,47 +108,71 @@ export function RevenueUsagePage() {
         }
       />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <div className="flex items-center gap-1 mb-1">
-            <span className="text-label">Estimated MRR</span>
+      {/* Hero metric band — MRR / ARR */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="p-6 relative overflow-hidden">
+          <span
+            aria-hidden
+            className="absolute right-5 top-5 w-2 h-2 rounded-full"
+            style={{ background: 'var(--rag-healthy)' }}
+          />
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-label">MRR · Monthly Recurring Revenue</span>
             {summary.pricingIsEstimate && <Badge variant="warning" className="text-caption">EST</Badge>}
           </div>
-          <p className="text-figure font-mono tnum t-primary mt-1">
+          <p className="text-hero font-mono t-primary">
             {summary.estMrrUsd === null ? '—' : `$${summary.estMrrUsd.toLocaleString()}`}
           </p>
-          <p className="text-caption t-muted">
+          <p className="text-caption t-muted mt-2">
             {summary.estMrrUsd === null ? 'Pending billing integration' : 'Derived from plan tier'}
           </p>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-1 mb-1">
-            <span className="text-label">Estimated ARR</span>
+        <Card className="p-6 relative overflow-hidden">
+          <span
+            aria-hidden
+            className="absolute right-5 top-5 w-2 h-2 rounded-full"
+            style={{ background: 'var(--rag-healthy)' }}
+          />
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-label">ARR · Annual Recurring Revenue</span>
             {summary.pricingIsEstimate && <Badge variant="warning" className="text-caption">EST</Badge>}
           </div>
-          <p className="text-figure font-mono tnum t-primary mt-1">
+          <p className="text-hero font-mono t-primary">
             {summary.estArrUsd === null ? '—' : `$${summary.estArrUsd.toLocaleString()}`}
           </p>
-          <p className="text-caption t-muted">
+          <p className="text-caption t-muted mt-2">
             {summary.estArrUsd === null ? 'Pending billing integration' : 'MRR × 12'}
           </p>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Building2 size={14} className="text-accent" />
-            <span className="text-label">Total Tenants</span>
+      </div>
+
+      {/* Secondary metric strip — tenants / users */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="p-4 flex items-center gap-3">
+          <span
+            className="flex items-center justify-center w-9 h-9 rounded-md shrink-0"
+            style={{ background: 'var(--accent-subtle)' }}
+          >
+            <Building2 size={16} className="text-accent" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-figure font-mono tnum t-primary leading-none">{summary.totalTenants.toLocaleString()}</p>
+            <p className="text-label mt-1.5">Total Tenants</p>
+            <p className="text-caption t-muted">Active (not deleted)</p>
           </div>
-          <p className="text-figure font-mono tnum t-primary">{summary.totalTenants.toLocaleString()}</p>
-          <p className="text-caption t-muted">Active (not deleted)</p>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Users size={14} className="text-accent" />
-            <span className="text-label">Total Users</span>
+        <Card className="p-4 flex items-center gap-3">
+          <span
+            className="flex items-center justify-center w-9 h-9 rounded-md shrink-0"
+            style={{ background: 'var(--accent-subtle)' }}
+          >
+            <Users size={16} className="text-accent" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-figure font-mono tnum t-primary leading-none">{summary.totalUsers.toLocaleString()}</p>
+            <p className="text-label mt-1.5">Total Users</p>
+            <p className="text-caption t-muted">Across all tenants</p>
           </div>
-          <p className="text-figure font-mono tnum t-primary">{summary.totalUsers.toLocaleString()}</p>
-          <p className="text-caption t-muted">Across all tenants</p>
         </Card>
       </div>
 
@@ -165,9 +189,9 @@ export function RevenueUsagePage() {
 
       <TabPanel id="overview" activeTab={activeTab}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="p-4">
-            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2">
-              <CreditCard size={14} className="text-accent" /> Estimated Revenue Breakdown
+          <Card className="p-5">
+            <h3 className="text-h2 t-primary mb-4 flex items-center gap-2">
+              <CreditCard size={15} className="text-accent" /> Estimated Revenue Breakdown
             </h3>
             <div className="space-y-3">
               {byPlan.length === 0 ? (
@@ -176,26 +200,26 @@ export function RevenueUsagePage() {
                 <div key={p.plan} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: planColor(p.plan) }} />
-                    <span className="text-xs t-primary capitalize">{p.plan}</span>
+                    <span className="text-body-sm t-primary capitalize">{p.plan}</span>
                     <Badge variant="default" className="text-caption">{p.count} tenants</Badge>
                   </div>
-                  <span className="text-xs font-medium t-primary">
+                  <span className="font-mono tnum text-body-sm font-medium t-primary">
                     {p.estMrrUsd === null ? '—' : `$${p.estMrrUsd.toLocaleString()}/mo`}
                   </span>
                 </div>
               ))}
-              <div className="border-t border-[var(--border-card)] pt-2 flex justify-between">
-                <span className="text-xs font-medium t-primary">Total (est.)</span>
-                <span className="text-sm font-bold text-accent">
+              <div className="border-t border-[var(--border-card)] pt-3 mt-1 flex justify-between items-baseline">
+                <span className="text-label">Total · est.</span>
+                <span className="font-mono tnum text-h2 text-accent">
                   {summary.estMrrUsd === null ? '—' : `$${summary.estMrrUsd.toLocaleString()}/mo`}
                 </span>
               </div>
             </div>
           </Card>
 
-          <Card className="p-4">
-            <h3 className="text-sm font-medium t-primary mb-3 flex items-center gap-2">
-              <Brain size={14} className="text-accent" /> Top Tenants by LLM Tokens (30d)
+          <Card className="p-5">
+            <h3 className="text-h2 t-primary mb-4 flex items-center gap-2">
+              <Brain size={15} className="text-accent" /> Top Tenants by LLM Tokens (30d)
             </h3>
             {llm.topTenants.length === 0 ? (
               <p className="text-xs t-muted">No LLM usage recorded in the last 30 days.</p>
@@ -204,11 +228,11 @@ export function RevenueUsagePage() {
                 {llm.topTenants.map((t, i) => (
                   <div key={t.tenantId || i} className="flex items-center justify-between p-2 rounded-md hover:bg-[var(--bg-secondary)]">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-caption t-muted w-4 flex-shrink-0">{i + 1}.</span>
-                      <span className="text-xs t-primary truncate">{t.name}</span>
+                      <span className="font-mono text-caption t-muted w-5 flex-shrink-0">{i + 1}.</span>
+                      <span className="text-body-sm t-primary truncate">{t.name}</span>
                       <Badge variant="default" className="text-caption">{t.plan}</Badge>
                     </div>
-                    <span className="text-xs font-medium text-accent flex-shrink-0">{t.tokens30d.toLocaleString()} tok</span>
+                    <span className="font-mono tnum text-body-sm font-medium text-accent flex-shrink-0">{t.tokens30d.toLocaleString()} tok</span>
                   </div>
                 ))}
               </div>
@@ -218,8 +242,10 @@ export function RevenueUsagePage() {
       </TabPanel>
 
       <TabPanel id="plans" activeTab={activeTab}>
-        <Card className="p-4">
-          <h3 className="text-sm font-medium t-primary mb-4">Plan Distribution</h3>
+        <Card className="p-5">
+          <h3 className="text-h2 t-primary mb-5 flex items-center gap-2">
+            <PieChart size={15} className="text-accent" /> Plan Distribution
+          </h3>
           {byPlan.length === 0 ? (
             <p className="text-xs t-muted">No tenants yet.</p>
           ) : (
@@ -228,11 +254,11 @@ export function RevenueUsagePage() {
                 const pct = totalByPlan > 0 ? (p.count / totalByPlan) * 100 : 0;
                 return (
                   <div key={p.plan}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="t-primary font-medium capitalize">{p.plan}</span>
-                      <span className="t-muted">{p.count} tenants ({pct.toFixed(0)}%)</span>
+                    <div className="flex justify-between items-baseline mb-1.5">
+                      <span className="text-body-sm t-primary font-medium capitalize">{p.plan}</span>
+                      <span className="font-mono tnum text-caption t-muted">{p.count} tenants · {pct.toFixed(0)}%</span>
                     </div>
-                    <div className="h-3 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                    <div className="h-2.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
                       <div
                         className="h-full rounded-full transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
                         style={{ width: `${pct}%`, background: planColor(p.plan) }}
@@ -247,8 +273,10 @@ export function RevenueUsagePage() {
       </TabPanel>
 
       <TabPanel id="growth" activeTab={activeTab}>
-        <Card className="p-4">
-          <h3 className="text-sm font-medium t-primary mb-4">New Tenants per Month (Last 6 Months)</h3>
+        <Card className="p-5">
+          <h3 className="text-h2 t-primary mb-5 flex items-center gap-2">
+            <TrendingUp size={15} className="text-accent" /> New Tenants per Month (Last 6 Months)
+          </h3>
           {growth.newTenantsByMonth.length === 0 ? (
             <p className="text-xs t-muted">No growth data.</p>
           ) : (
@@ -258,12 +286,12 @@ export function RevenueUsagePage() {
                   const heightPct = (g.count / maxMonthCount) * 100;
                   return (
                     <div key={g.month} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-caption font-medium t-primary">{g.count}</span>
+                      <span className="font-mono tnum text-caption font-bold t-primary">{g.count}</span>
                       <div
                         className="w-full rounded-t-md bg-accent/80 transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
                         style={{ height: `${Math.max(heightPct, 2)}%`, minHeight: g.count > 0 ? 8 : 2 }}
                       />
-                      <span className="text-caption t-muted">{g.month.slice(-2)}</span>
+                      <span className="font-mono text-caption t-muted">{g.month.slice(-2)}</span>
                     </div>
                   );
                 })}
@@ -275,31 +303,42 @@ export function RevenueUsagePage() {
       </TabPanel>
 
       <TabPanel id="usage" activeTab={activeTab}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Brain size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">Platform LLM Usage</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Brain size={15} className="text-accent" />
+              <span className="text-h2 t-primary">Platform LLM Usage</span>
             </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Total Tokens (30d)</span><span className="t-primary font-medium">{llm.totalTokens30d.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="t-muted">LLM Calls (30d)</span><span className="t-primary font-medium">{llm.callCount30d.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="t-muted">Tenants Using LLM</span><span className="t-primary font-medium">{llm.topTenants.length}</span></div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-baseline border-b border-[var(--border-card)] pb-2.5">
+                <span className="text-label">Total Tokens · 30d</span>
+                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.totalTokens30d.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-baseline border-b border-[var(--border-card)] pb-2.5">
+                <span className="text-label">LLM Calls · 30d</span>
+                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.callCount30d.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-label">Tenants Using LLM</span>
+                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.topTenants.length}</span>
+              </div>
             </div>
           </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">Top 10 Tenants by Spend</span>
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={15} className="text-accent" />
+              <span className="text-h2 t-primary">Top 10 Tenants by Spend</span>
             </div>
             {llm.topTenants.length === 0 ? (
               <p className="text-xs t-muted">No LLM usage to report.</p>
             ) : (
-              <div className="space-y-1.5 text-xs">
+              <div className="space-y-2">
                 {llm.topTenants.map((t, i) => (
-                  <div key={t.tenantId || i} className="flex items-center justify-between">
-                    <span className="t-primary truncate">{i + 1}. {t.name}</span>
-                    <span className="t-muted flex-shrink-0 ml-2">{t.tokens30d.toLocaleString()} tok</span>
+                  <div key={t.tenantId || i} className="flex items-center justify-between gap-2">
+                    <span className="text-body-sm t-primary truncate">
+                      <span className="font-mono t-muted mr-1.5">{i + 1}.</span>{t.name}
+                    </span>
+                    <span className="t-muted flex-shrink-0 font-mono tnum text-caption">{t.tokens30d.toLocaleString()} tok</span>
                   </div>
                 ))}
               </div>

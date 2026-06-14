@@ -21,7 +21,7 @@ import { api, ApiError } from '@/lib/api';
 import type { StatusIncident } from '@/lib/api';
 import {
   CheckCircle2, AlertTriangle, XCircle, RefreshCw, Activity, Database,
-  Globe, Shield, Clock, ArrowLeft,
+  Globe, Shield, ArrowLeft,
 } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 30000;
@@ -45,33 +45,31 @@ const SEVERITY_LABEL: Record<string, string> = {
 };
 
 const SEVERITY_TONE: Record<string, { bg: string; border: string; color: string; icon: typeof CheckCircle2 }> = {
-  operational: { bg: 'rgb(var(--accent-rgb) / 0.07)', border: 'rgb(var(--accent-rgb) / 0.30)', color: 'var(--accent)', icon: CheckCircle2 },
+  operational: { bg: 'rgb(var(--rag-healthy-rgb) / 0.07)', border: 'rgb(var(--rag-healthy-rgb) / 0.30)', color: 'var(--rag-healthy)', icon: CheckCircle2 },
   degraded: { bg: 'rgb(var(--warning-rgb) / 0.07)', border: 'rgb(var(--warning-rgb) / 0.30)', color: 'var(--warning)', icon: AlertTriangle },
   partial_outage: { bg: 'rgb(var(--warning-rgb) / 0.07)', border: 'rgb(var(--warning-rgb) / 0.30)', color: 'var(--warning)', icon: AlertTriangle },
   major_outage: { bg: 'rgb(var(--neg-rgb) / 0.07)', border: 'rgb(var(--neg-rgb) / 0.30)', color: 'var(--neg)', icon: XCircle },
 };
 
-function componentPillTone(s: ComponentStatus): { label: string; color: string } {
-  if (s === 'operational') return { label: 'Operational', color: 'var(--accent)' };
-  if (s === 'degraded') return { label: 'Degraded', color: 'var(--warning)' };
-  if (s === 'partial_outage') return { label: 'Partial outage', color: 'var(--warning)' };
-  if (s === 'major_outage') return { label: 'Major outage', color: 'var(--neg)' };
-  return { label: s, color: 'var(--text-muted)' };
+function componentPillVariant(s: ComponentStatus): { label: string; variant: 'success' | 'warning' | 'danger' } {
+  if (s === 'operational') return { label: 'Healthy', variant: 'success' };
+  if (s === 'degraded') return { label: 'Watch', variant: 'warning' };
+  if (s === 'partial_outage') return { label: 'Watch', variant: 'warning' };
+  if (s === 'major_outage') return { label: 'At Risk', variant: 'danger' };
+  return { label: s, variant: 'warning' };
 }
 
-function ComponentTile({ label, icon: Icon, status, hint }: { label: string; icon: typeof CheckCircle2; status: ComponentStatus; hint?: string }) {
-  const pill = componentPillTone(status);
+function ComponentRow({ label, icon: Icon, status, hint }: { label: string; icon: typeof CheckCircle2; status: ComponentStatus; hint?: string }) {
+  const pill = componentPillVariant(status);
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Icon size={16} className="t-muted" />
-          <span className="text-body-sm font-medium t-primary">{label}</span>
-        </div>
-        <span className="text-caption font-medium" style={{ color: pill.color }}>{pill.label}</span>
+    <div className="flex items-center gap-4 px-5 py-4 sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <Icon size={16} className="t-muted shrink-0" aria-hidden="true" />
+        <span className="font-mono text-body-sm font-bold uppercase tracking-wide t-primary truncate">{label}</span>
       </div>
-      {hint && <div className="text-caption t-muted mt-2">{hint}</div>}
-    </Card>
+      <Badge variant={pill.variant} size="sm">{pill.label}</Badge>
+      {hint && <span className="hidden text-caption t-muted sm:block sm:w-56 sm:text-right truncate">{hint}</span>}
+    </div>
   );
 }
 
@@ -122,42 +120,57 @@ export default function StatusPage(): JSX.Element {
 
   const overall = data?.status ?? 'operational';
   const tone = SEVERITY_TONE[overall] ?? SEVERITY_TONE.operational;
-  const ToneIcon = tone.icon;
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
-            <span className="t-muted text-caption">·</span>
-            <h1 className="text-headline-xl font-bold t-primary tracking-tight">Atheon Platform Status</h1>
-          </div>
+      <div className="mx-auto max-w-5xl px-6 py-8 sm:py-10">
+        {/* Masthead */}
+        <header className="flex items-center justify-between gap-3">
+          <Link to="/" className="inline-flex items-center gap-2 t-primary" aria-label="Atheon home">
+            <ArrowLeft size={14} className="t-muted" aria-hidden="true" />
+            <span className="text-headline-sm font-bold tracking-tight">Atheon</span>
+          </Link>
           <button
             onClick={() => void load()}
             disabled={refreshing}
-            className="inline-flex items-center gap-1 text-caption t-muted hover:t-primary"
+            className="inline-flex items-center gap-1.5 font-mono text-caption uppercase tracking-wide t-muted hover:t-primary"
             title="Refresh now"
           >
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-            Refreshed {data ? new Date(data.checkedAt).toLocaleTimeString() : '—'}
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
+            <span>Updated {data ? new Date(data.checkedAt).toLocaleTimeString() : '—'}</span>
           </button>
-        </div>
+        </header>
 
-        {/* Overall status banner */}
-        <Card className="p-6" style={{ background: tone.bg, borderColor: tone.border }}>
-          <div className="flex items-center gap-3">
-            <ToneIcon size={24} style={{ color: tone.color }} />
-            <div>
-              <h2 className="text-headline-md font-bold" style={{ color: tone.color }}>{SEVERITY_LABEL[overall] ?? overall}</h2>
-              <p className="text-body-sm t-muted mt-0.5">Auto-refreshes every {POLL_INTERVAL_MS / 1000}s. Subscribe via your monitoring tool against <code className="font-mono">https://atheon-api.vantax.co.za/api/status</code>.</p>
+        {/* Hero — overall status */}
+        <section className="mt-10 sm:mt-12">
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0">
+              <h1
+                className="text-[clamp(2.25rem,6vw,4rem)] font-extrabold uppercase leading-[0.95] tracking-tight"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {SEVERITY_LABEL[overall] ?? overall}
+              </h1>
+              <p className="mt-4 max-w-2xl text-body t-secondary">
+                Real-time public status for the Atheon Financial Assurance Platform.
+              </p>
+            </div>
+            <div className="relative mt-2 hidden shrink-0 sm:block" aria-hidden="true">
+              <div
+                className="h-16 w-16 rounded-full"
+                style={{ background: tone.color, boxShadow: `0 0 48px 8px ${tone.bg}` }}
+              />
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{ boxShadow: `0 0 0 10px ${tone.bg}` }}
+              />
             </div>
           </div>
-        </Card>
+        </section>
 
         {/* Active incident banner */}
         {data?.activeIncident && (
-          <Card className="p-5" style={{ background: SEVERITY_TONE[data.activeIncident.severity]?.bg, borderColor: SEVERITY_TONE[data.activeIncident.severity]?.border }}>
+          <Card className="mt-8 p-5" style={{ background: SEVERITY_TONE[data.activeIncident.severity]?.bg, borderColor: SEVERITY_TONE[data.activeIncident.severity]?.border }}>
             <div className="flex items-center justify-between gap-3 mb-2">
               <h3 className="text-body font-semibold t-primary">{data.activeIncident.title}</h3>
               <Badge variant="warning" size="sm">{data.activeIncident.status}</Badge>
@@ -169,7 +182,7 @@ export default function StatusPage(): JSX.Element {
                   <div key={i} className="text-caption">
                     <span className="t-muted">{new Date(u.at).toLocaleString()}</span>
                     <span className="t-muted"> · </span>
-                    <span className="font-medium t-primary uppercase tracking-wider">{u.status}</span>
+                    <span className="font-mono font-bold uppercase tracking-wide t-primary">{u.status}</span>
                     <p className="t-secondary mt-0.5">{u.message}</p>
                   </div>
                 ))}
@@ -178,106 +191,124 @@ export default function StatusPage(): JSX.Element {
           </Card>
         )}
 
-        {/* Component tiles */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <ComponentTile label="API" icon={Globe} status={data?.components.api ?? 'operational'} hint="Cloudflare Workers" />
-          <ComponentTile
-            label="Database"
-            icon={Database}
-            status={data?.components.database ?? 'operational'}
-            hint={data ? `D1 · ${data.probes.database_ms}ms probe` : 'D1'}
-          />
-          <ComponentTile label="Cache" icon={Activity} status={data?.components.cache ?? 'operational'} hint="Cloudflare KV" />
-          <ComponentTile label="Object storage" icon={Shield} status={data?.components.storage ?? 'operational'} hint="Cloudflare R2" />
-        </div>
-
-        {/* DR / RTO / RPO / data residency disclosure */}
-        <Card className="p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Shield size={16} className="text-accent" />
-            <h3 className="text-body font-semibold t-primary">Continuity &amp; data residency</h3>
+        {/* Platform components */}
+        <section className="mt-10">
+          <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border-card)' }}>
+            <h2 className="text-label">Platform Components</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-body-sm">
-            <div>
-              <div className="text-caption uppercase tracking-wider t-muted mb-1">Recovery Time Objective (RTO)</div>
-              <div className="t-primary font-medium">≤ 4 hours</div>
-              <p className="text-caption t-muted mt-0.5">Time to restore service after a regional incident.</p>
-            </div>
-            <div>
-              <div className="text-caption uppercase tracking-wider t-muted mb-1">Recovery Point Objective (RPO)</div>
-              <div className="t-primary font-medium">≤ 1 hour</div>
-              <p className="text-caption t-muted mt-0.5">Max data loss in a disaster scenario (hourly D1 backups).</p>
-            </div>
-            <div>
-              <div className="text-caption uppercase tracking-wider t-muted mb-1">Primary region</div>
-              <div className="t-primary font-medium">Cloudflare Global Network · D1 pinned to af-south-1 (Johannesburg)</div>
-              <p className="text-caption t-muted mt-0.5">Workers run at the closest edge; durable state (D1, R2) is region-pinned.</p>
-            </div>
-            <div>
-              <div className="text-caption uppercase tracking-wider t-muted mb-1">Backup cadence</div>
-              <div className="t-primary font-medium">Hourly D1 snapshots · 30-day retention</div>
-              <p className="text-caption t-muted mt-0.5">Backed up via GitHub Actions workflow <code className="font-mono">backup-d1.yml</code>.</p>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t text-caption t-muted" style={{ borderColor: 'var(--border-card)' }}>
-            Compliance: SOC 2 Type II controls implemented (CC6.1, CC6.2, CC7.3, CC8.1).
-            POPIA + GDPR DSAR support is live on the Compliance tab. For full SOC 2 evidence + sub-processor list,
-            ask your administrator to issue an Auditor-role login.
-          </div>
-        </Card>
-
-        {/* Incident timeline */}
-        <Card className="p-0 overflow-hidden">
-          <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-card)' }}>
-            <div className="flex items-center gap-2">
-              <Clock size={14} className="t-muted" />
-              <h3 className="text-body font-semibold t-primary">Incident history</h3>
-            </div>
-            <span className="text-caption t-muted">Last 90 days · {data?.incidents.length ?? 0} incident{(data?.incidents.length ?? 0) === 1 ? '' : 's'}</span>
-          </div>
-          {!data || data.incidents.length === 0 ? (
-            <div className="p-8 text-center">
-              <CheckCircle2 size={28} className="mx-auto mb-2" style={{ color: 'rgb(var(--accent-rgb) / 0.40)' }} />
-              <p className="text-body-sm t-primary font-medium">No incidents in the last 90 days</p>
-              <p className="text-caption t-muted mt-1">All systems have been operational.</p>
-            </div>
-          ) : (
+          <Card className="mt-3 overflow-hidden p-0">
             <div className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
-              {data.incidents.map((i) => (
-                <details key={i.id} className="group" style={{ borderColor: 'var(--border-card)' }}>
-                  <summary className="px-5 py-4 cursor-pointer flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-body-sm font-medium t-primary">{i.title}</span>
-                        <Badge variant={i.resolvedAt ? 'success' : 'warning'} size="sm">{i.resolvedAt ? 'Resolved' : i.status}</Badge>
-                      </div>
-                      <div className="text-caption t-muted mt-1">
-                        Started {new Date(i.startedAt).toLocaleString()}
-                        {i.resolvedAt && <> · Resolved {new Date(i.resolvedAt).toLocaleString()}</>}
-                      </div>
-                    </div>
-                  </summary>
-                  {i.updates.length > 0 && (
-                    <div className="px-5 pb-4 space-y-2">
-                      {i.updates.slice().reverse().map((u, idx) => (
-                        <div key={idx} className="text-caption">
-                          <span className="t-muted">{new Date(u.at).toLocaleString()}</span>
-                          <span className="t-muted"> · </span>
-                          <span className="font-medium t-primary uppercase tracking-wider">{u.status}</span>
-                          <p className="t-secondary mt-0.5">{u.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </details>
-              ))}
+              <ComponentRow label="API" icon={Globe} status={data?.components.api ?? 'operational'} hint="Cloudflare Workers" />
+              <ComponentRow
+                label="Database"
+                icon={Database}
+                status={data?.components.database ?? 'operational'}
+                hint={data ? `D1 · ${data.probes.database_ms}ms probe` : 'D1'}
+              />
+              <ComponentRow label="Cache" icon={Activity} status={data?.components.cache ?? 'operational'} hint="Cloudflare KV" />
+              <ComponentRow label="Object Storage" icon={Shield} status={data?.components.storage ?? 'operational'} hint="Cloudflare R2" />
             </div>
-          )}
-        </Card>
+          </Card>
+          <p className="mt-3 font-mono text-caption uppercase tracking-wide t-muted">
+            Auto-refreshes every {POLL_INTERVAL_MS / 1000}s · subscribe against{' '}
+            <code className="font-mono normal-case">https://atheon-api.vantax.co.za/api/status</code>
+          </p>
+        </section>
 
-        <div className="text-caption t-muted text-center pt-2">
-          For partner contracts, security questionnaires, or DPA templates, contact your Atheon CS team.
-        </div>
+        {/* Continuity & data residency */}
+        <section className="mt-10">
+          <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border-card)' }}>
+            <h2 className="text-label">Continuity &amp; Data Residency</h2>
+          </div>
+          <Card className="mt-3 p-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <div className="text-label">Recovery Time Objective (RTO)</div>
+                <div className="mt-1 text-headline-sm font-bold t-primary">≤ 4 hours</div>
+                <p className="mt-1 text-caption t-muted">Time to restore service after a regional incident.</p>
+              </div>
+              <div>
+                <div className="text-label">Recovery Point Objective (RPO)</div>
+                <div className="mt-1 text-headline-sm font-bold t-primary">≤ 1 hour</div>
+                <p className="mt-1 text-caption t-muted">Max data loss in a disaster scenario (hourly D1 backups).</p>
+              </div>
+              <div>
+                <div className="text-label">Primary Region</div>
+                <div className="mt-1 text-body font-medium t-primary">Cloudflare Global Network · D1 pinned to af-south-1 (Johannesburg)</div>
+                <p className="mt-1 text-caption t-muted">Workers run at the closest edge; durable state (D1, R2) is region-pinned.</p>
+              </div>
+              <div>
+                <div className="text-label">Backup Cadence</div>
+                <div className="mt-1 text-body font-medium t-primary">Hourly D1 snapshots · 30-day retention</div>
+                <p className="mt-1 text-caption t-muted">Backed up via GitHub Actions workflow <code className="font-mono">backup-d1.yml</code>.</p>
+              </div>
+            </div>
+            <div className="mt-6 border-t pt-4 text-caption t-muted" style={{ borderColor: 'var(--border-card)' }}>
+              Compliance: SOC 2 Type II controls implemented (CC6.1, CC6.2, CC7.3, CC8.1).
+              POPIA + GDPR DSAR support is live on the Compliance tab. For full SOC 2 evidence + sub-processor list,
+              ask your administrator to issue an Auditor-role login.
+            </div>
+          </Card>
+        </section>
+
+        {/* Incident history */}
+        <section className="mt-10">
+          <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border-card)' }}>
+            <h2 className="text-label">Incident History</h2>
+            <span className="font-mono text-caption uppercase tracking-wide t-muted">
+              Last 90 days · {data?.incidents.length ?? 0} incident{(data?.incidents.length ?? 0) === 1 ? '' : 's'}
+            </span>
+          </div>
+          <Card className="mt-3 overflow-hidden p-0">
+            {!data || data.incidents.length === 0 ? (
+              <div className="p-10 text-center">
+                <CheckCircle2 size={28} className="mx-auto mb-2" style={{ color: 'rgb(var(--rag-healthy-rgb) / 0.45)' }} aria-hidden="true" />
+                <p className="text-body-sm font-medium t-primary">No incidents in the last 90 days</p>
+                <p className="mt-1 text-caption t-muted">All systems have been operational.</p>
+              </div>
+            ) : (
+              <div className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
+                {data.incidents.map((i) => (
+                  <details key={i.id} className="group">
+                    <summary className="flex cursor-pointer items-start gap-4 px-5 py-4 sm:px-6">
+                      <span className="hidden w-24 shrink-0 pt-0.5 font-mono text-caption uppercase tracking-wide t-muted sm:block">
+                        {new Date(i.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <Badge variant={i.resolvedAt ? 'success' : 'warning'} size="sm">{i.resolvedAt ? 'Resolved' : i.status}</Badge>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-body-sm font-medium t-primary">{i.title}</span>
+                        <div className="mt-1 text-caption t-muted">
+                          Started {new Date(i.startedAt).toLocaleString()}
+                          {i.resolvedAt && <> · Resolved {new Date(i.resolvedAt).toLocaleString()}</>}
+                        </div>
+                      </div>
+                    </summary>
+                    {i.updates.length > 0 && (
+                      <div className="space-y-2 px-5 pb-4 sm:px-6 sm:pl-[8.5rem]">
+                        {i.updates.slice().reverse().map((u, idx) => (
+                          <div key={idx} className="text-caption">
+                            <span className="t-muted">{new Date(u.at).toLocaleString()}</span>
+                            <span className="t-muted"> · </span>
+                            <span className="font-mono font-bold uppercase tracking-wide t-primary">{u.status}</span>
+                            <p className="mt-0.5 t-secondary">{u.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </details>
+                ))}
+              </div>
+            )}
+          </Card>
+        </section>
+
+        {/* Footer */}
+        <footer className="mt-12 flex flex-col items-center justify-between gap-3 border-t pt-6 sm:flex-row" style={{ borderColor: 'var(--border-card)' }}>
+          <span className="font-mono text-caption uppercase tracking-wide t-muted">© {new Date().getFullYear()} Atheon · Financial Assurance Platform</span>
+          <span className="text-caption t-muted">
+            For partner contracts, security questionnaires, or DPA templates, contact your Atheon CS team.
+          </span>
+        </footer>
       </div>
     </div>
   );

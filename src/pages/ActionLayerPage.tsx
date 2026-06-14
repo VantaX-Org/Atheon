@@ -30,7 +30,7 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
 import {
   Inbox, CheckCircle2, XCircle, AlertOctagon, FileSearch, RefreshCw, Check, X as XIcon,
-  Bookmark, BookmarkPlus, Trash2, Link2,
+  Bookmark, BookmarkPlus, Trash2, Link2, ArrowUpRight,
 } from 'lucide-react';
 import { SortHeader, cycleSort, type SortSpec } from '@/components/ui/sort-header';
 import { ActionEvidenceDrawer } from '@/components/action/ActionEvidenceDrawer';
@@ -127,6 +127,15 @@ const TILE_DEFINITIONS: Record<Exclude<StatusFilter, 'all'>, string> = {
 function shortRef(id: string): string {
   // Friendly short-ref for the queue table — last 10 chars uppercase.
   return id.length > 10 ? id.slice(-10).toUpperCase() : id.toUpperCase();
+}
+
+function ownerInitials(name: string): string {
+  // Avatar initials for the owner/catalyst cell — up to 2 leading
+  // word-initials, uppercased. Purely presentational.
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '—';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
 function relativeTime(iso: string): string {
@@ -426,11 +435,13 @@ export function ActionLayerPage(): JSX.Element {
         <LoadingState variant="cards" count={4} />
       ) : (
         <>
-          {/* 5 status tiles — Stitch dispatch-queue pattern. Each tile is a
-              filter toggle AND carries a MetricSource so the operator can
-              audit where its count + ZAR value came from. Tile is a div
-              (not button) so the MetricSource trigger can nest safely. */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* 5 status tiles — editorial KPI strip ("Luminous Editorial").
+              Each tile is a filter toggle AND carries a MetricSource so the
+              operator can audit where its count + ZAR value came from. Tile
+              is a div (not button) so the MetricSource trigger can nest
+              safely. Mono eyebrow label + RAG status dot, big hero count,
+              compact-currency sub-label. */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {TILE_DEFS.map((tile) => {
               const Icon = tile.icon;
               const count = (summary?.[tile.countKey] as number | undefined) ?? 0;
@@ -460,23 +471,32 @@ export function ActionLayerPage(): JSX.Element {
                       setFilter(isActiveFilter ? 'all' : tile.key);
                     }
                   }}
-                  className={`text-left p-4 rounded-md bg-[var(--bg-card-solid)] border transition-colors cursor-pointer ${tile.hoverBorder} ${
-                    isActiveFilter ? 'border-accent' : 'border-[var(--border-card)]'
+                  className={`group text-left px-5 py-5 rounded-lg bg-[var(--bg-card-solid)] border transition-all cursor-pointer ${tile.hoverBorder} ${
+                    isActiveFilter ? 'border-accent shadow-[0_0_0_1px_var(--accent)]' : 'border-[var(--border-card)]'
                   }`}
                   aria-pressed={isActiveFilter}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-caption uppercase tracking-wider t-muted">{tile.label}</span>
-                    <div className="flex items-center gap-1">
-                      <MetricSource source={tileProvenance} />
-                      <Icon size={16} style={{ color: tile.accent }} />
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-label">{tile.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block size-2 rounded-full"
+                        style={{ background: tile.accent }}
+                        aria-hidden="true"
+                      />
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MetricSource source={tileProvenance} />
+                      </span>
                     </div>
                   </div>
-                  <div className="text-headline-lg font-bold t-primary tabular-nums font-mono">
-                    <Numeric value={count} size="lg" />
+                  <div className="text-display t-primary tabular-nums font-mono">
+                    <Numeric value={count} size="xl" />
                   </div>
-                  <div className="text-caption font-mono t-muted mt-1">
-                    <Numeric value={value} unit="currency" compact size="sm" tone="mute" />
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <Icon size={13} style={{ color: tile.accent }} aria-hidden="true" />
+                    <span className="text-caption font-mono t-muted">
+                      <Numeric value={value} unit="currency" compact size="sm" tone="mute" />
+                    </span>
                   </div>
                 </div>
               );
@@ -601,6 +621,10 @@ export function ActionLayerPage(): JSX.Element {
             />
           ) : (
             <Card className="p-0 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--border-card)]">
+                <h2 className="text-label">Priority Actions Queue</h2>
+                <span className="text-caption font-mono t-muted">{totalRowsLabel}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-body-sm">
                   <thead className="text-caption uppercase tracking-wider t-muted sticky top-0 z-10" style={{ background: 'var(--bg-card-solid)' }}>
@@ -644,7 +668,7 @@ export function ActionLayerPage(): JSX.Element {
                           className="border-b border-[var(--border-card)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors"
                           style={isSelected ? { background: 'var(--accent-subtle)' } : undefined}
                         >
-                          <td className="px-3 py-3 text-center">
+                          <td className="px-3 py-4 text-center">
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -656,8 +680,8 @@ export function ActionLayerPage(): JSX.Element {
                               style={{ background: 'var(--bg-input)', borderColor: 'var(--border-card)' }}
                             />
                           </td>
-                          <td className="px-4 py-3"><StatusPill status={statusToPillKind(a.status)} size="sm" /></td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-4"><StatusPill status={statusToPillKind(a.status)} size="sm" /></td>
+                          <td className="px-4 py-4">
                             {/* Ref is now a drill-through: opens the evidence
                                 drawer with the full chain (finding, sample
                                 records, confidence, execution trace). */}
@@ -671,13 +695,28 @@ export function ActionLayerPage(): JSX.Element {
                               <Link2 size={11} className="opacity-0 group-hover:opacity-60 transition-opacity" />
                             </button>
                           </td>
-                          <td className="px-4 py-3 t-secondary">{a.action_type.replace(/_/g, ' ')}</td>
-                          <td className="px-4 py-3 t-muted">{a.catalyst_name}</td>
-                          <td className="px-4 py-3 text-right">
-                            <Numeric value={a.value_zar} unit="currency" compact size="sm" />
+                          <td className="px-4 py-4 t-secondary">{a.action_type.replace(/_/g, ' ')}</td>
+                          <td className="px-4 py-4">
+                            {/* Owner / catalyst — avatar initials + name, the
+                                "who owns this" treatment from the mockup. */}
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className="flex items-center justify-center size-7 rounded-full text-caption font-mono shrink-0"
+                                style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                                aria-hidden="true"
+                              >
+                                {ownerInitials(a.catalyst_name)}
+                              </span>
+                              <span className="t-secondary truncate max-w-[14rem]">{a.catalyst_name}</span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 t-muted" title={new Date(a.created_at).toLocaleString()}>{relativeTime(a.created_at)}</td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-4 text-right">
+                            <span className="text-headline-sm font-mono tabular-nums text-accent">
+                              <Numeric value={a.value_zar} unit="currency" compact size="sm" />
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 t-muted" title={new Date(a.created_at).toLocaleString()}>{relativeTime(a.created_at)}</td>
+                          <td className="px-4 py-4 text-right">
                             <div className="inline-flex items-center gap-1">
                               {/* Open-evidence is always available — even on
                                   completed/rejected rows, the chain is still
@@ -699,7 +738,7 @@ export function ActionLayerPage(): JSX.Element {
                                     disabled={actingOn === a.id}
                                     title="Approve & dispatch"
                                   >
-                                    <Check size={12} />
+                                    Approve <ArrowUpRight size={13} />
                                   </Button>
                                   <Button
                                     variant="ghost"

@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
 import type { SupportTicket, SupportTicketReply } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
-import { ArrowLeft, Loader2, Send } from 'lucide-react';
+import { ArrowLeft, Link as LinkIcon, Loader2, Paperclip, Send } from 'lucide-react';
 
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
   open: 'info',
@@ -98,7 +98,7 @@ export function SupportTicketDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-5 max-w-4xl mx-auto">
+      <div className="p-5 max-w-6xl mx-auto">
         <Card>
           <div className="flex items-center justify-center py-10 t-muted text-sm gap-2">
             <Loader2 size={16} className="animate-spin" />
@@ -111,7 +111,7 @@ export function SupportTicketDetailPage() {
 
   if (!ticket) {
     return (
-      <div className="p-5 max-w-4xl mx-auto space-y-4">
+      <div className="p-5 max-w-6xl mx-auto space-y-4">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-xs t-muted hover:t-primary"
@@ -133,91 +133,157 @@ export function SupportTicketDetailPage() {
 
   const isClosed = ticket.status === 'closed';
   const canReply = !isClosed;
+  const ticketRef = `#${ticket.id}`;
 
   return (
-    <div className="p-5 max-w-4xl mx-auto space-y-4">
+    <div className="p-5 lg:p-6 max-w-6xl mx-auto">
       <Link
         to="/support-tickets"
-        className="inline-flex items-center gap-1 text-xs t-muted hover:t-primary"
+        className="inline-flex items-center gap-1 text-caption font-mono uppercase tracking-wide t-muted hover:t-primary mb-5"
       >
         <ArrowLeft size={14} />
         All tickets
       </Link>
 
-      <Card>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">{ticket.subject}</h1>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
+        {/* ── Main column: threaded conversation ─────────────────── */}
+        <div className="min-w-0 space-y-5">
+          <header>
+            <p className="text-caption font-mono uppercase tracking-[0.18em] t-muted">
+              Threaded conversation
+            </p>
+            <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mt-2">
+              <span className="font-mono t-secondary">{ticketRef}: </span>
+              {ticket.subject}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className="text-caption font-mono uppercase tracking-wide t-muted">Status</span>
               <Badge variant={STATUS_VARIANT[ticket.status] ?? 'default'}>{ticket.status.replace('_', ' ')}</Badge>
-              <Badge variant={PRIORITY_VARIANT[ticket.priority] ?? 'default'}>{ticket.priority}</Badge>
-              <Badge variant="default">{ticket.category.replace('_', ' ')}</Badge>
-              <span className="text-caption t-muted">Opened {new Date(ticket.created_at).toLocaleString()}</span>
             </div>
-          </div>
-        </div>
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-card)' }}>
-          <p className="text-sm t-primary whitespace-pre-wrap">{ticket.body}</p>
-        </div>
-      </Card>
+          </header>
 
-      <div className="space-y-2" data-testid="support-reply-thread">
-        {replies.map((r) => {
-          const isMine = currentUser && r.user_id === currentUser.id;
-          return (
-            <Card key={r.id}>
+          <div className="space-y-3" data-testid="support-reply-thread">
+            {/* Original ticket message */}
+            <Card>
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant={isMine ? 'info' : 'default'}>
-                    {isMine ? 'You' : 'Agent'}
-                  </Badge>
-                  <span className="text-caption t-muted">{new Date(r.created_at).toLocaleString()}</span>
-                </div>
+                <Badge variant="default">Customer</Badge>
+                <span className="text-caption font-mono t-muted whitespace-nowrap">
+                  {new Date(ticket.created_at).toLocaleString()}
+                </span>
               </div>
-              <p className="text-sm t-primary mt-2 whitespace-pre-wrap">{r.body}</p>
+              <p className="text-sm t-primary mt-3 whitespace-pre-wrap leading-relaxed">{ticket.body}</p>
             </Card>
-          );
-        })}
-      </div>
 
-      {canReply ? (
-        <Card>
-          <form onSubmit={handleReply} className="space-y-3" data-testid="support-reply-form">
-            <label className="space-y-1 block">
-              <span className="text-xs font-medium t-secondary">Reply</span>
-              <textarea
-                value={replyBody}
-                maxLength={10000}
-                rows={4}
-                placeholder="Add more context, screenshots links, or acknowledge the resolution..."
-                onChange={(e) => setReplyBody(e.target.value)}
-                className="w-full rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring-focus)] resize-y"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}
-                data-testid="support-reply-textarea"
-              />
-              <span className="text-caption t-muted">{replyBody.length} / 10000</span>
-            </label>
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                disabled={!replyBody.trim() || sending}
-                data-testid="support-send-reply-btn"
-              >
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                Send reply
-              </Button>
-            </div>
-          </form>
-        </Card>
-      ) : (
-        <Card>
-          <p className="text-xs t-muted text-center py-2">
-            This ticket is closed. Open a new ticket if you need further assistance.
+            {replies.map((r) => {
+              const isMine = currentUser && r.user_id === currentUser.id;
+              return (
+                <Card key={r.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <Badge variant={isMine ? 'info' : 'default'}>
+                      {isMine ? 'You' : 'Agent'}
+                    </Badge>
+                    <span className="text-caption font-mono t-muted whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-sm t-primary mt-3 whitespace-pre-wrap leading-relaxed">{r.body}</p>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Composer */}
+          {canReply ? (
+            <Card>
+              <form onSubmit={handleReply} className="space-y-3" data-testid="support-reply-form">
+                <label className="block">
+                  <span className="sr-only">Reply</span>
+                  <textarea
+                    value={replyBody}
+                    maxLength={10000}
+                    rows={4}
+                    placeholder="Write a reply or internal note…"
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    className="w-full rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring-focus)] resize-y"
+                    style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}
+                    data-testid="support-reply-textarea"
+                  />
+                </label>
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-3 t-muted">
+                    <span className="text-sm font-bold" aria-hidden="true">B</span>
+                    <span className="text-sm italic" aria-hidden="true">I</span>
+                    <LinkIcon size={15} aria-hidden="true" />
+                    <Paperclip size={15} aria-hidden="true" />
+                    <span className="text-caption font-mono ml-1">{replyBody.length} / 10000</span>
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={!replyBody.trim() || sending}
+                    data-testid="support-send-reply-btn"
+                  >
+                    {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Reply
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          ) : (
+            <Card>
+              <p className="text-xs t-muted text-center py-2">
+                This ticket is closed. Open a new ticket if you need further assistance.
+              </p>
+            </Card>
+          )}
+        </div>
+
+        {/* ── Sidebar: ticket metadata ───────────────────────────── */}
+        <aside className="space-y-4 lg:sticky lg:top-5">
+          <p className="text-caption font-mono uppercase tracking-[0.18em] t-muted">
+            Ticket metadata
           </p>
-        </Card>
-      )}
+
+          <Card>
+            <p className="text-caption font-mono uppercase tracking-wide t-muted mb-3">Ticket details</p>
+            <dl className="space-y-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-caption font-mono uppercase tracking-wide t-muted">Reference</dt>
+                <dd className="text-sm font-mono t-primary">{ticketRef}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-caption font-mono uppercase tracking-wide t-muted">Category</dt>
+                <dd className="text-sm t-primary capitalize">{ticket.category.replace('_', ' ')}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-caption font-mono uppercase tracking-wide t-muted">Opened</dt>
+                <dd className="text-sm font-mono t-primary text-right">{new Date(ticket.created_at).toLocaleString()}</dd>
+              </div>
+            </dl>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-caption font-mono uppercase tracking-wide t-muted">Priority</p>
+              <Badge variant={PRIORITY_VARIANT[ticket.priority] ?? 'default'}>{ticket.priority}</Badge>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-caption font-mono uppercase tracking-wide t-muted">Status</p>
+              <Badge variant={STATUS_VARIANT[ticket.status] ?? 'default'}>{ticket.status.replace('_', ' ')}</Badge>
+            </div>
+            <Link
+              to="/support-tickets"
+              className="inline-flex items-center gap-1 text-caption font-mono uppercase tracking-wide text-accent hover:underline"
+            >
+              View all tickets
+            </Link>
+          </Card>
+        </aside>
+      </div>
     </div>
   );
 }

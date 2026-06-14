@@ -40,27 +40,35 @@ export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): 
   const c = COPY[kind];
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4 sm:px-6"
+      className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-12"
       style={{
         background: 'var(--bg-primary)',
-        backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(163, 177, 138, 0.06) 0%, transparent 70%)',
+        backgroundImage:
+          'radial-gradient(48rem 32rem at 50% -8%, var(--accent-subtle) 0%, transparent 70%)',
         backgroundAttachment: 'fixed',
       }}
     >
       <div
-        className="w-full max-w-md rounded-md p-7 sm:p-8 text-center"
+        className="w-full max-w-lg rounded-xl overflow-hidden"
         style={{
           background: 'var(--bg-card-solid)',
           border: '1px solid var(--border-card)',
           boxShadow: 'var(--shadow-card)',
         }}
       >
-        <div className="flex flex-col items-center">
+        {/* Hero band — mono eyebrow + giant error code, mirroring the dashboard metric voice */}
+        <div
+          className="flex items-stretch gap-5 px-7 sm:px-9 pt-8 pb-7"
+          style={{
+            borderBottom: '1px solid var(--border-card)',
+            background: 'var(--accent-subtle)',
+          }}
+        >
           <div
-            className="w-14 h-14 rounded-md flex items-center justify-center mb-5 border"
+            className="shrink-0 w-14 h-14 rounded-lg flex items-center justify-center border"
             style={{
-              background: 'rgba(163, 177, 138, 0.10)',
-              borderColor: 'rgba(163, 177, 138, 0.25)',
+              background: 'var(--bg-card-solid)',
+              borderColor: 'rgb(var(--accent-rgb) / 0.20)',
             }}
             aria-hidden="true"
           >
@@ -76,18 +84,72 @@ export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): 
               {c.symbol}
             </span>
           </div>
+          <div className="flex flex-col justify-center min-w-0">
+            <p
+              className="text-label mb-1"
+              style={{
+                fontFamily: "'Space Mono', ui-monospace, monospace",
+                color: 'var(--accent)',
+              }}
+            >
+              Access State
+            </p>
+            <div className="flex items-baseline gap-3 leading-none">
+              <span
+                className="font-bold tracking-tight"
+                style={{
+                  fontFamily: "'Space Mono', ui-monospace, monospace",
+                  fontSize: '3rem',
+                  color: 'var(--accent)',
+                  lineHeight: 1,
+                }}
+              >
+                {c.code}
+              </span>
+            </div>
+          </div>
+        </div>
 
-          <p className="text-caption uppercase tracking-widest t-muted font-mono mb-1">Error {c.code}</p>
-          <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mb-3">{c.title}</h1>
-          <p className="text-body-sm t-muted max-w-sm leading-relaxed">{c.body}</p>
+        {/* Body */}
+        <div className="px-7 sm:px-9 py-8">
+          <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mb-3">
+            {c.title}
+          </h1>
+          <p className="text-body-sm t-muted max-w-md leading-relaxed">{c.body}</p>
 
           {kind === '403' && requiredRoles && requiredRoles.length > 0 && (
-            <p className="text-caption font-mono t-muted mt-4">
-              Required role{requiredRoles.length === 1 ? '' : 's'}: {requiredRoles.join(', ')}
-            </p>
+            <div
+              className="mt-5 rounded-lg px-4 py-3"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-card)',
+              }}
+            >
+              <p className="text-label mb-2">
+                Required role{requiredRoles.length === 1 ? '' : 's'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {requiredRoles.map((role) => (
+                  <span
+                    key={role}
+                    className="inline-flex items-center rounded-md px-2.5 py-1"
+                    style={{
+                      fontFamily: "'Space Mono', ui-monospace, monospace",
+                      fontSize: '11px',
+                      letterSpacing: '0.04em',
+                      background: 'var(--accent-subtle)',
+                      color: 'var(--accent)',
+                      border: '1px solid rgb(var(--accent-rgb) / 0.20)',
+                    }}
+                  >
+                    {role}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
-          <Link to="/dashboard" className="block mt-6 w-full">
+          <Link to="/dashboard" className="block mt-7 w-full">
             <Button variant="primary" size="md" className="w-full">
               {c.cta}
             </Button>

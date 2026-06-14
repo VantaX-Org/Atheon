@@ -50,65 +50,129 @@ export function ERPOAuthCallbackPage() {
     exchangeCode();
   }, [searchParams]);
 
+  const heading =
+    status === 'loading' ? 'Connecting…' :
+    status === 'success' ? `Connected${provider ? ` to ${provider}` : ''}` :
+    'Connection Failed';
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg-primary)' }}>
-      <Card className="max-w-md w-full text-center space-y-6">
-        <div className="flex justify-center">
-          <div
-            className="w-16 h-16 rounded-md flex items-center justify-center"
-            style={{
-              background: status === 'loading'
-                ? 'rgb(var(--accent-rgb) / 0.10)'
-                : status === 'success'
-                  ? 'rgb(var(--accent-rgb) / 0.10)'
-                  : 'rgb(var(--neg-rgb) / 0.10)',
-            }}
-          >
-            {status === 'loading' && <Loader2 className="w-8 h-8 text-accent animate-spin" />}
-            {status === 'success' && <CheckCircle className="w-8 h-8 text-accent" />}
-            {status === 'error' && <XCircle className="w-8 h-8 text-neg" />}
+    <div
+      className="min-h-screen flex flex-col items-center px-6 py-10"
+      style={{ background: 'var(--bg-primary)' }}
+    >
+      {/* Wordmark header */}
+      <header className="w-full max-w-3xl mx-auto">
+        <h2 className="text-center text-2xl font-semibold tracking-tight t-primary">Atheon</h2>
+        <div
+          className="mt-5 h-px w-full"
+          style={{ background: 'var(--border-card)' }}
+        />
+      </header>
+
+      {/* Centered status card */}
+      <main className="flex-1 w-full flex items-center justify-center">
+        <Card
+          variant="default"
+          size="hero"
+          className="max-w-md w-full rounded-2xl text-center"
+          style={{
+            background: 'var(--glass-bg-strong)',
+            backdropFilter: 'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            border: '1px solid var(--glass-border)',
+            boxShadow: 'var(--glass-shadow)',
+          }}
+        >
+          {/* Status glyph */}
+          <div className="flex justify-center">
+            {status === 'loading' && (
+              <Loader2 className="w-12 h-12 text-accent animate-spin" aria-hidden="true" />
+            )}
+            {status === 'success' && (
+              <CheckCircle className="w-12 h-12 text-accent" strokeWidth={2.5} aria-hidden="true" />
+            )}
+            {status === 'error' && (
+              <XCircle className="w-12 h-12 text-neg" strokeWidth={2.5} aria-hidden="true" />
+            )}
           </div>
-        </div>
 
-        <div>
-          <h1 className="text-xl font-bold t-primary">
-            {status === 'loading' ? 'Connecting...' :
-             status === 'success' ? 'Connected!' :
-             'Connection Failed'}
+          {/* Editorial heading */}
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight t-primary">
+            {heading}
           </h1>
-          {provider && (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <Link2 size={14} className="text-accent" />
-              <span className="text-sm t-muted capitalize">{provider}</span>
+
+          {/* Mono data-voice rows */}
+          <dl
+            className="mt-7 rounded-xl overflow-hidden text-left"
+            style={{ border: '1px solid var(--border-card)' }}
+          >
+            {provider && (
+              <div
+                className="flex items-center gap-4 px-4 py-3"
+                style={{ borderBottom: '1px solid var(--border-card)' }}
+              >
+                <dt className="font-mono text-mono-data uppercase t-muted w-24 shrink-0 flex items-center gap-1.5">
+                  <Link2 size={12} className="text-accent" aria-hidden="true" />
+                  Provider
+                </dt>
+                <dd className="font-mono text-mono-data t-primary capitalize">{provider}</dd>
+              </div>
+            )}
+            <div className="flex items-start gap-4 px-4 py-3">
+              <dt className="font-mono text-mono-data uppercase t-muted w-24 shrink-0">Status</dt>
+              <dd className="font-mono text-mono-data t-secondary leading-relaxed">{message}</dd>
             </div>
-          )}
-        </div>
+          </dl>
 
-        <p className="text-sm t-muted">{message}</p>
-
-        <div className="flex gap-3 justify-center">
-          {status === 'success' && (
-            <Button variant="primary" size="md" onClick={() => navigate('/erp-adapters')} title="Go to ERP connections page">
-              View Connections
-            </Button>
-          )}
-          {status === 'error' && (
-            <>
-              <Button variant="secondary" size="md" onClick={() => navigate('/erp-adapters')} title="Go back to ERP adapters page">
-                Back to ERP
+          {/* Actions */}
+          <div className="mt-7 flex flex-col gap-2.5">
+            {status === 'success' && (
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full font-mono uppercase tracking-wide"
+                onClick={() => navigate('/erp-adapters')}
+                title="Go to ERP connections page"
+              >
+                View Connections
               </Button>
-              <Button variant="primary" size="md" onClick={() => window.location.reload()} title="Retry the OAuth authorization">
-                Try Again
+            )}
+            {status === 'error' && (
+              <>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full font-mono uppercase tracking-wide"
+                  onClick={() => window.location.reload()}
+                  title="Retry the OAuth authorization"
+                >
+                  Try Again
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => navigate('/erp-adapters')}
+                  title="Go back to ERP adapters page"
+                >
+                  Back to ERP
+                </Button>
+              </>
+            )}
+            {status !== 'loading' && (
+              <Button
+                variant={status === 'success' ? 'secondary' : 'ghost'}
+                size="lg"
+                className="w-full"
+                onClick={() => navigate('/dashboard')}
+                title="Return to dashboard"
+              >
+                Dashboard
               </Button>
-            </>
-          )}
-          {status !== 'loading' && (
-            <Button variant="secondary" size="md" onClick={() => navigate('/dashboard')} title="Return to dashboard">
-              Dashboard
-            </Button>
-          )}
-        </div>
-      </Card>
+            )}
+          </div>
+        </Card>
+      </main>
     </div>
   );
 }

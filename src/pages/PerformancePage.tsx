@@ -99,26 +99,32 @@ const REGRESSIONS = [
   },
 ];
 
-function sigTone(s: Run['significance']): { bg: string; border: string; icon: typeof CheckCircle2; pill: string; iconClass: string } {
+function sigTone(s: Run['significance']): {
+  icon: typeof CheckCircle2;
+  pill: string;
+  badge: 'success' | 'info' | 'warning';
+  dot: string;
+  iconClass: string;
+} {
   if (s === 'pass') return {
-    bg: 'rgb(var(--accent-rgb) / 0.08)',
-    border: 'rgb(var(--accent-rgb) / 0.30)',
     icon: CheckCircle2,
     pill: 'Pass',
+    badge: 'success',
+    dot: 'var(--rag-healthy)',
     iconClass: 'text-accent',
   };
   if (s === 'note') return {
-    bg: 'rgb(var(--info-rgb, 100 116 139) / 0.08)',
-    border: 'rgb(var(--info-rgb, 100 116 139) / 0.30)',
     icon: Activity,
     pill: 'Observed',
+    badge: 'info',
+    dot: 'var(--info)',
     iconClass: 't-muted',
   };
   return {
-    bg: 'rgb(var(--warning-rgb, 161 120 64) / 0.08)',
-    border: 'rgb(var(--warning-rgb, 161 120 64) / 0.30)',
     icon: AlertTriangle,
     pill: 'Discovery',
+    badge: 'warning',
+    dot: 'var(--warning)',
     iconClass: 't-secondary',
   };
 }
@@ -132,7 +138,7 @@ function fmtMs(ms: number | null): string {
 export default function PerformancePage(): JSX.Element {
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-8">
         <div className="flex items-center gap-3 flex-wrap mb-2">
           <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
           <span className="t-muted text-caption">·</span>
@@ -147,19 +153,19 @@ export default function PerformancePage(): JSX.Element {
           dek="Measured load-test results from the Atheon harness — real numbers, not aspirational SLO targets."
         />
 
-        <Card className="p-5" style={{ background: 'rgb(var(--accent-rgb) / 0.06)', borderColor: 'rgb(var(--accent-rgb) / 0.25)' }}>
-          <div className="flex items-start gap-3">
-            <Activity className="text-accent flex-shrink-0 mt-0.5" size={20} />
-            <div>
-              <h2 className="text-headline-md font-bold t-primary mb-1">Measured, not aspirational</h2>
-              <p className="text-body-sm t-secondary">
+        <Card variant="hero">
+          <div className="flex items-start gap-4">
+            <Activity className="text-accent flex-shrink-0 mt-1" size={22} />
+            <div className="min-w-0">
+              <p className="text-label mb-2" style={{ color: 'var(--accent)' }}>Measured · Not aspirational</p>
+              <p className="text-body-sm t-secondary max-w-3xl">
                 These are real numbers from the Atheon load-test harness
                 (<code className="font-mono px-1.5 py-0.5 rounded-sm text-caption" style={{ background: 'var(--bg-secondary)' }}>scripts/load-test.mjs</code>)
                 run against the production worker. We publish raw results, not curated marketing copy.
                 For SLA negotiation, the methodology + tooling is open — your SRE team can reproduce these
                 numbers from their own network, or scope a higher-VU test under a maintenance window.
               </p>
-              <div className="flex items-center gap-3 mt-3 flex-wrap text-caption">
+              <div className="flex items-center gap-3 mt-4 flex-wrap text-caption">
                 <Link to="/status" className="text-accent hover:underline inline-flex items-center gap-1">
                   Live status <ExternalLink size={11} />
                 </Link>
@@ -172,50 +178,67 @@ export default function PerformancePage(): JSX.Element {
           </div>
         </Card>
 
-        {/* Run cards */}
+        {/* Run cards — latency & throughput, mockup metric treatment */}
         <section>
-          <h3 className="text-body font-semibold t-primary mb-3">Latest results</h3>
-          <div className="space-y-3">
+          <p className="text-label mb-3">Latest Results · Last Run</p>
+          <div className="space-y-4">
             {RUNS.map((run, i) => {
               const tone = sigTone(run.significance);
               const Icon = tone.icon;
               return (
-                <Card key={i} className="p-5" style={{ background: tone.bg, borderColor: tone.border }}>
-                  <div className="flex items-start justify-between gap-3 mb-3">
+                <Card key={i} variant="prominent">
+                  <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Icon size={14} className={tone.iconClass} />
-                        <h4 className="text-body font-semibold t-primary">{run.label}</h4>
-                        <Badge variant="default" size="sm">{tone.pill}</Badge>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span
+                          aria-hidden
+                          className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ background: tone.dot }}
+                        />
+                        <h4 className="text-headline-sm t-primary">{run.label}</h4>
+                        <Icon size={13} className={`${tone.iconClass} flex-shrink-0`} aria-hidden />
+                        <Badge variant={tone.badge} size="sm">{tone.pill}</Badge>
                       </div>
                       <code className="font-mono text-caption t-muted block">{run.endpoint}</code>
                     </div>
                   </div>
-                  <p className="text-body-sm t-secondary mb-3">{run.description}</p>
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-body-sm">
+
+                  {/* Hero latency metrics — P50 / P95 / P99 */}
+                  <div
+                    className="grid grid-cols-3 gap-4 py-4 px-1 mb-4 border-y"
+                    style={{ borderColor: 'var(--border-card)' }}
+                  >
+                    {([
+                      { label: 'P50', sub: 'Median', v: run.p50Ms },
+                      { label: 'P95', sub: '95th pct', v: run.p95Ms },
+                      { label: 'P99', sub: '99th pct', v: run.p99Ms },
+                    ] as const).map((m) => (
+                      <div key={m.label}>
+                        <div className="text-label" style={{ color: 'var(--accent)' }}>{m.label}</div>
+                        <div className="font-mono tabular-nums t-primary text-headline-xl mt-1">{fmtMs(m.v)}</div>
+                        <div className="text-caption t-muted uppercase tracking-wider mt-0.5">{m.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-body-sm t-secondary mb-4">{run.description}</p>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4">
                     <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">VUs × duration</div>
-                      <div className="t-primary tabular-nums font-mono">{run.vus} × {run.durationSec}s</div>
+                      <div className="text-label">VUs × Duration</div>
+                      <div className="t-primary tabular-nums font-mono text-body-sm mt-0.5">{run.vus} × {run.durationSec}s</div>
                     </div>
                     <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">Requests</div>
-                      <div className="t-primary tabular-nums font-mono">{run.requestsTotal.toLocaleString()}</div>
+                      <div className="text-label">Requests</div>
+                      <div className="t-primary tabular-nums font-mono text-body-sm mt-0.5">{run.requestsTotal.toLocaleString()}</div>
                     </div>
                     <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">Throughput</div>
-                      <div className="t-primary tabular-nums font-mono">{run.throughputRps} req/s</div>
+                      <div className="text-label">Throughput</div>
+                      <div className="t-primary tabular-nums font-mono text-body-sm mt-0.5">{run.throughputRps} req/s</div>
                     </div>
                     <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">p50</div>
-                      <div className="t-primary tabular-nums font-mono">{fmtMs(run.p50Ms)}</div>
-                    </div>
-                    <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">p95</div>
-                      <div className="t-primary tabular-nums font-mono">{fmtMs(run.p95Ms)}</div>
-                    </div>
-                    <div>
-                      <div className="text-caption uppercase tracking-wider t-muted">Operational errors</div>
-                      <div className={`tabular-nums font-mono ${run.errorRatePct === 0 ? 'text-accent' : 'text-neg'}`}>{run.errorRatePct}%</div>
+                      <div className="text-label">Operational Errors</div>
+                      <div className={`tabular-nums font-mono text-body-sm mt-0.5 ${run.errorRatePct === 0 ? 'text-accent' : 'text-neg'}`}>{run.errorRatePct}%</div>
                     </div>
                   </div>
                 </Card>
@@ -226,19 +249,19 @@ export default function PerformancePage(): JSX.Element {
 
         {/* Regression disclosure — honesty first */}
         <section>
-          <div className="flex items-center justify-between mb-3 gap-3">
-            <h3 className="text-body font-semibold t-primary">Caught + fixed during this load-test pass</h3>
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <p className="text-label">Caught + Fixed · This Load-Test Pass</p>
             <span className="text-caption t-muted">Engineering hygiene · not curated numbers</span>
           </div>
           <div className="space-y-3">
             {REGRESSIONS.map((r, i) => (
-              <Card key={i} className="p-5">
+              <Card key={i}>
                 <div className="flex items-start gap-3">
                   <GitCommit size={16} className="t-secondary mt-0.5 flex-shrink-0" />
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="warning" size="sm">Discovered {r.discovered}</Badge>
-                      <span className="text-caption t-muted">Fixed in {r.fix}</span>
+                      <span className="font-mono text-caption t-muted">Fixed in {r.fix}</span>
                     </div>
                     <p className="text-body-sm t-secondary mb-2">{r.summary}</p>
                     <p className="text-body-sm t-primary"><strong className="t-primary">Resolution:</strong> <span className="t-secondary">{r.resolution}</span></p>
@@ -251,23 +274,23 @@ export default function PerformancePage(): JSX.Element {
 
         {/* Methodology */}
         <section>
-          <h3 className="text-body font-semibold t-primary mb-3">Methodology</h3>
-          <Card className="p-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-body-sm">
+          <p className="text-label mb-3">Methodology</p>
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 text-body-sm">
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Harness</div>
+                <div className="text-label mb-1.5">Harness</div>
                 <p className="t-secondary">Node 20, zero dependencies (just <code className="font-mono">fetch</code> + <code className="font-mono">performance.now()</code>). Source at <code className="font-mono">scripts/load-test.mjs</code> in the Atheon repo.</p>
               </div>
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Profile</div>
+                <div className="text-label mb-1.5">Profile</div>
                 <p className="t-secondary">Conservative — 5–10 virtual users, 30-second windows, ≤5000 request cap, 5-second per-request timeout. Designed for routine performance verification; full stress testing scheduled under maintenance windows.</p>
               </div>
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Network</div>
+                <div className="text-label mb-1.5">Network</div>
                 <p className="t-secondary">Probe from operator workstation in af-south-1 (JNB), so latency includes user-edge RTT to the closest Cloudflare PoP. Direct edge-to-edge measurement is typically 30–60% lower.</p>
               </div>
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Operational error</div>
+                <div className="text-label mb-1.5">Operational error</div>
                 <p className="t-secondary">A response is an operational error only when the server failed to handle the request correctly (5xx, timeout, abort). A 401 from an unauthenticated SCIM probe is the correct response and counts as a pass.</p>
               </div>
             </div>
@@ -276,23 +299,23 @@ export default function PerformancePage(): JSX.Element {
 
         {/* Stated SLO */}
         <section>
-          <h3 className="text-body font-semibold t-primary mb-3">Stated targets</h3>
-          <Card className="p-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-body-sm">
+          <p className="text-label mb-3">Stated Targets</p>
+          <Card>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5 text-body-sm">
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Uptime SLO</div>
-                <div className="t-primary font-medium">99.9% monthly</div>
-                <p className="text-caption t-muted mt-1">~43 min / month allowance. Measured via /healthz.</p>
+                <div className="text-label mb-1.5">Uptime SLO</div>
+                <div className="t-primary font-mono tabular-nums text-headline-sm">99.9% monthly</div>
+                <p className="text-caption t-muted mt-1.5">~43 min / month allowance. Measured via /healthz.</p>
               </div>
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">API p95 target</div>
-                <div className="t-primary font-medium">≤ 500 ms cached · ≤ 2 s cold</div>
-                <p className="text-caption t-muted mt-1">Per-tenant queries; reset on D1 region failover.</p>
+                <div className="text-label mb-1.5">API p95 target</div>
+                <div className="t-primary font-mono tabular-nums text-headline-sm">≤ 500 ms cached · ≤ 2 s cold</div>
+                <p className="text-caption t-muted mt-1.5">Per-tenant queries; reset on D1 region failover.</p>
               </div>
               <div>
-                <div className="text-caption uppercase tracking-wider t-muted mb-1">Incident response</div>
-                <div className="t-primary font-medium">15 min banner · 24 h customer notice · 5 day RCA</div>
-                <p className="text-caption t-muted mt-1">Disclosed in detail at <Link to="/legal/security" className="text-accent hover:underline">/legal/security</Link>.</p>
+                <div className="text-label mb-1.5">Incident response</div>
+                <div className="t-primary font-mono tabular-nums text-headline-sm">15 min banner · 24 h customer notice · 5 day RCA</div>
+                <p className="text-caption t-muted mt-1.5">Disclosed in detail at <Link to="/legal/security" className="text-accent hover:underline">/legal/security</Link>.</p>
               </div>
             </div>
           </Card>

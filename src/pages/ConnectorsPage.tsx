@@ -28,6 +28,8 @@ import {
   Plug, ArrowLeft, Mail, ExternalLink, CheckCircle2, Circle,
 } from 'lucide-react';
 
+const MONO = "'Space Mono', ui-monospace, monospace";
+
 type ConformanceLevel = 'GA' | 'Beta' | 'Preview' | 'On request';
 
 interface Connector {
@@ -71,20 +73,21 @@ const CONNECTORS: Connector[] = [
   { vendor: 'Jaggaer', product: 'Sourcing & Procurement', category: 'Procurement', protocol: 'REST', read: false, writeBack: false, level: 'On request', notes: 'Scoped at engagement.' },
 ];
 
-// Conformance level visual tokens — Swiss two-tier palette only
+// Conformance level → status-pill tones. Brand accent = GA (live/primary);
+// RAG amber = Preview (watch); muted = not-yet-built. Beta uses the info voice.
 const LEVEL_TONE: Record<ConformanceLevel, { bg: string; border: string; textStyle: React.CSSProperties }> = {
-  GA:           { bg: 'rgb(var(--accent-rgb) / 0.12)',  border: 'rgb(var(--accent-rgb) / 0.40)',  textStyle: { color: 'var(--accent)' } },
-  Beta:         { bg: 'rgb(var(--info-rgb, 100 140 180) / 0.12)', border: 'rgb(var(--info-rgb, 100 140 180) / 0.40)', textStyle: { color: 'var(--info)' } },
-  Preview:      { bg: 'rgb(var(--warning-rgb, 180 130 60) / 0.12)',  border: 'rgb(var(--warning-rgb, 180 130 60) / 0.40)',  textStyle: { color: 'var(--warning)' } },
-  'On request': { bg: 'rgba(160, 160, 180, 0.10)', border: 'rgba(160, 160, 180, 0.30)', textStyle: {} },
+  GA:           { bg: 'var(--accent-subtle)',                     border: 'rgb(var(--accent-rgb) / 0.32)',     textStyle: { color: 'var(--accent)' } },
+  Beta:         { bg: 'rgba(108, 122, 142, 0.10)',               border: 'rgba(108, 122, 142, 0.28)',         textStyle: { color: 'var(--info)' } },
+  Preview:      { bg: 'rgb(var(--rag-watch-rgb) / 0.12)',         border: 'rgb(var(--rag-watch-rgb) / 0.30)',  textStyle: { color: 'var(--rag-watch)' } },
+  'On request': { bg: 'rgba(160, 160, 180, 0.10)',               border: 'rgba(160, 160, 180, 0.30)',         textStyle: {} },
 };
 
 function LevelBadge({ level }: { level: ConformanceLevel }) {
   const tone = LEVEL_TONE[level];
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-caption font-medium${level === 'On request' ? ' t-muted' : ''}`}
-      style={{ background: tone.bg, border: `1px solid ${tone.border}`, ...tone.textStyle }}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold${level === 'On request' ? ' t-muted' : ''}`}
+      style={{ background: tone.bg, border: `1px solid ${tone.border}`, fontFamily: MONO, ...tone.textStyle }}
     >
       {level}
     </span>
@@ -97,49 +100,103 @@ export default function ConnectorsPage(): JSX.Element {
     return acc;
   }, { GA: 0, Beta: 0, Preview: 0, 'On request': 0 });
 
+  const total = CONNECTORS.length;
+  // "Live" = GA + Beta connectors carry a real implemented integration.
+  const live = counts.GA + counts.Beta;
+  // "Attention" = stub/read-only Preview + not-yet-built On request.
+  const attention = counts.Preview + counts['On request'];
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
         <div className="flex items-center gap-3 flex-wrap">
           <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
           <span className="t-muted text-caption">·</span>
           <Link to="/legal/security" className="t-muted hover:t-primary text-caption">Security &amp; Privacy</Link>
-          <span className="t-muted text-caption">·</span>
         </div>
 
         <PageHeader
           eyebrow="Connectors · Catalog"
-          title="Connector Matrix"
+          title="Integration Catalog"
           dek="Honest conformance levels for every ERP / HCM / Accounting / CRM / Procurement connector Atheon ships."
         />
 
-        <Card className="p-5" style={{ background: 'rgba(163, 177, 138, 0.06)', borderColor: 'rgba(163, 177, 138, 0.30)' }}>
-          <div className="flex items-start gap-3">
-            <Plug className="text-accent flex-shrink-0 mt-0.5" size={20} />
-            <div>
-              <h2 className="text-headline-md font-bold t-primary mb-1">Where Atheon plugs in</h2>
-              <p className="text-body-sm t-secondary">
-                Procurement teams: this is the page to bookmark when
-                your CIO asks "does Atheon support [system]?".
-              </p>
-              <div className="flex items-center gap-3 mt-3 flex-wrap text-caption">
-                <span className="t-muted">Inventory:</span>
-                <span><strong className="tabular-nums font-mono" style={{ color: 'var(--accent)' }}>{counts.GA}</strong> GA</span>
-                <span className="t-muted">·</span>
-                <span><strong className="tabular-nums font-mono" style={{ color: 'var(--info)' }}>{counts.Beta}</strong> Beta</span>
-                <span className="t-muted">·</span>
-                <span><strong className="tabular-nums font-mono" style={{ color: 'var(--warning)' }}>{counts.Preview}</strong> Preview</span>
-                <span className="t-muted">·</span>
-                <span><strong className="t-muted tabular-nums font-mono">{counts['On request']}</strong> On request</span>
-              </div>
+        {/* Summary stat cards — real catalog inventory, no fabricated metrics. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <Card className="p-6">
+            <p className="text-[11px] uppercase tracking-[0.14em] t-muted font-medium" style={{ fontFamily: MONO }}>Total Connectors</p>
+            <p className="mt-3 text-5xl t-primary leading-none tabular-nums font-bold" style={{ fontFamily: MONO }}>{total}</p>
+            <p className="mt-3 text-caption uppercase tracking-wider t-muted" style={{ fontFamily: MONO }}>Catalogued Sources</p>
+          </Card>
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.14em] t-muted font-medium" style={{ fontFamily: MONO }}>Live Integrations</p>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold" style={{ fontFamily: MONO, background: 'var(--accent-subtle)', border: '1px solid rgb(var(--accent-rgb) / 0.32)', color: 'var(--accent)' }}>GA + Beta</span>
             </div>
-          </div>
-        </Card>
+            <p className="mt-3 text-5xl t-primary leading-none tabular-nums font-bold" style={{ fontFamily: MONO }}>{live}</p>
+            <p className="mt-3 text-caption uppercase tracking-wider t-muted" style={{ fontFamily: MONO }}>Implemented Adapters</p>
+          </Card>
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.14em] t-muted font-medium" style={{ fontFamily: MONO }}>Attention Needed</p>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-semibold" style={{ fontFamily: MONO, background: 'rgb(var(--rag-watch-rgb) / 0.12)', border: '1px solid rgb(var(--rag-watch-rgb) / 0.30)', color: 'var(--rag-watch)' }}>Preview + Req</span>
+            </div>
+            <p className="mt-3 text-5xl t-primary leading-none tabular-nums font-bold" style={{ fontFamily: MONO }}>{attention}</p>
+            <p className="mt-3 text-caption uppercase tracking-wider t-muted" style={{ fontFamily: MONO }}>Stub / Not Yet Built</p>
+          </Card>
+        </div>
+
+        {/* Connector card grid — replaces the dense matrix table with the
+            editorial card treatment from the catalog mockup. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {CONNECTORS.map((c, i) => (
+            <Card key={i} className="p-6 flex flex-col">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <span
+                    className="flex-shrink-0 w-10 h-10 rounded-xl inline-flex items-center justify-center"
+                    style={{ background: 'var(--accent-subtle)', border: '1px solid rgb(var(--accent-rgb) / 0.18)' }}
+                    aria-hidden
+                  >
+                    <Plug size={18} style={{ color: 'var(--accent)' }} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-headline-sm t-primary font-semibold uppercase tracking-wide truncate" style={{ fontFamily: MONO }}>{c.vendor}</h3>
+                    <p className="text-body-sm t-secondary truncate">{c.product}</p>
+                  </div>
+                </div>
+                <LevelBadge level={c.level} />
+              </div>
+
+              <div className="mt-5 flex items-center gap-2 flex-wrap">
+                <Badge variant="default" size="sm">{c.category}</Badge>
+                <span className="text-caption t-secondary" style={{ fontFamily: MONO }}>{c.protocol}</span>
+              </div>
+
+              <div className="mt-4 flex items-center gap-5 text-caption">
+                <span className="inline-flex items-center gap-1.5 t-secondary">
+                  {c.read
+                    ? <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />
+                    : <Circle size={14} className="t-muted opacity-30" />}
+                  <span className="uppercase tracking-wider" style={{ fontFamily: MONO }}>Read</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 t-secondary">
+                  {c.writeBack
+                    ? <CheckCircle2 size={14} style={{ color: 'var(--accent)' }} />
+                    : <Circle size={14} className="t-muted opacity-30" />}
+                  <span className="uppercase tracking-wider" style={{ fontFamily: MONO }}>Write-back</span>
+                </span>
+              </div>
+
+              <p className="mt-4 text-body-sm t-secondary leading-relaxed flex-1">{c.notes}</p>
+            </Card>
+          ))}
+        </div>
 
         {/* Conformance-level legend */}
-        <Card className="p-4">
-          <h3 className="text-caption uppercase tracking-wider t-muted font-medium mb-2">Conformance levels</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-body-sm">
+        <Card className="p-5">
+          <h3 className="text-caption uppercase tracking-wider t-muted font-medium mb-3" style={{ fontFamily: MONO }}>Conformance levels</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-body-sm">
             <div className="flex items-start gap-2">
               <LevelBadge level="GA" />
               <span className="t-secondary">Production-grade, multiple live tenants, OAuth2/token refresh tested, write-back error paths exercised.</span>
@@ -159,50 +216,10 @@ export default function ConnectorsPage(): JSX.Element {
           </div>
         </Card>
 
-        {/* Matrix */}
-        <Card className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-body-sm">
-              <thead className="text-caption uppercase tracking-wider t-muted">
-                <tr className="border-b border-[var(--border-card)]">
-                  <th className="text-left px-4 py-3 font-medium">Vendor</th>
-                  <th className="text-left px-4 py-3 font-medium">Product</th>
-                  <th className="text-left px-4 py-3 font-medium">Category</th>
-                  <th className="text-left px-4 py-3 font-medium">Protocol</th>
-                  <th className="text-center px-4 py-3 font-medium">Read</th>
-                  <th className="text-center px-4 py-3 font-medium">Write-back</th>
-                  <th className="text-left px-4 py-3 font-medium">Level</th>
-                  <th className="text-left px-4 py-3 font-medium">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {CONNECTORS.map((c, i) => (
-                  <tr key={i} className="border-b border-[var(--border-card)] last:border-0">
-                    <td className="px-4 py-3 t-primary font-medium">{c.vendor}</td>
-                    <td className="px-4 py-3 t-primary">{c.product}</td>
-                    <td className="px-4 py-3 t-muted">
-                      <Badge variant="default" size="sm">{c.category}</Badge>
-                    </td>
-                    <td className="px-4 py-3 t-secondary font-mono text-caption">{c.protocol}</td>
-                    <td className="px-4 py-3 text-center">
-                      {c.read ? <CheckCircle2 size={14} className="inline" style={{ color: 'var(--accent)' }} /> : <Circle size={14} className="inline t-muted opacity-30" />}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {c.writeBack ? <CheckCircle2 size={14} className="inline" style={{ color: 'var(--accent)' }} /> : <Circle size={14} className="inline t-muted opacity-30" />}
-                    </td>
-                    <td className="px-4 py-3"><LevelBadge level={c.level} /></td>
-                    <td className="px-4 py-3 t-secondary text-caption max-w-md">{c.notes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
         {/* Engagement path */}
-        <Card className="p-5">
-          <h3 className="text-body font-semibold t-primary mb-2">Not on the list?</h3>
-          <p className="text-body-sm t-secondary mb-3">
+        <Card className="p-6">
+          <h3 className="text-headline-sm font-semibold t-primary mb-2">Not on the list?</h3>
+          <p className="text-body-sm t-secondary mb-4 max-w-3xl">
             New connectors go through a standard build-out:{' '}
             <strong className="t-primary">discover</strong> (2–3 days API-doc review) →{' '}
             <strong className="t-primary">read-side adapter</strong> (1 week) →{' '}
@@ -212,10 +229,13 @@ export default function ConnectorsPage(): JSX.Element {
             engineering risk sits with us, not you.
           </p>
           <div className="flex items-center gap-3 flex-wrap text-body-sm">
-            <a href="mailto:partnerships@vantax.co.za" className="text-accent hover:underline inline-flex items-center gap-1">
-              <Mail size={12} /> Scope a new connector
+            <a
+              href="mailto:partnerships@vantax.co.za"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-medium text-[var(--accent-contrast,#fff)]"
+              style={{ background: 'var(--accent)' }}
+            >
+              <Mail size={14} /> Scope a new connector
             </a>
-            <span className="t-muted">·</span>
             <a href="https://atheon-api.vantax.co.za/api/v1/openapi.json" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
               OpenAPI spec <ExternalLink size={12} />
             </a>

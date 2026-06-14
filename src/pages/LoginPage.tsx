@@ -309,62 +309,90 @@ export function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 py-10 relative overflow-hidden"
+      className="min-h-screen relative overflow-hidden lg:grid lg:grid-cols-[1.1fr_minmax(0,520px)]"
       style={{ background: 'var(--bg-primary)' }}
     >
-      {/* Editorial atmosphere — radial sage from top + bronze accent
-          drifting from bottom-right. Subtle, dynamic, never asks for
-          attention. Sits behind everything. */}
+      {/* Editorial atmosphere — royal-blue bloom drifting in from the right
+          behind the auth card, with a faint warm wash bottom-left. Subtle,
+          dynamic, never asks for attention. Sits behind everything. */}
       <div
         aria-hidden="true"
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage:
-            'radial-gradient(circle at 50% -10%, rgb(var(--accent-rgb) / 0.10) 0%, transparent 60%),' +
-            'radial-gradient(circle at 100% 110%, rgba(205, 163, 126, 0.08) 0%, transparent 55%)',
+            'radial-gradient(circle at 92% 50%, rgb(var(--accent-rgb) / 0.16) 0%, transparent 48%),' +
+            'radial-gradient(circle at 4% 96%, rgba(205, 163, 126, 0.06) 0%, transparent 52%)',
         }}
       />
 
-      <div className="w-full max-w-md relative">
-        {/* Centered brand header — Stitch login layout, polished with the
-            riseIn motion-token so it enters on load. Brand mark holds a
-            soft glow so the emblem feels alive without distracting. */}
-        <div className="mb-8 flex flex-col items-center text-center animate-riseIn">
-          <div
-            className="w-14 h-14 rounded-md flex items-center justify-center mb-4 relative"
-            style={{
-              background: 'rgb(var(--accent-rgb) / 0.06)',
-              border: '1px solid var(--border-card)',
-            }}
-            aria-hidden="true"
-          >
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-              <path d="M16 4L27 27H5L16 4Z" fill="none" stroke="var(--accent)" strokeWidth="1.5" />
-              <line x1="9" y1="20" x2="23" y2="20" stroke="var(--accent)" strokeWidth=".8" opacity=".6" />
-              <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="var(--info)" strokeWidth=".8" opacity=".5" />
-              <circle cx="16" cy="9" r="1.5" fill="var(--bronze)" />
-            </svg>
-          </div>
-          <p className="text-caption t-muted uppercase tracking-[0.32em] mb-2" style={{ color: 'var(--accent)' }}>Atheon Workspace</p>
-          <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">Sign in to continue</h1>
-          <p className="text-caption t-muted uppercase tracking-widest mt-2">Enterprise Intelligence &amp; Provenance</p>
-        </div>
-
-        {/* Form card — single column, all sub-states render below the header.
-            riseIn lands 80ms after the brand header so the page entrance
-            feels conducted, not simultaneous. */}
-        <div
-          className="w-full rounded-md p-6 sm:p-7 animate-riseIn"
-          style={{
-            background: 'var(--bg-card-solid)',
-            border: '1px solid var(--border-card)',
-            boxShadow: 'var(--shadow-card)',
-            animationDelay: '80ms',
-          }}
+      {/* ── Left editorial panel ─────────────────────────────────────────
+          Marketing hero. Big bold display headline + a mono "data voice"
+          trust strip. Hidden on small screens where the form takes over. */}
+      <aside className="relative hidden lg:flex flex-col justify-between px-12 xl:px-20 py-14 animate-riseIn">
+        <p
+          className="uppercase tracking-[0.34em] text-caption"
+          style={{ fontFamily: "'Space Mono', ui-monospace, monospace", color: 'var(--accent)' }}
         >
-          <h2 className="text-xl font-semibold t-primary mb-1">{mode === 'register' ? 'Create your account' : 'Welcome back'}</h2>
-          <p className="text-xs t-muted mb-6">{mode === 'register' ? 'Register for your Atheon workspace' : 'Sign in to your Atheon workspace'}</p>
-          <FormError error={error} className="mb-4" />
+          Atheon · Enterprise Assurance
+        </p>
+
+        <h1 className="text-5xl xl:text-6xl font-bold t-primary tracking-tight leading-[1.05] max-w-[14ch]">
+          Securing the foundation of global finance with quiet capital.
+        </h1>
+
+        <div className="space-y-2 max-w-md">
+          <p
+            className="uppercase tracking-[0.28em] text-caption t-muted"
+            style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+          >
+            Provenance · Assurance · Shared savings
+          </p>
+          <p className="text-body-sm t-secondary leading-relaxed">
+            Every claimed dollar traced to its source record. Every finding evidenced, ranked, and ready for the board.
+          </p>
+        </div>
+      </aside>
+
+      {/* ── Right auth column ────────────────────────────────────────────
+          Frosted glass card on a soft blue bloom, matching the mockup. */}
+      <div className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-10 lg:py-12">
+        <div className="w-full max-w-md relative">
+          {/* Brand header inside the card column — wordmark + mono eyebrow,
+              mirroring the mockup's "Atheon / ENTERPRISE ASSURANCE PORTAL". */}
+
+          {/* Form card — frosted glass, all sub-states render below the header.
+              riseIn lands 80ms after the page atmosphere so the entrance feels
+              conducted, not simultaneous. */}
+          <div
+            className="w-full p-7 sm:p-9 animate-riseIn backdrop-blur-[var(--glass-blur)]"
+            style={{
+              background: 'var(--glass-bg-strong)',
+              border: '1px solid var(--glass-border)',
+              boxShadow: 'var(--glass-shadow)',
+              borderRadius: 'var(--radius)',
+              animationDelay: '80ms',
+            }}
+          >
+            <div className="flex flex-col items-center text-center mb-7">
+              <div className="flex items-center gap-2.5 mb-2.5" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+                  <path d="M16 4L27 27H5L16 4Z" fill="none" stroke="var(--accent)" strokeWidth="1.5" />
+                  <line x1="9" y1="20" x2="23" y2="20" stroke="var(--accent)" strokeWidth=".8" opacity=".6" />
+                  <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="var(--info)" strokeWidth=".8" opacity=".5" />
+                  <circle cx="16" cy="9" r="1.5" fill="var(--bronze)" />
+                </svg>
+                <span className="text-3xl font-bold tracking-tight" style={{ color: 'var(--accent)' }}>Atheon</span>
+              </div>
+              <p
+                className="uppercase tracking-[0.3em] text-caption t-muted"
+                style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+              >
+                Enterprise Assurance Portal
+              </p>
+            </div>
+
+            <h2 className="sr-only">{mode === 'register' ? 'Create your account' : 'Sign in to your Atheon workspace'}</h2>
+            <FormError error={error} className="mb-4" />
           {mfaChallengeActive && (
             <div className="mb-5 space-y-3">
               <div className="flex items-center gap-2">
@@ -450,36 +478,21 @@ export function LoginPage() {
               <button type="button" onClick={() => setSelectedTenant(null)} className="ml-auto text-caption t-muted hover:t-primary">&times;</button>
             </div>
           )}
-          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
-            <div className="space-y-2 mb-5">
-              <button onClick={() => handleSSO('azure')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs font-medium t-secondary transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] hover:bg-[var(--bg-secondary)]" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
-                <div className="w-4 h-4 rounded-sm flex items-center justify-center text-[8px] font-mono font-bold" style={{ background: 'rgb(var(--accent-rgb) / 0.12)', color: 'var(--accent)' }}>M</div>Continue with Azure AD
-              </button>
-              {/* Phase AY: SAML SSO. Enabled when the tenant has set a
-                  WorkOS connection_id; backend returns 404 + a clear
-                  message if not configured. Requires the email field
-                  filled so we can route to the right WorkOS connection. */}
-              <button
-                onClick={() => void handleSamlSSO()}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs font-medium t-secondary transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] hover:bg-[var(--bg-secondary)]"
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}
-                title="Use your organisation's SAML identity provider (Okta, Azure AD, Ping, etc.)"
-              >
-                <div className="w-4 h-4 rounded-sm flex items-center justify-center text-[8px] font-mono font-bold" style={{ background: 'rgb(var(--accent-rgb) / 0.12)', color: 'var(--accent)' }}>S</div>
-                Continue with SAML SSO
-                <span className="ml-auto text-[10px] t-muted">enter email first</span>
-              </button>
+          {!tenantOptions && !mfaChallengeActive && <form onSubmit={handleLogin} className="space-y-4" data-testid="login-form">
+            {mode === 'register' && (
+              <div className="space-y-1.5">
+                <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Full Name</label>
+                <Input type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} data-testid="name" />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Email Address</label>
+              <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="email" />
             </div>
-          )}
-          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
-            <div className="flex items-center gap-3 my-5">
-              <div className="flex-1 h-px" style={{ background: 'var(--divider)' }} /><span className="text-caption t-muted">or sign in with email</span><div className="flex-1 h-px" style={{ background: 'var(--divider)' }} />
+            <div className="space-y-1.5">
+              <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Password</label>
+              <Input type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} data-testid="password" />
             </div>
-          )}
-          {!tenantOptions && !mfaChallengeActive && <form onSubmit={handleLogin} className="space-y-3" data-testid="login-form">
-            {mode === 'register' && <Input label="Full Name" type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} data-testid="name" />}
-            <Input label="Email" type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="email" />
-            <Input label="Password" type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} data-testid="password" />
             {mode === 'login' && (
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1.5 text-caption t-muted cursor-pointer select-none">
@@ -499,7 +512,6 @@ export function LoginPage() {
                   />
                   Remember me
                 </label>
-                <button type="button" onClick={() => setShowForgotPw(true)} className="text-caption font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
               </div>
             )}
             <Button variant="primary" size="md" className="w-full mt-1" type="submit" disabled={loading} data-testid="login-button">
@@ -507,6 +519,38 @@ export function LoginPage() {
               {mode === 'register' ? <><UserPlus size={14} /> Create Account</> : <>Sign In <ArrowRight size={14} /></>}
             </Button>
           </form>}
+          {/* SSO row — two pill chips below the primary action, matching the
+              mockup's "SAML SSO / GOOGLE WORKSPACE" pair. */}
+          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              {/* Phase AY: SAML SSO. Enabled when the tenant has set a
+                  WorkOS connection_id; backend returns 404 + a clear
+                  message if not configured. Requires the email field
+                  filled so we can route to the right WorkOS connection. */}
+              <button
+                onClick={() => void handleSamlSSO()}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 text-caption font-semibold uppercase tracking-[0.12em] t-secondary transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] hover:bg-[var(--bg-secondary)]"
+                style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--bg-input)', border: '1px solid var(--border-card)', borderRadius: '9999px', color: 'var(--accent)' }}
+                title="Use your organisation's SAML identity provider (Okta, Azure AD, Ping, etc.)"
+              >
+                <ShieldCheck size={13} style={{ color: 'var(--accent)' }} />
+                SAML SSO
+              </button>
+              <button
+                onClick={() => handleSSO('azure')}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 text-caption font-semibold uppercase tracking-[0.12em] t-secondary transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] hover:bg-[var(--bg-secondary)]"
+                style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--bg-input)', border: '1px solid var(--border-card)', borderRadius: '9999px', color: 'var(--accent)' }}
+              >
+                <Building2 size={13} style={{ color: 'var(--accent)' }} />
+                Azure AD
+              </button>
+            </div>
+          )}
+          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
+            <div className="text-center mt-4">
+              <button type="button" onClick={() => setShowForgotPw(true)} className="text-caption font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
+            </div>
+          )}
           {/* Set-new-password modal — uses the canonical Modal primitive.
               `dismissible={!loading}` blocks ESC / backdrop / X while the
               reset POST is in flight so the user can't dismiss mid-submit. */}
@@ -592,21 +636,32 @@ export function LoginPage() {
               )}
             </Modal.Footer>
           </Modal>
-          <p className="text-caption t-muted text-center mt-6">
-            {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Sign in</button></>}
-          </p>
-          <p className="text-caption t-muted text-center mt-8">Protected by enterprise-grade security. &copy; {new Date().getFullYear()} Atheon</p>
-          <p className="text-caption t-muted text-center mt-2">
-            <a href="/status" className="hover:t-primary">Status</a>
-            <span className="mx-2">·</span>
-            <a href="/legal/security" className="hover:t-primary">Security &amp; Privacy</a>
-            <span className="mx-2">·</span>
-            <a href="/legal/connectors" className="hover:t-primary">Connectors</a>
-            <span className="mx-2">·</span>
-            <a href="/legal/performance" className="hover:t-primary">Performance</a>
-            <span className="mx-2">·</span>
-            <a href="/pricing" className="hover:t-primary">Pricing</a>
-          </p>
+          <div className="mt-8 pt-5" style={{ borderTop: '1px solid var(--divider)' }}>
+            <p
+              className="text-center uppercase tracking-[0.22em] text-caption t-muted"
+              style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+            >
+              Trusted by global leaders · Audited · Secure · Encrypted
+            </p>
+            <p className="text-caption t-muted text-center mt-3">
+              {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Sign in</button></>}
+            </p>
+            <p className="text-caption t-muted text-center mt-2">
+              &copy; {new Date().getFullYear()} Atheon Technologies. All rights reserved.
+            </p>
+            <p className="text-caption t-muted text-center mt-2">
+              <a href="/status" className="hover:t-primary">Status</a>
+              <span className="mx-2">·</span>
+              <a href="/legal/security" className="hover:t-primary">Security &amp; Privacy</a>
+              <span className="mx-2">·</span>
+              <a href="/legal/connectors" className="hover:t-primary">Connectors</a>
+              <span className="mx-2">·</span>
+              <a href="/legal/performance" className="hover:t-primary">Performance</a>
+              <span className="mx-2">·</span>
+              <a href="/pricing" className="hover:t-primary">Pricing</a>
+            </p>
+          </div>
+        </div>
         </div>
       </div>
     </div>

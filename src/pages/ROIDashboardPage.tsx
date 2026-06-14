@@ -24,7 +24,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
 import { SavingsPipeline } from '@/components/roi/SavingsPipeline';
-import { TrendingUp, Shield, Activity, AlertCircle } from 'lucide-react';
+import { TrendingUp, Shield, Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type {
   BillingSummary, ForecastAccuracyResp, CalibrationGate, DsarSummary,
@@ -140,6 +140,7 @@ export default function ROIDashboardPage(): JSX.Element {
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2 mb-1.5">
                   <p className="text-hero t-primary">{formatCurrency(billing.total_realised_savings, billing.currency)}</p>
+                  <CheckCircle2 size={20} aria-hidden="true" style={{ color: 'var(--rag-healthy)' }} className="shrink-0 self-center" />
                   <MetricSource source={{
                     ...billingBase,
                     label: 'Total realised savings',
@@ -158,7 +159,7 @@ export default function ROIDashboardPage(): JSX.Element {
               <div className="md:text-right shrink-0 grid grid-cols-3 md:grid-cols-1 gap-3 md:gap-2">
                 <div>
                   <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-caption uppercase tracking-wider t-muted">Periods</span>
+                    <span className="text-label">Periods</span>
                     <MetricSource source={{
                       ...billingBase,
                       label: 'Periods invoiced',
@@ -172,7 +173,7 @@ export default function ROIDashboardPage(): JSX.Element {
                 </div>
                 <div>
                   <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-caption uppercase tracking-wider t-muted">Atheon share</span>
+                    <span className="text-label">Atheon share</span>
                     <MetricSource source={{
                       ...billingBase,
                       label: 'Atheon revenue (shared-savings share)',
@@ -191,7 +192,7 @@ export default function ROIDashboardPage(): JSX.Element {
                 </div>
                 <div>
                   <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-caption uppercase tracking-wider t-muted">Multiple</span>
+                    <span className="text-label">Multiple</span>
                     <MetricSource source={{
                       ...billingBase,
                       label: 'ROI multiple',
@@ -226,11 +227,12 @@ export default function ROIDashboardPage(): JSX.Element {
       </Card>
 
       {/* Forecast accuracy */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Activity size={18} style={{ color: 'var(--info)' }} />
-          <h2 className="text-headline-md font-semibold t-primary">Forecast accuracy <span className="text-body-sm font-normal t-muted">(last {forecast?.lookback_days ?? 90} days)</span></h2>
+      <Card className="p-6 md:p-7">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity size={13} style={{ color: 'var(--accent)' }} aria-hidden="true" />
+          <h2 className="text-label">Forecast Accuracy</h2>
         </div>
+        <p className="text-body-sm t-muted mb-5">Within-band rate over the last {forecast?.lookback_days ?? 90} days</p>
         {forecast && forecast.total_graded > 0 ? (() => {
           const forecastBase: Partial<MetricProvenance> = {
             endpoint: 'GET /api/insights-stats/forecast/accuracy',
@@ -242,7 +244,7 @@ export default function ROIDashboardPage(): JSX.Element {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
                 <div className="flex items-center justify-between">
-                  <div className="text-caption uppercase tracking-wider t-muted">Graded forecasts</div>
+                  <div className="text-label">Graded forecasts</div>
                   <MetricSource source={{
                     ...forecastBase,
                     label: 'Graded forecasts',
@@ -256,7 +258,7 @@ export default function ROIDashboardPage(): JSX.Element {
               </div>
               <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
                 <div className="flex items-center justify-between">
-                  <div className="text-caption uppercase tracking-wider t-muted">Within band</div>
+                  <div className="text-label">Within band</div>
                   <MetricSource source={{
                     ...forecastBase,
                     label: 'Forecast within-band rate',
@@ -274,7 +276,7 @@ export default function ROIDashboardPage(): JSX.Element {
               </div>
               <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
                 <div className="flex items-center justify-between">
-                  <div className="text-caption uppercase tracking-wider t-muted">Median |error| %</div>
+                  <div className="text-label">Median |error| %</div>
                   <MetricSource source={{
                     ...forecastBase,
                     label: 'Forecast median absolute error %',
@@ -292,16 +294,21 @@ export default function ROIDashboardPage(): JSX.Element {
               </div>
             </div>
             <table className="w-full text-sm">
-              <thead className="text-left text-xs t-muted">
-                <tr><th className="py-1">Horizon</th><th>Graded</th><th>Within band</th><th>Median |error|</th></tr>
+              <thead>
+                <tr className="text-left text-label">
+                  <th className="pb-2 font-medium">Horizon</th>
+                  <th className="pb-2 font-medium text-right">Graded</th>
+                  <th className="pb-2 font-medium text-right">Within band</th>
+                  <th className="pb-2 font-medium text-right">Median |error|</th>
+                </tr>
               </thead>
               <tbody>
                 {forecast.by_horizon.map((h) => (
                   <tr key={h.horizon_days} className="border-t border-[var(--divider)]">
-                    <td className="py-2">{h.horizon_days}d</td>
-                    <td>{h.graded}</td>
-                    <td>{h.within_band_rate != null ? `${(h.within_band_rate * 100).toFixed(1)}%` : '—'}</td>
-                    <td>{h.median_abs_error_pct != null ? `${h.median_abs_error_pct.toFixed(2)}%` : '—'}</td>
+                    <td className="py-2 font-mono tabular-nums t-secondary">{h.horizon_days}d</td>
+                    <td className="py-2 font-mono tabular-nums t-secondary text-right">{h.graded}</td>
+                    <td className="py-2 font-mono tabular-nums t-primary text-right">{h.within_band_rate != null ? `${(h.within_band_rate * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="py-2 font-mono tabular-nums t-secondary text-right">{h.median_abs_error_pct != null ? `${h.median_abs_error_pct.toFixed(2)}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -312,29 +319,35 @@ export default function ROIDashboardPage(): JSX.Element {
       </Card>
 
       {/* Calibration */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <AlertCircle size={18} style={{ color: 'var(--warning)' }} />
-          <h2 className="text-headline-md font-semibold t-primary">Inference calibration</h2>
+      <Card className="p-6 md:p-7">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertCircle size={13} style={{ color: 'var(--warning)' }} aria-hidden="true" />
+          <h2 className="text-label">Inference Calibration</h2>
         </div>
+        <p className="text-body-sm t-muted mb-5">Per-gate false-positive rate and tuning recommendation</p>
         {calibration && calibration.gates.length > 0 ? (
           <table className="w-full text-sm">
-            <thead className="text-left text-xs t-muted">
-              <tr>
-                <th className="py-1">Gate</th><th>TP</th><th>FP</th><th>TN</th><th>FN</th>
-                <th>FP rate</th><th>Rec</th>
+            <thead>
+              <tr className="text-left text-label">
+                <th className="pb-2 font-medium">Gate</th>
+                <th className="pb-2 font-medium text-right">TP</th>
+                <th className="pb-2 font-medium text-right">FP</th>
+                <th className="pb-2 font-medium text-right">TN</th>
+                <th className="pb-2 font-medium text-right">FN</th>
+                <th className="pb-2 font-medium text-right">FP rate</th>
+                <th className="pb-2 font-medium text-right">Rec</th>
               </tr>
             </thead>
             <tbody>
               {calibration.gates.map((g) => (
                 <tr key={g.gate} className="border-t border-[var(--divider)]">
-                  <td className="py-2 font-mono text-xs">{g.gate}</td>
-                  <td>{g.true_positives}</td>
-                  <td>{g.false_positives}</td>
-                  <td>{g.true_negatives}</td>
-                  <td>{g.false_negatives}</td>
-                  <td>{g.false_positive_rate != null ? `${(g.false_positive_rate * 100).toFixed(1)}%` : '—'}</td>
-                  <td>{recBadge(g.recommendation)}</td>
+                  <td className="py-2 font-mono text-xs t-primary">{g.gate}</td>
+                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.true_positives}</td>
+                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.false_positives}</td>
+                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.true_negatives}</td>
+                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.false_negatives}</td>
+                  <td className="py-2 font-mono tabular-nums t-primary text-right">{g.false_positive_rate != null ? `${(g.false_positive_rate * 100).toFixed(1)}%` : '—'}</td>
+                  <td className="py-2 text-right">{recBadge(g.recommendation)}</td>
                 </tr>
               ))}
             </tbody>
@@ -343,22 +356,27 @@ export default function ROIDashboardPage(): JSX.Element {
       </Card>
 
       {/* DSAR */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Shield size={18} style={{ color: 'var(--info)' }} />
-          <h2 className="text-headline-md font-semibold t-primary">DSAR (POPIA / GDPR) requests</h2>
+      <Card className="p-6 md:p-7">
+        <div className="flex items-center gap-2 mb-1">
+          <Shield size={13} style={{ color: 'var(--info)' }} aria-hidden="true" />
+          <h2 className="text-label">DSAR Requests · POPIA / GDPR</h2>
         </div>
+        <p className="text-body-sm t-muted mb-5">Data-subject access requests by type and status</p>
         {dsar && dsar.by_type_and_status.length > 0 ? (
           <table className="w-full text-sm">
-            <thead className="text-left text-xs t-muted">
-              <tr><th className="py-1">Type</th><th>Status</th><th>Count</th></tr>
+            <thead>
+              <tr className="text-left text-label">
+                <th className="pb-2 font-medium">Type</th>
+                <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2 font-medium text-right">Count</th>
+              </tr>
             </thead>
             <tbody>
               {dsar.by_type_and_status.map((r, i) => (
                 <tr key={i} className="border-t border-[var(--divider)]">
-                  <td className="py-2">{r.request_type}</td>
-                  <td>{r.status}</td>
-                  <td>{r.n}</td>
+                  <td className="py-2 t-secondary">{r.request_type}</td>
+                  <td className="py-2 t-secondary">{r.status}</td>
+                  <td className="py-2 font-mono tabular-nums t-primary text-right">{r.n}</td>
                 </tr>
               ))}
             </tbody>

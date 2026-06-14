@@ -155,7 +155,18 @@ export function TenantLlmBudgetPage() {
     return Math.min((budget.tokensUsedThisMonth / budget.monthlyTokenBudget) * 100, 100);
   }, [budget]);
 
-  const pctColorClass = pctColorStyle(usageColor(usagePct));
+  const usageRag = usageColor(usagePct);
+  const pctColorClass = pctColorStyle(usageRag);
+
+  // Health pill derived from the existing usage band — RAG status only.
+  const health = useMemo(() => {
+    if (!budget || budget.monthlyTokenBudget === null) {
+      return { label: 'Unlimited', dot: 'var(--accent)', pill: 'pill-accent' as const };
+    }
+    if (usageRag === 'red') return { label: 'Over', dot: 'var(--neg)', pill: 'pill-danger' as const };
+    if (usageRag === 'amber') return { label: 'Near', dot: 'var(--warning)', pill: 'pill-warning' as const };
+    return { label: 'Under', dot: 'var(--rag-healthy)', pill: 'pill-success' as const };
+  }, [budget, usageRag]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -200,69 +211,72 @@ export function TenantLlmBudgetPage() {
 
       {!loading && budget && (
         <>
-          {/* Current Usage Card */}
+          {/* Tokens used vs budget — hero card */}
           <Card>
-            <div className="p-6 space-y-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold t-primary flex items-center gap-2">
-                  <Zap size={18} className="text-accent" />
-                  Current Month Usage
-                </h2>
-                {!budget.exists && (
-                  <Badge variant="default" className="text-xs">Defaults (no row yet)</Badge>
-                )}
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-label flex items-center gap-2">
+                  <Zap size={13} className="text-accent" aria-hidden />
+                  Tokens Used vs Budget
+                </p>
+                <div className="flex items-center gap-2">
+                  {!budget.exists && (
+                    <Badge variant="default" className="text-xs">Defaults (no row yet)</Badge>
+                  )}
+                  <span
+                    className={`pill ${health.pill} inline-flex items-center gap-1.5`}
+                    role="status"
+                    aria-label={`Budget health: ${health.label}`}
+                  >
+                    <span
+                      aria-hidden
+                      className="inline-block w-2 h-2 rounded-full"
+                      style={{ background: health.dot }}
+                    />
+                    Health · {health.label}
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div
-                  className="p-4 rounded-sm border"
-                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}
-                >
-                  <div className="text-xs t-muted mb-1">Tokens used this month</div>
-                  <div className="text-headline-xl font-bold t-primary tracking-tight leading-tight font-mono tnum">
+              {/* Twin hero metrics */}
+              <div className="grid grid-cols-1 sm:grid-cols-2">
+                <div className="pr-0 sm:pr-8">
+                  <div
+                    className="font-mono tnum t-primary font-bold tracking-tight leading-none"
+                    style={{ fontSize: 'clamp(2.25rem, 6vw, 3.5rem)' }}
+                  >
                     {budget.tokensUsedThisMonth.toLocaleString()}
                   </div>
+                  <p className="text-label mt-3">Tokens Used</p>
                 </div>
-
                 <div
-                  className="p-4 rounded-sm border"
-                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}
+                  className="pt-6 sm:pt-0 sm:pl-8 mt-6 sm:mt-0 border-t sm:border-t-0 sm:border-l"
+                  style={{ borderColor: 'var(--border-card)' }}
                 >
-                  <div className="text-xs t-muted mb-1">Monthly budget</div>
-                  <div className="text-headline-xl font-bold t-primary tracking-tight leading-tight font-mono tnum">
+                  <div
+                    className="font-mono tnum font-bold tracking-tight leading-none"
+                    style={{ fontSize: 'clamp(2.25rem, 6vw, 3.5rem)' }}
+                  >
                     {budget.monthlyTokenBudget === null
                       ? <span className="text-accent">Unlimited</span>
-                      : budget.monthlyTokenBudget.toLocaleString()}
+                      : <span className="t-primary">{budget.monthlyTokenBudget.toLocaleString()}</span>}
                   </div>
-                </div>
-
-                <div
-                  className="p-4 rounded-sm border"
-                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}
-                >
-                  <div className="text-xs t-muted mb-1 flex items-center gap-1.5">
-                    <Calendar size={12} /> Resets
-                  </div>
-                  <div className="text-sm font-medium t-primary font-mono tnum">
-                    {budget.tokensResetAt
-                      ? format(new Date(budget.tokensResetAt), 'PPP')
-                      : 'Start of next month'}
-                  </div>
+                  <p className="text-label mt-3">Monthly Budget</p>
                 </div>
               </div>
 
               {budget.monthlyTokenBudget === null ? (
                 <div
                   className="p-4 rounded-sm border text-sm text-accent"
-                  style={{ background: 'rgb(var(--accent-rgb) / 0.08)', borderColor: 'rgb(var(--accent-rgb) / 0.2)' }}
+                  style={{ background: 'var(--accent-subtle)', borderColor: 'rgb(var(--accent-rgb) / 0.2)' }}
                 >
                   This tenant is on an <strong>unlimited</strong> plan — no token cap is enforced.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs t-muted">
-                    <span>Usage</span>
-                    <span className={`font-semibold font-mono tnum ${pctColorClass}`}>{usagePct.toFixed(1)}%</span>
+                  <div className="flex items-center justify-between text-label">
+                    <span>Consumption</span>
+                    <span className={`font-mono tnum ${pctColorClass}`}>{usagePct.toFixed(1)}%</span>
                   </div>
                   <UsageBar
                     used={budget.tokensUsedThisMonth}
@@ -273,9 +287,22 @@ export function TenantLlmBudgetPage() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              {/* Meta strip */}
+              <div
+                className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-5 border-t"
+                style={{ borderColor: 'var(--border-card)' }}
+              >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs t-muted">Redaction:</span>
+                  <Calendar size={13} className="t-muted" aria-hidden />
+                  <span className="text-label">Resets</span>
+                  <span className="text-sm font-medium t-primary font-mono tnum">
+                    {budget.tokensResetAt
+                      ? format(new Date(budget.tokensResetAt), 'PPP')
+                      : 'Start of next month'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-label">Redaction</span>
                   {budget.llmRedactionEnabled ? (
                     <Badge variant="success" className="text-xs">
                       <CheckCircle size={10} className="mr-1" />
@@ -299,11 +326,11 @@ export function TenantLlmBudgetPage() {
 
           {/* Edit Form */}
           <Card>
-            <div className="p-6 space-y-6">
-              <h2 className="text-lg font-semibold t-primary flex items-center gap-2">
-                <Shield size={18} className="text-accent" />
-                Edit LLM Budget &amp; Redaction
-              </h2>
+            <div className="p-6 sm:p-8 space-y-6">
+              <p className="text-label flex items-center gap-2">
+                <Shield size={13} className="text-accent" aria-hidden />
+                Set Budget &amp; Redaction
+              </p>
 
               {/* Budget field */}
               <div className="space-y-2">

@@ -588,33 +588,111 @@ export function CatalystRunDetailPage() {
     (items?.items ?? []).find((it) => it.id === id)?.review_status === 'pending'
   ).length;
 
+  // ─ Stage pipeline (presentational) — mirrors the catalyst execution
+  //   phases. Completion is derived purely from the existing run.status;
+  //   no per-stage data is fabricated. ─
+  const isComplete = run.status === 'success' || run.status === 'completed';
+  const isRunning = run.status === 'running';
+  const stages = ['Ingest', 'Map', 'Detect', 'Score', 'Confirm'];
+
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
-      <div className="border-b border-[var(--border-card)] bg-[var(--bg-secondary)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/catalysts')}
-                className="p-2 hover:bg-[var(--bg-card-solid)] rounded-md transition-[background-color,color,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.92]"
-                aria-label="Back to Catalysts"
+      <div className="border-b border-[var(--border-card)] bg-[var(--bg-card-solid)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-5">
+          {/* Back + eyebrow */}
+          <div className="flex items-center gap-3 mb-3">
+            <button
+              onClick={() => navigate('/catalysts')}
+              className="p-1.5 -ml-1.5 hover:bg-[var(--bg-secondary)] rounded-md transition-[background-color,color,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.92]"
+              aria-label="Back to Catalysts"
+            >
+              <ArrowLeft size={18} className="t-muted" />
+            </button>
+            <span
+              className="text-[10px] uppercase tracking-[0.18em] t-muted"
+              style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+            >
+              Catalyst Run Detail
+            </span>
+          </div>
+
+          {/* Title row + hero recovered value */}
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">
+                  {run.subCatalystName}
+                </h1>
+                <StatusPill status={run.status === 'success' ? 'completed' : run.status} size="sm" />
+              </div>
+              <p className="text-body-sm t-muted mt-1">{run.clusterName}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <Numeric value={run.totalValue ?? null} unit="currency" compact size="xl" />
+              <div
+                className="text-[10px] uppercase tracking-[0.18em] t-muted mt-1"
+                style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
               >
-                <ArrowLeft size={20} className="t-muted" />
-              </button>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">Catalyst Run</h1>
-                  <StatusPill status={run.status === 'success' ? 'completed' : run.status} size="sm" />
-                </div>
-                <p className="text-body-sm t-muted mt-0.5">{run.subCatalystName} • {run.clusterName}</p>
+                Total Recovered
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-2 text-sm t-muted mr-2">
-                <Clock size={14} />
-                <span>{new Date(run.startedAt).toLocaleString()}</span>
-              </div>
+          </div>
+
+          {/* Stage pipeline */}
+          <div className="mt-6 flex items-center gap-0 overflow-x-auto pb-1">
+            {stages.map((stage, i) => {
+              const done = isComplete || (isRunning && i === 0);
+              return (
+                <div key={stage} className="flex items-center shrink-0">
+                  <div className="flex flex-col items-center gap-2 px-1">
+                    <div
+                      className="flex items-center justify-center w-7 h-7 rounded-full border-2 transition-colors"
+                      style={
+                        done
+                          ? { background: 'var(--accent)', borderColor: 'var(--accent)' }
+                          : { background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }
+                      }
+                      aria-hidden
+                    >
+                      {done ? (
+                        <CheckCircle2 size={14} style={{ color: 'var(--bg-card-solid)' }} />
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--text-muted)' }} />
+                      )}
+                    </div>
+                    <span
+                      className="text-[10px] uppercase tracking-[0.14em]"
+                      style={{
+                        fontFamily: "'Space Mono', ui-monospace, monospace",
+                        color: done ? 'var(--accent)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {stage}
+                    </span>
+                  </div>
+                  {i < stages.length - 1 && (
+                    <div
+                      className="h-0.5 w-16 sm:w-24 lg:w-32 -mt-5"
+                      style={{ background: isComplete ? 'var(--accent)' : 'var(--border-card)' }}
+                      aria-hidden
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Action bar */}
+          <div className="mt-5 flex items-center gap-2 flex-wrap">
+            <div
+              className="flex items-center gap-1.5 text-xs t-muted mr-1"
+              style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+            >
+              <Clock size={13} />
+              <span>{new Date(run.startedAt).toLocaleString()}</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2 flex-wrap">
               <Button
                 variant="ghost"
                 onClick={handleRetryRun}
@@ -831,7 +909,7 @@ export function CatalystRunDetailPage() {
         <div className="stagger grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--border-card)] hover:-translate-y-px transition-[border-color,transform] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-caption uppercase tracking-wider t-muted">Matched Records</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Matched Records</span>
               <div className="flex items-center gap-1">
                 <MetricSource source={{
                   ...runProvenance,
@@ -849,7 +927,7 @@ export function CatalystRunDetailPage() {
 
           <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--border-card)] hover:-translate-y-px transition-[border-color,transform] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-caption uppercase tracking-wider t-muted">Discrepancies</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Discrepancies</span>
               <div className="flex items-center gap-1">
                 <MetricSource source={{
                   ...runProvenance,
@@ -867,7 +945,7 @@ export function CatalystRunDetailPage() {
 
           <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--border-card)] hover:-translate-y-px transition-[border-color,transform] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-caption uppercase tracking-wider t-muted">Exceptions</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Exceptions</span>
               <div className="flex items-center gap-1">
                 <MetricSource source={{
                   ...runProvenance,
@@ -885,7 +963,7 @@ export function CatalystRunDetailPage() {
 
           <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--border-card)] hover:-translate-y-px transition-[border-color,transform] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-caption uppercase tracking-wider t-muted">Total Value</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Total Value</span>
               <div className="flex items-center gap-1">
                 <MetricSource source={{
                   ...runProvenance,
@@ -989,8 +1067,11 @@ export function CatalystRunDetailPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--border-card)]">
-                    <th className="py-2 px-2 w-8">
+                  <tr
+                    className="border-b border-[var(--border-card)] text-[10px] uppercase tracking-[0.12em] t-muted"
+                    style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+                  >
+                    <th className="py-2.5 px-2 w-8">
                       <input
                         type="checkbox"
                         aria-label="Select all filtered items"
@@ -1006,16 +1087,16 @@ export function CatalystRunDetailPage() {
                         }}
                       />
                     </th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">#</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Status</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Source</th>
-                    <th className="py-2 px-2 t-muted font-medium text-right">Source Amt</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Target</th>
-                    <th className="py-2 px-2 t-muted font-medium text-right">Target Amt</th>
-                    <th className="py-2 px-2 t-muted font-medium text-right" title="Match confidence (0–100%). Per platform spec, claims rely on ≥70% confidence and ≥25 sample matches.">Conf.</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Discrepancy</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Review</th>
-                    <th className="py-2 px-2 t-muted font-medium text-left">Actions</th>
+                    <th className="py-2.5 px-2 font-normal text-left">#</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Status</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Source</th>
+                    <th className="py-2.5 px-2 font-normal text-right">Source Amt</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Target</th>
+                    <th className="py-2.5 px-2 font-normal text-right">Target Amt</th>
+                    <th className="py-2.5 px-2 font-normal text-right" title="Match confidence (0–100%). Per platform spec, claims rely on ≥70% confidence and ≥25 sample matches.">Conf.</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Discrepancy</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Review</th>
+                    <th className="py-2.5 px-2 font-normal text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1345,12 +1426,15 @@ export function CatalystRunDetailPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-[var(--border-card)]">
-                      <th className="text-left py-2 px-3 t-muted font-medium">Record ID</th>
-                      <th className="text-left py-2 px-3 t-muted font-medium">Source System</th>
-                      <th className="text-left py-2 px-3 t-muted font-medium">Record Type</th>
-                      <th className="text-right py-2 px-3 t-muted font-medium">Value</th>
-                      <th className="text-center py-2 px-3 t-muted font-medium">Status</th>
+                    <tr
+                      className="border-b border-[var(--border-card)] text-[10px] uppercase tracking-[0.12em] t-muted"
+                      style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+                    >
+                      <th className="text-left py-2.5 px-3 font-normal">Record ID</th>
+                      <th className="text-left py-2.5 px-3 font-normal">Source System</th>
+                      <th className="text-left py-2.5 px-3 font-normal">Record Type</th>
+                      <th className="text-right py-2.5 px-3 font-normal">Value</th>
+                      <th className="text-center py-2.5 px-3 font-normal">Status</th>
                     </tr>
                   </thead>
                   <tbody>

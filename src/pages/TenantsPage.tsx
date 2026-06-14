@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -426,7 +426,7 @@ export function TenantsPage() {
    title="Tenants"
    dek="Multi-tenant management — SaaS, On-Premise, Hybrid"
    actions={
-     <Button variant="primary" size="sm" onClick={() => setShowOnboard(true)} title="Create a new tenant (client) and initial configuration"><Plus size={14} /> Onboard Tenant</Button>
+     <Button variant="primary" size="sm" onClick={() => setShowOnboard(true)} title="Create a new tenant (client) and initial configuration"><Plus size={14} /> Add Tenant</Button>
    }
  />
 
@@ -464,92 +464,114 @@ export function TenantsPage() {
  </div></Portal>
  )}
 
- {/* Summary Cards */}
- <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
- <Card>
- <span className="text-xs t-secondary">Total Tenants</span>
- <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{tenants.length}</p>
- <span className="text-xs text-accent">{tenants.filter(t => t.status === 'active').length} active</span>
- </Card>
- <Card>
- <span className="text-xs t-secondary">SaaS</span>
- <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">{tenants.filter(t => t.deploymentModel === 'saas').length}</p>
- <span className="text-xs t-secondary">cloud-hosted</span>
- </Card>
- <Card>
- <span className="text-xs t-secondary">On-Premise</span>
- <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">{tenants.filter(t => t.deploymentModel === 'on-premise').length}</p>
- <span className="text-xs t-secondary">self-hosted</span>
- </Card>
- <Card>
- <span className="text-xs t-secondary">Hybrid</span>
- <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">{tenants.filter(t => t.deploymentModel === 'hybrid').length}</p>
- <span className="text-xs t-secondary">mixed deployment</span>
- </Card>
+ {/* Hero metric strip — big mono "data voice" numbers anchoring the page */}
+ <Card variant="hero" size="hero">
+ <div className="flex flex-wrap items-end gap-x-12 gap-y-8">
+ <div>
+ <p className="text-label">Total Tenants</p>
+ <p className="text-hero t-primary font-mono mt-2">{tenants.length}</p>
+ <p className="text-caption t-secondary mt-1">{tenants.filter(t => t.status === 'active').length} active</p>
  </div>
+ <div className="hidden sm:block self-stretch w-px" style={{ background: 'var(--border-card)' }} />
+ <div>
+ <p className="text-label">SaaS</p>
+ <p className="text-hero text-accent font-mono mt-2">{tenants.filter(t => t.deploymentModel === 'saas').length}</p>
+ <p className="text-caption t-secondary mt-1">cloud-hosted</p>
+ </div>
+ <div>
+ <p className="text-label">On-Premise</p>
+ <p className="text-hero text-accent font-mono mt-2">{tenants.filter(t => t.deploymentModel === 'on-premise').length}</p>
+ <p className="text-caption t-secondary mt-1">self-hosted</p>
+ </div>
+ <div>
+ <p className="text-label">Hybrid</p>
+ <p className="text-hero text-accent font-mono mt-2">{tenants.filter(t => t.deploymentModel === 'hybrid').length}</p>
+ <p className="text-caption t-secondary mt-1">mixed deployment</p>
+ </div>
+ </div>
+ </Card>
 
  <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
  {activeTab === 'overview' && (
  <TabPanel>
- <div className="space-y-4">
+ <Card size="default" className="!p-0 overflow-hidden">
+ <div className="overflow-x-auto">
+ <table className="w-full text-sm border-collapse">
+ <thead>
+ <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-5 w-8"></th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Tenant / Monogram</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Deployment</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Plan</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Industry</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Region</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Health</th>
+ <th className="py-3 px-5 w-8"></th>
+ </tr>
+ </thead>
+ <tbody>
  {tenants.map((tenant) => (
- <Card
- key={tenant.id}
- hover
+ <Fragment key={tenant.id}>
+ <tr
+ className="border-b cursor-pointer transition-colors hover:bg-[var(--bg-secondary)]"
+ style={{ borderColor: 'var(--border-card)' }}
  onClick={() => setExpandedTenant(expandedTenant === tenant.id ? null : tenant.id)}
  >
- <div className="flex items-start justify-between">
- <div className="flex items-start gap-4">
- <div className="w-12 h-12 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] flex items-center justify-center text-lg font-bold text-accent">
+ <td className="py-3 px-5">
+ <div className="w-9 h-9 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] flex items-center justify-center text-sm font-bold font-mono text-accent">
  {tenant.name.charAt(0)}
  </div>
- <div>
- <h3 className="text-base font-semibold t-primary">{tenant.name}</h3>
- <div className="flex flex-wrap items-center gap-2 mt-1">
+ </td>
+ <td className="py-3 px-2">
+ <div className="font-semibold t-primary">{tenant.name}</div>
+ <div className="text-caption t-muted font-mono">{tenant.slug}</div>
+ </td>
+ <td className="py-3 px-2">
+ <span className="inline-flex items-center gap-1.5">
  {deploymentIcon(tenant.deploymentModel)}
  <Badge variant={deploymentColor(tenant.deploymentModel) as 'info' | 'warning' | 'default'} size="sm">
  {tenant.deploymentModel}
  </Badge>
- <Badge variant="outline" size="sm">{tenant.plan}</Badge>
- <Badge variant="outline" size="sm">{tenant.industry}</Badge>
- <span className="text-xs t-secondary">{tenant.region}</span>
- </div>
- </div>
- </div>
- <div className="flex items-center gap-3">
- {statusBadge(tenant.status)}
- {expandedTenant === tenant.id ? <ChevronUp size={14} className="t-muted" /> : <ChevronDown size={14} className="t-muted" />}
- </div>
- </div>
-
- {/* Quick Stats */}
- <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mt-4">
- <div className="text-center p-2 rounded-sm bg-[var(--bg-secondary)]">
- <span className="text-caption t-muted">Layers</span>
- <p className="text-sm font-bold t-primary">{tenant.entitlements.layers.length}/5</p>
- </div>
- <div className="text-center p-2 rounded-sm bg-[var(--bg-secondary)]">
- <span className="text-caption t-muted">Catalysts</span>
- <p className="text-sm font-bold t-primary">{tenant.entitlements.catalystClusters.length}</p>
- </div>
- <div className="text-center p-2 rounded-sm bg-[var(--bg-secondary)]">
- <span className="text-caption t-muted">Max Agents</span>
- <p className="text-sm font-bold t-primary">{tenant.entitlements.maxAgents}</p>
- </div>
- <div className="text-center p-2 rounded-sm bg-[var(--bg-secondary)]">
- <span className="text-caption t-muted">Max Users</span>
- <p className="text-sm font-bold t-primary">{tenant.entitlements.maxUsers}</p>
- </div>
- <div className="text-center p-2 rounded-sm bg-[var(--bg-secondary)]">
- <span className="text-caption t-muted">Region</span>
- <p className="text-sm font-bold t-primary">{tenant.region}</p>
- </div>
- </div>
+ </span>
+ </td>
+ <td className="py-3 px-2"><Badge variant="outline" size="sm">{tenant.plan}</Badge></td>
+ <td className="py-3 px-2 t-secondary">{tenant.industry}</td>
+ <td className="py-3 px-2 font-mono t-secondary text-caption">{tenant.region}</td>
+ <td className="py-3 px-2">{statusBadge(tenant.status)}</td>
+ <td className="py-3 px-5 text-right">
+ {expandedTenant === tenant.id ? <ChevronUp size={14} className="t-muted inline" /> : <ChevronDown size={14} className="t-muted inline" />}
+ </td>
+ </tr>
 
  {/* Expanded Details */}
  {expandedTenant === tenant.id && (
- <div className="mt-4 space-y-4 animate-fadeIn">
+ <tr style={{ borderColor: 'var(--border-card)' }} className="border-b">
+ <td colSpan={8} className="p-5 bg-[var(--bg-secondary)]/40">
+ <div className="space-y-4 animate-fadeIn">
+ {/* Quick Stats */}
+ <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+ <div className="p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+ <span className="text-label !text-[10px]">Layers</span>
+ <p className="text-headline-md font-mono t-primary mt-0.5">{tenant.entitlements.layers.length}/5</p>
+ </div>
+ <div className="p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+ <span className="text-label !text-[10px]">Catalysts</span>
+ <p className="text-headline-md font-mono t-primary mt-0.5">{tenant.entitlements.catalystClusters.length}</p>
+ </div>
+ <div className="p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+ <span className="text-label !text-[10px]">Max Agents</span>
+ <p className="text-headline-md font-mono t-primary mt-0.5">{tenant.entitlements.maxAgents}</p>
+ </div>
+ <div className="p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+ <span className="text-label !text-[10px]">Max Users</span>
+ <p className="text-headline-md font-mono t-primary mt-0.5">{tenant.entitlements.maxUsers}</p>
+ </div>
+ <div className="p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+ <span className="text-label !text-[10px]">Region</span>
+ <p className="text-headline-md font-mono t-primary mt-0.5">{tenant.region}</p>
+ </div>
+ </div>
  {/* Entitlements */}
  <div className="p-4 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <h4 className="text-sm font-semibold t-primary mb-3 flex items-center gap-2">
@@ -615,7 +637,7 @@ export function TenantsPage() {
  </div>
  </div>
 
- <div className="flex gap-2">
+ <div className="flex flex-wrap gap-2">
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openManageUsers(tenant.id); }} title="View and manage users for this tenant"><Users size={12} /> Manage Users</Button>
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openManageCatalysts(tenant.id); }} title="Manage catalyst clusters, deploy new ones, and configure data sources"><Bot size={12} /> Manage Catalysts</Button>
  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); openEditEntitlements(tenant); }} title="Edit plan entitlements and feature access"><Layers size={12} /> Edit Entitlements</Button>
@@ -631,10 +653,15 @@ export function TenantsPage() {
  )}
  </div>
  </div>
+ </td>
+ </tr>
  )}
- </Card>
+ </Fragment>
  ))}
+ </tbody>
+ </table>
  </div>
+ </Card>
  </TabPanel>
  )}
 

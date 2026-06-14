@@ -17,6 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { api, ApiError, getToken } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { useTenantCurrency } from "@/stores/appStore";
+import { formatFullCurrency } from "@/lib/format-currency";
 
 type Plan = Awaited<ReturnType<typeof api.billing.plans>>['plans'][number];
 
@@ -30,6 +32,7 @@ export function PricingPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const isAuthenticated = !!getToken();
+  const currency = useTenantCurrency();
 
   useEffect(() => {
     api.billing.plans()
@@ -65,36 +68,42 @@ export function PricingPage(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen px-6 py-12 max-w-7xl mx-auto" data-testid="pricing-page">
-      <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold t-primary mb-3">Plans &amp; Pricing</h1>
-        <p className="text-base t-muted max-w-2xl mx-auto">
+    <div className="min-h-screen px-6 py-16 max-w-6xl mx-auto" data-testid="pricing-page">
+      {/* Editorial hero */}
+      <div className="text-center mb-12">
+        <p className="text-caption font-mono uppercase tracking-[0.22em] t-muted mb-4">
+          Plans &amp; Pricing
+        </p>
+        <h1 className="text-[clamp(2.75rem,6vw,4.25rem)] font-bold tracking-tight t-primary leading-[1.02] mb-4">
+          Pricing
+        </h1>
+        <p className="text-base t-muted max-w-2xl mx-auto leading-relaxed">
           Per-tenant pricing. The annual cycle bundles ~20% off vs monthly. No hidden enterprise tier —
           if you need more users or ERP connections, the Enterprise plan covers it.
         </p>
         {/* Billing-cycle toggle */}
-        <div className="inline-flex items-center gap-1 mt-6 p-1 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
+        <div className="inline-flex items-center gap-1 mt-8 p-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-card)]">
           {(['monthly', 'annual'] as const).map(c => (
             <button
               key={c}
               onClick={() => setCycle(c)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] capitalize ${
-                cycle === c ? 'bg-accent text-[var(--text-on-accent)]' : 't-secondary hover:t-primary'
+              className={`px-5 py-2 rounded-full text-sm font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] capitalize ${
+                cycle === c ? 'bg-accent text-[var(--text-on-accent)] shadow-[var(--shadow-raised)]' : 't-secondary hover:t-primary'
               }`}
               data-testid={`cycle-${c}`}
             >
-              {c}{c === 'annual' && <span className="ml-1.5 text-caption opacity-80">(save ~20%)</span>}
+              {c}{c === 'annual' && <span className="ml-1.5 text-caption font-mono opacity-80">save ~20%</span>}
             </button>
           ))}
         </div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16">
+        <div className="flex justify-center py-24">
           <Loader2 className="w-6 h-6 text-accent animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch max-w-5xl mx-auto">
           {plans.map(plan => {
             const price = cycle === 'annual' ? plan.price.annual : plan.price.monthly;
             const monthlyEquivalent = cycle === 'annual' ? Math.round(plan.price.annual / 12) : plan.price.monthly;
@@ -102,34 +111,50 @@ export function PricingPage(): JSX.Element {
             return (
               <Card
                 key={plan.id}
-                className={`p-6 flex flex-col ${isHighlight ? 'border-accent/40' : ''}`}
-                style={isHighlight ? { background: 'rgba(126, 179, 205, 0.05)', boxShadow: 'var(--shadow-raised)' } : undefined}
+                className={`relative flex flex-col p-7 ${isHighlight ? 'border-accent/50 md:-mt-3 md:mb-3' : ''}`}
+                style={
+                  isHighlight
+                    ? { background: 'var(--accent-subtle)', boxShadow: '0 0 0 1px rgb(var(--accent-rgb) / 0.25), var(--shadow-raised), 0 24px 60px -28px var(--accent-glow)' }
+                    : undefined
+                }
                 data-testid={`plan-${plan.id}`}
               >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xl font-semibold t-primary">{plan.name}</h3>
-                  {isHighlight && (
-                    <Badge variant="info" size="sm">
-                      <Sparkles size={10} className="mr-1" /> Most popular
+                {isHighlight && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge variant="info" size="md" className="font-mono uppercase tracking-[0.14em] shadow-[var(--shadow-raised)]">
+                      <Sparkles size={11} className="mr-1" /> Most popular
                     </Badge>
-                  )}
+                  </div>
+                )}
+
+                {/* Eyebrow plan name */}
+                <p className={`text-caption font-mono uppercase tracking-[0.18em] mb-1 ${isHighlight ? 'text-accent' : 't-muted'}`}>
+                  {plan.name}
+                </p>
+                <p className="text-sm t-muted mb-6 min-h-[2.5rem] leading-snug">{plan.description}</p>
+
+                {/* Hero price */}
+                <div className="mb-1 flex items-baseline gap-1.5">
+                  <span className="text-[2.75rem] leading-none font-bold font-mono tnum t-primary">
+                    {formatFullCurrency(monthlyEquivalent, currency)}
+                  </span>
+                  <span className="text-sm font-mono t-muted">/ mo</span>
                 </div>
-                <p className="text-sm t-muted mb-4">{plan.description}</p>
-                <div className="mb-1 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold t-primary">${monthlyEquivalent}</span>
-                  <span className="text-sm t-muted">/ month</span>
+                <div className="text-caption font-mono t-muted mb-6">
+                  {cycle === 'annual' ? `billed annually ${formatFullCurrency(price, currency)}` : `billed monthly · ${plan.currency}`}
                 </div>
-                <div className="text-xs t-muted mb-5">
-                  {cycle === 'annual' ? `billed annually $${price.toLocaleString()}` : `billed monthly · ${plan.currency}`}
-                </div>
-                <ul className="space-y-2 mb-6 flex-1">
+
+                <div className="h-px w-full bg-[var(--border-card)] mb-6" />
+
+                <ul className="space-y-3 mb-8 flex-1">
                   {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm t-secondary">
-                      <Check size={14} className="text-accent flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
+                    <li key={i} className="flex items-start gap-2.5 text-sm t-secondary">
+                      <Check size={15} className="text-accent flex-shrink-0 mt-0.5" />
+                      <span className="leading-snug">{feature}</span>
                     </li>
                   ))}
                 </ul>
+
                 <Button
                   variant={isHighlight ? 'primary' : 'secondary'}
                   className="w-full"
@@ -151,9 +176,10 @@ export function PricingPage(): JSX.Element {
         </div>
       )}
 
-      <div className="text-center mt-10 text-xs t-muted">
-        Need something custom? Email <a href="mailto:sales@vantax.co.za" className="text-accent hover:underline">sales@vantax.co.za</a> —
-        the Enterprise tier covers most asks, and we can build a private tier for unusual ones.
+      <div className="text-center mt-12 text-sm t-muted max-w-2xl mx-auto">
+        Need something custom? Email{' '}
+        <a href="mailto:sales@vantax.co.za" className="text-accent hover:underline font-medium">sales@vantax.co.za</a>{' '}
+        — the Enterprise tier covers most asks, and we can build a private tier for unusual ones.
       </div>
     </div>
   );

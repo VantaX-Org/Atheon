@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Webhook as WebhookIcon, Plus, Trash2, Send, Loader2, X, ChevronDown, ChevronUp,
-  CheckCircle, Clock, AlertTriangle, ShieldCheck, Code, Copy, CheckCircle2,
+  CheckCircle, Clock, AlertTriangle, ShieldCheck, Code, Copy, CheckCircle2, ScrollText,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -114,10 +114,18 @@ export function WebhooksPage() {
     [detailId, webhooks]
   );
 
+  // Row highlighted in the master table / bound to the log rail. Defaults to the
+  // first webhook so the rail is never empty; never changes the data, only focus.
+  const [focusedId, setFocusedId] = useState<string | null>(routeWebhookId || null);
+  const focusedWebhook = useMemo(() => {
+    if (webhooks.length === 0) return null;
+    return webhooks.find((w) => w.id === focusedId) || webhooks[0];
+  }, [focusedId, webhooks]);
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <PageHeader
-        eyebrow="Webhooks · Event Delivery"
+        eyebrow="Management · Delivery Monitoring"
         title="Webhooks"
         dek="HMAC-signed event subscriptions for external systems"
         actions={
@@ -143,50 +151,100 @@ export function WebhooksPage() {
           action={{ label: 'Create your first webhook', onClick: () => setShowCreate(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {webhooks.map((w) => {
-            const h = healthBadge(w);
-            const HIcon = h.icon;
-            return (
-              <Card key={w.id} hover className="cursor-pointer" onClick={() => openDetail(w.id)}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <code className="text-sm font-mono t-primary truncate">{w.url}</code>
-                      <Badge variant={h.variant}>
-                        <HIcon size={10} className="mr-1" /> {h.label}
-                      </Badge>
-                    </div>
-                    {w.description && (
-                      <p className="text-xs t-secondary">{w.description}</p>
-                    )}
-                    <div className="flex flex-wrap gap-1">
-                      {w.event_types.slice(0, 6).map((ev) => (
-                        <Badge key={ev} variant="outline" size="sm">
-                          <code className="font-mono">{ev}</code>
-                        </Badge>
-                      ))}
-                      {w.event_types.length > 6 && (
-                        <Badge variant="outline" size="sm">+{w.event_types.length - 6} more</Badge>
-                      )}
-                    </div>
-                    <p className="text-caption t-muted">
-                      Created {new Date(w.created_at).toLocaleDateString()}
-                      {w.last_delivery_at ? ` · Last delivery ${new Date(w.last_delivery_at).toLocaleString()}` : ''}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="outline" size="sm" onClick={() => openDetail(w.id)}>
-                      View
-                    </Button>
-                    <Button variant="danger" size="sm" onClick={() => handleRevoke(w.id)}>
-                      <Trash2 size={12} /> Revoke
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+          {/* ── Master table ───────────────────────────────────────── */}
+          <Card className="p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+                    {['Endpoint URL', 'Event Types Tags', 'Delivery Status', 'Success Rate', 'Last Delivery'].map((c) => (
+                      <th
+                        key={c}
+                        scope="col"
+                        className="text-label text-left whitespace-nowrap px-5 py-3"
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {webhooks.map((w) => {
+                    const h = healthBadge(w);
+                    const HIcon = h.icon;
+                    const isFocused = focusedWebhook?.id === w.id;
+                    return (
+                      <tr
+                        key={w.id}
+                        onClick={() => setFocusedId(w.id)}
+                        onDoubleClick={() => openDetail(w.id)}
+                        className="border-b cursor-pointer align-middle transition-colors"
+                        style={{
+                          borderColor: 'var(--border-card)',
+                          background: isFocused ? 'var(--accent-subtle)' : undefined,
+                        }}
+                      >
+                        {/* Endpoint URL */}
+                        <td className="px-5 py-4 max-w-[260px]">
+                          <code className="text-xs font-mono t-primary break-all">{w.url}</code>
+                          {w.description && (
+                            <p className="text-caption t-muted mt-1 truncate">{w.description}</p>
+                          )}
+                        </td>
+                        {/* Event types */}
+                        <td className="px-5 py-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            {w.event_types.slice(0, 3).map((ev) => (
+                              <span
+                                key={ev}
+                                className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-caption font-mono uppercase tracking-wide t-secondary"
+                                style={{ borderColor: 'var(--border-card)', background: 'var(--bg-secondary)' }}
+                              >
+                                [{ev}]
+                              </span>
+                            ))}
+                            {w.event_types.length > 3 && (
+                              <span className="text-caption t-muted font-mono">+{w.event_types.length - 3} more</span>
+                            )}
+                          </div>
+                        </td>
+                        {/* Delivery status */}
+                        <td className="px-5 py-4">
+                          <Badge variant={h.variant} className="uppercase tracking-wide">
+                            <HIcon size={10} className="mr-1" /> {h.label}
+                          </Badge>
+                        </td>
+                        {/* Success rate */}
+                        <td className="px-5 py-4">
+                          <span className="font-mono font-bold text-2xl t-primary tabular-nums">
+                            {w.success_rate != null ? `${(w.success_rate * 100).toFixed(2)}%` : '—'}
+                          </span>
+                        </td>
+                        {/* Last delivery */}
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <span className="text-xs font-mono t-secondary">
+                            {w.last_delivery_at
+                              ? new Date(w.last_delivery_at).toLocaleString()
+                              : 'No deliveries'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* ── Log rail (bound to focused row) ────────────────────── */}
+          {focusedWebhook && (
+            <WebhookLogRail
+              webhook={focusedWebhook}
+              onOpen={() => openDetail(focusedWebhook.id)}
+              onRevoke={() => handleRevoke(focusedWebhook.id)}
+            />
+          )}
         </div>
       )}
 
@@ -216,6 +274,106 @@ export function WebhooksPage() {
           />
         </Modal>
       )}
+    </div>
+  );
+}
+
+// ─── Webhook Log Rail ──────────────────────────────────────────────────
+/**
+ * Right-hand monitoring rail. Surfaces the latest known delivery state for the
+ * focused webhook using only fields the list endpoint already returns — no new
+ * data is fetched or fabricated here. Double-clicking a row (or "Open log")
+ * still opens the full detail drawer with the live deliveries table.
+ */
+function WebhookLogRail({
+  webhook,
+  onOpen,
+  onRevoke,
+}: {
+  webhook: Webhook;
+  onOpen: () => void;
+  onRevoke: () => void;
+}) {
+  const h = healthBadge(webhook);
+  const HIcon = h.icon;
+  const slug = webhook.url.replace(/^https?:\/\//, '').split('/')[0] || webhook.id;
+
+  return (
+    <Card className="p-0 overflow-hidden self-start sticky top-4">
+      <div
+        className="px-4 py-3 border-b flex items-center gap-2"
+        style={{ borderColor: 'var(--border-card)' }}
+      >
+        <ScrollText size={13} className="text-accent shrink-0" />
+        <span className="text-label truncate">Webhook Log · {slug}</span>
+      </div>
+
+      <div className="p-4 space-y-3">
+        <LogField label="Status">
+          <Badge variant={h.variant} className="uppercase tracking-wide">
+            <HIcon size={10} className="mr-1" /> {h.label}
+          </Badge>
+        </LogField>
+        <LogField label="Timestamp">
+          <span className="text-xs font-mono t-primary">
+            {webhook.last_delivery_at
+              ? new Date(webhook.last_delivery_at).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+              : '—'}
+          </span>
+        </LogField>
+        <LogField label="Event Type">
+          <span className="text-xs font-mono t-primary break-all">
+            {webhook.event_types[0] ?? '—'}
+          </span>
+        </LogField>
+        <LogField label="Delivery State">
+          <span className="text-xs font-mono t-primary uppercase">
+            {webhook.last_delivery_status ?? 'no_deliveries'}
+          </span>
+        </LogField>
+        <LogField label="Success Rate">
+          <span className="text-xs font-mono t-primary tabular-nums">
+            {webhook.success_rate != null ? `${(webhook.success_rate * 100).toFixed(2)}%` : '—'}
+          </span>
+        </LogField>
+
+        <div className="pt-1">
+          <span className="text-label">Subscription Preview</span>
+          <pre
+            className="mt-1.5 p-3 rounded-md text-caption overflow-x-auto font-mono leading-relaxed"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)', color: 'var(--text-secondary)' }}
+          >
+            <code>{JSON.stringify(
+              {
+                id: webhook.id,
+                url: webhook.url,
+                event_types: webhook.event_types,
+                disabled: webhook.disabled ?? false,
+              },
+              null,
+              2,
+            )}</code>
+          </pre>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={onOpen} className="flex-1">
+            Open log
+          </Button>
+          <Button variant="danger" size="sm" onClick={onRevoke}>
+            <Trash2 size={12} /> Revoke
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function LogField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-label shrink-0">{label}</span>
+      <div className="min-w-0 text-right">{children}</div>
     </div>
   );
 }

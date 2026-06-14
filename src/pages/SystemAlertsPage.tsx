@@ -311,24 +311,26 @@ export function SystemAlertsPage() {
         }
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <p className="text-label">Total Rules</p>
-          <p className="text-xl font-bold font-mono tnum t-primary">{rules.length}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Enabled</p>
-          <p className="text-xl font-bold font-mono tnum text-accent">{enabledCount}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Silenced</p>
-          <p className="text-xl font-bold font-mono tnum" style={{ color: 'var(--warning)' }}>{silencedCount}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Triggered</p>
-          <p className="text-xl font-bold font-mono tnum text-neg">{firingRules.length}</p>
-        </Card>
-      </div>
+      <Card className="p-6 sm:p-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
+          <div>
+            <p className="text-hero t-primary">{rules.length}</p>
+            <p className="text-label mt-2">Total Rules</p>
+          </div>
+          <div>
+            <p className="text-hero text-accent">{enabledCount}</p>
+            <p className="text-label mt-2">Enabled</p>
+          </div>
+          <div>
+            <p className="text-hero" style={{ color: 'var(--warning)' }}>{silencedCount}</p>
+            <p className="text-label mt-2">Silenced</p>
+          </div>
+          <div>
+            <p className="text-hero text-neg">{firingRules.length}</p>
+            <p className="text-label mt-2">Triggered</p>
+          </div>
+        </div>
+      </Card>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -343,63 +345,71 @@ export function SystemAlertsPage() {
             action={{ label: 'Create your first rule', onClick: openCreateModal }}
           />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {rules.map(r => (
-              <Card key={r.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <button onClick={() => toggleRuleEnabled(r)} className="mt-0.5" disabled={savingId === r.id} title={r.enabled ? 'Disable rule' : 'Enable rule'}>
-                      {savingId === r.id ? <Loader2 size={20} className="animate-spin t-muted" /> :
-                        r.enabled ? <ToggleRight size={20} className="text-accent" /> : <ToggleLeft size={20} className="t-muted" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium t-primary">{r.name}</p>
-                        <StatusPill status={r.severity} size="sm" />
-                        {r.silenced && <Badge variant="warning" className="text-caption">silenced</Badge>}
-                        {!r.enabled && <Badge variant="default" className="text-caption">disabled</Badge>}
-                      </div>
-                      {r.description && <p className="text-xs t-muted mt-0.5">{r.description}</p>}
-                      <p className="text-caption font-mono t-muted mt-1 p-1 rounded bg-[var(--bg-secondary)] inline-block">
-                        on <span className="text-accent">{r.event_type}</span> when {r.condition?.field} {r.condition?.op || r.condition?.operator} {JSON.stringify(r.condition?.value)}
-                      </p>
-                      <div className="flex items-center gap-3 mt-2 flex-wrap">
-                        <span className="text-caption t-muted flex items-center gap-1">Channels:</span>
-                        {r.channels.length === 0 ? (
-                          <span className="text-caption t-muted">none</span>
-                        ) : r.channels.map(ch => (
-                          <span key={ch} className="text-caption t-muted flex items-center gap-0.5">{channelIcon(ch)} {ch}</span>
-                        ))}
-                        <span className="text-caption t-muted">· Triggered {r.triggered_count}x</span>
-                        {r.silenced && r.silenced_until && (
-                          <span className="text-caption" style={{ color: 'var(--warning)' }}>· Silenced until {new Date(r.silenced_until).toLocaleString()}</span>
-                        )}
-                      </div>
+              <Card key={r.id} className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <StatusPill status={r.severity} size="sm" />
+                      {r.silenced && <Badge variant="warning" className="text-caption">silenced</Badge>}
+                      {!r.enabled && <Badge variant="default" className="text-caption">disabled</Badge>}
+                    </div>
+                    <p className="text-base font-semibold t-primary leading-snug">{r.name}</p>
+                    <p className="text-label mt-1.5 normal-case" style={{ textTransform: 'none' }}>
+                      <span className="t-muted">SOURCE:</span> <span className="text-accent">{r.event_type}</span>
+                      <span className="t-muted"> · COND: {r.condition?.field} {r.condition?.op || r.condition?.operator} {JSON.stringify(r.condition?.value)}</span>
+                    </p>
+                    {r.description && <p className="text-sm t-muted mt-2 max-w-prose">{r.description}</p>}
+                    <div className="flex items-center gap-3 mt-3 flex-wrap">
+                      <span className="text-caption t-muted flex items-center gap-1">Channels:</span>
+                      {r.channels.length === 0 ? (
+                        <span className="text-caption t-muted">none</span>
+                      ) : r.channels.map(ch => (
+                        <span key={ch} className="text-caption t-muted flex items-center gap-0.5">{channelIcon(ch)} {ch}</span>
+                      ))}
+                      <span className="text-caption t-muted">· Triggered {r.triggered_count}x</span>
+                      {r.silenced && r.silenced_until && (
+                        <span className="text-caption" style={{ color: 'var(--warning)' }}>· Silenced until {new Date(r.silenced_until).toLocaleString()}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => { setTestingRule(r); setTestResult(null); setTestPayload(JSON.stringify({ [r.condition?.field || 'severity']: r.condition?.value ?? 'high' }, null, 2)); }}
-                      className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]"
-                      title="Test rule"
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant={r.enabled ? 'default' : 'outline'}
+                      onClick={() => toggleRuleEnabled(r)}
+                      disabled={savingId === r.id}
+                      title={r.enabled ? 'Disable rule' : 'Enable rule'}
                     >
-                      <Play size={14} />
-                    </button>
-                    {r.silenced ? (
-                      <button onClick={() => clearSilence(r)} className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]" title="Clear silence">
-                        <VolumeX size={14} />
+                      {savingId === r.id ? <Loader2 size={14} className="animate-spin mr-1" /> :
+                        r.enabled ? <ToggleRight size={14} className="mr-1" /> : <ToggleLeft size={14} className="mr-1" />}
+                      {r.enabled ? 'Enabled' : 'Disabled'}
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => { setTestingRule(r); setTestResult(null); setTestPayload(JSON.stringify({ [r.condition?.field || 'severity']: r.condition?.value ?? 'high' }, null, 2)); }}
+                        className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]"
+                        title="Test rule"
+                      >
+                        <Play size={14} />
                       </button>
-                    ) : (
-                      <button onClick={() => setSilencingRule(r)} className="p-1.5 rounded-md t-muted hover:t-primary transition-colors active:scale-[0.97]" style={{ ['--hover-bg' as string]: 'rgb(var(--accent-rgb) / 0.08)' }} title="Silence">
-                        <VolumeX size={14} />
+                      {r.silenced ? (
+                        <button onClick={() => clearSilence(r)} className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]" title="Clear silence">
+                          <VolumeX size={14} />
+                        </button>
+                      ) : (
+                        <button onClick={() => setSilencingRule(r)} className="p-1.5 rounded-md t-muted hover:t-primary transition-colors active:scale-[0.97]" style={{ ['--hover-bg' as string]: 'rgb(var(--accent-rgb) / 0.08)' }} title="Silence">
+                          <VolumeX size={14} />
+                        </button>
+                      )}
+                      <button onClick={() => openEditModal(r)} className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]" title="Edit">
+                        <Pencil size={14} />
                       </button>
-                    )}
-                    <button onClick={() => openEditModal(r)} className="p-1.5 rounded-md hover:bg-accent/10 t-muted hover:text-accent transition-colors active:scale-[0.97]" title="Edit">
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => deleteRule(r)} className="p-1.5 rounded-md hover:bg-neg/10 t-muted hover:text-neg transition-colors active:scale-[0.97]" title="Delete">
-                      <Trash2 size={14} />
-                    </button>
+                      <button onClick={() => deleteRule(r)} className="p-1.5 rounded-md hover:bg-neg/10 t-muted hover:text-neg transition-colors active:scale-[0.97]" title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -415,24 +425,22 @@ export function SystemAlertsPage() {
             <p className="text-sm t-muted">No recently triggered rules</p>
           </Card>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {firingRules.map(r => (
-              <Card key={r.id} className="p-4">
-                <div className="flex items-start gap-3">
-                  <XCircle size={14} className="text-neg mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium t-primary">{r.name}</p>
-                      <StatusPill status={r.severity} size="sm" />
-                    </div>
-                    <p className="text-xs t-muted mt-0.5">
-                      {r.description || `Triggered on ${r.event_type}`}
-                    </p>
-                    <p className="text-caption t-muted mt-1">
-                      Last triggered: {r.last_triggered_at ? new Date(r.last_triggered_at).toLocaleString() : '—'} · {r.triggered_count} total fires
-                    </p>
-                  </div>
+              <Card key={r.id} className="p-5">
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <StatusPill status={r.severity} size="sm" />
+                  <Badge variant="danger" className="text-caption flex items-center gap-1"><XCircle size={11} /> firing</Badge>
                 </div>
+                <p className="text-base font-semibold t-primary leading-snug">{r.name}</p>
+                <p className="text-label mt-1.5" style={{ textTransform: 'none' }}>
+                  <span className="t-muted">SOURCE:</span> <span className="text-accent">{r.event_type}</span>
+                  <span className="t-muted"> · LAST: {r.last_triggered_at ? new Date(r.last_triggered_at).toLocaleString() : '—'}</span>
+                </p>
+                <p className="text-sm t-muted mt-2 max-w-prose">
+                  {r.description || `Triggered on ${r.event_type}`}
+                </p>
+                <p className="text-caption t-muted mt-2">{r.triggered_count} total fires</p>
               </Card>
             ))}
           </div>

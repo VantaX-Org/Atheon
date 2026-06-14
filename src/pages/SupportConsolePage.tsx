@@ -284,35 +284,42 @@ export function SupportConsolePage() {
         live
       />
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
+      {/* Summary — hero metric band */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card variant="prominent" size="relaxed" className="flex flex-col gap-3">
           <p className="text-label">Total Tenants</p>
-          <p className="text-xl font-bold t-primary font-mono tnum">{tenants.length}</p>
+          <p className="font-mono tnum text-[44px] leading-none font-bold text-accent">{tenants.length}</p>
         </Card>
-        <Card className="p-3">
+        <Card variant="prominent" size="relaxed" className="flex flex-col gap-3">
           <p className="text-label">Active</p>
-          <p className="text-xl font-bold text-accent font-mono tnum">{tenants.filter(t => t.status === 'active').length}</p>
+          <p className="font-mono tnum text-[44px] leading-none font-bold t-primary">{tenants.filter(t => t.status === 'active').length}</p>
         </Card>
-        <Card className="p-3">
+        <Card variant="prominent" size="relaxed" className="flex flex-col gap-3">
           <p className="text-label">Suspended</p>
-          <p className="text-xl font-bold text-[var(--warning)] font-mono tnum">{tenants.filter(t => t.status === 'suspended').length}</p>
+          <div className="flex items-center gap-2.5">
+            <p className="font-mono tnum text-[44px] leading-none font-bold text-[var(--warning)]">{tenants.filter(t => t.status === 'suspended').length}</p>
+            <span aria-hidden className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ background: 'var(--neg)' }} />
+              <span className="w-2 h-2 rounded-full" style={{ background: 'var(--warning)' }} />
+              <span className="w-2 h-2 rounded-full" style={{ background: 'var(--rag-healthy)' }} />
+            </span>
+          </div>
         </Card>
-        <Card className="p-3">
+        <Card variant="prominent" size="relaxed" className="flex flex-col gap-3">
           <p className="text-label">Recent Events</p>
-          <p className="text-xl font-bold t-primary font-mono tnum">{activities.length}</p>
+          <p className="font-mono tnum text-[44px] leading-none font-bold t-primary">{activities.length}</p>
         </Card>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <TabPanel id="search" activeTab={activeTab}>
-        <div className="space-y-3">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 t-muted" />
             <input
               aria-label="Search tenants by name, slug, or ID"
-              className="w-full pl-9 pr-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
+              className="w-full pl-10 pr-3 py-2.5 rounded-full border border-[var(--border-card)] text-sm bg-[var(--bg-card-solid)] t-primary placeholder:t-muted focus:border-accent focus:outline-none transition-colors"
               placeholder="Search by tenant name, slug, or ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -323,39 +330,50 @@ export function SupportConsolePage() {
               <p className="text-sm t-muted">No tenants match &ldquo;{searchQuery}&rdquo;</p>
             </Card>
           ) : (
-            <div className="space-y-2">
-              {filteredTenants.map((t) => (
-                <Card key={t.id} className="p-4 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer" onClick={() => setSelectedTenant(t)}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Building2 size={16} className="text-accent" />
-                      <div>
-                        <p className="text-sm font-medium t-primary">{t.name}</p>
-                        <p className="text-caption t-muted">{t.slug} · {t.industry || 'general'} · {t.plan}</p>
+            <Card variant="panel" className="overflow-hidden p-0">
+              <div className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3 border-b border-[var(--border-card)]">
+                <span className="text-label">Tenant</span>
+                <span className="text-label text-right">Status</span>
+              </div>
+              <div>
+                {filteredTenants.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTenant(t)}
+                    className="w-full text-left grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-4 border-b border-[var(--border-card)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors active:scale-[0.997]"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-md bg-[var(--accent-subtle)] flex items-center justify-center flex-shrink-0">
+                        <Building2 size={16} className="text-accent" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium t-primary truncate">{t.name}</p>
+                        <p className="text-caption t-muted font-mono truncate">{t.slug} · {t.industry || 'general'} · {t.plan}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 justify-end">
                       <Badge variant={t.status === 'active' ? 'success' : t.status === 'suspended' ? 'danger' : 'warning'}>{t.status}</Badge>
                       <ArrowRight size={14} className="t-muted" />
                     </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
           )}
         </div>
       </TabPanel>
 
       <TabPanel id="tickets" activeTab={activeTab}>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <label htmlFor="ticket-status-filter" className="sr-only">Filter tickets by status</label>
               <select
                 id="ticket-status-filter"
                 value={ticketStatusFilter}
                 onChange={(e) => setTicketStatusFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-md border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+                className="px-3 py-2 rounded-md border border-[var(--border-card)] text-xs font-mono bg-[var(--bg-card-solid)] t-primary"
               >
                 <option value="">All statuses</option>
                 {TICKET_STATUSES.map((s) => (
@@ -394,31 +412,36 @@ export function SupportConsolePage() {
               action={{ label: 'Open a ticket', onClick: () => setCreateTicketOpen(true) }}
             />
           ) : (
-            <div className="space-y-2">
-              {tickets.map((t) => (
-                <Card
-                  key={t.id}
-                  className="p-4 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
-                  onClick={() => setOpenTicketId(t.id)}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
+            <Card variant="panel" className="overflow-hidden p-0">
+              <div className="grid grid-cols-[100px_1fr_auto] gap-4 px-5 py-3 border-b border-[var(--border-card)]">
+                <span className="text-label">Ticket ID</span>
+                <span className="text-label">Subject</span>
+                <span className="text-label text-right">Priority · Status</span>
+              </div>
+              <div>
+                {tickets.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setOpenTicketId(t.id)}
+                    className="w-full text-left grid grid-cols-[100px_1fr_auto] items-center gap-4 px-5 py-4 border-b border-[var(--border-card)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors active:scale-[0.997]"
+                  >
+                    <span className="font-mono text-xs t-secondary tnum truncate">#{t.id.slice(0, 8)}</span>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium t-primary truncate">{t.subject}</p>
-                      <p className="text-caption t-muted truncate">
-                        <span className="font-mono">#{t.id.slice(0, 8)}</span>
-                        <span> · {t.category}</span>
-                        <span> · {new Date(t.updated_at).toLocaleString()}</span>
+                      <p className="text-caption t-muted font-mono truncate">
+                        {t.category} · {new Date(t.updated_at).toLocaleString()}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 justify-end flex-shrink-0">
                       <Badge variant={ticketPriorityVariant(t.priority)}>{t.priority}</Badge>
                       <Badge variant={ticketStatusVariant(t.status)}>{ticketStatusLabel(t.status)}</Badge>
                       <ArrowRight size={14} className="t-muted" />
                     </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
           )}
         </div>
       </TabPanel>
@@ -488,17 +511,17 @@ export function SupportConsolePage() {
             <button
               key={qa.id}
               onClick={() => navigate(qa.to)}
-              className="text-left card-glass p-4 rounded-md hover:bg-[var(--bg-secondary)] transition-colors active:scale-[0.97]"
+              className="group text-left card-swiss p-5 rounded-md hover:bg-[var(--bg-secondary)] hover:border-accent transition-colors active:scale-[0.99]"
             >
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-sm bg-accent/10 flex items-center justify-center text-accent flex-shrink-0">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-md bg-[var(--accent-subtle)] flex items-center justify-center text-accent flex-shrink-0">
                   {qa.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium t-primary">{qa.title}</p>
-                  <p className="text-caption t-muted">{qa.desc}</p>
+                  <p className="text-sm font-semibold t-primary">{qa.title}</p>
+                  <p className="text-caption t-muted mt-0.5">{qa.desc}</p>
                 </div>
-                <ArrowRight size={14} className="t-muted flex-shrink-0 mt-1" />
+                <ArrowRight size={14} className="t-muted flex-shrink-0 mt-1 group-hover:text-accent transition-colors" />
               </div>
             </button>
           ))}

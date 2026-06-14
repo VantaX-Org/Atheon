@@ -15,7 +15,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { LoadingState, ErrorState } from '@/components/ui/state';
 import { PageHeader } from '@/components/ui/page-header';
 import { useToast } from '@/components/ui/toast';
@@ -44,6 +43,28 @@ const STATUS_OPTIONS = [
   { value: 'monitoring', label: 'Monitoring' },
   { value: 'resolved', label: 'Resolved' },
 ];
+
+/**
+ * Editorial status-pill treatment for incident severity (mockup v4-53).
+ * Maps each severity to the RAG palette ONLY — pills are health indicators,
+ * never decoration. Returns the prominent banner label + token-driven styles.
+ */
+function severityPill(severity: string): { label: string; bg: string; fg: string } {
+  switch (severity) {
+    case 'major_outage':
+      return { label: 'Critical outage', bg: 'rgb(var(--neg-rgb) / 0.12)', fg: 'var(--neg)' };
+    case 'partial_outage':
+      return { label: 'Partial outage', bg: 'rgb(var(--warning-rgb) / 0.14)', fg: 'var(--warning)' };
+    case 'degraded':
+      return { label: 'Degraded service', bg: 'rgb(var(--warning-rgb) / 0.14)', fg: 'var(--warning)' };
+    default:
+      return { label: severity.replace(/_/g, ' '), bg: 'var(--accent-subtle)', fg: 'var(--accent)' };
+  }
+}
+
+/** Shared mono "data voice" eyebrow used for STARTED / UPDATED / labels. */
+const DATA_LABEL =
+  "block text-[10px] font-bold uppercase tracking-[0.12em] t-muted [font-family:'Space_Mono',ui-monospace,monospace]";
 
 export default function StatusIncidentsAdminPage(): JSX.Element {
   const toast = useToast();
@@ -240,77 +261,132 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Open incidents */}
+      {/* Active incidents — editorial hero + prominent status pills */}
       <section>
-        <h3 className="text-body font-semibold t-primary mb-2">Open ({open.length})</h3>
+        <div className="flex items-baseline gap-3 mb-1">
+          <h2 className="text-[2rem] leading-none font-extrabold t-primary tracking-tight">
+            Active incidents <span className="t-muted tnum [font-family:'Space_Mono',ui-monospace,monospace]">({open.length})</span>
+          </h2>
+        </div>
+        <p className={`${DATA_LABEL} mb-5`}>Real-time operational status overview</p>
+
         {open.length === 0 ? (
-          <Card className="p-8 text-center">
-            <CheckCircle2 size={28} className="text-accent mx-auto mb-2" style={{ opacity: 0.5 }} />
-            <p className="text-body-sm font-medium t-primary">No open incidents</p>
+          <Card className="p-10 text-center">
+            <CheckCircle2 size={32} className="mx-auto mb-3" style={{ color: 'var(--rag-healthy)', opacity: 0.6 }} />
+            <p className="text-body font-semibold t-primary">No active incidents</p>
             <p className="text-caption t-muted mt-1">Public status page shows all systems operational.</p>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {open.map((i) => {
               const updates = parseUpdates(i.updates);
               const draft = updateDraft[i.id] ?? { status: 'investigating', message: '', busy: false };
+              const pill = severityPill(i.severity);
+              const lastUpdate = updates.length > 0 ? updates[updates.length - 1] : null;
               return (
-                <Card key={i.id} className="p-5">
-                  <div className="flex items-start justify-between gap-3 mb-3">
+                <Card key={i.id} className="p-0 overflow-hidden">
+                  {/* Header: title + prominent severity banner pill */}
+                  <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-body font-semibold t-primary">{i.title}</h4>
-                        <Badge variant="warning" size="sm">{i.severity}</Badge>
-                        <Badge variant="info" size="sm">{i.status}</Badge>
-                      </div>
-                      {i.impact && <p className="text-body-sm t-secondary mt-1">{i.impact}</p>}
-                      <p className="text-caption t-muted mt-1 inline-flex items-center gap-1"><Clock size={11} /> Started <span className="font-mono tnum">{new Date(i.started_at).toLocaleString()}</span></p>
+                      <h3 className="text-xl font-bold t-primary leading-snug">{i.title}</h3>
+                      {i.impact && <p className="text-body-sm t-secondary mt-2 max-w-2xl">{i.impact}</p>}
                     </div>
-                    <Button variant="primary" size="sm" onClick={() => void resolve(i)}><CheckCircle2 size={12} /> Resolve</Button>
+                    <span
+                      className="shrink-0 inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] [font-family:'Space_Mono',ui-monospace,monospace]"
+                      style={{ background: pill.bg, color: pill.fg }}
+                    >
+                      {pill.label}
+                    </span>
                   </div>
 
-                  {/* Updates timeline */}
+                  {/* Meta row: STARTED / UPDATED / investigation status / view details */}
+                  <div className="flex flex-wrap items-end gap-x-10 gap-y-3 px-6 pb-5 border-b" style={{ borderColor: 'var(--border-card)' }}>
+                    <div>
+                      <span className={DATA_LABEL}>Started</span>
+                      <span className="text-body-sm t-primary tnum [font-family:'Space_Mono',ui-monospace,monospace] mt-0.5 inline-flex items-center gap-1.5">
+                        <Clock size={12} className="t-muted" />{new Date(i.started_at).toLocaleString()}
+                      </span>
+                    </div>
+                    {lastUpdate && (
+                      <div>
+                        <span className={DATA_LABEL}>Updated</span>
+                        <span className="text-body-sm t-primary tnum [font-family:'Space_Mono',ui-monospace,monospace] mt-0.5 block">
+                          {new Date(lastUpdate.at).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <span className={DATA_LABEL}>Investigation</span>
+                      <span className="text-body-sm font-medium mt-0.5 block uppercase tracking-wide" style={{ color: 'var(--accent)' }}>
+                        {i.status}
+                      </span>
+                    </div>
+                    <Link
+                      to="/status"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto self-center text-caption font-medium inline-flex items-center gap-1 uppercase tracking-wider [font-family:'Space_Mono',ui-monospace,monospace]"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      View details <ExternalLink size={11} />
+                    </Link>
+                  </div>
+
+                  {/* Status timeline */}
                   {updates.length > 0 && (
-                    <div className="border-t pt-3 space-y-2" style={{ borderColor: 'var(--border-card)' }}>
-                      <div className="text-caption uppercase tracking-wider t-muted font-medium">Public timeline</div>
-                      {updates.slice().reverse().map((u, idx) => (
-                        <div key={idx} className="text-caption">
-                          <span className="t-muted font-mono tnum">{new Date(u.at).toLocaleString()}</span>
-                          <span className="t-muted"> · </span>
-                          <span className="font-medium t-primary uppercase tracking-wider">{u.status}</span>
-                          <p className="t-secondary mt-0.5">{u.message}</p>
-                        </div>
-                      ))}
+                    <div className="px-6 pt-5 pb-2">
+                      <div className={`${DATA_LABEL} mb-4`}>Status timeline</div>
+                      <ol className="relative space-y-4">
+                        <span className="absolute left-[5px] top-2 bottom-2 w-px" style={{ background: 'var(--border-card)' }} aria-hidden />
+                        {updates.slice().reverse().map((u, idx) => (
+                          <li key={idx} className="relative pl-6">
+                            <span
+                              className="absolute left-0 top-1.5 h-[11px] w-[11px] rounded-full border-2"
+                              style={{ background: 'var(--bg-card-solid)', borderColor: idx === 0 ? 'var(--accent)' : 'var(--border-strong, var(--border-card))' }}
+                              aria-hidden
+                            />
+                            <div className="flex flex-wrap items-baseline gap-x-3">
+                              <span className="text-caption t-muted tnum [font-family:'Space_Mono',ui-monospace,monospace]">{new Date(u.at).toLocaleString()}</span>
+                              <span className="text-caption font-bold uppercase tracking-[0.1em] t-primary [font-family:'Space_Mono',ui-monospace,monospace]">{u.status}</span>
+                            </div>
+                            <p className="text-body-sm t-secondary mt-1">{u.message}</p>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
                   )}
 
-                  {/* Append update form */}
-                  <div className="border-t mt-3 pt-3" style={{ borderColor: 'var(--border-card)' }}>
-                    <div className="flex items-end gap-2">
-                      <label className="block flex-shrink-0">
-                        <span className="text-caption uppercase tracking-wider t-muted block mb-1">Status</span>
+                  {/* Status update + actions footer */}
+                  <div className="px-6 pt-4 pb-6 mt-2 border-t" style={{ borderColor: 'var(--border-card)' }}>
+                    <span className={`${DATA_LABEL} mb-2`}>Status update notes</span>
+                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <label className="block shrink-0">
+                        <span className="sr-only">Status</span>
                         <select
                           value={draft.status}
                           onChange={(e) => setUpdateDraft((d) => ({ ...d, [i.id]: { ...draft, status: e.target.value } }))}
-                          className="px-2 py-1.5 rounded-md text-body-sm bg-[var(--bg-input)] border border-[var(--border-card)] t-primary"
+                          className="px-3 py-2 rounded-md text-body-sm bg-[var(--bg-input)] border border-[var(--border-card)] t-primary focus:border-accent focus:outline-none"
                         >
                           {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       </label>
                       <label className="block flex-1">
-                        <span className="text-caption uppercase tracking-wider t-muted block mb-1">Public update message</span>
+                        <span className="sr-only">Public update message</span>
                         <input
                           type="text"
                           value={draft.message}
                           onChange={(e) => setUpdateDraft((d) => ({ ...d, [i.id]: { ...draft, message: e.target.value } }))}
-                          placeholder="e.g. Root cause identified — applying fix"
+                          placeholder="What customers will see on /status — e.g. Root cause identified, applying fix"
                           className="w-full px-3 py-2 rounded-md text-body-sm bg-[var(--bg-input)] border border-[var(--border-card)] t-primary focus:border-accent focus:outline-none"
                           maxLength={4000}
                         />
                       </label>
-                      <Button variant="primary" size="sm" onClick={() => void appendUpdate(i.id)} disabled={draft.busy || !draft.message.trim()}>
-                        {draft.busy ? <><Loader2 size={12} className="animate-spin" /></> : <><MessageSquare size={12} /></>} Post
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="primary" size="sm" onClick={() => void appendUpdate(i.id)} disabled={draft.busy || !draft.message.trim()}>
+                          {draft.busy ? <><Loader2 size={12} className="animate-spin" /></> : <><MessageSquare size={12} /></>} Post update
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => void resolve(i)}><CheckCircle2 size={12} /> Resolve</Button>
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -320,9 +396,9 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
         )}
       </section>
 
-      {/* Resolved history */}
+      {/* Recent resolutions */}
       <section>
-        <h3 className="text-body font-semibold t-primary mb-2">Resolved ({closed.length})</h3>
+        <p className={`${DATA_LABEL} mb-3`}>Recent resolutions ({closed.length})</p>
         {closed.length === 0 ? (
           <Card className="p-6 text-center">
             <p className="text-caption t-muted">No resolved incidents yet.</p>
@@ -330,13 +406,11 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
         ) : (
           <Card className="p-0 overflow-hidden">
             <table className="w-full text-body-sm">
-              <thead className="text-caption uppercase tracking-wider t-muted">
-                <tr className="border-b border-[var(--border-card)]">
-                  <th className="text-left px-4 py-3 font-medium">Title</th>
-                  <th className="text-left px-4 py-3 font-medium">Severity</th>
-                  <th className="text-left px-4 py-3 font-medium">Started</th>
-                  <th className="text-left px-4 py-3 font-medium">Resolved</th>
-                  <th className="text-left px-4 py-3 font-medium">Duration</th>
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+                  {['Title', 'Severity', 'Started', 'Resolved', 'Duration'].map((h) => (
+                    <th key={h} className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-[0.12em] t-muted [font-family:'Space_Mono',ui-monospace,monospace]">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -346,12 +420,14 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
                   const durMin = Math.max(0, Math.round((resolvedMs - startedMs) / 60000));
                   const durStr = durMin >= 60 ? `${Math.floor(durMin / 60)}h ${durMin % 60}m` : `${durMin}m`;
                   return (
-                    <tr key={i.id} className="border-b border-[var(--border-card)] last:border-0">
-                      <td className="px-4 py-3 t-primary">{i.title}</td>
-                      <td className="px-4 py-3"><Badge variant="default" size="sm">{i.severity}</Badge></td>
-                      <td className="px-4 py-3 t-muted font-mono tnum">{new Date(i.started_at).toLocaleString()}</td>
-                      <td className="px-4 py-3 t-muted font-mono tnum">{i.resolved_at ? new Date(i.resolved_at).toLocaleString() : '—'}</td>
-                      <td className="px-4 py-3 t-secondary tabular-nums font-mono">{durStr}</td>
+                    <tr key={i.id} className="border-b last:border-0" style={{ borderColor: 'var(--border-card)' }}>
+                      <td className="px-5 py-3.5 t-primary font-medium">{i.title}</td>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] [font-family:'Space_Mono',ui-monospace,monospace]" style={{ background: 'rgb(var(--rag-healthy-rgb) / 0.10)', color: 'var(--rag-healthy)' }}>Resolved</span>
+                      </td>
+                      <td className="px-5 py-3.5 t-muted tnum [font-family:'Space_Mono',ui-monospace,monospace]">{new Date(i.started_at).toLocaleString()}</td>
+                      <td className="px-5 py-3.5 t-muted tnum [font-family:'Space_Mono',ui-monospace,monospace]">{i.resolved_at ? new Date(i.resolved_at).toLocaleString() : '—'}</td>
+                      <td className="px-5 py-3.5 t-secondary tnum [font-family:'Space_Mono',ui-monospace,monospace]">{durStr}</td>
                     </tr>
                   );
                 })}

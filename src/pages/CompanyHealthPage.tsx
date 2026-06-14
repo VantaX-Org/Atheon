@@ -108,110 +108,127 @@ export function CompanyHealthPage() {
         }
       />
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Users size={14} className="text-accent" />
-            <span className="text-label">Active Users</span>
+      {/* Health hero — dominant adoption metric paired with supporting stats */}
+      <Card className="card-prominent p-6 sm:p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_2fr] gap-8 lg:gap-12 items-center">
+          {/* Hero number */}
+          <div>
+            <p className="hero-eyebrow flex items-center gap-2">
+              <Users size={13} />
+              Active Adoption
+            </p>
+            <p className="text-hero t-primary mt-3 font-mono">
+              {activePct}<span className="text-display t-muted align-top">%</span>
+            </p>
+            <p className="text-body-sm t-secondary mt-2">
+              <span className="font-mono t-primary">{data.users.active}</span>
+              <span className="t-muted"> / {data.users.total}</span> tenant users active
+            </p>
           </div>
-          <p className="text-xl font-bold t-primary">
-            {data.users.active}<span className="text-sm t-muted">/{data.users.total}</span>
-          </p>
-          <p className="text-caption t-muted">{activePct}% of tenant users active</p>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={14} className="text-accent" />
-            <span className="text-label">Catalyst Actions</span>
+
+          {/* Supporting metric trio */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-[var(--radius)] overflow-hidden border border-[var(--border-card)] bg-[var(--border-card)]">
+            <div className="bg-[var(--bg-card-solid)] p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap size={13} className="text-accent" />
+                <span className="text-label">Catalyst Actions</span>
+              </div>
+              <p className="text-headline-lg font-mono font-bold t-primary tabular-nums">{data.catalysts.actionsLast30d.toLocaleString()}</p>
+              <p className="text-caption t-muted mt-1">Last 30 days</p>
+            </div>
+            <div className="bg-[var(--bg-card-solid)] p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain size={13} className="text-accent" />
+                <span className="text-label">LLM Tokens</span>
+              </div>
+              <p className="text-headline-lg font-mono font-bold t-primary tabular-nums">
+                {data.llm.tokens30d >= 1_000_000
+                  ? `${(data.llm.tokens30d / 1_000_000).toFixed(2)}M`
+                  : data.llm.tokens30d >= 1_000
+                    ? `${(data.llm.tokens30d / 1_000).toFixed(1)}k`
+                    : data.llm.tokens30d.toLocaleString()}
+              </p>
+              <p className="text-caption t-muted mt-1">Last 30 days</p>
+            </div>
+            <div className="bg-[var(--bg-card-solid)] p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Wifi size={13} className="text-accent" />
+                <span className="text-label">ERP Connections</span>
+              </div>
+              <p className="text-headline-lg font-mono font-bold t-primary tabular-nums">
+                {data.erp.connectedCount}<span className="text-sm t-muted">/{data.erp.connections}</span>
+              </p>
+              <p className="text-caption t-muted mt-1">Connected / total</p>
+            </div>
           </div>
-          <p className="text-xl font-bold t-primary">{data.catalysts.actionsLast30d.toLocaleString()}</p>
-          <p className="text-caption t-muted">Last 30 days</p>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Brain size={14} className="text-accent" />
-            <span className="text-label">LLM Tokens</span>
-          </div>
-          <p className="text-xl font-bold t-primary">
-            {data.llm.tokens30d >= 1_000_000
-              ? `${(data.llm.tokens30d / 1_000_000).toFixed(2)}M`
-              : data.llm.tokens30d >= 1_000
-                ? `${(data.llm.tokens30d / 1_000).toFixed(1)}k`
-                : data.llm.tokens30d.toLocaleString()}
-          </p>
-          <p className="text-caption t-muted">Last 30 days</p>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Wifi size={14} className="text-accent" />
-            <span className="text-label">ERP Connections</span>
-          </div>
-          <p className="text-xl font-bold t-primary">
-            {data.erp.connectedCount}<span className="text-sm t-muted">/{data.erp.connections}</span>
-          </p>
-          <p className="text-caption t-muted">Connected / total</p>
-        </Card>
-      </div>
+        </div>
+      </Card>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       <TabPanel id="adoption" activeTab={activeTab}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
               <Users size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">User Status</span>
+              <span className="text-label !text-[var(--text-primary)]">User Status</span>
             </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="t-muted">Total Users</span>
-                <span className="t-primary font-medium">{data.users.total}</span>
+            <dl className="divide-y divide-[var(--border-card)]">
+              <div className="flex items-baseline justify-between py-2.5">
+                <dt className="text-body-sm t-secondary">Total Users</dt>
+                <dd className="font-mono text-sm font-bold t-primary tabular-nums">{data.users.total}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="t-muted">Active</span>
-                <span className="t-primary font-medium">{data.users.active}</span>
+              <div className="flex items-baseline justify-between py-2.5">
+                <dt className="text-body-sm t-secondary">Active</dt>
+                <dd className="font-mono text-sm font-bold t-primary tabular-nums">{data.users.active}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="t-muted">Last Login</span>
-                <span className="t-primary font-medium">
+              <div className="flex items-baseline justify-between py-2.5">
+                <dt className="text-body-sm t-secondary">Last Login</dt>
+                <dd className="font-mono text-xs t-primary tabular-nums text-right">
                   {data.users.lastLoginAt ? new Date(data.users.lastLoginAt).toLocaleString() : 'Never'}
-                </span>
+                </dd>
               </div>
-              {data.entitlements && (
-                <>
-                  <div className="flex justify-between pt-2 border-t border-[var(--border-card)]">
-                    <span className="t-muted">Seat Utilisation</span>
-                    <span className="t-primary font-medium">{userPct}% of {data.entitlements.maxUsers} seats</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
-                      style={{
-                        width: `${userPct}%`,
-                        background: userPct >= 90 ? 'var(--neg)' : userPct >= 70 ? 'var(--warning)' : 'var(--accent)',
-                      }}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+            </dl>
+            {data.entitlements && (
+              <div className="mt-4 pt-4 border-t border-[var(--border-card)]">
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="text-label">Seat Utilisation</span>
+                  <span className="font-mono text-sm font-bold t-primary tabular-nums">{userPct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
+                    style={{
+                      width: `${userPct}%`,
+                      background: userPct >= 90 ? 'var(--neg)' : userPct >= 70 ? 'var(--warning)' : 'var(--accent)',
+                    }}
+                  />
+                </div>
+                <p className="text-caption t-muted mt-1.5">of {data.entitlements.maxUsers} seats</p>
+              </div>
+            )}
           </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
               <Shield size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">Users by Role</span>
+              <span className="text-label !text-[var(--text-primary)]">Users by Role</span>
             </div>
             {Object.keys(data.users.byRole).length === 0 ? (
-              <p className="text-xs t-muted">No users.</p>
+              <p className="text-body-sm t-muted">No users.</p>
             ) : (
-              <div className="space-y-2">
-                {Object.entries(data.users.byRole).map(([role, count]) => (
-                  <div key={role} className="flex items-center justify-between">
-                    <span className="text-xs t-primary capitalize">{role.replace('_', ' ')}</span>
-                    <Badge variant="default" className="text-caption">{count}</Badge>
-                  </div>
-                ))}
+              <div>
+                <div className="grid grid-cols-[1fr_auto] gap-4 pb-2 mb-1 border-b border-[var(--border-card)]">
+                  <span className="text-label">Role</span>
+                  <span className="text-label">Users</span>
+                </div>
+                <div className="divide-y divide-[var(--border-card)]">
+                  {Object.entries(data.users.byRole).map(([role, count]) => (
+                    <div key={role} className="grid grid-cols-[1fr_auto] gap-4 items-center py-2.5">
+                      <span className="text-body-sm t-primary capitalize">{role.replace('_', ' ')}</span>
+                      <span className="font-mono text-sm font-bold t-primary tabular-nums">{count}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </Card>
@@ -219,50 +236,50 @@ export function CompanyHealthPage() {
       </TabPanel>
 
       <TabPanel id="catalysts" activeTab={activeTab}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
               <Zap size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">Catalyst Clusters</span>
+              <span className="text-label">Catalyst Clusters</span>
             </div>
-            <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{data.catalysts.clusters}</p>
-            <p className="text-xs t-muted mt-1">Configured clusters</p>
+            <p className="text-hero font-mono font-bold t-primary tabular-nums">{data.catalysts.clusters}</p>
+            <p className="text-caption t-muted mt-2">Configured clusters</p>
           </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-3">
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4">
               <Activity size={14} className="text-accent" />
-              <span className="text-sm font-medium t-primary">Recent Activity</span>
+              <span className="text-label">Recent Activity</span>
             </div>
-            <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{data.catalysts.actionsLast30d.toLocaleString()}</p>
-            <p className="text-xs t-muted mt-1 flex items-center gap-1">
-              <Clock size={10} /> Actions in last 30 days
+            <p className="text-hero font-mono font-bold t-primary tabular-nums">{data.catalysts.actionsLast30d.toLocaleString()}</p>
+            <p className="text-caption t-muted mt-2 flex items-center gap-1.5">
+              <Clock size={11} /> Actions in last 30 days
             </p>
           </Card>
         </div>
       </TabPanel>
 
       <TabPanel id="ai-usage" activeTab={activeTab}>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 mb-3">
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-5">
             <Brain size={14} className="text-accent" />
-            <span className="text-sm font-medium t-primary">LLM Usage (Last 30 Days)</span>
+            <span className="text-label">LLM Usage · Last 30 Days</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-px rounded-[var(--radius)] overflow-hidden border border-[var(--border-card)] bg-[var(--border-card)]">
+            <div className="bg-[var(--bg-card-solid)] p-5">
               <p className="text-label">Total Tokens</p>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{data.llm.tokens30d.toLocaleString()}</p>
+              <p className="text-hero font-bold t-primary tabular-nums font-mono mt-2">{data.llm.tokens30d.toLocaleString()}</p>
             </div>
-            <div>
-              <p className="text-label flex items-center gap-1">
+            <div className="bg-[var(--bg-card-solid)] p-5">
+              <p className="text-label flex items-center gap-2">
                 Estimated Cost
                 {data.llm.costIsEstimate && <Badge variant="warning" className="text-caption">ESTIMATE</Badge>}
               </p>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">${data.llm.estCostUsd.toFixed(2)}</p>
+              <p className="text-hero font-bold t-primary tabular-nums font-mono mt-2">${data.llm.estCostUsd.toFixed(2)}</p>
             </div>
           </div>
           {data.llm.costIsEstimate && (
-            <p className="text-caption t-muted mt-3 flex items-start gap-1">
-              <AlertCircle size={10} className="mt-0.5 flex-shrink-0" />
+            <p className="text-caption t-muted mt-3 flex items-start gap-1.5">
+              <AlertCircle size={11} className="mt-0.5 flex-shrink-0" />
               <span>{data.llm.costNote}</span>
             </p>
           )}
@@ -272,41 +289,41 @@ export function CompanyHealthPage() {
       <TabPanel id="entitlements" activeTab={activeTab}>
         {!data.entitlements ? (
           <Card className="p-6 text-center">
-            <p className="text-sm t-muted">No entitlements configured for this tenant.</p>
+            <p className="text-body-sm t-muted">No entitlements configured for this tenant.</p>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Card className="p-4">
-              <div className="flex items-center gap-2 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="p-5">
+              <div className="flex items-center gap-2 mb-4">
                 <Users size={14} className="text-accent" />
-                <span className="text-sm font-medium t-primary">Capacity</span>
+                <span className="text-label">Capacity</span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="t-muted">Max Users</span><span className="t-primary font-medium">{data.entitlements.maxUsers}</span></div>
-                <div className="flex justify-between"><span className="t-muted">Max Agents</span><span className="t-primary font-medium">{data.entitlements.maxAgents}</span></div>
-                <div className="flex justify-between"><span className="t-muted">Data Retention</span><span className="t-primary font-medium">{data.entitlements.dataRetentionDays} days</span></div>
-              </div>
+              <dl className="divide-y divide-[var(--border-card)]">
+                <div className="flex items-baseline justify-between py-2.5"><dt className="text-body-sm t-secondary">Max Users</dt><dd className="font-mono text-sm font-bold t-primary tabular-nums">{data.entitlements.maxUsers}</dd></div>
+                <div className="flex items-baseline justify-between py-2.5"><dt className="text-body-sm t-secondary">Max Agents</dt><dd className="font-mono text-sm font-bold t-primary tabular-nums">{data.entitlements.maxAgents}</dd></div>
+                <div className="flex items-baseline justify-between py-2.5"><dt className="text-body-sm t-secondary">Data Retention</dt><dd className="font-mono text-sm font-bold t-primary tabular-nums">{data.entitlements.dataRetentionDays} days</dd></div>
+              </dl>
             </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-2 mb-3">
+            <Card className="p-5">
+              <div className="flex items-center gap-2 mb-4">
                 <Building2 size={14} className="text-accent" />
-                <span className="text-sm font-medium t-primary">Access</span>
+                <span className="text-label">Access</span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="t-muted">SSO</span><Badge variant={data.entitlements.ssoEnabled ? 'success' : 'default'} className="text-caption">{data.entitlements.ssoEnabled ? 'Enabled' : 'Disabled'}</Badge></div>
-                <div className="flex justify-between"><span className="t-muted">API Access</span><Badge variant={data.entitlements.apiAccess ? 'success' : 'default'} className="text-caption">{data.entitlements.apiAccess ? 'Enabled' : 'Disabled'}</Badge></div>
-                <div className="flex justify-between"><span className="t-muted">Custom Branding</span><Badge variant={data.entitlements.customBranding ? 'success' : 'default'} className="text-caption">{data.entitlements.customBranding ? 'Enabled' : 'Disabled'}</Badge></div>
+              <div className="divide-y divide-[var(--border-card)]">
+                <div className="flex items-center justify-between py-2.5"><span className="text-body-sm t-secondary">SSO</span><Badge variant={data.entitlements.ssoEnabled ? 'success' : 'default'} className="text-caption">{data.entitlements.ssoEnabled ? 'Enabled' : 'Disabled'}</Badge></div>
+                <div className="flex items-center justify-between py-2.5"><span className="text-body-sm t-secondary">API Access</span><Badge variant={data.entitlements.apiAccess ? 'success' : 'default'} className="text-caption">{data.entitlements.apiAccess ? 'Enabled' : 'Disabled'}</Badge></div>
+                <div className="flex items-center justify-between py-2.5"><span className="text-body-sm t-secondary">Custom Branding</span><Badge variant={data.entitlements.customBranding ? 'success' : 'default'} className="text-caption">{data.entitlements.customBranding ? 'Enabled' : 'Disabled'}</Badge></div>
               </div>
             </Card>
-            <Card className="p-4 sm:col-span-2">
-              <div className="flex items-center gap-2 mb-3">
+            <Card className="p-5 sm:col-span-2">
+              <div className="flex items-center gap-2 mb-4">
                 <Shield size={14} className="text-accent" />
-                <span className="text-sm font-medium t-primary">Layers & Clusters</span>
+                <span className="text-label">Layers & Clusters</span>
               </div>
-              <div className="space-y-3 text-xs">
+              <div className="space-y-4 text-xs">
                 <div>
-                  <p className="t-muted mb-1">Layers</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-label mb-2">Layers</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {data.entitlements.layers.length === 0 && <span className="t-muted">(none)</span>}
                     {data.entitlements.layers.map((l) => (
                       <Badge key={l} variant="info" className="text-caption">{l}</Badge>
@@ -314,8 +331,8 @@ export function CompanyHealthPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="t-muted mb-1">Catalyst Clusters</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-label mb-2">Catalyst Clusters</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {data.entitlements.catalystClusters.length === 0 && <span className="t-muted">(none)</span>}
                     {data.entitlements.catalystClusters.map((l) => (
                       <Badge key={l} variant="info" className="text-caption">{l}</Badge>
@@ -323,8 +340,8 @@ export function CompanyHealthPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="t-muted mb-1">LLM Tiers</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-label mb-2">LLM Tiers</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {data.entitlements.llmTiers.length === 0 && <span className="t-muted">(none)</span>}
                     {data.entitlements.llmTiers.map((l) => (
                       <Badge key={l} variant="default" className="text-caption">{l}</Badge>
@@ -332,8 +349,8 @@ export function CompanyHealthPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="t-muted mb-1">Autonomy Tiers</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="text-label mb-2">Autonomy Tiers</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {data.entitlements.autonomyTiers.length === 0 && <span className="t-muted">(none)</span>}
                     {data.entitlements.autonomyTiers.map((l) => (
                       <Badge key={l} variant="default" className="text-caption">{l}</Badge>
@@ -342,8 +359,8 @@ export function CompanyHealthPage() {
                 </div>
                 {data.entitlements.features.length > 0 && (
                   <div>
-                    <p className="t-muted mb-1">Features</p>
-                    <div className="flex flex-wrap gap-1">
+                    <p className="text-label mb-2">Features</p>
+                    <div className="flex flex-wrap gap-1.5">
                       {data.entitlements.features.map((l) => (
                         <Badge key={l} variant="success" className="text-caption">{l}</Badge>
                       ))}
