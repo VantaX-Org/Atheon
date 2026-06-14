@@ -23,20 +23,20 @@ function countBy(items: RunItem[], field: keyof RunItem): Record<string, number>
 
 export async function setup(): Promise<void> {
   if (process.env.VERIFY_REUSE_RUNS && manifestExists()) {
-    // eslint-disable-next-line no-console
+     
     console.log('[verify] VERIFY_REUSE_RUNS set + manifest present — skipping reseed/execute.');
     return;
   }
 
   const client = new ApiClient();
   await client.login();
-  // eslint-disable-next-line no-console
+   
   console.log('[verify] reseeding vantax tenant (~220s)…');
   await client.reseed();
 
   const runs: Record<string, RunRecord> = {};
   for (const [key, subName] of Object.entries(RECON_SUBCATALYSTS)) {
-    // eslint-disable-next-line no-console
+     
     console.log(`[verify] executing "${subName}"…`);
     const { runId, status } = await client.executeSubCatalyst(subName);
     const { totals, items } = await client.getRun(runId);
@@ -52,6 +52,6 @@ export async function setup(): Promise<void> {
     runs,
   };
   writeManifest(manifest);
-  // eslint-disable-next-line no-console
+   
   console.log(`[verify] manifest written: ${Object.keys(runs).length} runs recorded.`);
 }
