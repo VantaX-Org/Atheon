@@ -72,28 +72,45 @@ export class ApiClient {
     // would mint an ADMIN token regardless of email, masking the very role
     // boundary an RBAC suite means to probe. Freshly minted non-admin users are
     // inside their MFA grace, so the bare password login returns a token.
+    // Prefer the automation path when a demo secret is configured, but it is
+    // intentionally disabled in production (returns 404). If it is unavailable,
+    // fall back to the real password + mandatory-MFA flow rather than wedging
+    // the gate — neither path weakens a control, and this keeps the harness
+    // robust even when VERIFY_DEMO_SECRET leaks into a prod-scoped run.
     if (CONFIG.demoSecret && !this.hasExplicitCreds) {
-      await this.demoLogin();
-      return;
+      const usedDemo = await this.demoLogin();
+      if (usedDemo) return;
     }
     await this.passwordLogin();
   }
 
-  /** Mint a real JWT (default role 'admin') via the prod-disabled, secret-gated automation path. */
-  private async demoLogin(): Promise<void> {
+  /**
+   * Mint a real JWT (default role 'admin') via the secret-gated automation path.
+   * Returns true on success. Returns false when the path is unavailable (404 —
+   * prod-disabled or secret mismatch) so the caller can fall back to the real
+   * password + MFA flow. Throws on unexpected failures (e.g. 5xx) so genuine
+   * outages still surface loudly.
+   */
+  private async demoLogin(): Promise<boolean> {
     const resp = await fetch(`${this.baseUrl}/api/v1/auth/demo-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Demo-Secret': CONFIG.demoSecret },
       body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, role: this.demoRole }),
     });
+    if (resp.status === 404) {
+      // Prod-disabled (ENVIRONMENT=production) or wrong secret — the automation
+      // path is simply not available here. Signal the caller to use passwordLogin.
+      return false;
+    }
     if (!resp.ok) {
       // Body can reflect request material on a failing auth endpoint — log status only.
-      throw new Error(`Demo-login failed (${resp.status}) — check VERIFY_DEMO_SECRET matches staging DEMO_LOGIN_SECRET`);
+      throw new Error(`Demo-login failed (${resp.status}) — check VERIFY_DEMO_SECRET matches the env's DEMO_LOGIN_SECRET`);
     }
     const data = await resp.json() as { token?: string; user?: AuthedUser };
     if (!data.token) throw new Error('Demo-login returned no token');
     this.token = data.token;
     this.user = data.user ?? null;
+    return true;
   }
 
   /** Password login, completing a mandatory-MFA challenge via TOTP when raised. */
