@@ -82,7 +82,7 @@ const summary: AssessmentFindingsSummary = {
 describe("AssessmentFindingsPanel — Option B confidence render", () => {
   it("shows confirmed-only headline plus a secondary indicative figure", () => {
     render(<AssessmentFindingsPanel findings={[confirmed, unverified]} summary={summary} />);
-    expect(screen.getByTestId("findings-total-value")).toHaveTextContent(/2[\s ,.]?000[\s ,.]?000/);
+    expect(screen.getByTestId("findings-total-value")).toHaveTextContent(/2[\s ,.]?000[\s ,.]?000/);
     expect(screen.getByTestId("findings-potential-value")).toHaveTextContent(/indicative, pending confirmation/i);
   });
 
