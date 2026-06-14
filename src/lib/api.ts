@@ -1196,6 +1196,9 @@ export const api = {
       }),
     stats: (tenantId?: string, industry?: string) =>
       request<GraphStats>(`/api/memory/stats${qs({ tenant_id: tenantId, industry: industry && industry !== 'general' ? industry : undefined })}`),
+    /** Auto-build the graph from real catalyst/ERP data (idempotent; preserves manual rows). */
+    build: (tenantId?: string) =>
+      request<MemoryBuildResult>(`/api/memory/build${qs({ tenant_id: tenantId })}`, { method: 'POST', body: '{}' }),
   },
 
   mind: {
@@ -3184,6 +3187,22 @@ export interface GraphStats {
   relationships: number;
   entityTypes: { type: string; count: number }[];
   relationshipTypes: { type: string; count: number }[];
+}
+
+export interface MemoryBuildResult {
+  ok: boolean;
+  tenantId: string;
+  entities: number;
+  relationships: number;
+  entityTypes: Record<string, number>;
+  sources: {
+    catalysts: number;
+    subCatalysts: number;
+    metrics: number;
+    sourceSystems: number;
+    anomalies: number;
+    correlations: number;
+  };
 }
 
 export interface MindQueryResult {

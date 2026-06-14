@@ -15,6 +15,7 @@ import {
   Loader2,
   AlertTriangle,
   Sparkles,
+  Database,
 } from "lucide-react";
 
 /**
@@ -72,6 +73,9 @@ export function MemoryPage() {
   const [relType, setRelType] = useState("depends_on");
   const [relSaving, setRelSaving] = useState(false);
   const [relFormError, setRelFormError] = useState<string | null>(null);
+
+  // Auto-build from data
+  const [building, setBuilding] = useState(false);
 
   // GraphRAG search
   const [searchQuery, setSearchQuery] = useState("");
@@ -158,6 +162,25 @@ export function MemoryPage() {
     }
   };
 
+  const handleBuild = async () => {
+    setBuilding(true);
+    try {
+      const res = await api.memory.build();
+      await fetchData();
+      toast.success("Memory rebuilt from data", {
+        message: `${res.entities} entities, ${res.relationships} relationships from ${res.sources.catalysts} catalysts, ${res.sources.metrics} metrics, ${res.sources.correlations} correlations.`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to rebuild memory";
+      toast.error("Rebuild failed", {
+        message,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
@@ -218,11 +241,23 @@ export function MemoryPage() {
         onTabChange={(id) => setActiveTab(id as typeof activeTab)}
         header={
           <div className="space-y-4">
-            <PageHeader
-              eyebrow="Memory Store"
-              title="Memory"
-              dek="Knowledge Graph & Semantic Retrieval"
-            />
+            <div className="flex items-start justify-between gap-4">
+              <PageHeader
+                eyebrow="Memory Store"
+                title="Memory"
+                dek="Knowledge Graph & Semantic Retrieval"
+              />
+              <button
+                onClick={handleBuild}
+                disabled={building}
+                className="flex-shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-lg text-sm font-medium text-[var(--text-on-accent)] disabled:opacity-60"
+                style={{ background: "var(--accent)" }}
+                title="Rebuild the graph from real catalyst, metric, anomaly and correlation data. Manual entries are preserved."
+              >
+                {building ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                {building ? "Building…" : "Rebuild from data"}
+              </button>
+            </div>
             {loadError && !loading && (
               <div className="flex items-center gap-2 p-3 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'rgb(var(--neg-rgb) / 0.25)' }}>
                 <AlertTriangle size={14} className="flex-shrink-0" style={{ color: 'var(--neg)' }} />

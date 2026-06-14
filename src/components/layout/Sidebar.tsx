@@ -79,7 +79,7 @@ const PRIMARY: NavItem[] = [
   { path: '/dashboard',         label: 'Dashboard',  icon: LayoutDashboard, roles: STANDARD_ROLES },
   { path: '/trust',             label: 'Assurance',  icon: ShieldCheck,     roles: STANDARD_ROLES },
   { path: '/roi-dashboard',     label: 'Savings',    icon: PiggyBank,       roles: EXECUTIVE_ROLES },
-  { path: '/catalysts',         label: 'Findings',   icon: ClipboardCheck,  roles: OPERATOR_ROLES },
+  { path: '/catalysts',         label: 'Catalysts',  icon: ClipboardCheck,  roles: OPERATOR_ROLES },
   { path: '/executive-summary', label: 'Reports',    icon: FileText,        roles: EXECUTIVE_ROLES },
 ];
 

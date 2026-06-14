@@ -529,6 +529,8 @@
 .animate-backdropIn { animation: backdropIn var(--dur-quick, 200ms) var(--ease-out) forwards; }
 .animate-riseIn { animation: riseIn var(--dur-medium, 260ms) var(--ease-out) both; }
 .animate-toastIn { animation: toastIn var(--dur-medium, 260ms) var(--ease-out) forwards; }
+@keyframes drawerInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+.animate-drawerLeft { animation: drawerInLeft var(--dur-medium, 260ms) var(--ease-out) forwards; will-change: transform; }
 /* Stagger — apply to a parent; children animate sequentially with 40ms beats. */
 .stagger > * { animation: riseIn var(--dur-medium, 260ms) var(--ease-out) both; }
 .stagger > *:nth-child(1)  { animation-delay:   0ms; }

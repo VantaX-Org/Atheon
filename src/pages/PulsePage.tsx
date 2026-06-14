@@ -31,8 +31,9 @@ import {
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Filter, AlertCircle, Workflow, Play,
   UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X, DollarSign, Timer,
-  KeyRound, Send
+  KeyRound, Send, Inbox
 } from "lucide-react";
+import { Portal } from "@/components/ui/portal";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
 import { SectionFreshness } from "@/components/common/FreshnessIndicator";
 import { MetricsGrid } from "./pulse/MetricsGrid";
@@ -402,6 +403,12 @@ export function PulsePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Action queue is a left slide-in drawer (operator can open it on demand
+  // instead of it consuming hero real-estate). The trigger carries a live
+  // pending-approval badge so nothing needs opening to know if work waits.
+  const [actionQueueOpen, setActionQueueOpen] = useState(false);
+  const [actionPendingCount, setActionPendingCount] = useState<number | null>(null);
+
   // AI Insights state
   const [aiInsights, setAiInsights] = useState<PulseInsightsResponse | null>(null);
   const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
@@ -461,8 +468,10 @@ export function PulsePage() {
       setDiagDetail(detail);
     } catch (err) { console.error('Failed to load analysis:', err); }
   };
-  const [domainFilter, setDomainFilter] = useState<string>('all');
-  const [availableDomains, setAvailableDomains] = useState<string[]>([]);
+  // Function filter — drives the whole page off the real `sourceSystem`
+  // attribution each metric/correlation carries (no decorative domains list,
+  // no keyword inference). 'all' = unfiltered.
+  const [functionFilter, setFunctionFilter] = useState<string>('all');
 
   // Traceability modal state
   const [showMetricTraceModal, setShowMetricTraceModal] = useState(false);
@@ -483,13 +492,20 @@ export function PulsePage() {
     setAiInsightsLoading(false);
   };
 
-  // Load domains on mount
+  // Best-effort pending-approval count for the Action Queue trigger badge.
   useEffect(() => {
-    api.pulse.domains().then(d => setAvailableDomains(d.domains || [])).catch((err) => { 
-      console.error('Failed to load domains', err);
-      // Non-critical -不影响主要功能 - silently fail but log for debugging
-    });
-  }, []);
+    api.erp.actionsSummary()
+      .then(r => setActionPendingCount(r.summary.pending_approval_count))
+      .catch(() => { /* badge is best-effort; drawer still opens */ });
+  }, [companyId]);
+
+  // ESC closes the action-queue drawer.
+  useEffect(() => {
+    if (!actionQueueOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActionQueueOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [actionQueueOpen]);
 
   const handleOpenMetricTrace = async (metricId: string) => {
     setLoadingMetricTrace(true);
@@ -793,25 +809,53 @@ export function PulsePage() {
     sparkline: [],
   }));
 
-  // Derive available categories from metrics.sourceSystem for the category filter
+  // Derive available categories from metrics.sourceSystem for the in-tab category filter.
   const availableCategories = Array.from(
     new Set(metrics.map(m => m.sourceSystem).filter((s): s is string => !!s && s.length > 0))
   ).sort();
+
+  // Function filter = catalysts only. A "function" is a metric's catalyst attribution
+  // (subCatalystName), not its raw ERP source system — so the filter only ever lists
+  // functions that an actual catalyst produced. Metrics without catalyst linkage are
+  // not selectable functions.
+  const availableFunctions = Array.from(
+    new Set(metrics.map(m => m.subCatalystName).filter((s): s is string => !!s && s.length > 0))
+  ).sort();
+  // clusterIds owned by the selected catalyst — used to scope correlations, which
+  // carry clusterId (not subCatalystName) but share the same catalyst clusters.
+  const functionClusterIds = new Set(
+    metrics
+      .filter(m => m.subCatalystName === functionFilter)
+      .map(m => m.clusterId)
+      .filter((c): c is string => !!c)
+  );
 
   // Filtered metrics — §2.2.1: multi-select status + category + case-insensitive
   // substring search. Empty filter arrays behave as "all".
   // Dynamic Layout: red first, then amber, then green.
   const statusPriority: Record<string, number> = { red: 0, amber: 1, green: 2 };
   const normalisedSearch = searchQuery.trim().toLowerCase();
+  const matchesFunction = (m: Metric) => functionFilter === 'all' || m.subCatalystName === functionFilter;
   const filteredMetrics = metrics
+    .filter(matchesFunction)
     .filter(m => statusFilter.length === 0 || statusFilter.includes(m.status as MetricStatus))
     .filter(m => categoryFilter.length === 0 || (m.sourceSystem && categoryFilter.includes(m.sourceSystem)))
     .filter(m => !normalisedSearch || m.name.toLowerCase().includes(normalisedSearch))
     .sort((a, b) => (statusPriority[a.status] ?? 3) - (statusPriority[b.status] ?? 3));
 
-  // Filtered anomalies
+  // Anomalies carry no catalyst field, but anomaly.metric === metric.name, so we
+  // scope them through the real metric→catalyst linkage (not keyword guessing).
+  const functionMetricNames = new Set(
+    metrics.filter(matchesFunction).map(m => m.name)
+  );
   const filteredAnomalies = anomalies
+    .filter(a => functionFilter === 'all' || functionMetricNames.has(a.metric))
     .filter(a => anomalyFilter === 'all' || a.severity === anomalyFilter);
+
+  // Correlations carry clusterId — a correlation belongs to a function if its
+  // cluster is one the selected catalyst owns.
+  const filteredCorrelations = correlations
+    .filter(c => functionFilter === 'all' || (c.clusterId != null && functionClusterIds.has(c.clusterId)));
 
   // Load catalyst runs when tab is selected
   useEffect(() => {
@@ -930,26 +974,76 @@ export function PulsePage() {
         </div>
       )}
 
-      {/* v63 — operational view of the write-back action queue.
-          Shows recent activity + lets the operator approve/reject inline. */}
-      <ActionQueuePanel variant="operational" allowApprove limit={20} />
+      {/* v63 — operational view of the write-back action queue, now a
+          left slide-in drawer. The trigger carries a live pending badge so
+          the operator sees outstanding work without opening it. */}
+      <div className="flex items-center">
+        <button
+          onClick={() => setActionQueueOpen(true)}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-md text-sm font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
+          aria-haspopup="dialog"
+          aria-expanded={actionQueueOpen}
+          title="Open the write-back action queue"
+        >
+          <Inbox size={15} />
+          Action Queue
+          {actionPendingCount != null && actionPendingCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] font-bold tabular-nums text-[var(--text-on-accent)] bg-accent">
+              {actionPendingCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {actionQueueOpen && (
+        <Portal>
+          <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Action queue">
+            <div
+              className="absolute inset-0 bg-black/40 animate-fadeIn"
+              onClick={() => setActionQueueOpen(false)}
+            />
+            <div className="absolute inset-y-0 left-0 w-full max-w-xl flex flex-col animate-drawerLeft bg-[var(--bg-primary)] border-r border-[var(--border-card)] shadow-2xl">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-card)] flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <Inbox size={16} className="text-accent" />
+                  <h2 className="text-sm font-semibold t-primary">Action Queue</h2>
+                </div>
+                <button
+                  onClick={() => setActionQueueOpen(false)}
+                  className="t-muted hover:t-primary transition-colors"
+                  title="Close"
+                  aria-label="Close action queue"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                <ActionQueuePanel variant="operational" allowApprove limit={20} />
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
 
 
-      {/* Department Filter */}
-      {availableDomains.length > 0 && (
+      {/* Function filter — catalysts only. Lists the catalysts (subCatalystName)
+          behind the metrics, and is only rendered on the tabs it genuinely scopes
+          (Overview, Metrics, Anomalies, Correlations). Hidden elsewhere so it's
+          never a dead control. */}
+      {availableFunctions.length > 0 && ['dashboard', 'monitoring', 'anomalies', 'correlations'].includes(activeTab) && (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs t-muted font-medium">Department:</span>
+          <span className="text-xs t-muted font-medium">Function:</span>
           <div className="flex items-center gap-1 flex-wrap">
             <button
-              onClick={() => setDomainFilter('all')}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] ${domainFilter === 'all' ? 'bg-accent text-[var(--text-on-accent)]' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
+              onClick={() => setFunctionFilter('all')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] ${functionFilter === 'all' ? 'bg-accent text-[var(--text-on-accent)]' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
             >All</button>
-            {availableDomains.map(d => (
+            {availableFunctions.map(fn => (
               <button
-                key={d}
-                onClick={() => setDomainFilter(d)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] capitalize ${domainFilter === d ? 'bg-accent text-[var(--text-on-accent)]' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
-              >{d}</button>
+                key={fn}
+                onClick={() => setFunctionFilter(fn)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] ${functionFilter === fn ? 'bg-accent text-[var(--text-on-accent)]' : 'bg-[var(--bg-secondary)] t-muted hover:t-primary'}`}
+              >{fn}</button>
             ))}
           </div>
         </div>
@@ -960,7 +1054,7 @@ export function PulsePage() {
           <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
         <button
-          onClick={() => loadAiInsights(domainFilter)}
+          onClick={() => loadAiInsights(functionFilter)}
           disabled={aiInsightsLoading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] disabled:opacity-50 flex-shrink-0 active:scale-[0.97]"
           title="Generate AI-powered operational insights"
@@ -2140,14 +2234,14 @@ export function PulsePage() {
       {activeTab === 'correlations' && (
         <TabPanel>
           {/* Correlation Summary */}
-          {correlations.length > 0 && (
+          {filteredCorrelations.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-label">Correlations</span>
                   <Link2 size={14} className="text-accent" />
                 </div>
-                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{correlations.length}</p>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{filteredCorrelations.length}</p>
                 <p className="text-caption t-muted mt-1">Discovered patterns</p>
               </Card>
               <Card>
@@ -2156,7 +2250,7 @@ export function PulsePage() {
                   <Target size={14} style={{ color: 'var(--positive)' }} />
                 </div>
                 {(() => {
-                  const avgConf = correlations.reduce((s, c) => s + c.confidence, 0) / correlations.length;
+                  const avgConf = filteredCorrelations.reduce((s, c) => s + c.confidence, 0) / filteredCorrelations.length;
                   return (
                     <p className="text-2xl font-bold" style={avgConf >= 0.7 ? { color: 'var(--positive)' } : { color: 'var(--warning)' }}>
                       {Math.round(avgConf * 100)}%
@@ -2171,7 +2265,7 @@ export function PulsePage() {
                   <Workflow size={14} className="text-accent" />
                 </div>
                 <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">
-                  {new Set([...correlations.map(c => c.sourceSystem), ...correlations.map(c => c.targetSystem)]).size}
+                  {new Set([...filteredCorrelations.map(c => c.sourceSystem), ...filteredCorrelations.map(c => c.targetSystem)]).size}
                 </p>
                 <p className="text-caption t-muted mt-1">Connected sources</p>
               </Card>
@@ -2180,27 +2274,27 @@ export function PulsePage() {
                   <span className="text-label">Avg Lag</span>
                   <Clock size={14} className="t-muted" />
                 </div>
-                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{formatDays(correlations.reduce((s, c) => s + (Number.isFinite(c.lagDays) ? c.lagDays : 0), 0) / correlations.length)}</p>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{formatDays(filteredCorrelations.reduce((s, c) => s + (Number.isFinite(c.lagDays) ? c.lagDays : 0), 0) / filteredCorrelations.length)}</p>
                 <p className="text-caption t-muted mt-1">Between events</p>
               </Card>
             </div>
           )}
 
           {/* §2.2.3 Correlation Matrix — heatmap visualisation (SVG/HTML, no deps) */}
-          {correlations.length > 0 && (
+          {filteredCorrelations.length > 0 && (
             <Card className="mb-6">
-              <CorrelationMatrix correlations={correlations} />
+              <CorrelationMatrix correlations={filteredCorrelations} />
             </Card>
           )}
 
           <div className="space-y-4">
-            {correlations.length === 0 && (
+            {filteredCorrelations.length === 0 && (
               <div className="flex items-center gap-3 py-6 px-4">
                 <Link2 className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
                 <p className="text-sm t-muted">No correlations discovered yet</p>
               </div>
             )}
-            {correlations.map((event) => {
+            {filteredCorrelations.map((event) => {
               const isExpanded = expandedCorrelation === event.id;
               const confPct = Math.round(event.confidence * 100);
               return (
