@@ -23,7 +23,7 @@ import { api, ApiError, setTenantOverride } from '@/lib/api';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import {
   Eye, Search, Clock, Loader2, AlertTriangle,
-  User, LogOut,
+  User, LogOut, ShieldCheck,
 } from 'lucide-react';
 
 interface ImpersonatableUser {
@@ -215,7 +215,7 @@ export function ImpersonationPage() {
       {/* Active Impersonation Banner */}
       {activeSession && (
         <div
-          className="border rounded-md p-4 flex items-center justify-between"
+          className="border rounded-[var(--radius)] p-4 flex items-center justify-between"
           style={{ background: 'rgb(var(--accent-rgb) / 0.06)', borderColor: 'rgb(var(--accent-rgb) / 0.3)' }}
         >
           <div className="flex items-center gap-3">
@@ -242,104 +242,205 @@ export function ImpersonationPage() {
         dek="View the platform as any user for debugging & support"
       />
 
-      {/* Warning */}
-      <Card className="p-4" style={{ borderColor: 'var(--warning)', background: 'rgb(var(--accent-rgb) / 0.03)' }}>
-        <div className="flex items-start gap-2">
-          <AlertTriangle size={14} style={{ color: 'var(--warning)' }} className="mt-0.5" />
-          <div className="text-xs">
-            <p className="font-medium t-primary">Impersonation sessions are time-limited and fully audited</p>
-            <p className="t-muted mt-0.5">Sessions expire after 15 minutes. All actions taken while impersonating are logged in the audit trail with your identity as the actor. You cannot impersonate users with equal or higher privilege than your own.</p>
-          </div>
+      {/* Caution banner — high-emphasis amber strip (RAG warning) */}
+      <div
+        className="rounded-[var(--radius)] px-5 py-4 flex items-start gap-3"
+        style={{
+          background: 'rgb(var(--rag-watch-rgb) / 0.12)',
+          border: '1px solid rgb(var(--rag-watch-rgb) / 0.34)',
+          borderLeft: '3px solid var(--warning)',
+        }}
+      >
+        <AlertTriangle size={18} style={{ color: 'var(--warning)' }} className="mt-0.5 shrink-0" />
+        <div>
+          <p
+            className="text-label"
+            style={{ color: 'var(--warning)', letterSpacing: '0.08em' }}
+          >
+            You are about to act as another user. All actions will be logged under your admin account as an impersonation event.
+          </p>
+          <p className="text-xs t-muted mt-1">
+            Sessions expire after 15 minutes. Every action taken while impersonating is recorded in the audit trail with your identity as the actor. You cannot impersonate users with equal or higher privilege than your own. Proceed with care.
+          </p>
         </div>
-      </Card>
-
-      {/* Search */}
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
-        <input
-          className="w-full pl-9 pr-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
-          placeholder="Search users by name, email, or role..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
       </div>
 
-      {/* Users List */}
-      {filteredUsers.length === 0 ? (
-        <Card className="p-6 text-center">
-          <p className="text-sm t-muted">No users found.</p>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {filteredUsers.map((u) => {
-            const allowed = canImpersonate(u);
-            return (
-              <Card key={u.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                      <User size={14} className="text-accent" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium t-primary">{u.name}</p>
-                        <Badge variant={roleColor(u.role)} className="text-caption">{u.role}</Badge>
+      {/* Two-column workspace: selection panel (left) + scope & audit (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+        {/* ── Left: User selection panel ── */}
+        <section className="space-y-4">
+          <p className="text-label">User Selection Panel</p>
+          <h2 className="text-lg font-semibold t-primary -mt-2">Select User to Impersonate</h2>
+
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
+            <input
+              className="w-full pl-9 pr-3 py-2.5 rounded-[var(--radius)] border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
+              placeholder="Search by name, email, or ID…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <p className="text-label">Results</p>
+
+          {/* Users List */}
+          {filteredUsers.length === 0 ? (
+            <Card className="p-6 text-center">
+              <p className="text-sm t-muted">No users found.</p>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {filteredUsers.map((u) => {
+                const allowed = canImpersonate(u);
+                return (
+                  <Card
+                    key={u.id}
+                    className={`p-4 transition-colors ${allowed && activeSession === null ? 'card-prominent' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                          style={{ background: 'var(--accent-subtle)' }}
+                        >
+                          <User size={15} className="text-accent" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium t-primary truncate">{u.name}</p>
+                          <p className="text-caption t-muted truncate">{u.email}</p>
+                        </div>
                       </div>
-                      <p className="text-caption t-muted">{u.email}</p>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <Badge variant={roleColor(u.role)} className="text-caption font-mono">{u.role}</Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfirmUser(u)}
+                          disabled={!allowed || activeSession !== null}
+                          className="text-xs"
+                          title={
+                            !allowed
+                              ? u.id === currentUser?.id
+                                ? 'You cannot impersonate yourself'
+                                : 'Cannot impersonate a user with equal or higher privilege'
+                              : activeSession
+                                ? 'End the current session first'
+                                : undefined
+                          }
+                        >
+                          <Eye size={12} className="mr-1" /> View As
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConfirmUser(u)}
-                      disabled={!allowed || activeSession !== null}
-                      className="text-xs"
-                      title={
-                        !allowed
-                          ? u.id === currentUser?.id
-                            ? 'You cannot impersonate yourself'
-                            : 'Cannot impersonate a user with equal or higher privilege'
-                          : activeSession
-                            ? 'End the current session first'
-                            : undefined
-                      }
-                    >
-                      <Eye size={12} className="mr-1" /> View As
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ── Right: Scope, duration & audit panel ── */}
+        <aside className="space-y-4 lg:sticky lg:top-4">
+          <Card className="p-5 space-y-4">
+            <p className="text-label">Scope &amp; Duration</p>
+
+            <div>
+              <p className="text-label mb-2" style={{ fontSize: '10px' }}>Impersonation Scope</p>
+              <div
+                className="rounded-[var(--radius)] px-3 py-2 text-sm font-medium t-primary"
+                style={{ background: 'var(--accent-subtle)', border: '1px solid rgb(var(--accent-rgb) / 0.20)' }}
+              >
+                Full account view (read &amp; write, audited)
+              </div>
+            </div>
+
+            <div>
+              <p className="text-label mb-2" style={{ fontSize: '10px' }}>Session Duration</p>
+              <div className="flex items-center gap-2 text-sm t-primary font-mono">
+                <Clock size={13} className="text-accent" /> 15 minutes
+              </div>
+            </div>
+
+            {activeSession && (
+              <div className="pt-1">
+                <p className="text-label mb-1" style={{ fontSize: '10px' }}>Session Expires</p>
+                <p className="text-sm font-mono t-primary">
+                  {new Date(activeSession.expiresAt).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={15} className="text-accent shrink-0" />
+              <p className="text-label">Audit &amp; Compliance Record</p>
+            </div>
+            <p className="text-xs t-muted leading-relaxed">
+              This session will be subject to enhanced auditing. A mandatory record of your justification and
+              activities will be securely retained for compliance purposes. All actions are strictly necessary
+              and authorised.
+            </p>
+          </Card>
+        </aside>
+      </div>
 
       {/* Confirmation Dialog */}
       {confirmUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmUser(null)}>
-          <div className="bg-[var(--bg-modal)] rounded-md border border-[var(--border-card)] p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgb(var(--accent-rgb) / 0.1)' }}>
-                <Eye size={18} className="text-accent" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setConfirmUser(null)}
+        >
+          <div
+            className="bg-[var(--bg-modal)] backdrop-blur-xl rounded-[var(--radius)] border border-[var(--border-card)] max-w-md w-full mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'var(--accent-subtle)' }}>
+                  <Eye size={18} className="text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold t-primary">Confirm Impersonation</h3>
+                  <p className="text-xs t-muted">This action will be logged</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-semibold t-primary">Confirm Impersonation</h3>
-                <p className="text-xs t-muted">This action will be logged</p>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-label" style={{ fontSize: '10px' }}>User</span>
+                  <span className="t-primary font-medium">{confirmUser.name}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-label" style={{ fontSize: '10px' }}>Email</span>
+                  <span className="t-primary font-mono text-xs">{confirmUser.email}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-label" style={{ fontSize: '10px' }}>Role</span>
+                  <Badge variant={roleColor(confirmUser.role)} className="font-mono">{confirmUser.role}</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-label" style={{ fontSize: '10px' }}>Duration</span>
+                  <span className="t-primary flex items-center gap-1 font-mono"><Clock size={12} className="text-accent" /> 15 minutes</span>
+                </div>
               </div>
             </div>
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between"><span className="t-muted">User:</span><span className="t-primary">{confirmUser.name}</span></div>
-              <div className="flex justify-between"><span className="t-muted">Email:</span><span className="t-primary">{confirmUser.email}</span></div>
-              <div className="flex justify-between"><span className="t-muted">Role:</span><Badge variant={roleColor(confirmUser.role)}>{confirmUser.role}</Badge></div>
-              <div className="flex justify-between"><span className="t-muted">Duration:</span><span className="t-primary flex items-center gap-1"><Clock size={12} /> 15 minutes</span></div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setConfirmUser(null)} className="flex-1">Cancel</Button>
-              <Button onClick={() => startImpersonation(confirmUser)} disabled={impersonating} className="flex-1 bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)]">
-                {impersonating ? <Loader2 size={14} className="animate-spin mr-1" /> : <Eye size={14} className="mr-1" />}
-                Start Session
-              </Button>
+            {/* Action bar */}
+            <div
+              className="flex items-center justify-between gap-3 px-6 py-4"
+              style={{ borderTop: '1px solid var(--border-card)', background: 'var(--bg-secondary)' }}
+            >
+              <p className="text-caption t-muted hidden sm:block max-w-[140px] leading-snug">
+                By starting, you acknowledge accountability for all actions taken.
+              </p>
+              <div className="flex gap-2 ml-auto">
+                <Button variant="outline" onClick={() => setConfirmUser(null)}>Cancel</Button>
+                <Button onClick={() => startImpersonation(confirmUser)} disabled={impersonating} className="bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)]">
+                  {impersonating ? <Loader2 size={14} className="animate-spin mr-1" /> : <Eye size={14} className="mr-1" />}
+                  Start Session
+                </Button>
+              </div>
             </div>
           </div>
         </div>

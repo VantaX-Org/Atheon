@@ -31,14 +31,14 @@ function statusVariant(status: string): 'success' | 'warning' | 'danger' | 'defa
 
 function statusIcon(status: string) {
   const v = statusVariant(status);
-  if (v === 'success') return <CheckCircle size={14} style={{ color: 'var(--accent)' }} />;
+  if (v === 'success') return <CheckCircle size={14} style={{ color: 'var(--rag-healthy)' }} />;
   if (v === 'warning') return <AlertTriangle size={14} style={{ color: 'var(--warning)' }} />;
   if (v === 'danger') return <XCircle size={14} style={{ color: 'var(--neg)' }} />;
   return <Activity size={14} className="t-muted" />;
 }
 
 function freshnessColor(freshness: 'fresh' | 'stale' | 'cold'): string {
-  if (freshness === 'fresh') return 'var(--accent)';
+  if (freshness === 'fresh') return 'var(--rag-healthy)';
   if (freshness === 'stale') return 'var(--warning)';
   return 'var(--neg)';
 }
@@ -131,7 +131,8 @@ export function IntegrationHealthPage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <PageHeader
-        eyebrow="Integrations · Health"
+        live
+        eyebrow="Integrations · System-Wide Monitoring"
         title="Integration Health"
         dek="Per-connection sync status, circuit breakers &amp; data freshness"
         actions={
@@ -146,26 +147,58 @@ export function IntegrationHealthPage() {
         }
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <p className="text-label">Connections</p>
-          <p className="text-xl font-bold t-primary">{summary.total}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Healthy</p>
-          <p className="text-xl font-bold" style={{ color: 'var(--accent)' }}>{summary.healthy}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Errored</p>
-          <p className="text-xl font-bold" style={{ color: 'var(--neg)' }}>{summary.errored}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Records Synced</p>
-          <p className="text-xl font-bold t-primary">
+      <Card variant="prominent" className="p-0 overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--border-card)]">
+          <div className="p-5 sm:p-6">
+            <div className="flex items-center gap-2">
+              <span className="text-label">Healthy</span>
+              <span className="pill-success inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider">
+                Healthy
+              </span>
+            </div>
+            <p className="mt-2 text-4xl font-bold font-mono leading-none" style={{ color: 'var(--rag-healthy)' }}>
+              {summary.healthy}
+            </p>
+          </div>
+          <div className="p-5 sm:p-6">
+            <div className="flex items-center gap-2">
+              <span className="text-label">Connections</span>
+              <span className="pill-accent inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider">
+                Total
+              </span>
+            </div>
+            <p className="mt-2 text-4xl font-bold font-mono leading-none t-primary">
+              {summary.total}
+            </p>
+          </div>
+          <div className="p-5 sm:p-6">
+            <div className="flex items-center gap-2">
+              <span className="text-label">At-Risk</span>
+              <span
+                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider"
+                style={{
+                  background: 'rgb(var(--neg-rgb) / 0.10)',
+                  color: 'var(--neg)',
+                  borderColor: 'rgb(var(--neg-rgb) / 0.24)',
+                }}
+              >
+                Errored
+              </span>
+            </div>
+            <p className="mt-2 text-4xl font-bold font-mono leading-none" style={{ color: 'var(--neg)' }}>
+              {summary.errored}
+            </p>
+          </div>
+        </div>
+        <div className="border-t border-[var(--border-card)] px-5 sm:px-6 py-3 text-caption t-muted">
+          Total Active Integrations: <span className="font-mono t-secondary">{summary.total}</span>
+          {' · '}Records Synced:{' '}
+          <span className="font-mono t-secondary">
             {summary.records >= 1000 ? `${(summary.records / 1000).toFixed(1)}k` : summary.records.toLocaleString()}
-          </p>
-        </Card>
-      </div>
+          </span>
+          {' · '}Errors (30d): <span className="font-mono t-secondary">{summary.errors}</span>
+        </div>
+      </Card>
 
       {connections.length === 0 ? (
         <Card className="p-8 text-center">
@@ -177,52 +210,77 @@ export function IntegrationHealthPage() {
           <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
           <TabPanel id="connections" activeTab={activeTab}>
-            <div className="space-y-2">
-              {connections.map((c) => (
-                <Card key={c.id} className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      {statusIcon(c.status)}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium t-primary truncate">{c.name}</p>
-                          {c.adapter_name && <Badge variant="default" className="text-caption">{c.adapter_name}</Badge>}
-                          <Badge variant={statusVariant(c.status)} className="text-caption">{c.status}</Badge>
+            <Card className="p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-card)]">
+                      <th className="text-label px-4 py-3 font-normal">Integration Name</th>
+                      <th className="text-label px-4 py-3 font-normal">Status</th>
+                      <th className="text-label px-4 py-3 font-normal">Circuit</th>
+                      <th className="text-label px-4 py-3 font-normal text-right">Records</th>
+                      <th className="text-label px-4 py-3 font-normal text-right">Errors (30d)</th>
+                      <th className="text-label px-4 py-3 font-normal">Last Sync</th>
+                      <th className="text-label px-4 py-3 font-normal">Freshness</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {connections.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-b border-[var(--border-card)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
+                      >
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {statusIcon(c.status)}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium t-primary truncate">{c.name}</p>
+                              {c.adapter_name && (
+                                <p className="text-caption font-mono t-muted truncate">{c.adapter_name}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle">
+                          <Badge variant={statusVariant(c.status)} className="text-caption uppercase tracking-wide">{c.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle">
                           <Badge variant={circuitVariant(c.circuitState)} className="text-caption">
                             <Zap size={9} className="inline mr-0.5" />
                             {c.circuitState}
                           </Badge>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2 text-caption">
-                          <div>
-                            <span className="t-muted">Last Sync</span>
-                            <p className="t-primary">{c.lastSync ? new Date(c.lastSync).toLocaleString() : 'Never'}</p>
-                          </div>
-                          <div>
-                            <span className="t-muted">Freshness</span>
-                            <p style={{ color: freshnessColor(c.freshness) }}>{freshnessLabel(c)} ({c.freshness})</p>
-                          </div>
-                          <div>
-                            <span className="t-muted">Records</span>
-                            <p className="t-primary">{c.recordsSynced.toLocaleString()}</p>
-                          </div>
-                          <div>
-                            <span className="t-muted">Errors (30d)</span>
-                            <p style={{ color: c.errorsLast30d > 0 ? 'var(--neg)' : undefined }} className={c.errorsLast30d > 0 ? '' : 't-primary'}>{c.errorsLast30d}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right font-mono text-sm t-primary tabular-nums">
+                          {c.recordsSynced.toLocaleString()}
+                        </td>
+                        <td
+                          className="px-4 py-3.5 align-middle text-right font-mono text-sm tabular-nums"
+                          style={{ color: c.errorsLast30d > 0 ? 'var(--neg)' : undefined }}
+                        >
+                          <span className={c.errorsLast30d > 0 ? '' : 't-primary'}>{c.errorsLast30d}</span>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle font-mono text-caption t-secondary whitespace-nowrap">
+                          {c.lastSync ? new Date(c.lastSync).toLocaleString() : 'Never'}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 font-mono text-caption font-medium" style={{ color: freshnessColor(c.freshness) }}>
+                            <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: freshnessColor(c.freshness) }} />
+                            {freshnessLabel(c)}
+                            <span className="t-muted">({c.freshness})</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </TabPanel>
 
           <TabPanel id="errors" activeTab={activeTab}>
             {erroredConnections.length === 0 ? (
               <Card className="p-8 text-center">
-                <CheckCircle size={24} className="mx-auto mb-2" style={{ color: 'var(--accent)' }} />
+                <CheckCircle size={24} className="mx-auto mb-2" style={{ color: 'var(--rag-healthy)' }} />
                 <p className="text-sm t-muted">No errors in the last 30 days.</p>
               </Card>
             ) : (

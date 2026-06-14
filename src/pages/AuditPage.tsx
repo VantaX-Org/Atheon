@@ -70,9 +70,9 @@ export function AuditPage() {
  return (
  <div className="space-y-6 animate-fadeIn">
  <PageHeader
-  eyebrow="Audit · Activity Log"
-  title="Audit"
-  dek="Provenance Ledger & Governance Trail"
+  eyebrow="Audit · Billing Proof"
+  title="Audit / Billing Proof"
+  dek="Every billed dollar, traced to its ERP record, field mapping, and statistical assurance."
   actions={
    <div className="flex items-center gap-2">
     <Button
@@ -151,21 +151,44 @@ export function AuditPage() {
   }
  />
 
- {/* Billing-proof findings — Higgsfield render 03
-     (docs/ui-redesign/higgsfield/03-audit.png). Each row is a real value-
-     assessment finding with the ERP cells that disagreed (source → target →
-     difference); expanding a row reveals its statistical provenance. This is
-     the dollar-level audit chain that backs every shared-savings invoice. */}
+ {/* Hero metrics band — the three dominant audit figures sit above the
+     billing-proof findings, mirroring the approved mockup's masthead. */}
+ <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-xl overflow-hidden" style={{ background: 'var(--border-card)' }}>
+ <div className="p-6 md:p-7" style={{ background: 'var(--bg-card-solid)' }}>
+ <p className="text-hero t-primary tnum">{filteredEntries.length}</p>
+ <p className="text-label mt-2">{activeFilterCount > 0 ? 'Filtered Events' : 'Total Events'}</p>
+ {activeFilterCount > 0 && <span className="text-caption t-muted">of {entries.length} total</span>}
+ </div>
+ <div className="p-6 md:p-7" style={{ background: 'var(--bg-card-solid)' }}>
+ <p className="text-hero tnum" style={{ color: 'var(--positive)' }}>{filteredEntries.filter(a => a.outcome === 'success').length}</p>
+ <p className="text-label mt-2">Success</p>
+ </div>
+ <div className="p-6 md:p-7" style={{ background: 'var(--bg-card-solid)' }}>
+ <p className="text-hero tnum" style={{ color: 'var(--accent)' }}>{filteredEntries.filter(a => a.outcome === 'pending').length}</p>
+ <p className="text-label mt-2">Pending</p>
+ </div>
+ <div className="p-6 md:p-7" style={{ background: 'var(--bg-card-solid)' }}>
+ <p className="text-hero tnum" style={{ color: 'var(--neg)' }}>{filteredEntries.filter(a => a.outcome === 'failure').length}</p>
+ <p className="text-label mt-2">Failed</p>
+ </div>
+ </div>
+
+ {/* Billing-proof findings — the dollar-level audit chain that backs every
+     shared-savings invoice. Each row is a real value-assessment finding with
+     the ERP cells that disagreed (source → target → difference); expanding a
+     row reveals its statistical provenance. This is the centerpiece of the
+     approved audit / billing-proof mockup. */}
  <Card className="p-6 md:p-7">
-  <div className="flex items-center gap-2 mb-4">
+  <div className="flex items-center gap-2 mb-1">
    <Shield size={18} style={{ color: 'var(--accent)' }} />
    <h2 className="text-headline-md font-semibold t-primary">Findings detail · billing-proof view</h2>
   </div>
+  <p className="text-label mb-5">Finding · ERP Record · Field Mapping · Source → Target · Difference · Assurance · Impact</p>
   <BillingProofFindings />
  </Card>
 
- {/* Cryptographic provenance ledger — sits above the standard audit log
-     so the tamper-evidence story is the first thing on the page. */}
+ {/* Cryptographic provenance ledger — the tamper-evidence story that
+     backs the findings above. */}
  <ProvenanceVerifyPanel />
 
  {/* Filter Panel */}
@@ -208,27 +231,6 @@ export function AuditPage() {
  )}
  </div>
  )}
-
- {/* Summary */}
- <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
- <Card>
- <span className="text-xs t-secondary">{activeFilterCount > 0 ? 'Filtered Events' : 'Total Events'}</span>
- <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{filteredEntries.length}</p>
- {activeFilterCount > 0 && <span className="text-caption t-muted">of {entries.length} total</span>}
- </Card>
- <Card>
- <span className="text-xs t-secondary">Success</span>
- <p className="text-headline-lg font-bold tabular-nums font-mono mt-1" style={{ color: 'var(--positive)' }}>{filteredEntries.filter(a => a.outcome === 'success').length}</p>
- </Card>
- <Card>
- <span className="text-xs t-secondary">Pending</span>
- <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">{filteredEntries.filter(a => a.outcome === 'pending').length}</p>
- </Card>
- <Card>
- <span className="text-xs t-secondary">Failed</span>
- <p className="text-headline-lg font-bold tabular-nums font-mono mt-1" style={{ color: 'var(--neg)' }}>{filteredEntries.filter(a => a.outcome === 'failure').length}</p>
- </Card>
- </div>
 
  {/* View-mode toggle — Stitch timeline is default; classic table is still
      accessible for ops who prefer dense rows. */}
@@ -278,13 +280,13 @@ export function AuditPage() {
  <div className="overflow-x-auto">
  <table className="w-full text-sm">
  <thead>
- <tr className="border-b border-[var(--border-card)]">
- <th className="text-left py-3 px-4 t-muted font-medium">Timestamp</th>
- <th className="text-left py-3 px-4 t-muted font-medium">Action</th>
- <th className="text-left py-3 px-4 t-muted font-medium">Layer</th>
- <th className="text-left py-3 px-4 t-muted font-medium">Resource</th>
- <th className="text-left py-3 px-4 t-muted font-medium">Details</th>
- <th className="text-left py-3 px-4 t-muted font-medium">Outcome</th>
+ <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+ <th className="text-left py-3 px-4 text-label">Timestamp</th>
+ <th className="text-left py-3 px-4 text-label">Action</th>
+ <th className="text-left py-3 px-4 text-label">Layer</th>
+ <th className="text-left py-3 px-4 text-label">Resource</th>
+ <th className="text-left py-3 px-4 text-label">Details</th>
+ <th className="text-left py-3 px-4 text-label">Outcome</th>
  </tr>
  </thead>
  <tbody>
@@ -305,22 +307,19 @@ export function AuditPage() {
  </td>
  <td className="py-3 px-4">
  {entry.outcome === 'success' && (
- <div className="flex items-center gap-1.5">
- <CheckCircle size={14} style={{ color: 'var(--positive)' }} />
- <span className="text-xs" style={{ color: 'var(--positive)' }}>Success</span>
- </div>
+ <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase" style={{ color: 'var(--positive)', background: 'color-mix(in srgb, var(--positive) 10%, transparent)' }}>
+ <CheckCircle size={12} /> Success
+ </span>
  )}
  {entry.outcome === 'pending' && (
- <div className="flex items-center gap-1.5">
- <Clock size={14} className="text-accent" />
- <span className="text-xs text-accent">Pending</span>
- </div>
+ <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase" style={{ color: 'var(--accent)', background: 'var(--accent-subtle)' }}>
+ <Clock size={12} /> Pending
+ </span>
  )}
  {entry.outcome === 'failure' && (
- <div className="flex items-center gap-1.5">
- <XCircle size={14} style={{ color: 'var(--neg)' }} />
- <span className="text-xs" style={{ color: 'var(--neg)' }}>Failed</span>
- </div>
+ <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase" style={{ color: 'var(--neg)', background: 'color-mix(in srgb, var(--neg) 10%, transparent)' }}>
+ <XCircle size={12} /> Failed
+ </span>
  )}
  </td>
  </tr>

@@ -24,22 +24,39 @@ interface SharePayload {
   pack: EvidencePack;
 }
 
+const MONO = "'Space Mono', ui-monospace, monospace";
+
+const TONE_COLOR: Record<string, string> = {
+  good: 'var(--rag-healthy)',
+  warn: 'var(--rag-watch)',
+  bad: 'var(--rag-risk)',
+};
+
 function StatCell({ label, value, tone }: { label: string; value: string | number; tone?: 'good' | 'warn' | 'bad' }) {
-  const colorMap: Record<string, string> = {
-    good: 'var(--positive)',
-    warn: 'var(--warning)',
-    bad: 'var(--neg)',
-  };
-  const color = tone ? colorMap[tone] : 'var(--text-primary)';
+  const color = tone ? TONE_COLOR[tone] : 'var(--text-primary)';
   return (
     <div style={{
-      padding: '14px 16px',
-      borderRadius: 2,
-      border: '1px solid var(--border-card)',
-      background: 'var(--bg-card)',
+      padding: '18px 20px',
+      borderRadius: 'var(--radius-sm)',
+      border: '1px solid var(--border-subtle)',
+      background: 'var(--bg-card-solid)',
     }}>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--text-secondary)' }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace', marginTop: 4 }}>{value}</div>
+      <div style={{
+        fontFamily: MONO,
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        color: 'var(--text-muted)',
+      }}>{label}</div>
+      <div style={{
+        fontSize: 28,
+        fontWeight: 700,
+        color,
+        fontVariantNumeric: 'tabular-nums',
+        marginTop: 8,
+        lineHeight: 1.1,
+      }}>{value}</div>
     </div>
   );
 }
@@ -52,22 +69,33 @@ function Section({ icon: Icon, title, code, children }: {
 }) {
   return (
     <section style={{
-      padding: 24,
-      borderRadius: 2,
+      padding: '28px 32px',
+      borderRadius: 'var(--radius)',
       border: '1px solid var(--border-card)',
-      background: 'var(--bg-card)',
+      background: 'var(--bg-card-solid)',
+      boxShadow: 'var(--shadow-card-light)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Icon width={16} height={16} color="var(--accent)" />
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 'var(--radius-sm)',
+          background: 'var(--accent-subtle)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Icon width={17} height={17} color="var(--accent)" aria-hidden="true" />
+        </div>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{title}</h2>
         <span style={{
           marginLeft: 'auto',
+          fontFamily: MONO,
           fontSize: 10,
-          color: 'var(--text-secondary)',
-          padding: '3px 8px',
-          background: 'var(--bg-secondary)',
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'var(--accent)',
+          padding: '5px 10px',
+          background: 'var(--accent-subtle)',
           borderRadius: 999,
-          letterSpacing: 0.4,
         }}>{code}</span>
       </div>
       {children}
@@ -97,22 +125,29 @@ export default function AuditSharePage(): JSX.Element {
   const bgStyle: React.CSSProperties = {
     minHeight: '100vh',
     background: 'var(--bg-primary)',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    backgroundImage: 'var(--bg-pattern)',
+    fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
     color: 'var(--text-primary)',
   };
 
   if (error) {
     return (
       <div style={bgStyle}>
-        <div style={{ maxWidth: 560, margin: '120px auto', padding: 32, textAlign: 'center' }}>
-          <Lock size={48} strokeWidth={1.5} style={{ color: 'var(--text-secondary)', marginBottom: 12 }} aria-hidden="true" />
-
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
+        <div style={{ maxWidth: 520, margin: '0 auto', padding: '140px 24px', textAlign: 'center' }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 'var(--radius)', margin: '0 auto 20px',
+            background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)',
+            boxShadow: 'var(--shadow-card-light)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Lock size={28} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>
             {error.status === 410 ? 'This link is no longer valid.' :
              error.status === 404 ? 'Link not found.' :
              'Something went wrong.'}
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 10 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 15, marginTop: 12, lineHeight: 1.6 }}>
             {error.status === 410
               ? 'It may have been revoked or have expired. Ask the issuer for a new one.'
               : error.status === 404
@@ -127,13 +162,15 @@ export default function AuditSharePage(): JSX.Element {
   if (!data) {
     return (
       <div style={bgStyle}>
-        <div style={{ maxWidth: 560, margin: '160px auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <div style={{ maxWidth: 520, margin: '0 auto', padding: '180px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <div style={{
-            width: 18, height: 18, border: '2px solid var(--border-card)', borderTopColor: 'var(--accent)',
-            borderRadius: '50%', margin: '0 auto 12px', animation: 'aspin 800ms linear infinite',
+            width: 20, height: 20, border: '2px solid var(--border-card)', borderTopColor: 'var(--accent)',
+            borderRadius: '50%', margin: '0 auto 14px', animation: 'aspin 800ms linear infinite',
           }} />
           <style>{`@keyframes aspin { to { transform: rotate(360deg) } }`}</style>
-          Loading evidence pack…
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Loading evidence pack
+          </span>
         </div>
       </div>
     );
@@ -159,48 +196,80 @@ export default function AuditSharePage(): JSX.Element {
 
   return (
     <div style={bgStyle}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '48px 24px 64px' }}>
-        {/* Brand strip + label */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '64px 24px 80px' }}>
+        {/* Centered brand wordmark */}
+        <header style={{ textAlign: 'center', marginBottom: 36 }}>
+          <h1 style={{
+            fontSize: 34, fontWeight: 700, color: 'var(--text-primary)', margin: 0,
+            letterSpacing: '-0.03em',
+          }}>
+            Atheon
+          </h1>
+          <div style={{ marginTop: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
+            {label
+              ? <>Shared as <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{label}</strong></>
+              : 'SOC 2 Evidence — Auditor View'}
+          </div>
+        </header>
+
+        {/* Frosted hero card */}
+        <div style={{
+          background: 'var(--glass-bg-strong)',
+          backdropFilter: `blur(var(--glass-blur))`,
+          WebkitBackdropFilter: `blur(var(--glass-blur))`,
+          border: '1px solid var(--glass-border)',
+          borderRadius: 'var(--radius)',
+          boxShadow: 'var(--shadow-glass)',
+          padding: '44px 48px',
+          marginBottom: 28,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 2,
-              background: 'var(--accent)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-on-accent)', fontWeight: 700, fontSize: 16,
-            }}>A</div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Atheon</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>SOC 2 Evidence — Auditor View</div>
+              fontSize: 52,
+              fontWeight: 700,
+              lineHeight: 1,
+              color: TONE_COLOR[mfaTone],
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.02em',
+            }}>
+              {pack.mfa.mfaCoveragePct}%
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ShieldCheck size={26} color="var(--accent)" aria-hidden="true" />
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                Verified<br />MFA Coverage
+              </div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
-            <Clock size={12} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontFamily: MONO, fontSize: 11, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            color: 'var(--text-muted)',
+          }}>
+            <Clock size={13} aria-hidden="true" />
             Expires in {expiresIn} day{expiresIn === 1 ? '' : 's'}
           </div>
         </div>
 
-        {/* Hero */}
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{
-            fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', margin: 0,
-            letterSpacing: -0.5,
-          }}>
-            Evidence Pack
-          </h1>
-          {label && (
-            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
-              Shared as <strong style={{ color: 'var(--text-primary)' }}>{label}</strong>
-            </div>
-          )}
-          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-            Generated {new Date(pack.generatedAt).toLocaleString()} · Read-only · Aggregated over existing tables
-          </div>
+        {/* Generated meta line */}
+        <div style={{
+          textAlign: 'center', marginBottom: 28,
+          fontFamily: MONO, fontSize: 10, fontWeight: 700,
+          textTransform: 'uppercase', letterSpacing: '0.08em',
+          color: 'var(--text-muted)',
+        }}>
+          Generated {new Date(pack.generatedAt).toLocaleString()} · Read-only · Aggregated evidence
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
           <Section icon={ShieldCheck} title="Access reviews" code="SOC 2 CC6.1, CC6.2">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="Active admins" value={pack.accessReviews.activeAdminCount} />
               <StatCell label="Active users" value={pack.accessReviews.activeUserCount} />
               <StatCell label="Admins assigned (90d)" value={pack.accessReviews.adminsAssignedLast90d} />
@@ -209,7 +278,7 @@ export default function AuditSharePage(): JSX.Element {
           </Section>
 
           <Section icon={KeyRound} title="MFA posture" code="SOC 2 CC6.6">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="MFA coverage" value={`${pack.mfa.mfaCoveragePct}%`} tone={mfaTone} />
               <StatCell label="MFA enabled" value={pack.mfa.mfaEnabled} />
               <StatCell label="Total users" value={pack.mfa.totalUsers} />
@@ -219,19 +288,20 @@ export default function AuditSharePage(): JSX.Element {
           </Section>
 
           <Section icon={ClipboardList} title="Configuration changes" code="SOC 2 CC8.1">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="Changes (30d)" value={pack.configChanges.changesLast30d} />
               <StatCell label="Changes (90d)" value={pack.configChanges.changesLast90d} />
             </div>
             {pack.configChanges.topActions.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
-                Top actions: {pack.configChanges.topActions.slice(0, 5).map(a => `${a.action} (${a.count})`).join(' · ')}
+              <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Top actions</span>
+                {' '}{pack.configChanges.topActions.slice(0, 5).map(a => `${a.action} (${a.count})`).join(' · ')}
               </div>
             )}
           </Section>
 
           <Section icon={AlertTriangle} title="Incident response" code="SOC 2 CC7.3, CC7.4">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="Total critical (90d)" value={pack.incidentResponse.totalCriticalLast90d} />
               <StatCell label="Resolved critical (90d)" value={pack.incidentResponse.resolvedCriticalLast90d} />
               <StatCell label="Open critical" value={pack.incidentResponse.openCritical} tone={incidentTone} />
@@ -245,7 +315,7 @@ export default function AuditSharePage(): JSX.Element {
           </Section>
 
           <Section icon={UserMinus} title="Deprovisioning" code="SOC 2 CC6.2">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="Deprovisioned (90d)" value={pack.deprovisioning.deprovisionedLast90d} />
               <StatCell label="Currently disabled" value={pack.deprovisioning.currentlyDisabled} />
               <StatCell label="Privileged disabled" value={pack.deprovisioning.privilegedDisabled} tone={pack.deprovisioning.privilegedDisabled > 0 ? 'warn' : 'good'} />
@@ -253,7 +323,7 @@ export default function AuditSharePage(): JSX.Element {
           </Section>
 
           <Section icon={Lock} title="Encryption at rest" code="SOC 2 CC6.7">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="ERP encrypted" value={pack.encryption.erpEncrypted} tone="good" />
               <StatCell label="ERP plaintext" value={pack.encryption.erpPlaintext} tone={plaintextTone} />
               <StatCell label="Total connections" value={pack.encryption.totalConnections} />
@@ -261,7 +331,7 @@ export default function AuditSharePage(): JSX.Element {
           </Section>
 
           <Section icon={FileArchive} title="Audit retention" code="SOC 2 CC4.1">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
               <StatCell label="Audit log rows" value={pack.auditRetention.totalRows.toLocaleString()} />
               <StatCell
                 label="Oldest event"
@@ -271,37 +341,64 @@ export default function AuditSharePage(): JSX.Element {
               />
               <StatCell label="Provenance chain" value={pack.auditRetention.provenanceChainLength.toLocaleString()} />
             </div>
-            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
+            <div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               The provenance chain is a separate immutable record (Merkle + HMAC) of every AI
               decision — auditable independently of the audit log.
             </div>
           </Section>
         </div>
 
-        <div style={{ marginTop: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ marginTop: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <button
             onClick={downloadJson}
             style={{
-              padding: '10px 16px',
-              borderRadius: 2,
+              padding: '12px 22px',
+              borderRadius: 'var(--radius-control)',
               background: 'var(--accent)',
               color: 'var(--text-on-accent)',
               border: 'none',
               cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 500,
-              transition: 'transform 160ms cubic-bezier(0.23, 1, 0.32, 1)',
+              fontSize: 14,
+              fontWeight: 600,
+              boxShadow: 'var(--shadow-raised)',
+              transition: 'transform 160ms cubic-bezier(0.23, 1, 0.32, 1), background 160ms ease',
             }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover)'}
             onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.97)'}
             onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'var(--accent)'; }}
           >
             Download JSON snapshot
           </button>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            Access logged. This link auto-expires {new Date(expires_at).toLocaleDateString()} and may be revoked at any time.
+          <div style={{
+            fontFamily: MONO, fontSize: 10, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            color: 'var(--text-muted)', maxWidth: 360, textAlign: 'right', lineHeight: 1.6,
+          }}>
+            Access logged · Auto-expires {new Date(expires_at).toLocaleDateString()} · Revocable at any time
           </div>
         </div>
+
+        {/* Verification footer */}
+        <footer style={{
+          marginTop: 48, paddingTop: 24,
+          borderTop: '1px solid var(--border-subtle)',
+          textAlign: 'center',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ShieldCheck size={14} color="var(--accent)" aria-hidden="true" />
+            <span style={{
+              fontFamily: MONO, fontSize: 10, fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-secondary)',
+            }}>
+              Atheon Assurance — Trusted Financial Proof
+            </span>
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+            Read-only · Aggregated over existing tables
+          </div>
+        </footer>
       </div>
     </div>
   );

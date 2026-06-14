@@ -674,15 +674,42 @@ export function IntegrationsPage() {
   return (
     <div className="space-y-6 animate-fadeIn">
       <PageHeader
-        eyebrow="Integrations · Connectors"
+        eyebrow="Integrations · Marketplace"
         title="Integrations"
         dek="Connected Systems, Adapters & Canonical Schema"
-        actions={
-          <Button variant="primary" size="sm" onClick={() => { setShowConnect(true); setSelectedAuth(''); setCredentialValues({}); }} title="Connect a new ERP system">
-            <Plus size={14} /> Connect System
-          </Button>
-        }
       />
+
+      {/* Hero banner — the editorial anchor for the marketplace. Soft
+          accent wash, oversized display headline, one restrained dek, and
+          the primary "Connect System" action (logic unchanged). */}
+      <Card variant="hero" className="relative overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(42rem 28rem at 100% 0%, rgb(var(--accent-rgb) / 0.14), transparent 70%), radial-gradient(32rem 24rem at 0% 100%, rgb(var(--accent-rgb) / 0.06), transparent 72%)',
+          }}
+        />
+        <div className="relative max-w-2xl">
+          <p className="text-label" style={{ color: 'var(--accent)' }}>Assurance Ecosystem</p>
+          <h2 className="text-display t-primary mt-2">Elevate your assurance ecosystem.</h2>
+          <p className="text-body-sm t-muted mt-3 max-w-xl">
+            Discover and connect certified integrations to streamline data flow and enhance
+            financial reporting accuracy across every connected system.
+          </p>
+          <div className="mt-5">
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => { setShowConnect(true); setSelectedAuth(''); setCredentialValues({}); }}
+              title="Connect a new ERP system"
+            >
+              <Plus size={14} /> Connect System
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {actionError && (
         <div className="flex items-center gap-3 p-3 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.1)', borderColor: 'rgb(var(--neg-rgb) / 0.2)' }}>
@@ -887,7 +914,7 @@ export function IntegrationsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <div className="flex items-center justify-between">
-            <span className="text-xs t-secondary">Active Connections</span>
+            <span className="text-label">Active Connections</span>
             <MetricSource source={{
               ...baseProvenance,
               label: 'Active connections',
@@ -897,11 +924,11 @@ export function IntegrationsPage() {
               sample: activeCount,
             }} />
           </div>
-          <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">{activeCount}</p>
+          <p className="text-display font-bold tabular-nums font-mono mt-2" style={{ color: 'var(--accent)' }}>{activeCount}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
-            <span className="text-xs t-secondary">Available Adapters</span>
+            <span className="text-label">Available Adapters</span>
             <MetricSource source={{
               ...baseProvenance,
               label: 'Available adapters',
@@ -911,11 +938,11 @@ export function IntegrationsPage() {
               sample: adapters.length,
             }} />
           </div>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{adapters.length}</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{adapters.length}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
-            <span className="text-xs t-secondary">API Endpoints</span>
+            <span className="text-label">API Endpoints</span>
             <MetricSource source={{
               ...baseProvenance,
               label: 'Canonical API endpoints',
@@ -925,11 +952,11 @@ export function IntegrationsPage() {
               sample: endpoints.length,
             }} />
           </div>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{endpoints.length}</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{endpoints.length}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
-            <span className="text-xs t-secondary">Records Synced</span>
+            <span className="text-label">Records Synced</span>
             <MetricSource source={{
               ...baseProvenance,
               label: 'Records synced',
@@ -940,7 +967,7 @@ export function IntegrationsPage() {
               notes: [{ label: 'Display unit', value: 'thousands (K) — divide by 1000' }],
             }} />
           </div>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{(totalRecords / 1000).toFixed(1)}K</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{(totalRecords / 1000).toFixed(1)}K</p>
         </Card>
       </div>
         );
@@ -1453,51 +1480,51 @@ export function IntegrationsPage() {
           )}
         </TabPanel>
       )}
-      {/* Tab: Available Adapters */}
+      {/* Tab: Available Adapters — marketplace card grid. Each card leads
+          with the brand mark + name, a one-line capability summary, the
+          protocol/version chips, a primary Add (Connect) action, and a RAG
+          status pill anchored bottom-left. */}
       {activeTab === 'adapters' && (
         <TabPanel>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {adapters.map((adapter) => (
-              <Card key={adapter.id} hover>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] flex items-center justify-center">
-                      {(() => { const SysIcon = systemIconMap[adapter.system] || IconERP_Generic; return <SysIcon size={20} />; })()}
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold t-primary">{adapter.name}</h3>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="outline" size="sm">v{adapter.version}</Badge>
-                        <Badge variant="outline" size="sm">{adapter.protocol}</Badge>
-                      </div>
-                    </div>
+              <Card key={adapter.id} hover className="flex flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="w-11 h-11 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] flex items-center justify-center shrink-0">
+                    {(() => { const SysIcon = systemIconMap[adapter.system] || IconERP_Generic; return <SysIcon size={20} />; })()}
                   </div>
-                  <Badge variant={adapter.status === 'available' ? 'success' : adapter.status === 'connected' ? 'info' : 'warning'}>
-                    {adapter.status}
-                  </Badge>
+                  <StatusPill
+                    status={adapter.status === 'available' ? 'green' : adapter.status === 'connected' ? 'connected' : 'amber'}
+                    label={adapter.status}
+                    size="sm"
+                  />
                 </div>
 
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-3 p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-xs font-medium text-accent w-24">Operations</span>
-                    <div className="flex flex-wrap gap-1">
-                      {adapter.operations.map(op => (
-                        <Badge key={op} variant={op === 'write' ? 'warning' : op === 'subscribe' ? 'info' : 'success'} size="sm">{op}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-xs font-medium text-accent w-24">Auth</span>
-                    <div className="flex flex-wrap gap-1">
-                      {adapter.authMethods.map(m => (
-                        <Badge key={m} variant="outline" size="sm">{m}</Badge>
-                      ))}
-                    </div>
+                <h3 className="text-headline-lg t-primary mt-3">{adapter.name}</h3>
+
+                <p className="text-body-sm t-muted mt-1">
+                  Connect {adapter.name} via {adapter.protocol} for automated reconciliation and reporting.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                  <Badge variant="outline" size="sm">v{adapter.version}</Badge>
+                  <Badge variant="outline" size="sm">{adapter.protocol}</Badge>
+                  {adapter.operations.map(op => (
+                    <Badge key={op} variant="outline" size="sm">{op}</Badge>
+                  ))}
+                </div>
+
+                <div className="mt-2">
+                  <span className="text-label">Auth</span>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {adapter.authMethods.map(m => (
+                      <Badge key={m} variant="outline" size="sm">{m}</Badge>
+                    ))}
                   </div>
                 </div>
 
-                <Button variant="secondary" size="sm" className="mt-3 w-full" onClick={() => handleAdapterConnect(adapter.id, adapter.name)} title="Connect this adapter">
-                  <Plug size={12} /> Connect
+                <Button variant="primary" size="sm" className="mt-4 w-full" onClick={() => handleAdapterConnect(adapter.id, adapter.name)} title="Connect this adapter">
+                  <Plus size={12} /> Add
                 </Button>
               </Card>
             ))}

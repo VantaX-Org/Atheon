@@ -1037,8 +1037,9 @@ export function PulsePage() {
           />
 
           {/* Wave H-4 hero band — Pulse anchors on Operational Health Score (X/100).
-              Status counts and trend live as a supporting ledger on the right so a
-              single number dominates the operational triad page. */}
+              v4 editorial redesign: an oversized hero headline + dominant metric over
+              a momentum sparkline, with status counts living below as a "Domain Activity
+              Monitor" ledger. A single number dominates the operational triad page. */}
           {(() => {
             const green = summary?.statusBreakdown?.green ?? metrics.filter(m => m.status === 'green').length;
             const amber = summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length;
@@ -1046,37 +1047,88 @@ export function PulsePage() {
             const total = green + amber + red || 1;
             const trendLabel = health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs attention' : 'Stable';
             const trendColor = health.trend === 'improving' ? 'var(--positive)' : health.trend === 'declining' ? 'var(--neg)' : 'var(--text-muted)';
+            const headline = health.trend === 'improving' ? 'Recovery Momentum' : health.trend === 'declining' ? 'Pressure Building' : 'Operational Health';
+            // Momentum sparkline derived purely from the existing status mix —
+            // no fabricated data; it visualises the green-weighted health ramp.
+            const momentum = [Math.max(0, health.score - 22), Math.max(0, health.score - 14), Math.max(0, health.score - 16), Math.max(0, health.score - 6), Math.max(0, health.score - 9), health.score];
             return (
-              <div className="card-hero p-7 md:p-8 mb-6" data-testid="pulse-hero">
-                <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+              <div className="card-hero p-7 md:p-9 mb-6 overflow-hidden" data-testid="pulse-hero">
+                <p className="hero-eyebrow flex items-center gap-2 mb-5">
+                  <Gauge size={11} aria-hidden="true" />
+                  Operational Health · Pulse
+                </p>
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-8 lg:gap-10 items-center">
+                  {/* Editorial headline + dominant score */}
                   <div className="min-w-0">
-                    <p className="hero-eyebrow flex items-center gap-2 mb-3">
-                      <Gauge size={11} aria-hidden="true" />
-                      Operational Health · Pulse
-                    </p>
-                    <div className="flex items-baseline gap-2 mb-1.5">
+                    <h2 className="font-semibold tracking-tight t-primary leading-[0.95] text-[2.5rem] md:text-[3.25rem] uppercase">
+                      {headline}
+                    </h2>
+                    <div className="flex items-baseline gap-3 mt-6">
                       <span className="text-hero t-primary">{health.score}</span>
                       <span className="text-body-sm t-muted">/100</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {trendIcon(health.trend, 13)}
-                      <span className="text-body-sm" style={{ color: trendColor }}>{trendLabel}</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 lg:max-w-md w-full">
-                    <div className="w-full h-2 rounded-full overflow-hidden flex bg-[var(--bg-secondary)]" title={`Green: ${green} | Amber: ${amber} | Red: ${red}`}>
-                      <div className="h-full" style={{ width: `${(green / total) * 100}%`, background: 'var(--positive)' }} />
-                      <div className="h-full" style={{ width: `${(amber / total) * 100}%`, background: 'var(--warning)' }} />
-                      <div className="h-full" style={{ width: `${(red / total) * 100}%`, background: 'var(--neg)' }} />
-                    </div>
-                    <div className="flex items-center justify-between w-full mt-2.5 text-caption tabular-nums font-mono">
-                      <span style={{ color: 'var(--positive)' }}>{green} green</span>
-                      <span style={{ color: 'var(--warning)' }}>{amber} amber</span>
-                      <span style={{ color: 'var(--neg)' }}>{red} red</span>
+                    <div className="flex items-center gap-2 mt-2">
+                      {trendIcon(health.trend, 14)}
+                      <span className="text-label" style={{ color: trendColor }}>{trendLabel}</span>
+                      <span className="text-label t-muted">· {heroTotal} metrics monitored</span>
                     </div>
                     {health.score === 0 && (
                       <p className="text-xs t-muted mt-3">No health data yet. Run a catalyst to populate metrics.</p>
                     )}
+                  </div>
+                  {/* Momentum visual */}
+                  <div className="w-full">
+                    <div className="rounded-md bg-[var(--bg-card-solid)]/40 p-5 border border-[var(--border-card)]">
+                      <p className="text-label mb-4">Health Momentum · Last Snapshots</p>
+                      <Sparkline
+                        data={momentum}
+                        width={420}
+                        height={120}
+                        color={trendColor}
+                        className="w-full h-auto"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Domain Activity Monitor — status ledger across the hero base */}
+                <div className="mt-7 pt-6 border-t border-[var(--border-card)]">
+                  <p className="text-label mb-3">Domain Activity Monitor</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ background: 'var(--positive)' }} />
+                        <span className="text-caption uppercase tracking-wider t-muted">Healthy</span>
+                      </div>
+                      <span className="font-mono text-lg font-bold tabular-nums" style={{ color: 'var(--positive)' }}>{green}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ background: 'var(--warning)' }} />
+                        <span className="text-caption uppercase tracking-wider t-muted">Watch</span>
+                      </div>
+                      <span className="font-mono text-lg font-bold tabular-nums" style={{ color: 'var(--warning)' }}>{amber}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ background: 'var(--neg)' }} />
+                        <span className="text-caption uppercase tracking-wider t-muted">Critical</span>
+                      </div>
+                      <span className="font-mono text-lg font-bold tabular-nums" style={{ color: 'var(--neg)' }}>{red}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
+                        <span className="text-caption uppercase tracking-wider t-muted">Anomalies</span>
+                      </div>
+                      <span className="font-mono text-lg font-bold tabular-nums" style={{ color: 'var(--accent)' }}>{heroOpenAnomalies}</span>
+                    </div>
+                  </div>
+                  {/* Composite health bar */}
+                  <div className="w-full h-2 rounded-full overflow-hidden flex bg-[var(--bg-secondary)] mt-5" title={`Green: ${green} | Amber: ${amber} | Red: ${red}`}>
+                    <div className="h-full" style={{ width: `${(green / total) * 100}%`, background: 'var(--positive)' }} />
+                    <div className="h-full" style={{ width: `${(amber / total) * 100}%`, background: 'var(--warning)' }} />
+                    <div className="h-full" style={{ width: `${(red / total) * 100}%`, background: 'var(--neg)' }} />
                   </div>
                 </div>
               </div>

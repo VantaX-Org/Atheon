@@ -144,15 +144,25 @@ export function ConnectivityPage() {
   const multicompany = companies.length > 1;
   const normalisedConnections = connections.map(c => ({ ...c, _status: coerceStatus(c.status) as ConnStatus }));
 
+  const connectedCount = normalisedConnections.filter((c) => c._status === "connected").length;
+  const errorCount = normalisedConnections.filter((c) => c._status === "error").length;
+  const circuitsOpen = Object.values(circuitStates).filter((s) => s.state !== 'CLOSED').length;
+  const totalRecords = normalisedConnections.reduce((sum, c) => sum + (c.recordsSynced ?? 0), 0);
+  const uptimePct = normalisedConnections.length > 0
+    ? (connectedCount / normalisedConnections.length) * 100
+    : 0;
+  const engineHealthy = errorCount === 0 && circuitsOpen === 0;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        eyebrow="Connectivity · Systems"
-        title="Connectivity"
+        eyebrow="Connectivity"
+        title="Data-Flow Topology"
         dek="Live Protocols &amp; Integration Health"
+        live={connectedCount > 0}
         actions={
           multicompany ? (
-            <div className="flex items-center gap-1.5 text-xs t-muted px-2.5 py-1 rounded-md"
+            <div className="flex items-center gap-1.5 text-caption t-muted px-2.5 py-1 rounded-md"
                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
                  title="Synced ERP data spans multiple company codes (BUKRS/tenant)">
               <Building2 size={12} /> {companies.length} companies
@@ -161,113 +171,189 @@ export function ConnectivityPage() {
         }
       />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Total Connections", value: normalisedConnections.length, icon: Wifi },
-          { label: "Connected", value: normalisedConnections.filter((c) => c._status === "connected").length, icon: CheckCircle2 },
-          { label: "Errors", value: normalisedConnections.filter((c) => c._status === "error").length, icon: XCircle },
-          { label: "Circuits Open", value: Object.values(circuitStates).filter(s => s.state !== 'CLOSED').length, icon: ShieldAlert },
-        ].map((card) => (
-          <div key={card.label} className="rounded-md p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-            <div className="flex items-center gap-2 mb-2">
-              <card.icon size={14} className="t-muted" />
-              <span className="text-label">{card.label}</span>
-            </div>
-            <p className="text-xl font-bold t-primary">{card.value}</p>
-          </div>
-        ))}
-      </div>
+      {/* ── Topology hero: source nodes ─ central engine ─────────────────
+          Mirrors the approved "Data-Flow Topology" mockup: connection
+          nodes flank a central assurance-engine hub that aggregates the
+          live fleet health into one headline metric. */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_minmax(300px,_360px)]">
+        {/* Engine hub — the one hero number on the screen */}
+        <div
+          className="rounded-xl p-7 flex flex-col justify-center order-first lg:order-last"
+          style={{
+            background: 'linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-card-solid) 60%)',
+            border: '1px solid rgb(var(--accent-rgb) / 0.22)',
+            boxShadow: 'var(--shadow-card)',
+          }}
+        >
+          <p className="text-label" style={{ color: 'var(--accent)' }}>Atheon Financial Assurance Engine</p>
+          <p
+            className="mt-3 font-bold t-primary leading-none"
+            style={{ fontFamily: "'Space Mono', ui-monospace, monospace", fontSize: '44px', letterSpacing: '-0.02em' }}
+          >
+            {uptimePct.toFixed(2)}%
+          </p>
+          <p className="text-caption t-muted mt-1 uppercase" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", letterSpacing: '0.06em' }}>
+            Fleet Uptime
+          </p>
 
-      {/* Connection health cards */}
-      <div className="space-y-3">
-        {normalisedConnections.map((conn) => {
-          const cb = circuitStates[conn.id];
-          const tr = testResults[conn.id];
-          return (
-            <div key={conn.id} className="rounded-md p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  {/* Live status pulse — connected nodes get a sage breathing
-                      dot (matches Stitch "Live Protocols" pattern); other
-                      states fall back to the static status glyph. */}
-                  {conn._status === 'connected' ? (
-                    <span className="relative inline-flex w-2.5 h-2.5" aria-hidden="true" title="Live connection">
-                      <span className="absolute inset-0 rounded-full animate-ping" style={{ background: 'var(--accent)', opacity: 0.55 }} />
-                      <span className="relative inline-flex w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 0 3px rgb(var(--accent-rgb) / 0.18)' }} />
-                    </span>
-                  ) : (
-                    statusIcon(conn._status)
-                  )}
-                  <div>
-                    <p className="text-sm font-medium t-primary">{conn.name}</p>
-                    <p className="text-xs t-muted">{conn.adapterName} &middot; {statusLabel(conn._status)}</p>
+          <div className="my-5 h-px" style={{ background: 'var(--border-card)' }} />
+
+          <p
+            className="font-bold t-primary leading-none"
+            style={{ fontFamily: "'Space Mono', ui-monospace, monospace", fontSize: '30px', letterSpacing: '-0.02em' }}
+          >
+            {totalRecords.toLocaleString()}
+          </p>
+          <p className="text-caption t-muted mt-1 uppercase" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", letterSpacing: '0.06em' }}>
+            Records Synced
+            {multicompany && <span> · {companies.length} companies</span>}
+          </p>
+
+          <div className="mt-5 flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 text-caption px-2.5 py-1 rounded-md border font-medium"
+              style={
+                engineHealthy
+                  ? { background: 'rgb(var(--rag-healthy-rgb) / 0.10)', color: 'var(--rag-healthy)', borderColor: 'rgb(var(--rag-healthy-rgb) / 0.24)' }
+                  : { background: 'rgb(var(--neg-rgb) / 0.10)', color: 'var(--neg)', borderColor: 'rgb(var(--neg-rgb) / 0.20)' }
+              }
+            >
+              {engineHealthy ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+              {engineHealthy ? 'Live Status: Optimal' : 'Live Status: Degraded'}
+            </span>
+          </div>
+        </div>
+
+        {/* Source/destination node cards — one per connection */}
+        <div className="space-y-3">
+          {normalisedConnections.map((conn) => {
+            const cb = circuitStates[conn.id];
+            const tr = testResults[conn.id];
+            return (
+              <div
+                key={conn.id}
+                className="rounded-xl p-5"
+                style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)", boxShadow: 'var(--shadow-card)' }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Live status pulse — connected nodes get a breathing
+                        accent dot (matches the topology mockup); other
+                        states fall back to the static status glyph. */}
+                    {conn._status === 'connected' ? (
+                      <span className="relative inline-flex w-2.5 h-2.5 shrink-0" aria-hidden="true" title="Live connection">
+                        <span className="absolute inset-0 rounded-full animate-ping" style={{ background: 'var(--accent)', opacity: 0.55 }} />
+                        <span className="relative inline-flex w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 0 3px rgb(var(--accent-rgb) / 0.18)' }} />
+                      </span>
+                    ) : (
+                      <span className="shrink-0">{statusIcon(conn._status)}</span>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-label">Source</p>
+                      <p className="text-body-sm font-medium t-primary truncate">{conn.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {cb && cb.state !== 'CLOSED' && (
+                      <span
+                        className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-md border font-medium"
+                        style={
+                          cb.state === 'OPEN'
+                            ? { background: 'rgb(var(--neg-rgb) / 0.10)', color: 'var(--neg)', borderColor: 'rgb(var(--neg-rgb) / 0.20)' }
+                            : { background: 'rgb(var(--warning-rgb, 180 130 60) / 0.10)', color: 'var(--warning)', borderColor: 'rgb(var(--warning-rgb, 180 130 60) / 0.20)' }
+                        }
+                        title={`Circuit ${cb.state} — ${cb.failures} failure(s)${cb.openedAt ? ', opened ' + new Date(cb.openedAt).toLocaleTimeString() : ''}`}
+                      >
+                        {cb.state === 'OPEN' ? <ShieldAlert size={10} /> : <ShieldCheck size={10} />} Circuit {cb.state}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => testConnection(conn.id)}
+                      disabled={testingId === conn.id}
+                      className="px-3 py-1.5 rounded-md text-caption font-medium flex items-center gap-1.5 disabled:opacity-50"
+                      style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+                    >
+                      {testingId === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                      Test
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {cb && cb.state !== 'CLOSED' && (
-                    <span
-                      className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-md border font-medium"
-                      style={
-                        cb.state === 'OPEN'
-                          ? { background: 'rgb(var(--neg-rgb) / 0.10)', color: 'var(--neg)', borderColor: 'rgb(var(--neg-rgb) / 0.20)' }
-                          : { background: 'rgb(var(--warning-rgb, 180 130 60) / 0.10)', color: 'var(--warning)', borderColor: 'rgb(var(--warning-rgb, 180 130 60) / 0.20)' }
-                      }
-                      title={`Circuit ${cb.state} — ${cb.failures} failure(s)${cb.openedAt ? ', opened ' + new Date(cb.openedAt).toLocaleTimeString() : ''}`}
-                    >
-                      {cb.state === 'OPEN' ? <ShieldAlert size={10} /> : <ShieldCheck size={10} />} Circuit {cb.state}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => testConnection(conn.id)}
-                    disabled={testingId === conn.id}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
-                    style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
-                  >
-                    {testingId === conn.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                    Test
-                  </button>
-                </div>
-              </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-label">Last Sync</p>
-                  <p className="text-xs t-secondary flex items-center gap-1">
-                    <Clock size={10} /> {conn.lastSync ? new Date(conn.lastSync).toLocaleString() : "Never"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-label">Schedule</p>
-                  <p className="text-xs t-secondary">{conn.syncFrequency || "Manual"}</p>
-                </div>
-                <div>
-                  <p className="text-label">Records Synced</p>
-                  <p className="text-xs t-secondary">
-                    {(conn.recordsSynced ?? 0).toLocaleString()}
-                    {multicompany && <span className="t-muted"> across {companies.length} companies</span>}
-                  </p>
-                </div>
-              </div>
+                {/* Hero node metric — records synced, in the data voice */}
+                <p
+                  className="mt-4 font-bold t-primary leading-none"
+                  style={{ fontFamily: "'Space Mono', ui-monospace, monospace", fontSize: '26px', letterSpacing: '-0.02em' }}
+                >
+                  {(conn.recordsSynced ?? 0).toLocaleString()}
+                </p>
+                <p className="text-caption t-muted mt-1">
+                  {conn.adapterName} · {statusLabel(conn._status)}
+                  {multicompany && <span> · across {companies.length} companies</span>}
+                </p>
 
-              {tr && !tr.connected && tr.message && (
-                <p className="mt-2 text-xs" style={{ color: 'var(--neg)' }}>{tr.message}</p>
-              )}
-              {tr && tr.connected && (
-                <p className="mt-2 text-xs" style={{ color: 'var(--accent)' }}>Last test: connection successful</p>
-              )}
-            </div>
-          );
-        })}
-        {normalisedConnections.length === 0 && (
-          <EmptyState
-            icon={Plug}
-            title="No connections configured yet."
-            description="Go to Integrations to set up your first connection."
-            action={{ label: 'Open Integrations', href: '/integrations' }}
-          />
-        )}
+                <div className="mt-4 grid grid-cols-2 gap-4 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                  <div>
+                    <p className="text-label">Last Sync</p>
+                    <p className="text-caption t-secondary flex items-center gap-1 mt-0.5" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+                      <Clock size={10} /> {conn.lastSync ? new Date(conn.lastSync).toLocaleString() : "Never"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-label">Schedule</p>
+                    <p className="text-caption t-secondary mt-0.5" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{conn.syncFrequency || "Manual"}</p>
+                  </div>
+                </div>
+
+                {tr && !tr.connected && tr.message && (
+                  <p className="mt-3 text-caption" style={{ color: 'var(--neg)' }}>{tr.message}</p>
+                )}
+                {tr && tr.connected && (
+                  <p className="mt-3 text-caption" style={{ color: 'var(--accent)' }}>Last test: connection successful</p>
+                )}
+              </div>
+            );
+          })}
+          {normalisedConnections.length === 0 && (
+            <EmptyState
+              icon={Plug}
+              title="No connections configured yet."
+              description="Go to Integrations to set up your first connection."
+              action={{ label: 'Open Integrations', href: '/integrations' }}
+            />
+          )}
+        </div>
       </div>
+
+      {/* ── Latency & Volume Analytics — editorial summary strip ───────── */}
+      {normalisedConnections.length > 0 && (
+        <section>
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-label" style={{ fontSize: '12px' }}>Fleet Analytics</h2>
+            <div className="flex-1 h-px" style={{ background: 'var(--border-card)' }} />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Total Connections", value: normalisedConnections.length, icon: Wifi },
+              { label: "Connected", value: connectedCount, icon: CheckCircle2 },
+              { label: "Errors", value: errorCount, icon: XCircle },
+              { label: "Circuits Open", value: circuitsOpen, icon: ShieldAlert },
+            ].map((card) => (
+              <div key={card.label} className="rounded-xl p-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)", boxShadow: 'var(--shadow-card)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <card.icon size={14} className="t-muted" />
+                  <span className="text-label">{card.label}</span>
+                </div>
+                <p
+                  className="font-bold t-primary leading-none"
+                  style={{ fontFamily: "'Space Mono', ui-monospace, monospace", fontSize: '28px', letterSpacing: '-0.02em' }}
+                >
+                  {card.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

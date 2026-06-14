@@ -10,7 +10,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PageHeader } from '@/components/ui/page-header';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiError } from '@/lib/api';
 import type { SupportTicket, SupportTicketCategory, SupportTicketPriority } from '@/lib/api';
@@ -122,73 +121,143 @@ export function SupportPage() {
     }
   };
 
-  return (
-    <div className="p-5 max-w-5xl mx-auto space-y-5">
-      <PageHeader
-        eyebrow="Support · Tickets"
-        title="Support"
-        dek="File a ticket and track our response. For urgent outages, escalate via your CSM."
-        actions={
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }}
-            data-testid="support-new-ticket-btn"
-          >
-            <Plus size={14} />
-            New ticket
-          </Button>
-        }
-      />
+  const openCount = tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed').length;
 
-      {loading ? (
-        <Card>
-          <div className="flex items-center justify-center py-10 t-muted text-sm gap-2">
-            <Loader2 size={16} className="animate-spin" />
-            Loading tickets…
-          </div>
-        </Card>
-      ) : tickets.length === 0 ? (
-        <Card>
-          <div className="text-center py-10">
-            <LifeBuoy size={28} className="mx-auto t-muted mb-3" />
-            <p className="text-sm t-secondary">You have no support tickets yet.</p>
-            <p className="text-xs t-muted mt-1">Open one whenever something blocks you.</p>
-            <Button className="mt-4" variant="secondary" size="sm" onClick={() => setShowForm(true)}>
-              <Plus size={14} />
-              New ticket
-            </Button>
-          </div>
-        </Card>
-      ) : (
-        <div className="space-y-2" data-testid="support-ticket-list">
-          {tickets.map((t) => (
-            <Link
-              key={t.id}
-              to={`/support-tickets/${t.id}`}
-              className="block"
-              data-testid="support-ticket-row"
+  return (
+    <div className="p-5 lg:p-8 max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-8 lg:gap-12">
+        {/* ── Main column ───────────────────────────────────────────── */}
+        <div className="min-w-0">
+          {/* 01. Masthead */}
+          <header className="mb-8">
+            <p className="text-label flex items-center gap-2">
+              <span className="t-accent">01.</span>
+              <span>How can we help?</span>
+            </p>
+            <h1 className="text-display t-primary mt-3">Support</h1>
+            <p className="text-body-sm t-muted mt-2 max-w-2xl">
+              File a ticket and track our response. For urgent outages, escalate via your CSM.
+            </p>
+
+            {/* Search-bar-styled action rail (mockup hero band) */}
+            <Card
+              variant="prominent"
+              className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
             >
-              <Card hover>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold t-primary truncate">{t.subject}</h3>
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <LifeBuoy size={20} className="t-accent shrink-0" aria-hidden />
+                <p className="text-sm t-secondary truncate">
+                  Describe an issue and our team will respond shortly.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }}
+                data-testid="support-new-ticket-btn"
+              >
+                <Plus size={14} />
+                New ticket
+              </Button>
+            </Card>
+          </header>
+
+          {/* 02. Your tickets */}
+          <p className="text-label flex items-center gap-2 mb-4">
+            <span className="t-accent">02.</span>
+            <span>Your tickets</span>
+          </p>
+
+          {loading ? (
+            <Card>
+              <div className="flex items-center justify-center py-10 t-muted text-sm gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                Loading tickets…
+              </div>
+            </Card>
+          ) : tickets.length === 0 ? (
+            <Card>
+              <div className="text-center py-12">
+                <LifeBuoy size={28} className="mx-auto t-muted mb-3" />
+                <p className="text-sm t-secondary">You have no support tickets yet.</p>
+                <p className="text-xs t-muted mt-1">Open one whenever something blocks you.</p>
+                <Button className="mt-4" variant="secondary" size="sm" onClick={() => setShowForm(true)}>
+                  <Plus size={14} />
+                  New ticket
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="support-ticket-list">
+              {tickets.map((t) => (
+                <Link
+                  key={t.id}
+                  to={`/support-tickets/${t.id}`}
+                  className="block group"
+                  data-testid="support-ticket-row"
+                >
+                  <Card hover className="h-full flex flex-col">
+                    <div className="flex items-center gap-2 flex-wrap mb-3">
                       <Badge variant={STATUS_VARIANT[t.status] ?? 'default'}>{t.status.replace('_', ' ')}</Badge>
                       <Badge variant={PRIORITY_VARIANT[t.priority] ?? 'default'}>{t.priority}</Badge>
                       <Badge variant="default">{t.category.replace('_', ' ')}</Badge>
                     </div>
-                    <p className="text-xs t-muted mt-1 line-clamp-2">{t.body}</p>
-                  </div>
-                  <div className="text-caption t-muted whitespace-nowrap">
-                    {new Date(t.created_at).toLocaleDateString()}
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
+                    <h3 className="text-sm font-semibold t-primary group-hover:t-accent transition-colors">
+                      {t.subject}
+                    </h3>
+                    <p className="text-xs t-muted mt-1.5 line-clamp-2 flex-1">{t.body}</p>
+                    <div className="text-label mt-4 pt-3 border-t border-theme">
+                      {new Date(t.created_at).toLocaleDateString()}
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ── Side rail ─────────────────────────────────────────────── */}
+        <aside className="space-y-6">
+          {/* 03. Overview */}
+          <div>
+            <p className="text-label flex items-center gap-2 mb-3">
+              <span className="t-accent">03.</span>
+              <span>Overview</span>
+            </p>
+            <Card variant="prominent" className="space-y-4">
+              <div className="flex items-baseline justify-between">
+                <span className="text-caption t-muted">Total tickets</span>
+                <span className="font-mono text-2xl font-bold t-primary tabular-nums">{tickets.length}</span>
+              </div>
+              <div className="flex items-baseline justify-between pt-3 border-t border-theme">
+                <span className="text-caption t-muted">Open</span>
+                <span className="font-mono text-2xl font-bold t-primary tabular-nums">{openCount}</span>
+              </div>
+            </Card>
+          </div>
+
+          {/* 04. Status */}
+          <div>
+            <p className="text-label flex items-center gap-2 mb-3">
+              <span className="t-accent">04.</span>
+              <span>Status</span>
+            </p>
+            <Card variant="prominent">
+              <div className="flex items-center gap-2.5">
+                <span
+                  aria-hidden
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: 'var(--rag-healthy)' }}
+                />
+                <span className="text-sm font-medium t-primary">Support online</span>
+              </div>
+              <p className="text-xs t-muted mt-2">
+                For urgent outages, escalate via your CSM.
+              </p>
+            </Card>
+          </div>
+        </aside>
+      </div>
 
       {showForm && (
         <div

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { api, ApiError } from "@/lib/api";
@@ -223,83 +222,113 @@ export function TenantManagementPage() {
 
   if (selectedTenant) {
     return (
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedTenant(null)}>
+      <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">
+        {/* Editorial masthead — mono eyebrow, display name, plan + status */}
+        <header>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedTenant(null)} className="mb-5 -ml-2">
             <ArrowLeft size={16} className="mr-2" />
             Back to List
           </Button>
-          <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">Tenant Details</h1>
-        </div>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-label mb-2">Tenant Management · Detail</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-display t-primary leading-tight">{selectedTenant.name}</h1>
+                {selectedTenant.plan && (
+                  <span className="pill pill-accent capitalize">{selectedTenant.plan} Plan</span>
+                )}
+              </div>
+              <p className="text-label mt-2 normal-case tracking-normal" style={{ letterSpacing: 0 }}>{selectedTenant.slug}</p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className={selectedTenant.is_deleted ? 'pill pill-danger' : 'pill pill-success'}>
+                <span
+                  aria-hidden
+                  className="inline-block w-1.5 h-1.5 rounded-full"
+                  style={{ background: 'currentColor' }}
+                />
+                {selectedTenant.is_deleted ? 'Deleted' : 'Healthy'}
+              </span>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleExport(selectedTenant.id, selectedTenant.slug)}
+                disabled={!!actionLoading}
+              >
+                <Download size={14} className="mr-2" />
+                Export Data
+              </Button>
+            </div>
+          </div>
+        </header>
 
         {actionLoading === selectedTenant.id && (
-          <div className="p-3 border border-[var(--border-card)] rounded-md flex items-center gap-3" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="p-3 border border-[var(--border-card)] rounded-lg flex items-center gap-3" style={{ background: 'var(--bg-secondary)' }}>
             <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
             <span className="text-sm t-muted">Loading...</span>
           </div>
         )}
 
+        {/* Hero metrics — big mono numbers, mono data labels */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+          {[
+            { label: 'Users', value: selectedTenant.data.users.toLocaleString(), icon: Users },
+            { label: 'Runs', value: selectedTenant.data.runs.toLocaleString(), icon: Activity },
+            { label: 'Metrics', value: selectedTenant.data.metrics.toLocaleString(), icon: TrendingUp },
+            { label: 'Risks', value: selectedTenant.data.risks.toLocaleString(), icon: AlertTriangle },
+          ].map(({ label, value, icon: Icon }) => (
+            <Card key={label}>
+              <div className="p-6">
+                <p className="text-5xl font-bold t-primary tracking-tight leading-none font-mono tabular-nums">{value}</p>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <Icon size={13} className="t-muted" />
+                  <span className="text-label">{label}</span>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
         {/* Tenant Info Card */}
         <Card>
-          <div className="p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <h2 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">{selectedTenant.name}</h2>
-                  <Badge variant={selectedTenant.is_deleted ? 'default' : 'info'}>
-                    {selectedTenant.is_deleted ? 'Deleted' : 'Active'}
-                  </Badge>
-                </div>
-                <p className="text-sm t-muted">Slug: {selectedTenant.slug}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleExport(selectedTenant.id, selectedTenant.slug)}
-                  disabled={!!actionLoading}
-                >
-                  <Download size={14} className="mr-2" />
-                  Export Data
-                </Button>
-              </div>
-            </div>
+          <div className="p-6 space-y-5">
+            <p className="text-label">Tenant Profile</p>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-3 rounded-md border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Building2 size={14} className="t-muted" />
-                  <span className="text-xs t-muted">Industry</span>
+              <div className="p-4 rounded-lg border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Building2 size={13} className="t-muted" />
+                  <span className="text-label">Industry</span>
                 </div>
-                <p className="text-sm font-medium t-primary">{selectedTenant.industry || 'N/A'}</p>
+                <p className="text-headline-sm t-primary">{selectedTenant.industry || 'N/A'}</p>
               </div>
-              <div className="p-3 rounded-md border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Shield size={14} className="t-muted" />
-                  <span className="text-xs t-muted">Plan</span>
+              <div className="p-4 rounded-lg border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield size={13} className="t-muted" />
+                  <span className="text-label">Plan</span>
                 </div>
-                <p className="text-sm font-medium t-primary capitalize">{selectedTenant.plan || 'N/A'}</p>
+                <p className="text-headline-sm t-primary capitalize">{selectedTenant.plan || 'N/A'}</p>
               </div>
-              <div className="p-3 rounded-md border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <HardDrive size={14} className="t-muted" />
-                  <span className="text-xs t-muted">Deployment</span>
+              <div className="p-4 rounded-lg border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <HardDrive size={13} className="t-muted" />
+                  <span className="text-label">Deployment</span>
                 </div>
-                <p className="text-sm font-medium t-primary capitalize">{selectedTenant.deployment_model || 'N/A'}</p>
+                <p className="text-headline-sm t-primary capitalize">{selectedTenant.deployment_model || 'N/A'}</p>
               </div>
-              <div className="p-3 rounded-md border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Calendar size={14} className="t-muted" />
-                  <span className="text-xs t-muted">Created</span>
+              <div className="p-4 rounded-lg border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar size={13} className="t-muted" />
+                  <span className="text-label">Created</span>
                 </div>
-                <p className="text-sm font-medium t-primary">
+                <p className="text-headline-sm t-primary">
                   {format(new Date(selectedTenant.created_at), 'MMM d, yyyy')}
                 </p>
               </div>
             </div>
 
             {selectedTenant.is_deleted && (
-              <div className="p-4 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'var(--neg)' }}>
+              <div className="p-4 rounded-lg border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'var(--neg)' }}>
                 <div className="flex items-start gap-3">
                   <AlertTriangle size={20} style={{ color: 'var(--neg)' }} className="flex-shrink-0 mt-0.5" />
                   <div>
@@ -318,10 +347,10 @@ export function TenantManagementPage() {
         {/* Data Statistics */}
         <Card>
           <div className="p-6">
-            <h3 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
-              <Database size={18} className="text-accent" />
-              Data Statistics
-            </h3>
+            <div className="flex items-center gap-2 mb-5">
+              <Database size={14} className="text-accent" />
+              <p className="text-label" style={{ color: 'var(--accent)' }}>Data Statistics</p>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { label: 'Users', value: selectedTenant.data.users, icon: Users },
@@ -333,12 +362,12 @@ export function TenantManagementPage() {
                 { label: 'Health Scores', value: selectedTenant.data.healthScores, icon: CheckCircle },
                 { label: 'Briefings', value: selectedTenant.data.briefings, icon: FileJson },
               ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="p-4 rounded-md border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Icon size={16} className="t-muted" />
-                    <span className="text-xs t-muted">{label}</span>
-                  </div>
+                <div key={label} className="p-4 rounded-lg border border-[var(--border-card)]" style={{ background: 'var(--bg-secondary)' }}>
                   <p className="text-headline-xl font-bold t-primary tracking-tight leading-tight font-mono tabular-nums">{value.toLocaleString()}</p>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <Icon size={13} className="t-muted" />
+                    <span className="text-label">{label}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -348,10 +377,10 @@ export function TenantManagementPage() {
         {/* Actions */}
         <Card>
           <div className="p-6">
-            <h3 className="text-lg font-semibold t-primary mb-4 flex items-center gap-2">
-              <Shield size={18} className="text-accent" />
-              Administrative Actions
-            </h3>
+            <div className="flex items-center gap-2 mb-5">
+              <Shield size={14} className="text-accent" />
+              <p className="text-label" style={{ color: 'var(--accent)' }}>Administrative Actions</p>
+            </div>
             <div className="flex flex-wrap gap-3">
               {!selectedTenant.is_deleted ? (
                 <Button
@@ -417,65 +446,65 @@ export function TenantManagementPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
       <PageHeader
         eyebrow="Tenants · Management"
         title="Tenant Management"
         dek="Superadmin-only tenant administration"
       />
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      {/* Hero metrics — big mono numbers anchored by mono data labels */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
         <Card>
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Building2 size={16} className="t-muted" />
-              <span className="text-xs t-muted">Total</span>
+          <div className="p-6">
+            <p className="text-4xl font-bold t-primary tracking-tight leading-none font-mono tabular-nums">{stats.total}</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <Building2 size={13} className="t-muted" />
+              <span className="text-label">Total</span>
             </div>
-            <p className="text-headline-xl font-bold t-primary tracking-tight leading-tight font-mono tabular-nums">{stats.total}</p>
           </div>
         </Card>
         <Card>
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle size={16} className="text-accent" />
-              <span className="text-xs t-muted">Active</span>
+          <div className="p-6">
+            <p className="text-4xl font-bold text-accent tabular-nums font-mono tracking-tight leading-none">{stats.active}</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <CheckCircle size={13} className="text-accent" />
+              <span className="text-label">Active</span>
             </div>
-            <p className="text-headline-lg font-bold text-accent tabular-nums font-mono">{stats.active}</p>
           </div>
         </Card>
         <Card>
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <XCircle size={16} style={{ color: 'var(--neg)' }} />
-              <span className="text-xs t-muted">Deleted</span>
+          <div className="p-6">
+            <p className="text-4xl font-bold tabular-nums font-mono tracking-tight leading-none" style={{ color: 'var(--neg)' }}>{stats.deleted}</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <XCircle size={13} style={{ color: 'var(--neg)' }} />
+              <span className="text-label">Deleted</span>
             </div>
-            <p className="text-headline-lg font-bold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>{stats.deleted}</p>
           </div>
         </Card>
         <Card>
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity size={16} className="t-muted" />
-              <span className="text-xs t-muted">Total Runs</span>
+          <div className="p-6">
+            <p className="text-4xl font-bold t-primary tabular-nums font-mono tracking-tight leading-none">{stats.totalRuns.toLocaleString()}</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <Activity size={13} className="t-muted" />
+              <span className="text-label">Total Runs</span>
             </div>
-            <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{stats.totalRuns.toLocaleString()}</p>
           </div>
         </Card>
         <Card>
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Users size={16} className="t-muted" />
-              <span className="text-xs t-muted">Total Users</span>
+          <div className="p-6">
+            <p className="text-4xl font-bold t-primary tabular-nums font-mono tracking-tight leading-none">{stats.totalUsers.toLocaleString()}</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <Users size={13} className="t-muted" />
+              <span className="text-label">Total Users</span>
             </div>
-            <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{stats.totalUsers.toLocaleString()}</p>
           </div>
         </Card>
       </div>
 
       {/* Filters */}
       <Card>
-        <div className="p-4 flex flex-col sm:flex-row gap-3">
+        <div className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="flex-1 relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
             <input
@@ -483,7 +512,7 @@ export function TenantManagementPage() {
               placeholder="Search tenants..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[var(--border-card)] rounded-md text-sm t-primary placeholder:t-muted focus:outline-none focus:border-[var(--accent)]"
+              className="w-full pl-10 pr-4 py-2.5 border border-[var(--border-card)] rounded-lg text-sm t-primary placeholder:t-muted focus:outline-none focus:border-[var(--accent)]"
               style={{ background: 'var(--bg-secondary)' }}
             />
           </div>
@@ -538,13 +567,13 @@ export function TenantManagementPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[var(--border-card)]">
-                  <th className="text-left p-4 text-xs font-medium t-muted uppercase">Tenant</th>
-                  <th className="text-left p-4 text-xs font-medium t-muted uppercase">Plan</th>
-                  <th className="text-left p-4 text-xs font-medium t-muted uppercase">Status</th>
-                  <th className="text-center p-4 text-xs font-medium t-muted uppercase">Runs</th>
-                  <th className="text-center p-4 text-xs font-medium t-muted uppercase">Users</th>
-                  <th className="text-left p-4 text-xs font-medium t-muted uppercase">Created</th>
-                  <th className="text-right p-4 text-xs font-medium t-muted uppercase">Actions</th>
+                  <th className="text-left p-4"><span className="text-label">Tenant</span></th>
+                  <th className="text-left p-4"><span className="text-label">Plan</span></th>
+                  <th className="text-left p-4"><span className="text-label">Status</span></th>
+                  <th className="text-center p-4"><span className="text-label">Runs</span></th>
+                  <th className="text-center p-4"><span className="text-label">Users</span></th>
+                  <th className="text-left p-4"><span className="text-label">Created</span></th>
+                  <th className="text-right p-4"><span className="text-label">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -564,22 +593,20 @@ export function TenantManagementPage() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <Badge variant="info" className="text-xs capitalize">{tenant.plan || 'N/A'}</Badge>
+                        <span className="pill pill-accent capitalize">{tenant.plan || 'N/A'}</span>
                       </td>
                       <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          {tenant.is_deleted ? (
-                            <Badge variant="default" className="text-xs">
-                              <XCircle size={10} className="mr-1" />
-                              Deleted
-                            </Badge>
-                          ) : (
-                            <Badge variant="success" className="text-xs">
-                              <CheckCircle size={10} className="mr-1" />
-                              Active
-                            </Badge>
-                          )}
-                        </div>
+                        {tenant.is_deleted ? (
+                          <span className="pill pill-danger">
+                            <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
+                            Deleted
+                          </span>
+                        ) : (
+                          <span className="pill pill-success">
+                            <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
+                            Healthy
+                          </span>
+                        )}
                       </td>
                       <td className="p-4 text-center text-sm t-secondary font-mono tabular-nums">{tenant.data.runs.toLocaleString()}</td>
                       <td className="p-4 text-center text-sm t-secondary font-mono tabular-nums">{tenant.data.users.toLocaleString()}</td>

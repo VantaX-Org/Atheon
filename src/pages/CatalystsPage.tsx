@@ -1142,41 +1142,57 @@ export function CatalystsPage() {
   const avgTrust = clusters.length > 0
    ? clusters.reduce((s, c) => s + (Number(c.trustScore) || 0), 0) / clusters.length
    : 0;
+  // Pipeline health reads off exceptions awaiting review: clear ⇒ healthy,
+  // any open exception ⇒ watch. This is presentation of existing data only.
+  const healthStatus = exceptionCount > 0 ? 'watch' : 'healthy';
+  const healthLabel = exceptionCount > 0 ? 'Needs Review' : 'Stable';
   return (
-   <div className="card-hero p-7 md:p-8" data-testid="catalysts-hero">
-    <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+   <div className="card-hero px-7 py-8 md:px-9 md:py-9" data-testid="catalysts-hero">
+    {/* Masthead row — system-health pill rides top-right per mockup */}
+    <div className="flex items-center justify-end mb-6">
+     <StatusPill status={healthStatus} label={<><span className="hero-eyebrow mr-1.5" style={{ color: 'inherit' }}>System Health</span>{healthLabel}</>} density="dot" size="sm" />
+    </div>
+    {/* Three-up pipeline ledger — big number, mono eyebrow beside it,
+        supporting sub-label below. Mirrors the approved mockup layout. */}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
      <div className="min-w-0">
-      <p className="hero-eyebrow flex items-center gap-2 mb-3">
-       <Bot size={11} aria-hidden="true" />
-       Autonomous Execution · Lifetime
+      <div className="flex items-baseline gap-2.5 flex-wrap">
+       <p className="text-hero t-primary tabular-nums font-mono leading-none">
+        <Numeric value={totalTasks} compact size="lg" />
+       </p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Completed</p>
+      </div>
+      <p className="text-body-sm t-muted mt-2">
+       <strong className="t-secondary font-semibold">{activeCount} active</strong> catalyst{activeCount === 1 ? '' : 's'} running
       </p>
-      <p className="text-hero t-primary mb-1.5 tabular-nums font-mono">
-       <Numeric value={totalTasks} compact size="lg" />
-      </p>
-      <p className="text-body-sm t-muted">
-       Tasks completed by your catalysts —{' '}
-       <strong className="t-secondary font-semibold">{activeCount} active</strong>
-       {exceptionCount > 0 && (
-        <>{' '}·{' '}
+     </div>
+     <div className="min-w-0">
+      <div className="flex items-baseline gap-2.5 flex-wrap">
+       <p className="text-hero t-primary tabular-nums font-mono leading-none">
+        <Numeric value={actions.length} compact size="lg" />
+       </p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Actions</p>
+      </div>
+      <p className="text-body-sm t-muted mt-2">
+       {exceptionCount > 0 ? (
+        <>
          <strong className="font-semibold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>
           {exceptionCount} exception{exceptionCount === 1 ? '' : 's'}
-         </strong>{' '}awaiting review</>
+         </strong>{' '}awaiting review
+        </>
+       ) : (
+        <>logged across the pipeline</>
        )}
       </p>
      </div>
-     <div className="flex items-center gap-5 flex-shrink-0">
-      <div className="text-right">
-       <p className="hero-eyebrow mb-1">Actions logged</p>
-       <p className="text-headline-lg font-semibold t-primary tabular-nums font-mono">
-        <Numeric value={actions.length} compact size="md" />
+     <div className="min-w-0">
+      <div className="flex items-baseline gap-2.5 flex-wrap">
+       <p className="text-hero tabular-nums font-mono leading-none" style={{ color: avgTrust >= 80 ? 'var(--positive)' : 'var(--text-primary)' }}>
+        {avgTrust.toFixed(0)}<span className="text-headline-lg font-semibold">%</span>
        </p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Avg Trust</p>
       </div>
-      <div className="text-right">
-       <p className="hero-eyebrow mb-1">Avg trust</p>
-       <p className="text-headline-lg font-semibold tabular-nums font-mono" style={{ color: avgTrust >= 80 ? 'var(--positive)' : 'var(--text-primary)' }}>
-        {avgTrust.toFixed(0)}<span className="text-caption font-normal">%</span>
-       </p>
-      </div>
+      <p className="text-body-sm t-muted mt-2">mean trust score across clusters</p>
      </div>
     </div>
    </div>
@@ -1295,20 +1311,15 @@ export function CatalystsPage() {
  const TierIcon = tier.icon;
  return (
  <Card key={cluster.id} hover className="hover:-translate-y-px transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]">
- <div className="flex items-start justify-between">
- <div className="flex items-center gap-3">
- <div className="w-10 h-10 rounded-md bg-accent/10 flex items-center justify-center">
- <Bot className="w-5 h-5 text-accent" />
- </div>
- <div>
- <h3 className="text-base font-semibold t-primary">{cluster.name}</h3>
- <div className="flex items-center gap-2 mt-0.5">
+ {/* Card header — title + autonomy tier on the left, RAG status pill on
+     the right. Domain rides below as the mono "data voice" eyebrow per
+     the approved pipeline-card mockup. */}
+ <div className="flex items-start justify-between gap-3">
+ <div className="min-w-0">
+ <h3 className="text-base font-semibold t-primary leading-tight">{cluster.name}</h3>
+ <div className="flex items-center gap-2 mt-1.5">
  <TierIcon size={12} className={tier.color} />
  <span className={`text-xs ${tier.color}`}>{tier.label}</span>
- {cluster.domain && (
- <Badge variant="outline" size="sm">{cluster.domain}</Badge>
- )}
- </div>
  </div>
  </div>
  <StatusPill
@@ -1318,46 +1329,44 @@ export function CatalystsPage() {
  />
  </div>
 
- <p className="text-body-sm t-secondary mt-3">{cluster.description}</p>
+ {cluster.domain && (
+ <p className="hero-eyebrow mt-3" style={{ color: 'var(--text-muted)' }}>{cluster.domain}</p>
+ )}
+ <p className="text-body-sm t-secondary mt-1.5">{cluster.description}</p>
 
- {/* Hero number + supporting tiles — Stitch cluster-card pattern.
-     We surface tasksCompleted as the headline metric and feed agents
-     / success rate / trust score into a compact strip below it. */}
- <div className="mt-4 grid grid-cols-3 gap-3">
-  <div className="col-span-1 p-3 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
-   <span className="text-caption uppercase tracking-wider t-muted">Tasks Completed</span>
-   <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">
+ {/* Trust-score progress bar with mono percent label — the inline
+     completion gauge from the mockup card. */}
+ <div className="mt-4">
+ <div className="flex items-center justify-between mb-1.5">
+ <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Trust Score</span>
+ <span className="text-caption font-mono font-semibold t-secondary tabular-nums">{Number(cluster.trustScore).toFixed(0)}%</span>
+ </div>
+ <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : cluster.trustScore >= 80 ? 'blue' : 'amber'} size="sm" />
+ </div>
+
+ {/* Hero metric anchors the card bottom-left; supporting agents / success
+     ride alongside as a compact mono ledger. */}
+ <div className="mt-4 flex items-end justify-between gap-3">
+  <div className="min-w-0">
+   <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Tasks Completed</span>
+   <p className="text-display t-primary tabular-nums font-mono mt-1 leading-none">
     <Numeric value={cluster.tasksCompleted} compact size="lg" />
    </p>
   </div>
-  <div className="col-span-2 grid grid-cols-3 gap-2">
-   <div className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/20 transition-colors active:scale-[0.97]">
-    <span className="text-caption uppercase tracking-wider t-muted">Agents</span>
-    <p className="text-body font-bold t-primary tabular-nums font-mono mt-1">
+  <div className="flex items-center gap-4 flex-shrink-0 text-right">
+   <div>
+    <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Agents</span>
+    <p className="text-body font-semibold t-primary tabular-nums font-mono mt-1">
      <Numeric value={cluster.agentCount} size="md" />
     </p>
    </div>
-   <div className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 transition-colors active:scale-[0.97]">
-    <span className="text-caption uppercase tracking-wider t-muted">Success</span>
-    <p className="text-body font-bold tabular-nums font-mono mt-1" style={{ color: 'var(--positive)' }}>
-     {Number(cluster.successRate).toFixed(1)}<span className="text-caption">%</span>
-    </p>
-   </div>
-   <div className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--line-strong)] transition-colors active:scale-[0.97]">
-    <span className="text-caption uppercase tracking-wider t-muted">Trust</span>
-    <p className="text-body font-bold t-primary tabular-nums font-mono mt-1">
-     {Number(cluster.trustScore).toFixed(1)}<span className="text-caption">%</span>
+   <div>
+    <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Success</span>
+    <p className="text-body font-semibold tabular-nums font-mono mt-1" style={{ color: 'var(--positive)' }}>
+     {Number(cluster.successRate).toFixed(0)}<span className="text-caption">%</span>
     </p>
    </div>
   </div>
- </div>
-
- <div className="mt-3">
- <div className="flex items-center justify-between text-caption t-muted mb-1">
- <span>Trust Score</span>
- <span>{Number(cluster.trustScore).toFixed(1)}%</span>
- </div>
- <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : cluster.trustScore >= 80 ? 'blue' : 'amber'} size="sm" />
  </div>
 
  {/* Sub-Catalysts */}

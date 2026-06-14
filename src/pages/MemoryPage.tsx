@@ -198,6 +198,15 @@ export function MemoryPage() {
     { id: "search", label: "GraphRAG Search" },
   ];
 
+  // Confidence → RAG status (presentation only; healthy/watch/risk pill in the
+  // mockup's "data voice"). Mirrors the existing confidence rendering.
+  const confidenceRag = (confidence?: number): { label: string; color: string } | null => {
+    if (typeof confidence !== "number") return null;
+    if (confidence >= 0.85) return { label: "Healthy", color: "var(--rag-healthy)" };
+    if (confidence >= 0.6) return { label: "Watch", color: "var(--rag-watch)" };
+    return { label: "At Risk", color: "var(--rag-risk)" };
+  };
+
   return (
     <div className="space-y-6">
       <SharedSavingsStrip />
@@ -210,7 +219,7 @@ export function MemoryPage() {
         header={
           <div className="space-y-4">
             <PageHeader
-              eyebrow="Memory · Knowledge Graph"
+              eyebrow="Memory Store"
               title="Memory"
               dek="Knowledge Graph & Semantic Retrieval"
             />
@@ -228,21 +237,29 @@ export function MemoryPage() {
       >
       {/* Graph Tab — Stitch "Knowledge Graph" force-directed canvas */}
       {activeTab === "graph" && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
             <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 t-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Highlight entities by name..."
-                className="w-full pl-9 pr-3 py-2 rounded-md text-body-sm t-primary"
+                className="w-full pl-10 pr-3 py-2.5 rounded-lg text-body-sm t-primary"
                 style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
               />
             </div>
-            <span className="text-caption t-muted font-mono">
-              {entities.length} entities · {relationships.length} relationships
-            </span>
+            <div className="flex items-center gap-5 flex-shrink-0">
+              <div className="flex flex-col items-end leading-none">
+                <span className="font-mono text-lg font-bold t-primary tabular-nums">{entities.length}</span>
+                <span className="text-label mt-1">Entities</span>
+              </div>
+              <div className="h-8 w-px" style={{ background: "var(--border-card)" }} aria-hidden="true" />
+              <div className="flex flex-col items-end leading-none">
+                <span className="font-mono text-lg font-bold t-primary tabular-nums">{relationships.length}</span>
+                <span className="text-label mt-1">Relationships</span>
+              </div>
+            </div>
           </div>
           <KnowledgeGraphViz
             entities={entities}
@@ -255,22 +272,28 @@ export function MemoryPage() {
 
       {/* Entities Tab */}
       {activeTab === "entities" && (
-        <div className="space-y-4">
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-label">Stored Facts</p>
+            <span className="font-mono text-caption t-muted tabular-nums">
+              {filteredEntities.length} of {entities.length}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 t-muted" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter entities by name..."
-                className="w-full pl-9 pr-3 py-2 rounded-md text-sm t-primary"
+                placeholder="Search facts by name..."
+                className="w-full pl-10 pr-3 py-2.5 rounded-lg text-sm t-primary"
                 style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
               />
             </div>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="px-3 py-2 rounded-md text-sm t-secondary"
+              className="px-3 py-2.5 rounded-lg text-sm t-secondary"
               style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
               title="Filter by entity type"
             >
@@ -288,7 +311,7 @@ export function MemoryPage() {
                 setFormType("Organization");
                 setFormError(null);
               }}
-              className="px-3 py-2 rounded-md text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-1.5"
+              className="px-3.5 py-2.5 rounded-lg text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-1.5"
               style={{ background: "var(--accent)" }}
               title="Create a new entity"
             >
@@ -296,23 +319,50 @@ export function MemoryPage() {
             </button>
           </div>
 
-          <div className="space-y-2">
-            {filteredEntities.map((ent) => (
-              <div
-                key={ent.id}
-                className="flex items-center justify-between p-3 rounded-md"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium t-primary truncate">{ent.name}</p>
-                  <p className="text-xs t-muted">
-                    {ent.type}
-                    {ent.source ? ` - ${ent.source}` : ""}
-                    {typeof ent.confidence === "number" ? ` | ${Math.round(ent.confidence * 100)}% confidence` : ""}
-                  </p>
+          <div className="space-y-3">
+            {filteredEntities.map((ent) => {
+              const rag = confidenceRag(ent.confidence);
+              return (
+                <div
+                  key={ent.id}
+                  className="rounded-xl p-5"
+                  style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-label">{ent.type}</span>
+                    {rag ? (
+                      <span
+                        className="text-label flex items-center gap-1.5"
+                        style={{ color: rag.color }}
+                      >
+                        {rag.label}
+                        <span
+                          className="inline-block h-1.5 w-1.5 rounded-full"
+                          style={{ background: rag.color }}
+                          aria-hidden="true"
+                        />
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-lg font-semibold t-primary leading-snug">{ent.name}</p>
+                  <div
+                    className="mt-4 pt-3 flex items-center justify-between gap-3"
+                    style={{ borderTop: "1px solid var(--border-card)" }}
+                  >
+                    <span className="font-mono text-caption t-muted truncate">
+                      <span className="t-muted">SOURCE:</span>{" "}
+                      <span className="t-secondary">{ent.source || "—"}</span>
+                    </span>
+                    {typeof ent.confidence === "number" ? (
+                      <span className="font-mono text-caption t-muted tabular-nums flex-shrink-0">
+                        <span className="t-muted">CONFIDENCE:</span>{" "}
+                        <span className="t-secondary">{Math.round(ent.confidence * 100)}%</span>
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {filteredEntities.length === 0 && (
               <p className="text-sm t-muted text-center py-8">
                 {entities.length === 0
@@ -377,40 +427,43 @@ export function MemoryPage() {
 
       {/* Relationships Tab */}
       {activeTab === "relationships" && (
-        <div className="space-y-4">
-          <button
-            onClick={() => {
-              setShowRelForm(true);
-              setRelFormError(null);
-            }}
-            className="px-3 py-2 rounded-md text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-1.5"
-            style={{ background: "var(--accent)" }}
-            title="Create a new relationship"
-            disabled={entities.length < 2}
-          >
-            <Link2 size={14} /> Add Relationship
-          </button>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-label">Linked Facts</p>
+            <button
+              onClick={() => {
+                setShowRelForm(true);
+                setRelFormError(null);
+              }}
+              className="px-3.5 py-2.5 rounded-lg text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-1.5"
+              style={{ background: "var(--accent)" }}
+              title="Create a new relationship"
+              disabled={entities.length < 2}
+            >
+              <Link2 size={14} /> Add Relationship
+            </button>
+          </div>
           {entities.length < 2 && (
             <p className="text-xs t-muted">Add at least two entities first to create a relationship.</p>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {relationships.map((rel) => (
               <div
                 key={rel.id}
-                className="flex items-center gap-3 p-3 rounded-md"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}
+                className="flex items-center gap-4 rounded-xl p-4"
+                style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}
               >
-                <span className="text-sm t-primary truncate" title={rel.sourceName}>
+                <span className="flex-1 text-sm font-medium t-primary truncate" title={rel.sourceName}>
                   {rel.sourceName || rel.sourceId}
                 </span>
                 <span
-                  className="text-xs px-2 py-0.5 rounded-sm t-muted flex-shrink-0"
-                  style={{ background: "var(--bg-secondary)" }}
+                  className="font-mono text-label flex-shrink-0 px-2.5 py-1 rounded-md"
+                  style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
                 >
                   {rel.type}
                 </span>
-                <span className="text-sm t-primary truncate" title={rel.targetName}>
+                <span className="flex-1 text-sm font-medium t-primary truncate text-right" title={rel.targetName}>
                   {rel.targetName || rel.targetId}
                 </span>
               </div>
@@ -499,12 +552,12 @@ export function MemoryPage() {
 
       {/* GraphRAG Search Tab */}
       {activeTab === "search" && (
-        <div className="rounded-md p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold t-primary flex items-center gap-2">
-              <Sparkles size={14} style={{ color: "var(--accent)" }} /> Knowledge Graph Query
-            </h2>
-            <p className="text-xs t-muted">
+        <div className="rounded-xl p-7 space-y-6" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+          <div className="space-y-2">
+            <p className="text-label flex items-center gap-2">
+              <Sparkles size={13} style={{ color: "var(--accent)" }} /> Knowledge Graph Query
+            </p>
+            <p className="text-sm t-secondary">
               Ask a natural-language question; results combine vector similarity and keyword matches over your graph.
             </p>
           </div>
@@ -517,13 +570,13 @@ export function MemoryPage() {
                 if (e.key === "Enter") handleSearch();
               }}
               placeholder="e.g. Which processes depend on SAP?"
-              className="flex-1 px-3 py-2 rounded-md text-sm t-primary"
+              className="flex-1 px-3.5 py-2.5 rounded-lg text-sm t-primary"
               style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
             />
             <button
               onClick={handleSearch}
               disabled={searching || !searchQuery.trim()}
-              className="px-4 py-2 rounded-md text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-2"
+              className="px-4 py-2.5 rounded-lg text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-2"
               style={{ background: "var(--accent)", opacity: searching || !searchQuery.trim() ? 0.6 : 1 }}
             >
               {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
@@ -532,37 +585,37 @@ export function MemoryPage() {
           </div>
 
           {searchError && (
-            <div className="flex items-center gap-2 p-3 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'rgb(var(--neg-rgb) / 0.25)' }}>
+            <div className="flex items-center gap-2 p-3 rounded-lg border" style={{ background: 'rgb(var(--neg-rgb) / 0.08)', borderColor: 'rgb(var(--neg-rgb) / 0.25)' }}>
               <AlertTriangle size={14} className="flex-shrink-0" style={{ color: 'var(--neg)' }} />
               <p className="text-xs flex-1" style={{ color: 'var(--neg)' }}>{searchError}</p>
             </div>
           )}
 
           {searchResult && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {searchResult.answer && (
                 <div
-                  className="p-4 rounded-md text-sm t-secondary whitespace-pre-wrap"
-                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+                  className="p-5 rounded-lg text-sm t-secondary leading-relaxed whitespace-pre-wrap"
+                  style={{ background: "var(--accent-subtle)", border: "1px solid var(--border-card)" }}
                 >
                   {searchResult.answer}
                 </div>
               )}
 
               <div>
-                <p className="text-label mb-2">
-                  Direct matches ({searchResult.directMatches?.length || 0})
+                <p className="text-label mb-3">
+                  Direct Matches ({searchResult.directMatches?.length || 0})
                 </p>
                 {searchResult.directMatches && searchResult.directMatches.length > 0 ? (
-                  <div className="space-y-1.5">
+                  <div className="grid gap-2.5 sm:grid-cols-2">
                     {searchResult.directMatches.map((e) => (
                       <div
                         key={e.id}
-                        className="flex items-center justify-between p-2 rounded-md"
-                        style={{ background: "var(--bg-secondary)" }}
+                        className="rounded-lg p-3.5"
+                        style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
                       >
-                        <span className="text-xs t-primary">{e.name}</span>
-                        <span className="text-caption t-muted">{e.type}</span>
+                        <span className="text-label">{e.type}</span>
+                        <p className="mt-1.5 text-sm font-medium t-primary truncate">{e.name}</p>
                       </div>
                     ))}
                   </div>
@@ -573,18 +626,18 @@ export function MemoryPage() {
 
               {searchResult.relatedEntities && searchResult.relatedEntities.length > 0 && (
                 <div>
-                  <p className="text-label mb-2">
-                    Related ({searchResult.relatedEntities.length})
+                  <p className="text-label mb-3">
+                    Linked Related Facts ({searchResult.relatedEntities.length})
                   </p>
-                  <div className="space-y-1.5">
+                  <div className="grid gap-2.5 sm:grid-cols-2">
                     {searchResult.relatedEntities.map((e) => (
                       <div
                         key={e.id}
-                        className="flex items-center justify-between p-2 rounded-md"
-                        style={{ background: "var(--bg-secondary)" }}
+                        className="rounded-lg p-3.5"
+                        style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
                       >
-                        <span className="text-xs t-primary">{e.name}</span>
-                        <span className="text-caption t-muted">{e.type}</span>
+                        <span className="text-label">{e.type}</span>
+                        <p className="mt-1.5 text-sm font-medium t-primary truncate">{e.name}</p>
                       </div>
                     ))}
                   </div>

@@ -21,7 +21,6 @@ import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
-import { Progress } from "@/components/ui/progress";
 import {
   CheckCircle2, ArrowRight, Loader2, Rocket, Sparkles,
 } from "lucide-react";
@@ -104,32 +103,60 @@ export function OnboardingWizardPage(): JSX.Element {
   }
 
   const currentStep = steps.find(s => !s.completed);
+  const currentIndex = currentStep ? steps.findIndex(s => s.id === currentStep.id) : steps.length - 1;
+  const activeStep = currentStep ?? steps[steps.length - 1];
+  const activeTarget = activeStep ? STEP_TARGETS[activeStep.id] : undefined;
+
+  // Progress ring geometry — editorial header gauge mirroring the mockup.
+  const ringSize = 56;
+  const ringStroke = 6;
+  const ringR = (ringSize - ringStroke) / 2;
+  const ringC = 2 * Math.PI * ringR;
 
   return (
-    <div className="min-h-screen p-6 max-w-3xl mx-auto space-y-6" data-testid="onboarding-wizard">
-      <div>
-        <div className="flex items-center gap-2 mb-2">
+    <div className="min-h-screen p-6 max-w-6xl mx-auto" data-testid="onboarding-wizard">
+      {/* Header strip — eyebrow + progress gauge */}
+      <header className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-3">
           <Rocket className="w-5 h-5 text-accent" />
-          <h1 className="text-headline-xl font-bold t-primary tracking-tight leading-tight">Welcome to Atheon</h1>
+          <div>
+            <p className="text-label">Onboarding Wizard</p>
+            <h1 className="text-headline-lg font-bold t-primary tracking-tight leading-tight">Welcome to Atheon</h1>
+          </div>
         </div>
-        <p className="text-sm t-muted">
-          A short guided setup. Each step is a real first-week milestone — the same checklist your
-          customer success engineer is tracking. You can leave and come back any time.
-        </p>
-      </div>
 
-      {/* Progress bar */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium t-primary">{completedCount} of {totalSteps} complete</span>
-          <span className="text-xs t-muted">{progressPct}%</span>
-        </div>
-        <Progress value={progressPct} color={allComplete ? 'emerald' : 'amber'} size="md" />
-      </Card>
+        <Card className="flex items-center gap-4 px-5 py-3">
+          <div className="text-right">
+            <p className="text-label mb-0.5">Progress</p>
+            <p className="text-headline-xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>
+              {progressPct}%
+            </p>
+            <p className="text-caption t-muted font-mono mt-1">{completedCount} of {totalSteps} complete</p>
+          </div>
+          <div className="relative" style={{ width: ringSize, height: ringSize }} aria-hidden="true">
+            <svg width={ringSize} height={ringSize} className="-rotate-90">
+              <circle
+                cx={ringSize / 2} cy={ringSize / 2} r={ringR}
+                fill="none" stroke="var(--border-card)" strokeWidth={ringStroke}
+              />
+              <circle
+                cx={ringSize / 2} cy={ringSize / 2} r={ringR}
+                fill="none"
+                stroke={allComplete ? 'var(--rag-healthy)' : 'var(--accent)'}
+                strokeWidth={ringStroke}
+                strokeLinecap="round"
+                strokeDasharray={ringC}
+                strokeDashoffset={ringC * (1 - progressPct / 100)}
+                className="transition-all duration-500 ease-out"
+              />
+            </svg>
+          </div>
+        </Card>
+      </header>
 
-      {/* Celebration — Stitch sage success card */}
+      {/* Celebration — sage success card spanning full width */}
       {allComplete && (
-        <Card className="p-7 text-center" style={{ background: 'rgba(163, 177, 138, 0.08)', border: '1px solid rgba(163, 177, 138, 0.30)' }}>
+        <Card className="p-7 text-center mb-8" style={{ background: 'rgb(var(--rag-healthy-rgb) / 0.08)', border: '1px solid rgb(var(--rag-healthy-rgb) / 0.30)' }}>
           <div
             className="w-14 h-14 rounded-md flex items-center justify-center mx-auto mb-4 border"
             style={{
@@ -151,90 +178,167 @@ export function OnboardingWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step list */}
-      <div className="space-y-3">
-        {steps.map((step, i) => {
-          const target = STEP_TARGETS[step.id];
-          const isCurrent = !step.completed && currentStep?.id === step.id;
-          return (
-            <Card
-              key={step.id}
-              className={`p-4 transition-colors ${isCurrent ? 'border-accent/40' : ''}`}
-              style={isCurrent ? { background: 'rgba(163, 177, 138, 0.06)', borderLeft: '3px solid var(--accent)' } : undefined}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  {/* Step number bubble matches Stitch onboarding: completed
-                      steps get a sage check; pending steps show the step
-                      number; current step pulses subtly. */}
-                  {step.completed ? (
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center border"
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+        {/* Left rail — editorial step ladder */}
+        <nav aria-label="Onboarding steps" className="space-y-3">
+          {steps.map((step, i) => {
+            const isCurrent = !step.completed && currentStep?.id === step.id;
+            const numLabel = String(i + 1).padStart(2, '0');
+            return (
+              <Card
+                key={step.id}
+                className={`p-4 transition-colors ${isCurrent ? '' : 'border-card'}`}
+                style={
+                  isCurrent
+                    ? { background: 'var(--accent)', borderColor: 'var(--accent)' }
+                    : undefined
+                }
+                aria-current={isCurrent ? 'step' : undefined}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p
+                      className="text-headline-xl font-bold leading-none"
                       style={{
-                        background: 'rgb(var(--accent-rgb) / 0.12)',
-                        borderColor: 'rgb(var(--accent-rgb) / 0.30)',
+                        fontFamily: "'Space Mono', ui-monospace, monospace",
+                        color: isCurrent ? '#fff' : step.completed ? 'var(--text-primary)' : 'var(--text-muted)',
+                        opacity: !isCurrent && !step.completed ? 0.6 : 1,
                       }}
                     >
-                      <CheckCircle2 className="w-4 h-4 text-accent" />
-                    </div>
-                  ) : (
+                      {numLabel}
+                    </p>
+                    <p
+                      className="text-label mt-2"
+                      style={isCurrent ? { color: 'rgba(255,255,255,0.85)' } : undefined}
+                    >
+                      {step.label}
+                    </p>
+                  </div>
+                  {step.completed && !isCurrent && (
                     <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center border text-caption font-mono font-bold ${
-                        isCurrent ? 'animate-pulse' : ''
-                      }`}
+                      className="w-6 h-6 rounded-full flex items-center justify-center border flex-shrink-0"
                       style={{
-                        background: isCurrent ? 'rgba(163, 177, 138, 0.15)' : 'var(--bg-secondary)',
-                        borderColor: isCurrent ? 'var(--accent)' : 'var(--border-card)',
-                        color: isCurrent ? 'var(--accent)' : 'var(--text-muted)',
+                        background: 'rgb(var(--rag-healthy-rgb) / 0.12)',
+                        borderColor: 'rgb(var(--rag-healthy-rgb) / 0.30)',
                       }}
                     >
-                      {i + 1}
+                      <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--rag-healthy)' }} />
                     </div>
+                  )}
+                  {step.completed && isCurrent && (
+                    <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: '#fff' }} />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-caption t-muted font-mono uppercase tracking-widest">Step {i + 1} / {totalSteps}</span>
-                    {isCurrent && <StatusPill status="in_progress" label="Current" size="sm" />}
-                    {step.completed && step.completedAt && (
-                      <span className="text-caption t-muted">
-                        Done {new Date(step.completedAt).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-sm font-semibold t-primary mt-1">{step.label}</h3>
-                  <p className="text-xs t-muted mt-1">{step.description}</p>
-                  {!step.completed && target && (
-                    <div className="flex flex-wrap items-center gap-2 mt-3">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => navigate(target.route)}
-                      >
-                        {target.cta} <ArrowRight size={12} className="ml-1" />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => markComplete(step.id)}
-                        disabled={completing === step.id}
-                      >
-                        {completing === step.id ? (
-                          <><Loader2 size={12} className="mr-1 animate-spin" /> Marking…</>
-                        ) : (
-                          <>I&apos;ve done this</>
-                        )}
-                      </Button>
-                    </div>
+              </Card>
+            );
+          })}
+        </nav>
+
+        {/* Right panel — active step, presented large + editorial */}
+        <Card className="p-8">
+          {activeStep && (
+            <div className="flex flex-col h-full">
+              <div className="flex items-start justify-between gap-6 mb-6">
+                <div className="min-w-0">
+                  {activeStep.completed && (
+                    <StatusPill status="completed" label="Completed" size="sm" />
                   )}
+                  {!activeStep.completed && (
+                    <StatusPill status="in_progress" label="Current step" size="sm" />
+                  )}
+                  <h2 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mt-3">
+                    {activeStep.label}
+                  </h2>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p
+                    className="text-bold leading-none"
+                    style={{
+                      fontFamily: "'Space Mono', ui-monospace, monospace",
+                      fontSize: '56px',
+                      fontWeight: 700,
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    {currentIndex + 1}
+                  </p>
+                  <p className="text-label mt-1">
+                    Step {String(currentIndex + 1).padStart(2, '0')} of {String(totalSteps).padStart(2, '0')}
+                  </p>
                 </div>
               </div>
-            </Card>
-          );
-        })}
+
+              <p className="text-body t-muted leading-relaxed max-w-xl">
+                {activeStep.description}
+              </p>
+
+              {activeStep.completed && activeStep.completedAt && (
+                <p className="text-caption t-muted font-mono mt-3">
+                  Completed {new Date(activeStep.completedAt).toLocaleDateString()}
+                </p>
+              )}
+
+              {/* Remaining-step roster — light cards, mono labels */}
+              {steps.some(s => !s.completed) && (
+                <div className="mt-8">
+                  <p className="text-label mb-3">Remaining milestones</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {steps.filter(s => !s.completed).map((step) => {
+                      const idx = steps.findIndex(s => s.id === step.id);
+                      const isActive = step.id === activeStep.id;
+                      return (
+                        <div
+                          key={step.id}
+                          className="rounded-md p-3 border flex items-center gap-3"
+                          style={{
+                            background: isActive ? 'var(--accent-subtle)' : 'var(--bg-secondary)',
+                            borderColor: isActive ? 'rgb(var(--accent-rgb) / 0.30)' : 'var(--border-card)',
+                          }}
+                        >
+                          <span
+                            className="text-caption font-mono font-bold flex-shrink-0 w-7 text-center"
+                            style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}
+                          >
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+                          <span className={`text-body-sm truncate ${isActive ? 't-primary font-semibold' : 't-muted'}`}>
+                            {step.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Action bar — primary CTA + mark-done, mockup footer */}
+              {!activeStep.completed && activeTarget && (
+                <div className="flex flex-wrap items-center gap-3 mt-auto pt-8">
+                  <Button
+                    variant="primary"
+                    onClick={() => navigate(activeTarget.route)}
+                  >
+                    {activeTarget.cta} <ArrowRight size={14} className="ml-1" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => markComplete(activeStep.id)}
+                    disabled={completing === activeStep.id}
+                  >
+                    {completing === activeStep.id ? (
+                      <><Loader2 size={14} className="mr-1 animate-spin" /> Marking…</>
+                    ) : (
+                      <>I&apos;ve done this</>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
       </div>
 
-      <div className="text-caption t-muted text-center pt-2">
+      <div className="text-caption t-muted text-center pt-8">
         Need help? File a ticket at <a href="/support-tickets" className="text-accent hover:underline">/support-tickets</a> or
         ping your CS engineer in your shared Slack channel.
       </div>

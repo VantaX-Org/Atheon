@@ -394,10 +394,10 @@ export function IAMPage() {
          window: 'Snapshot at load',
        };
        return (
-     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-       <Card>
+     <div className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-md overflow-hidden border" style={{ borderColor: 'var(--border-card)', background: 'var(--border-card)' }}>
+       <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
-           <span className="text-xs t-secondary">Active Users</span>
+           <span className="text-label">Active Users</span>
            <MetricSource source={{
              ...baseProvenance,
              label: 'Active users',
@@ -408,12 +408,12 @@ export function IAMPage() {
              notes: [{ label: 'Suspended', value: `${suspendedUsers} accounts` }],
            }} />
          </div>
-         <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{activeUsers}</p>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{activeUsers}</p>
          <span className="text-caption t-muted">{suspendedUsers} suspended</span>
-       </Card>
-       <Card>
+       </div>
+       <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
-           <span className="text-xs t-secondary">User Roles</span>
+           <span className="text-label">User Roles</span>
            <MetricSource source={{
              ...baseProvenance,
              label: 'Roles in use',
@@ -424,12 +424,12 @@ export function IAMPage() {
              notes: [{ label: 'Total defined', value: roles.length }],
            }} />
          </div>
-         <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{rolesInUse}</p>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{rolesInUse}</p>
          <span className="text-caption t-muted">{roles.length} total defined</span>
-       </Card>
-       <Card>
+       </div>
+       <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
-           <span className="text-xs t-secondary">Active Policies</span>
+           <span className="text-label">Active Policies</span>
            <MetricSource source={{
              ...baseProvenance,
              label: 'Active access policies',
@@ -440,12 +440,12 @@ export function IAMPage() {
              notes: [{ label: 'Total rules', value: totalRules }],
            }} />
          </div>
-         <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{policies.length}</p>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{policies.length}</p>
          <span className="text-caption t-muted">{totalRules} rules</span>
-       </Card>
-       <Card>
+       </div>
+       <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
-           <span className="text-xs t-secondary">SSO Providers</span>
+           <span className="text-label">SSO Providers</span>
            <MetricSource source={{
              ...baseProvenance,
              label: 'SSO providers enabled',
@@ -456,9 +456,9 @@ export function IAMPage() {
              notes: [{ label: 'Configured (incl. disabled)', value: ssoConfigs.length }],
            }} />
          </div>
-         <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{enabledSso}</p>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{enabledSso}</p>
          <span className="text-caption t-muted">{ssoConfigs.length} configured</span>
-       </Card>
+       </div>
      </div>
        );
      })()}
@@ -471,10 +471,18 @@ export function IAMPage() {
          <div className="space-y-3">
            {isAdmin && users.length > 0 && (
              <div className="flex items-center justify-between px-1">
-               <span className="text-xs t-muted">{users.length} user{users.length !== 1 ? 's' : ''} in this tenant</span>
+               <span className="text-label">{users.length} user{users.length !== 1 ? 's' : ''} in this tenant</span>
                <Button variant="primary" size="sm" onClick={() => { setInviteResult(null); setInviteForm({ name: '', email: '', role: assignableRoles[0] || 'analyst', sendWelcome: true }); setShowInviteUser(true); }}>
                  <UserPlus size={12} /> {isSuperAdmin ? 'Add Admin' : 'Add User'}
                </Button>
+             </div>
+           )}
+
+           {users.length > 0 && (
+             <div className="hidden md:grid grid-cols-[minmax(0,2.2fr)_1fr_1.4fr] gap-4 px-5 pb-1">
+               <span className="text-label">Name</span>
+               <span className="text-label">Role / Access Status</span>
+               <span className="text-label text-right">Actions</span>
              </div>
            )}
 
@@ -495,23 +503,27 @@ export function IAMPage() {
              const isEditing = editingUserId === user.id;
              const manageable = canManageUser(user);
 
+             const initials = (user.name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
              return (
                <Card key={user.id}>
-                 <div className="flex items-center justify-between flex-wrap gap-2">
+                 <div className="flex items-center justify-between flex-wrap gap-3">
                    <div className="flex items-center gap-3 min-w-0">
-                     <div className={`w-9 h-9 rounded-md flex items-center justify-center ${user.status === 'active' ? 'bg-accent/10' : ''}`} style={user.status !== 'active' ? { background: 'rgb(var(--neg-rgb) / 0.1)' } : undefined}>
-                       {user.status === 'active' ? (
-                         <UserCheck className="w-4 h-4 text-accent" />
-                       ) : (
-                         <Ban className="w-4 h-4" style={{ color: 'var(--neg)' }} />
-                       )}
+                     <div
+                       className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-mono text-xs font-bold"
+                       style={user.status === 'active'
+                         ? { background: 'var(--accent-subtle)', color: 'var(--accent)' }
+                         : { background: 'rgb(var(--neg-rgb) / 0.1)', color: 'var(--neg)' }}
+                       aria-hidden
+                     >
+                       {user.status === 'active' ? initials : <Ban className="w-4 h-4" />}
                      </div>
                      <div className="min-w-0">
                        <div className="flex items-center gap-2">
                          <p className="text-sm font-medium t-primary truncate">{user.name}</p>
                          {isSelf && <Badge variant="outline" size="sm">You</Badge>}
                        </div>
-                       <p className="text-xs t-muted truncate">{user.email}</p>
+                       <p className="text-xs t-muted truncate font-mono">{user.email}</p>
                        <div className="flex items-center gap-2 mt-0.5">
                          {user.lastLogin ? (
                            <span className="text-caption t-muted">Last login: {new Date(user.lastLogin).toLocaleDateString()}</span>
@@ -556,11 +568,11 @@ export function IAMPage() {
                        </>
                      ) : (
                        <>
-                         <Badge variant={user.status === 'active' ? 'success' : 'danger'} size="sm">
-                           {user.status || 'active'}
-                         </Badge>
-                         <Badge variant={user.role?.includes('admin') ? 'danger' : user.role?.includes('exec') ? 'warning' : 'info'} size="sm">
+                         <Badge variant={user.role?.includes('admin') ? 'danger' : user.role?.includes('exec') ? 'warning' : 'info'} size="sm" className="uppercase tracking-wide font-mono">
                            {user.role || 'viewer'}
+                         </Badge>
+                         <Badge variant={user.status === 'active' ? 'success' : 'danger'} size="sm" className="uppercase tracking-wide font-mono">
+                           {user.status || 'active'}
                          </Badge>
 
                          {manageable && (
@@ -641,8 +653,8 @@ export function IAMPage() {
                      </div>
                    </div>
                    <div className="flex items-center gap-3">
-                     <Badge variant="outline" size="sm">Level {role.level}</Badge>
-                     <Badge variant="info" size="sm">{role.userCount} user{role.userCount !== 1 ? 's' : ''}</Badge>
+                     <Badge variant="outline" size="sm" className="font-mono uppercase tracking-wide">Level {role.level}</Badge>
+                     <Badge variant="info" size="sm" className="font-mono uppercase tracking-wide">{role.userCount} user{role.userCount !== 1 ? 's' : ''}</Badge>
                      {isExpanded ? <ChevronUp size={16} className="t-muted" /> : <ChevronDown size={16} className="t-muted" />}
                    </div>
                  </div>
@@ -711,12 +723,12 @@ export function IAMPage() {
                  <div>
                    <div className="flex items-center gap-2">
                      <h3 className="text-base font-semibold t-primary">{policy.name}</h3>
-                     <Badge variant={policy.type === 'rbac' ? 'info' : 'warning'} size="sm">{policy.type.toUpperCase()}</Badge>
+                     <Badge variant={policy.type === 'rbac' ? 'info' : 'warning'} size="sm" className="font-mono tracking-wide">{policy.type.toUpperCase()}</Badge>
                    </div>
                    <p className="text-xs t-muted mt-1">{policy.description}</p>
                  </div>
                  <div className="flex items-center gap-2">
-                   <Badge variant="outline">{Array.isArray(policy.rules) ? policy.rules.length : 0} rules</Badge>
+                   <Badge variant="outline" className="font-mono uppercase tracking-wide">{Array.isArray(policy.rules) ? policy.rules.length : 0} rules</Badge>
                    {isAdmin && (
                      <Button variant="secondary" size="sm" onClick={async () => {
                        if (!confirm(`Delete policy "${policy.name}"?`)) return;
@@ -789,24 +801,24 @@ export function IAMPage() {
                      <span className="text-xs t-muted">{sso.domainHint}</span>
                    </div>
                  </div>
-                 <Badge variant={sso.enabled ? 'success' : 'default'}>{sso.enabled ? 'Active' : 'Disabled'}</Badge>
+                 <Badge variant={sso.enabled ? 'success' : 'default'} className="font-mono uppercase tracking-wide">{sso.enabled ? 'Active' : 'Disabled'}</Badge>
                </div>
                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
                  <div className="p-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                   <span className="text-caption t-muted">Client ID</span>
-                   <p className="text-xs t-secondary font-mono truncate">{sso.clientId}</p>
+                   <span className="text-label">Client ID</span>
+                   <p className="text-xs t-secondary font-mono truncate mt-0.5">{sso.clientId}</p>
                  </div>
                  <div className="p-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                   <span className="text-caption t-muted">Issuer URL</span>
-                   <p className="text-xs t-secondary font-mono truncate">{sso.issuerUrl}</p>
+                   <span className="text-label">Issuer URL</span>
+                   <p className="text-xs t-secondary font-mono truncate mt-0.5">{sso.issuerUrl}</p>
                  </div>
                  <div className="p-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                   <span className="text-caption t-muted">Auto-Provision</span>
-                   <p className="text-xs t-secondary">{sso.autoProvision ? 'Yes' : 'No'}</p>
+                   <span className="text-label">Auto-Provision</span>
+                   <p className="text-xs t-secondary mt-0.5">{sso.autoProvision ? 'Yes' : 'No'}</p>
                  </div>
                  <div className="p-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                   <span className="text-caption t-muted">Default Role</span>
-                   <p className="text-xs t-secondary">{sso.defaultRole}</p>
+                   <span className="text-label">Default Role</span>
+                   <p className="text-xs t-secondary mt-0.5">{sso.defaultRole}</p>
                  </div>
                </div>
              </Card>

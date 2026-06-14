@@ -165,6 +165,33 @@ function ExecutiveBriefHero({
   const delta = healthHistory?.delta ?? briefing?.healthDelta ?? null;
   const deltaPositive = (delta ?? 0) > 0;
 
+  // Health dimensions surfaced as the editorial metric-card grid (worst first).
+  // Derived from the same `health.dimensions` payload the parent renders — no
+  // new data, presentation-only.
+  const heroDimensions = health?.dimensions
+    ? Object.entries(health.dimensions)
+        .map(([key, val]) => ({
+          key,
+          name: key.charAt(0).toUpperCase() + key.slice(1),
+          score: val.score,
+          trend: (val.trend as string) ?? 'stable',
+          delta: val.delta ?? 0,
+        }))
+        .sort((a, b) => a.score - b.score)
+    : [];
+
+  // RAG band for a 0–100 score: aligns with ScoreRing thresholds.
+  const ragOf = (score: number) =>
+    score >= 80
+      ? { status: 'healthy' as const, label: 'Healthy', color: 'var(--rag-healthy)' }
+      : score >= 60
+        ? { status: 'watch' as const, label: 'Watch', color: 'var(--rag-watch)' }
+        : { status: 'risk' as const, label: 'At Risk', color: 'var(--rag-risk)' };
+
+  const overallRag = ragOf(overall);
+  const overallVerdict =
+    overall >= 80 ? 'Excellent' : overall >= 60 ? 'Stable' : overall > 0 ? 'Action Required' : 'Awaiting Data';
+
   const top3 = [...risks]
     .filter(r => r.severity === 'critical' || r.severity === 'high')
     .sort((a, b) => (b.impactValue || 0) - (a.impactValue || 0))
@@ -174,111 +201,181 @@ function ExecutiveBriefHero({
     ?.slice()
     .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))[0];
 
+  const activeSignals = radarContext?.summary?.activeSignals ?? null;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 stagger" data-testid="apex-brief-hero">
-      {/* Wave H-3: Apex's anchor metric is the Atheon Score — the briefing
-          existed to surface "where are we?". Previous 3-equal-card grid
-          (Score / Risks / Signal) gave them all the same visual rank.
-          Promoted Atheon Score to a .card-hero, span 2 cols, with the
-          score number set in .text-hero (44px tabular-num); risks +
-          signal demoted to 1-col supporting cards. */}
-      <div
-        className="card-hero p-7 md:p-8 md:col-span-2 cursor-pointer hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
-        onClick={() => onJumpToTab('health')}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <p className="hero-eyebrow flex items-center gap-2">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 stagger" data-testid="apex-brief-hero">
+      {/* ── Main column: overall-health hero ring + dimension metric grid ── */}
+      <div className="card-hero p-7 md:p-9">
+        {/* Centerpiece: large overall-health ring, editorial centered. */}
+        <div
+          className="flex flex-col items-center text-center cursor-pointer group"
+          onClick={() => onJumpToTab('health')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onJumpToTab('health'); } }}
+          aria-label="Open Business Health"
+        >
+          <p className="hero-eyebrow flex items-center justify-center gap-2 mb-5">
             <Crown className="w-3 h-3" />
-            Atheon Score · Composite
+            Overall Health
           </p>
-          {delta !== null && (
-            <span className="text-caption font-medium font-mono tnum" style={{ color: deltaPositive ? 'var(--positive)' : (delta ?? 0) < 0 ? 'var(--neg)' : undefined }}>
-              {deltaPositive ? '+' : ''}{delta} pts
+          <div className="relative inline-flex items-center justify-center">
+            <ScoreRing score={Math.round(overall)} size="xl" className="[&_span]:!text-hero [&_span]:!t-primary" />
+            <span
+              className="pointer-events-none absolute inset-0 -m-4 rounded-full blur-2xl opacity-40 -z-10 transition-opacity group-hover:opacity-60"
+              style={{ background: 'radial-gradient(closest-side, rgb(var(--accent-rgb) / 0.35), transparent)' }}
+              aria-hidden="true"
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <span className="text-label uppercase tracking-[0.18em]" style={{ color: overallRag.color }}>
+              {overallVerdict}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-5">
-          <ScoreRing score={overall} size="md" />
-          <div className="flex-1 min-w-0">
-            <div className="text-hero t-primary">{Math.round(overall)}</div>
-            <div className="text-body-sm t-muted mt-1">
-              {overall >= 80 ? 'Strong posture' : overall >= 60 ? 'Mixed posture' : overall > 0 ? 'Action required' : 'Awaiting data'}
-            </div>
-            {histPoints.length >= 2 && (
-              <div className="mt-2"><Sparkline data={histPoints} width={140} height={22} /></div>
+            {delta !== null && (
+              <span
+                className="text-caption font-medium font-mono tnum"
+                style={{ color: deltaPositive ? 'var(--positive)' : (delta ?? 0) < 0 ? 'var(--neg)' : undefined }}
+              >
+                {deltaPositive ? '+' : ''}{delta} pts
+              </span>
             )}
           </div>
+          {histPoints.length >= 2 && (
+            <div className="mt-3"><Sparkline data={histPoints} width={160} height={24} /></div>
+          )}
         </div>
+
+        {/* Dimension metric cards — ring + big score + RAG pill + trend. */}
+        {heroDimensions.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-8">
+            {heroDimensions.map((dim) => {
+              const rag = ragOf(dim.score);
+              return (
+                <div
+                  key={dim.key}
+                  className="flex items-center gap-3 p-4 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
+                >
+                  <ScoreRing score={dim.score} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-label mb-1 truncate">{dim.name}</p>
+                    <p className="text-headline-lg font-bold font-mono tabular-nums t-primary leading-none">{dim.score}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className="inline-flex items-center gap-1 text-caption font-mono uppercase tracking-wider"
+                        style={{ color: rag.color }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: rag.color }} aria-hidden="true" />
+                        {rag.label}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5 text-caption font-mono tnum" style={{ color: dim.delta > 0 ? 'var(--positive)' : dim.delta < 0 ? 'var(--neg)' : 'var(--text-muted)' }}>
+                        {trendIcon(dim.trend, 11)}
+                        {dim.delta > 0 ? '+' : ''}{dim.delta}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 py-6 px-4 mt-6 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+            <Crown className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
+            <p className="text-sm t-muted">No business-health dimensions yet. Run a catalyst to populate.</p>
+          </div>
+        )}
       </div>
 
-      {/* ── Top Risks ── */}
-      <Card className="p-5 cursor-pointer hover:border-[var(--border-card)] hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]" onClick={() => onJumpToTab('risks')}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" style={{ color: 'var(--neg)' }} />
-            <h3 className="text-sm font-semibold t-primary">Top Risks</h3>
-          </div>
-          <span className="text-xs t-muted">{risks.length} active</span>
-        </div>
-        {top3.length > 0 ? (
-          <div className="space-y-2">
-            {top3.map(r => (
-              <div key={r.id} className="flex items-start gap-2 text-xs">
-                <StatusPill status={r.severity} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <div className="t-primary font-medium truncate">{r.title}</div>
-                  {r.impactValue ? (
-                    <div className="t-muted text-caption mt-0.5">
-                      Impact:{' '}
-                      <Numeric
-                        value={r.impactValue}
-                        unit={r.impactUnit === 'currency' ? 'currency' : (r.impactUnit ?? undefined)}
-                        compact
-                        size="sm"
-                        tone="mute"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-xs t-muted py-3">
-            No critical or high risks active.
-            {risks.length === 0 && ' Run an assessment to populate the risk register.'}
-          </div>
-        )}
-      </Card>
+      {/* ── Right rail: Board Intelligence (risks + strategic signal) ── */}
+      <aside className="flex flex-col gap-4" aria-label="Board intelligence">
+        <p className="hero-eyebrow">Board Intelligence</p>
 
-      {/* ── Strategic Signal ── */}
-      <Card className="p-5 cursor-pointer hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]" onClick={() => onJumpToTab('strategic-context')}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Radar className="w-4 h-4 text-accent" />
-            <h3 className="text-sm font-semibold t-primary">Strategic Signal</h3>
+        {/* Critical Alerts summary */}
+        <Card
+          className="p-5 cursor-pointer hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
+          onClick={() => onJumpToTab('risks')}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-label">Critical Alerts</span>
+            <AlertTriangle className="w-4 h-4" style={{ color: 'var(--neg)' }} />
           </div>
-          {radarContext?.summary ? (
-            <span className="text-xs t-muted">{radarContext.summary.activeSignals} active</span>
-          ) : null}
-        </div>
-        {topSignal ? (
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <StatusPill status={topSignal.severity} size="sm" />
-              <span className="text-label">{topSignal.signalType}</span>
+          <p className="text-hero font-mono tabular-nums leading-none" style={{ color: top3.length > 0 ? 'var(--neg)' : 'var(--rag-healthy)' }}>
+            {top3.length}
+          </p>
+          <p className="text-caption t-muted mt-1 font-mono uppercase tracking-wider">
+            {risks.length} open {risks.length === 1 ? 'issue' : 'issues'}
+          </p>
+        </Card>
+
+        {/* Top Risks list */}
+        <Card
+          className="p-5 cursor-pointer hover:border-[var(--border-card)] hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
+          onClick={() => onJumpToTab('risks')}
+        >
+          <p className="text-label mb-3">Top Risks</p>
+          {top3.length > 0 ? (
+            <div className="space-y-3">
+              {top3.map(r => (
+                <div key={r.id} className="flex items-start gap-2 text-xs">
+                  <StatusPill status={r.severity} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="t-primary font-medium truncate">{r.title}</div>
+                    {r.impactValue ? (
+                      <div className="t-muted text-caption mt-0.5">
+                        Impact:{' '}
+                        <Numeric
+                          value={r.impactValue}
+                          unit={r.impactUnit === 'currency' ? 'currency' : (r.impactUnit ?? undefined)}
+                          compact
+                          size="sm"
+                          tone="mute"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="text-sm font-medium t-primary line-clamp-2 mb-1">{topSignal.title}</div>
-            <div className="text-xs t-muted line-clamp-2">{topSignal.description}</div>
+          ) : (
+            <div className="text-xs t-muted py-2">
+              No critical or high risks active.
+              {risks.length === 0 && ' Run an assessment to populate the risk register.'}
+            </div>
+          )}
+        </Card>
+
+        {/* Strategic Signal */}
+        <Card
+          className="p-5 cursor-pointer hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]"
+          onClick={() => onJumpToTab('strategic-context')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-label flex items-center gap-1.5">
+              <Radar className="w-3.5 h-3.5 text-accent" />
+              Strategic Signal
+            </span>
+            {activeSignals !== null ? (
+              <span className="text-caption font-mono t-muted">{activeSignals} active</span>
+            ) : null}
           </div>
-        ) : briefing?.summary ? (
-          <div className="text-xs t-secondary line-clamp-4 leading-relaxed">{briefing.summary}</div>
-        ) : (
-          <div className="text-xs t-muted py-3">
-            No strategic signals captured yet. Add one from the Strategic Context tab to populate this card.
-          </div>
-        )}
-      </Card>
+          {topSignal ? (
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <StatusPill status={topSignal.severity} size="sm" />
+                <span className="text-label">{topSignal.signalType}</span>
+              </div>
+              <div className="text-sm font-medium t-primary line-clamp-2 mb-1">{topSignal.title}</div>
+              <div className="text-xs t-muted line-clamp-2">{topSignal.description}</div>
+            </div>
+          ) : briefing?.summary ? (
+            <div className="text-xs t-secondary line-clamp-4 leading-relaxed">{briefing.summary}</div>
+          ) : (
+            <div className="text-xs t-muted py-2">
+              No strategic signals captured yet. Add one from the Strategic Context tab.
+            </div>
+          )}
+        </Card>
+      </aside>
     </div>
   );
 }

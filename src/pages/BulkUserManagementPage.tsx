@@ -239,24 +239,26 @@ export function BulkUserManagementPage() {
         dek="Import users via CSV and apply bulk actions across your tenant"
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <p className="text-label">Total Users</p>
-          <p className="text-xl font-bold t-primary">{users.length}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Active</p>
-          <p className="text-xl font-bold tabular-nums font-mono" style={{ color: 'var(--positive)' }}>{activeCount}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Suspended</p>
-          <p className="text-xl font-bold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>{suspendedCount}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-label">Imports</p>
-          <p className="text-xl font-bold t-primary">{history.length}</p>
-        </Card>
-      </div>
+      <Card className="p-6 sm:p-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-4">
+          <div className="sm:pr-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{users.length}</p>
+            <p className="text-label mt-2">Total Users</p>
+          </div>
+          <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--positive)' }}>{activeCount}</p>
+            <p className="text-label mt-2">Active</p>
+          </div>
+          <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--neg)' }}>{suspendedCount}</p>
+            <p className="text-label mt-2">Suspended</p>
+          </div>
+          <div className="sm:pl-4">
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{history.length}</p>
+            <p className="text-label mt-2">Imports</p>
+          </div>
+        </div>
+      </Card>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -264,9 +266,15 @@ export function BulkUserManagementPage() {
       <TabPanel id="import" activeTab={activeTab}>
         <Card className="p-6">
           <div className="text-center">
-            <Upload size={32} className="mx-auto text-accent mb-3" />
-            <h3 className="text-sm font-medium t-primary mb-1">Import Users via CSV</h3>
-            <p className="text-xs t-muted mb-4">Columns: <code className="px-1 rounded bg-[var(--bg-secondary)]">email</code>, <code className="px-1 rounded bg-[var(--bg-secondary)]">name</code>, <code className="px-1 rounded bg-[var(--bg-secondary)]">role</code> (optional), <code className="px-1 rounded bg-[var(--bg-secondary)]">permissions</code> (optional)</p>
+            <div
+              className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl"
+              style={{ background: 'var(--accent)' }}
+            >
+              <Upload size={26} style={{ color: 'var(--text-on-accent)' }} />
+            </div>
+            <p className="text-label mb-1">Bulk User Import</p>
+            <h3 className="text-base font-semibold t-primary mb-1">Import Users via CSV</h3>
+            <p className="text-xs t-muted mb-4">Columns: <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">email</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">name</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">role</code> (optional), <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">permissions</code> (optional)</p>
             <div
               className={`border-2 border-dashed rounded-md p-8 mb-4 transition-colors ${dragOver ? 'border-accent bg-accent/5' : 'border-[var(--border-card)] hover:border-accent/50'} active:scale-[0.97]`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -322,12 +330,26 @@ export function BulkUserManagementPage() {
 
           {importResult && (
             <div className="mt-6 space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="p-3"><p className="text-label">Rows</p><p className="text-xl font-bold t-primary">{importResult.total}</p></Card>
-                <Card className="p-3"><p className="text-label">{importResult.dryRun ? 'Valid' : 'Created'}</p><p className="text-xl font-bold tabular-nums font-mono" style={{ color: 'var(--positive)' }}>{importResult.created}</p></Card>
-                <Card className="p-3"><p className="text-label">Skipped</p><p className="text-xl font-bold tabular-nums font-mono" style={{ color: 'var(--warning)' }}>{importResult.skipped.length}</p></Card>
-                <Card className="p-3"><p className="text-label">Errors</p><p className="text-xl font-bold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>{importResult.errors.length}</p></Card>
-              </div>
+              <Card className="p-5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 sm:gap-4">
+                  <div className="sm:pr-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+                    <p className="text-2xl sm:text-3xl font-bold tabular-nums t-primary leading-none">{importResult.total}</p>
+                    <p className="text-label mt-2">Rows</p>
+                  </div>
+                  <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+                    <p className="text-2xl sm:text-3xl font-bold tabular-nums leading-none" style={{ color: 'var(--positive)' }}>{importResult.created}</p>
+                    <p className="text-label mt-2">{importResult.dryRun ? 'Valid' : 'Created'}</p>
+                  </div>
+                  <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
+                    <p className="text-2xl sm:text-3xl font-bold tabular-nums leading-none" style={{ color: 'var(--warning)' }}>{importResult.skipped.length}</p>
+                    <p className="text-label mt-2">Skipped</p>
+                  </div>
+                  <div className="sm:pl-4">
+                    <p className="text-2xl sm:text-3xl font-bold tabular-nums leading-none" style={{ color: 'var(--neg)' }}>{importResult.errors.length}</p>
+                    <p className="text-label mt-2">Errors</p>
+                  </div>
+                </div>
+              </Card>
 
               {importResult.createdUsers.length > 0 && (
                 <Card className="p-4">
@@ -383,11 +405,11 @@ export function BulkUserManagementPage() {
       {/* BULK ACTIONS TAB */}
       <TabPanel id="bulk-actions" activeTab={activeTab}>
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-4 p-3 rounded-md bg-[var(--bg-secondary)]">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 rounded-md" style={{ background: 'var(--accent-subtle)', border: '1px solid rgb(var(--accent-rgb) / 0.16)' }}>
+            <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={allSelected} onChange={toggleAll} className="rounded" />
-              <span className="text-xs t-muted">{selectedCount} of {users.length} selected</span>
-            </div>
+              <span className="text-label" style={{ color: 'var(--accent)' }}>{selectedCount} of {users.length} selected</span>
+            </label>
             <div className="flex items-center gap-2">
               <select
                 value={bulkAction}
@@ -417,19 +439,40 @@ export function BulkUserManagementPage() {
           ) : users.length === 0 ? (
             <EmptyState title="No users in this tenant yet" description="Import a CSV above to get started." />
           ) : (
-            <div className="space-y-1">
-              {users.map((u) => (
-                <div key={u.id} className="flex items-center gap-3 p-3 rounded-md hover:bg-[var(--bg-secondary)] transition-colors active:scale-[0.97]">
-                  <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleOne(u.id)} className="rounded" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium t-primary">{u.name || '(no name)'}</p>
-                      <Badge variant={userStatusColor(u.status)} className="text-caption">{u.status || 'unknown'}</Badge>
-                    </div>
-                    <p className="text-caption t-muted">{u.email} · {u.role || 'viewer'}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
+                    <th className="text-label text-left py-2 pr-3 w-10">Select</th>
+                    <th className="text-label text-left py-2 pr-3">User</th>
+                    <th className="text-label text-left py-2 pr-3 hidden sm:table-cell">Role</th>
+                    <th className="text-label text-left py-2 pr-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr
+                      key={u.id}
+                      className="border-b transition-colors hover:bg-[var(--bg-secondary)]"
+                      style={{ borderColor: 'var(--border-card)' }}
+                    >
+                      <td className="py-3 pr-3 align-middle">
+                        <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleOne(u.id)} className="rounded" />
+                      </td>
+                      <td className="py-3 pr-3 align-middle">
+                        <p className="text-sm font-medium t-primary truncate">{u.name || '(no name)'}</p>
+                        <p className="text-caption t-muted truncate">{u.email}</p>
+                      </td>
+                      <td className="py-3 pr-3 align-middle hidden sm:table-cell">
+                        <span className="text-caption font-mono t-secondary">{u.role || 'viewer'}</span>
+                      </td>
+                      <td className="py-3 pr-3 align-middle">
+                        <Badge variant={userStatusColor(u.status)} className="text-caption">{u.status || 'unknown'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
@@ -449,7 +492,7 @@ export function BulkUserManagementPage() {
                   <div className="flex items-center gap-3">
                     <Play size={16} className="text-accent" />
                     <div>
-                      <p className="text-sm font-medium t-primary">Import {h.id.slice(0, 8)}</p>
+                      <p className="text-sm font-medium t-primary">Import <span className="font-mono">{h.id.slice(0, 8)}</span></p>
                       <p className="text-caption t-muted">
                         {h.row_count} rows · {h.created_count} created · {h.skipped_count} skipped · {h.error_count} errors
                         {h.imported_by ? ` · by ${h.imported_by}` : ''}

@@ -172,48 +172,58 @@ export function MindPage() {
           )}
           {!modelsLoading && !modelsError && models && (
             <>
-              <div className="rounded-md p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                <h2 className="text-sm font-semibold t-primary flex items-center gap-2">
-                  <Cpu size={14} /> Available Model Tiers
-                </h2>
+              <section className="rounded-lg p-6 space-y-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                <div className="flex items-center gap-2">
+                  <Cpu size={13} style={{ color: "var(--accent)" }} />
+                  <h2 className="text-label" style={{ color: "var(--text-muted)" }}>Available Model Tiers</h2>
+                </div>
                 {models.tiers && models.tiers.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {models.tiers.map((tier) => (
-                      <div key={tier.id} className="p-4 rounded-md space-y-2" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium t-primary">{tier.name}</p>
-                          <span className="text-caption font-mono t-muted">{tier.id}</span>
+                      <div key={tier.id} className="relative p-5 rounded-lg space-y-3" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold t-primary leading-tight">{tier.name}</p>
+                          <span className="font-mono text-[10px] tracking-wider px-1.5 py-0.5 rounded" style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}>{tier.id}</span>
                         </div>
-                        <p className="text-xs t-muted">{tier.description}</p>
-                        <div className="flex items-center gap-3 text-caption t-secondary pt-2">
-                          <span className="flex items-center gap-1"><Hash size={10} /> {tier.maxTokens.toLocaleString()} tokens</span>
+                        <p className="text-xs t-secondary leading-relaxed">{tier.description}</p>
+                        <div className="flex items-center gap-4 pt-2 mt-1" style={{ borderTop: "1px solid var(--border-card)" }}>
+                          <span className="flex items-center gap-1.5 pt-2">
+                            <Hash size={11} style={{ color: "var(--text-muted)" }} />
+                            <span className="font-mono text-xs tabular-nums t-primary">{tier.maxTokens.toLocaleString()}</span>
+                            <span className="text-caption t-muted">tok</span>
+                          </span>
                           {typeof tier.avgLatency === "number" && (
-                            <span className="flex items-center gap-1"><Clock size={10} /> ~{tier.avgLatency}ms</span>
+                            <span className="flex items-center gap-1.5 pt-2">
+                              <Clock size={11} style={{ color: "var(--text-muted)" }} />
+                              <span className="font-mono text-xs tabular-nums t-primary">~{tier.avgLatency}</span>
+                              <span className="text-caption t-muted">ms</span>
+                            </span>
                           )}
                         </div>
-                        <p className="text-caption font-mono t-muted pt-1 truncate" title={tier.model}>{tier.model}</p>
+                        <p className="font-mono text-[10px] t-muted truncate" title={tier.model}>{tier.model}</p>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="text-xs t-muted text-center py-8">No model tiers configured.</p>
                 )}
-              </div>
+              </section>
 
-              <div className="rounded-md p-6 space-y-3" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                <h2 className="text-sm font-semibold t-primary flex items-center gap-2">
-                  <Sparkles size={14} /> Industry Adapters
-                </h2>
+              <section className="rounded-lg p-6 space-y-4" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={13} style={{ color: "var(--accent)" }} />
+                  <h2 className="text-label" style={{ color: "var(--text-muted)" }}>Industry Adapters</h2>
+                </div>
                 {models.industryAdapters && models.industryAdapters.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {models.industryAdapters.map((ad) => (
-                      <div key={ad.id} className="flex items-center justify-between p-3 rounded-md" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
-                        <div>
-                          <p className="text-sm font-medium t-primary">{ad.name}</p>
-                          <p className="text-caption t-muted">{ad.metrics?.join(", ") || "No metrics listed"}</p>
+                      <div key={ad.id} className="flex items-center justify-between gap-4 p-4 rounded-lg" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold t-primary">{ad.name}</p>
+                          <p className="font-mono text-[10px] t-muted mt-0.5 truncate">{ad.metrics?.join(" · ") || "No metrics listed"}</p>
                         </div>
-                        <span className="text-caption px-2 py-0.5 rounded-sm flex items-center gap-1" style={{ background: "var(--bg-card)", color: "var(--accent)" }}>
-                          <CheckCircle2 size={10} /> {ad.status}
+                        <span className="pill pill-success shrink-0">
+                          <CheckCircle2 size={11} /> {ad.status}
                         </span>
                       </div>
                     ))}
@@ -221,7 +231,7 @@ export function MindPage() {
                 ) : (
                   <p className="text-xs t-muted text-center py-4">No industry adapters available yet.</p>
                 )}
-              </div>
+              </section>
             </>
           )}
         </div>
@@ -229,16 +239,19 @@ export function MindPage() {
 
       {/* Prompt Playground */}
       {activeTab === "playground" && (
-        <div className="rounded-md p-6 space-y-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-          <h2 className="text-sm font-semibold t-primary">Test Prompts</h2>
+        <div className="rounded-lg p-6 space-y-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+          <div className="flex items-center gap-2">
+            <Play size={13} style={{ color: "var(--accent)" }} />
+            <h2 className="text-label" style={{ color: "var(--text-muted)" }}>Test Prompts</h2>
+          </div>
 
           <div>
-            <label className="text-xs t-muted mb-1.5 block">Model Tier</label>
+            <label className="text-label block mb-2" style={{ color: "var(--text-muted)" }}>Model Tier</label>
             <select
               value={selectedTier}
               onChange={(e) => setSelectedTier(e.target.value)}
-              className="w-full px-3 py-2 rounded-md text-sm t-primary"
-              style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
+              className="w-full px-3 py-2.5 rounded-lg text-sm t-primary"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}
               disabled={modelsLoading || testing}
             >
               {(models?.tiers ?? [{ id: "tier-1", name: "Fast (Tier 1)" }, { id: "tier-2", name: "Standard (Tier 2)" }, { id: "tier-3", name: "Deep (Tier 3)" }]).map((t) => (
@@ -247,14 +260,17 @@ export function MindPage() {
             </select>
           </div>
 
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Enter a prompt to test against the current model tier..."
-            rows={4}
-            className="w-full px-3 py-2 rounded-md text-sm t-primary resize-y"
-            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}
-          />
+          <div>
+            <label className="text-label block mb-2" style={{ color: "var(--text-muted)" }}>Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Enter a prompt to test against the current model tier..."
+              rows={4}
+              className="w-full px-3 py-2.5 rounded-lg text-sm t-primary resize-y"
+              style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}
+            />
+          </div>
 
           {playgroundError && (
             <div className="flex items-center gap-2 p-3 rounded-md border" style={{ background: 'rgb(var(--warning-rgb, 154 107 31) / 0.08)', borderColor: 'rgb(var(--warning-rgb, 154 107 31) / 0.25)' }}>
@@ -267,8 +283,8 @@ export function MindPage() {
           <button
             onClick={testPrompt}
             disabled={testing || !prompt.trim()}
-            className="px-4 py-2 rounded-md text-sm font-medium text-[var(--text-on-accent)] flex items-center gap-2"
-            style={{ background: "var(--accent)", opacity: testing || !prompt.trim() ? 0.6 : 1 }}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--text-on-accent)] flex items-center gap-2"
+            style={{ background: "var(--accent)", opacity: testing || !prompt.trim() ? 0.55 : 1 }}
             title="Run prompt against the selected tier"
           >
             {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
@@ -276,16 +292,28 @@ export function MindPage() {
           </button>
 
           {queryResult && (
-            <div className="space-y-3">
-              <div className="p-4 rounded-md text-sm t-secondary whitespace-pre-wrap" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-card)" }}>
+            <div className="space-y-4 pt-1">
+              <div className="flex items-center gap-2">
+                <Sparkles size={13} style={{ color: "var(--accent)" }} />
+                <h3 className="text-label" style={{ color: "var(--text-muted)" }}>Response</h3>
+              </div>
+              <div className="p-5 rounded-lg text-sm t-secondary leading-relaxed whitespace-pre-wrap" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
                 {queryResult.response}
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-caption t-muted">
-                <span className="flex items-center gap-1"><Cpu size={11} /> {queryResult.model}</span>
-                <span className="flex items-center gap-1"><Clock size={11} /> {queryResult.latencyMs}ms</span>
-                <span className="flex items-center gap-1"><Hash size={11} /> {queryResult.tokensIn + queryResult.tokensOut} tokens</span>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                  <Cpu size={11} style={{ color: "var(--text-muted)" }} /><span className="font-mono text-[11px] t-primary">{queryResult.model}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                  <Clock size={11} style={{ color: "var(--text-muted)" }} /><span className="font-mono text-[11px] tabular-nums t-primary">{queryResult.latencyMs}ms</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                  <Hash size={11} style={{ color: "var(--text-muted)" }} /><span className="font-mono text-[11px] tabular-nums t-primary">{queryResult.tokensIn + queryResult.tokensOut}</span><span className="text-caption t-muted">tok</span>
+                </span>
                 {queryResult.citations && queryResult.citations.length > 0 && (
-                  <span>{queryResult.citations.length} citation{queryResult.citations.length === 1 ? "" : "s"}</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                    <span className="font-mono text-[11px] tabular-nums t-primary">{queryResult.citations.length}</span><span className="text-caption t-muted">citation{queryResult.citations.length === 1 ? "" : "s"}</span>
+                  </span>
                 )}
               </div>
             </div>
@@ -310,39 +338,42 @@ export function MindPage() {
           )}
           {!statsLoading && !statsError && stats && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-md p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                  <p className="text-label">Total Queries</p>
-                  <p className="text-2xl font-semibold font-mono tabular-nums t-primary mt-1">{stats.totalQueries.toLocaleString()}</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="rounded-lg p-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                  <p className="text-label" style={{ color: "var(--text-muted)" }}>Total Queries</p>
+                  <p className="text-3xl font-bold font-mono tabular-nums t-primary mt-2">{stats.totalQueries.toLocaleString()}</p>
                 </div>
-                <div className="rounded-md p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                  <p className="text-label">Avg Latency</p>
-                  <p className="text-2xl font-semibold font-mono tabular-nums t-primary mt-1">{stats.avgLatencyMs}ms</p>
+                <div className="rounded-lg p-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                  <p className="text-label" style={{ color: "var(--text-muted)" }}>Avg Latency</p>
+                  <p className="text-3xl font-bold font-mono tabular-nums t-primary mt-2">{stats.avgLatencyMs}<span className="text-lg t-muted ml-0.5">ms</span></p>
                 </div>
-                <div className="rounded-md p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                  <p className="text-label">Total Tokens</p>
-                  <p className="text-2xl font-semibold font-mono tabular-nums t-primary mt-1">{stats.totalTokens.toLocaleString()}</p>
+                <div className="rounded-lg p-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                  <p className="text-label" style={{ color: "var(--text-muted)" }}>Total Tokens</p>
+                  <p className="text-3xl font-bold font-mono tabular-nums t-primary mt-2">{stats.totalTokens.toLocaleString()}</p>
                 </div>
               </div>
 
-              <div className="rounded-md p-6 space-y-3" style={{ background: "var(--bg-card)", border: "1px solid var(--border-card)" }}>
-                <h2 className="text-sm font-semibold t-primary">Usage by Tier</h2>
+              <section className="rounded-lg p-6 space-y-4" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)" }}>
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={13} style={{ color: "var(--accent)" }} />
+                  <h2 className="text-label" style={{ color: "var(--text-muted)" }}>Usage by Tier</h2>
+                </div>
                 {stats.tierBreakdown && stats.tierBreakdown.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {stats.tierBreakdown.map((row) => (
-                      <div key={row.tier} className="flex items-center justify-between p-3 rounded-md" style={{ background: "var(--bg-secondary)" }}>
-                        <div>
-                          <p className="text-xs font-medium t-primary">{row.tier}</p>
-                          <p className="text-caption t-muted">{row.count} queries</p>
+                      <div key={row.tier} className="flex items-center justify-between gap-4 p-4 rounded-lg" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}>
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs t-primary tracking-wide">{row.tier}</p>
+                          <p className="text-caption t-muted mt-0.5"><span className="font-mono tabular-nums">{row.count}</span> queries</p>
                         </div>
-                        <span className="text-xs font-mono t-secondary">{Math.round(row.avg_latency)}ms avg</span>
+                        <span className="font-mono text-xs tabular-nums t-secondary shrink-0">{Math.round(row.avg_latency)}ms avg</span>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="text-xs t-muted text-center py-8">No usage data yet. Run prompts in the Playground tab to see stats here.</p>
                 )}
-              </div>
+              </section>
             </>
           )}
         </div>

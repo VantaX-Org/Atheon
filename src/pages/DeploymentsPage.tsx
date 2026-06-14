@@ -101,7 +101,7 @@ export function DeploymentsPage() {
       {view !== 'overview' && (
         <button
           onClick={() => { setView('overview'); setSelectedId(null); setSelectedDeployment(null); }}
-          className="px-3 py-1.5 text-sm rounded-md transition-colors"
+          className="px-3 py-2 text-sm rounded-full transition-colors"
           style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
         >
           &larr; Back
@@ -109,10 +109,11 @@ export function DeploymentsPage() {
       )}
       <button
         onClick={() => setView('provision')}
-        className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors"
+        className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-full transition-colors"
         style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
       >
-        + Provision New
+        New Deploy
+        <span aria-hidden className="text-base leading-none">+</span>
       </button>
     </>
   );
@@ -120,9 +121,9 @@ export function DeploymentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Platform · Deployments"
-        title="Deployments"
-        dek="Hybrid &amp; On-Premise Deployment Management"
+        eyebrow="Platform · Deployments &amp; Releases"
+        title="Deployments &amp; Releases"
+        dek="Financial Assurance Pipeline Status &amp; Audit Trail"
         live={view === 'overview' && deployments.some(d => d.status === 'active')}
         actions={headerActions}
       />
@@ -207,75 +208,147 @@ function OverviewView({ deployments, loading, statusColor, openDetail, openLogs 
     );
   }
 
+  const activeDeployment = deployments.find((d) => d.status === 'active') ?? null;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {deployments.map((d) => {
-        const ru = d.resourceUsage || {};
-        const timeSince = d.lastHeartbeat ? getTimeSince(d.lastHeartbeat) : 'Never';
-
-        return (
-          <div
-            key={d.id}
-            className="rounded-md p-4 cursor-pointer transition-colors active:scale-[0.97]"
-            style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
-            onClick={() => openDetail(d.id)}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className="font-medium text-sm t-primary">{d.name}</h3>
-                <p className="text-xs t-muted">{d.tenantName}</p>
-              </div>
-              <span className={`text-label px-2 py-0.5 rounded-full font-medium ${statusColor(d.status)}`}>
-                {d.status}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="t-muted">Health</span>
-                <p className="font-mono tnum font-medium t-primary">{d.healthScore}%</p>
-              </div>
-              <div>
-                <span className="t-muted">Last Heartbeat</span>
-                <p className="font-mono tnum font-medium t-primary">{timeSince}</p>
-              </div>
-              <div>
-                <span className="t-muted">CPU</span>
-                <p className="font-mono tnum font-medium t-primary">{(ru as Record<string, number>).cpuPct ?? '—'}%</p>
-              </div>
-              <div>
-                <span className="t-muted">RAM</span>
-                <p className="font-mono tnum font-medium t-primary">{(ru as Record<string, number>).memMb ?? '—'} MB</p>
-              </div>
-              <div>
-                <span className="t-muted">Agent</span>
-                <p className="font-mono tnum font-medium t-primary">{d.agentVersion || '—'}</p>
-              </div>
-              <div>
-                <span className="t-muted">Type</span>
-                <p className="font-medium t-primary">{d.deploymentType}</p>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--border-card)' }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); openDetail(d.id); }}
-                className="text-xs px-2 py-1 rounded-sm"
-                style={{ background: 'rgb(var(--accent-rgb) / 0.1)', color: 'var(--accent)' }}
-              >
-                Details
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); openLogs(d.id); }}
-                className="text-xs px-2 py-1 rounded-sm"
-                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
-              >
-                Logs
-              </button>
-            </div>
+    <div className="space-y-6">
+      {/* Active / leading deployment banner */}
+      {activeDeployment && (
+        <div
+          className="rounded-2xl px-5 py-4"
+          style={{ background: 'var(--accent-subtle)', border: '1px solid rgb(var(--accent-rgb) / 0.20)' }}
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-label" style={{ color: 'var(--accent)' }}>Active</span>
+            <span className="t-muted" aria-hidden>·</span>
+            <span className="font-mono text-sm font-semibold t-primary">{activeDeployment.name}</span>
+            <span className="pill-success text-label px-2.5 py-0.5 rounded-full">{activeDeployment.deploymentType}</span>
           </div>
-        );
-      })}
+          <div className="mt-3 flex items-center gap-3">
+            <div
+              className="h-2 flex-1 rounded-full overflow-hidden"
+              style={{ background: 'rgb(var(--accent-rgb) / 0.14)' }}
+              role="progressbar"
+              aria-label="Deployment health"
+              aria-valuenow={activeDeployment.healthScore}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div className="h-full rounded-full" style={{ width: `${activeDeployment.healthScore}%`, background: 'var(--accent)' }} />
+            </div>
+            <span className="font-mono tnum text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--accent)' }}>
+              {activeDeployment.healthScore}% Health
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Search / filter strip (visual structure matches the release-pipeline masthead) */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
+          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m21 21-4.3-4.3M11 18a7 7 0 100-14 7 7 0 000 14z" /></svg>
+          <span className="text-label">Search Deploys</span>
+        </div>
+        <div
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
+          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+        >
+          <span className="text-label">Filter by Environment</span>
+        </div>
+        <div
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm t-muted"
+          style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+        >
+          <span className="text-label">Filter by Status</span>
+        </div>
+      </div>
+
+      {/* Numbered release ledger */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{ background: 'var(--bg-card-solid)', border: '1px solid var(--border-card)' }}
+      >
+        <ul className="divide-y" style={{ borderColor: 'var(--divider)' }}>
+          {deployments.map((d, i) => {
+            const ru = d.resourceUsage || {};
+            const timeSince = d.lastHeartbeat ? getTimeSince(d.lastHeartbeat) : 'Never';
+            const isActive = d.id === activeDeployment?.id;
+
+            return (
+              <li key={d.id}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(d.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(d.id); } }}
+                  className="group flex items-center gap-5 px-5 py-4 cursor-pointer transition-colors"
+                  style={isActive
+                    ? { background: 'var(--accent-subtle)', boxShadow: 'inset 3px 0 0 var(--accent)' }
+                    : undefined}
+                >
+                  {/* Index */}
+                  <span
+                    className="font-mono tnum text-2xl font-bold leading-none w-10 shrink-0 text-right"
+                    style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}
+                    aria-hidden
+                  >
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+
+                  {/* Version + status */}
+                  <div className="min-w-0 w-48 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-mono text-sm font-semibold t-primary truncate">{d.name}</h3>
+                      <span className={`text-label px-2 py-0.5 rounded-full ${statusColor(d.status)}`}>
+                        {d.status}
+                      </span>
+                    </div>
+                    <p className="text-label mt-1">{d.deploymentType}</p>
+                  </div>
+
+                  {/* Health */}
+                  <div className="hidden md:block w-28 shrink-0">
+                    <p className="font-mono tnum text-sm font-medium t-primary">{d.healthScore}%</p>
+                    <p className="text-label mt-0.5">Health</p>
+                  </div>
+
+                  {/* Agent version */}
+                  <div className="hidden lg:block w-32 shrink-0">
+                    <p className="font-mono tnum text-sm font-medium t-primary truncate">{d.agentVersion || '—'}</p>
+                    <p className="text-label mt-0.5">Agent</p>
+                  </div>
+
+                  {/* Resource usage */}
+                  <div className="hidden xl:block w-28 shrink-0">
+                    <p className="font-mono tnum text-sm font-medium t-primary">
+                      {(ru as Record<string, number>).cpuPct ?? '—'}% / {(ru as Record<string, number>).memMb ?? '—'}MB
+                    </p>
+                    <p className="text-label mt-0.5">CPU / RAM</p>
+                  </div>
+
+                  {/* Heartbeat + tenant */}
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className="font-mono tnum text-sm font-medium t-primary">{timeSince}</p>
+                    <p className="text-xs t-muted truncate mt-0.5">{d.tenantName}</p>
+                  </div>
+
+                  {/* Logs action */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openLogs(d.id); }}
+                    className="shrink-0 text-label px-3 py-1.5 rounded-full transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                  >
+                    Logs
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }

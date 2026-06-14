@@ -233,33 +233,33 @@ export function FeatureFlagsPage() {
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="p-3">
+      <div className="grid grid-cols-3 gap-4">
+        <Card size="compact">
           <p className="text-label">Total Flags</p>
-          <p className="text-xl font-bold t-primary font-mono tnum">{flags.length}</p>
+          <p className="text-3xl font-bold t-primary font-mono tnum mt-1">{flags.length}</p>
         </Card>
-        <Card className="p-3">
+        <Card size="compact">
           <p className="text-label">Active</p>
-          <p className="text-xl font-bold text-accent font-mono tnum">{enabledCount}</p>
+          <p className="text-3xl font-bold text-accent font-mono tnum mt-1">{enabledCount}</p>
         </Card>
-        <Card className="p-3">
+        <Card size="compact">
           <p className="text-label">Inactive</p>
-          <p className="text-xl font-bold t-muted font-mono tnum">{flags.length - enabledCount}</p>
+          <p className="text-3xl font-bold t-muted font-mono tnum mt-1">{flags.length - enabledCount}</p>
         </Card>
       </div>
 
       {/* Search */}
-      <div className="relative">
+      <div className="relative max-w-md">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 t-muted" />
         <input
-          className="w-full pl-9 pr-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
+          className="w-full pl-9 pr-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-card-solid)] t-primary"
           placeholder="Search flags by name or description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
-      {/* Flags list */}
+      {/* Flags table */}
       {loading ? (
         <LoadingState variant="list" count={4} />
       ) : filteredFlags.length === 0 ? (
@@ -269,76 +269,112 @@ export function FeatureFlagsPage() {
           description={searchQuery ? undefined : 'Create a flag to start rolling out features by tenant, percent, or boolean.'}
         />
       ) : (
-        <div className="space-y-2">
-          {filteredFlags.map((f) => {
-            const isActive = f.type === 'boolean' ? f.defaultEnabled : f.type === 'percent' ? f.rolloutPercent > 0 : f.tenantAllowlist.length > 0;
-            return (
-              <Card key={f.id} className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3 flex-1">
-                    <button
-                      onClick={() => handleToggle(f)}
-                      disabled={togglingId === f.id}
-                      className="mt-0.5 disabled:opacity-50"
-                      title={f.type === 'boolean' ? 'Toggle on/off' : 'Toggle default_enabled (effective only for boolean flags)'}
-                    >
-                      {togglingId === f.id ? (
-                        <Loader2 size={22} className="animate-spin t-muted" />
-                      ) : f.defaultEnabled ? (
-                        <ToggleRight size={22} className="text-accent" />
-                      ) : (
-                        <ToggleLeft size={22} className="t-muted" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium t-primary font-mono">{f.name}</p>
-                        <Badge variant={isActive ? 'success' : 'default'} className="text-caption">
-                          {isActive ? 'active' : 'inactive'}
-                        </Badge>
-                        <Badge variant="default" className="text-caption flex items-center gap-0.5">
+        <Card className="overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border-card)]">
+                  <th className="text-left text-label font-normal px-5 py-3">Flag Key</th>
+                  <th className="text-left text-label font-normal px-5 py-3">Description</th>
+                  <th className="text-left text-label font-normal px-5 py-3">Type</th>
+                  <th className="text-left text-label font-normal px-5 py-3">Status</th>
+                  <th className="text-left text-label font-normal px-5 py-3">Rollout</th>
+                  <th className="text-right text-label font-normal px-5 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredFlags.map((f) => {
+                  const isActive = f.type === 'boolean' ? f.defaultEnabled : f.type === 'percent' ? f.rolloutPercent > 0 : f.tenantAllowlist.length > 0;
+                  return (
+                    <tr key={f.id} className="border-b border-[var(--border-card)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors">
+                      {/* Flag Key */}
+                      <td className="px-5 py-4 align-top">
+                        <p className="text-sm font-medium t-primary font-mono whitespace-nowrap" title={`Updated ${new Date(f.updatedAt).toLocaleString()}`}>{f.name}</p>
+                      </td>
+
+                      {/* Description */}
+                      <td className="px-5 py-4 align-top max-w-[22rem]">
+                        {f.description
+                          ? <p className="text-sm t-muted leading-snug">{f.description}</p>
+                          : <span className="text-caption t-muted">—</span>}
+                      </td>
+
+                      {/* Type */}
+                      <td className="px-5 py-4 align-top">
+                        <Badge variant="info" className="flex w-fit items-center gap-1 uppercase">
                           {typeIcon(f.type)} {f.type}
                         </Badge>
-                      </div>
-                      {f.description && <p className="text-xs t-muted mt-1">{f.description}</p>}
-                      {f.type === 'percent' && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <div className="w-24 h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                            <div className="h-full rounded-full bg-accent" style={{ width: `${f.rolloutPercent}%` }} />
-                          </div>
-                          <span className="text-caption t-muted">{f.rolloutPercent}% rollout</span>
+                        {f.type === 'tenant_allowlist' && (
+                          <p className="text-caption t-muted mt-1.5 font-mono">
+                            {f.tenantAllowlist.length} tenant{f.tenantAllowlist.length === 1 ? '' : 's'}
+                          </p>
+                        )}
+                      </td>
+
+                      {/* Status — toggle */}
+                      <td className="px-5 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggle(f)}
+                            disabled={togglingId === f.id}
+                            className="disabled:opacity-50 active:scale-[0.97]"
+                            title={f.type === 'boolean' ? 'Toggle on/off' : 'Toggle default_enabled (effective only for boolean flags)'}
+                          >
+                            {togglingId === f.id ? (
+                              <Loader2 size={26} className="animate-spin t-muted" />
+                            ) : f.defaultEnabled ? (
+                              <ToggleRight size={26} className="text-accent" />
+                            ) : (
+                              <ToggleLeft size={26} className="t-muted" />
+                            )}
+                          </button>
+                          <Badge variant={isActive ? 'success' : 'default'} className="uppercase">
+                            {isActive ? 'active' : 'inactive'}
+                          </Badge>
                         </div>
-                      )}
-                      {f.type === 'tenant_allowlist' && (
-                        <p className="text-caption t-muted mt-2">
-                          Allowlist: <span className="t-primary">{f.tenantAllowlist.length}</span> tenant{f.tenantAllowlist.length === 1 ? '' : 's'}
-                        </p>
-                      )}
-                      <p className="text-caption t-muted mt-2">Updated {new Date(f.updatedAt).toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 ml-2">
-                    <button
-                      onClick={() => startEdit(f)}
-                      className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] t-muted hover:t-primary transition-colors active:scale-[0.97]"
-                      title="Edit"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(f)}
-                      disabled={deletingId === f.id}
-                      className="p-1.5 rounded-md hover:bg-[rgb(var(--neg-rgb)/0.1)] t-muted hover:text-neg transition-colors disabled:opacity-50 active:scale-[0.97]"
-                      title="Delete"
-                    >
-                      {deletingId === f.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+                      </td>
+
+                      {/* Rollout */}
+                      <td className="px-5 py-4 align-top min-w-[8rem]">
+                        {f.type === 'percent' ? (
+                          <div>
+                            <p className="text-lg font-bold t-primary font-mono tnum leading-none">{f.rolloutPercent}%</p>
+                            <div className="w-24 h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden mt-2">
+                              <div className="h-full rounded-full bg-accent" style={{ width: `${f.rolloutPercent}%` }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-lg font-bold font-mono tnum leading-none t-muted">{f.defaultEnabled ? '100%' : '0%'}</p>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-5 py-4 align-top">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => startEdit(f)}
+                            className="p-1.5 rounded-md hover:bg-[var(--bg-elevated)] t-muted hover:t-primary transition-colors active:scale-[0.97]"
+                            title="Edit"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(f)}
+                            disabled={deletingId === f.id}
+                            className="p-1.5 rounded-md hover:bg-[rgb(var(--neg-rgb)/0.1)] t-muted hover:text-neg transition-colors disabled:opacity-50 active:scale-[0.97]"
+                            title="Delete"
+                          >
+                            {deletingId === f.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       {/* Create / Edit modal */}

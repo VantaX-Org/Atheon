@@ -18,7 +18,6 @@ import { Progress } from "@/components/ui/progress";
 import { TabPanel, useTabState } from "@/components/ui/tabs";
 import { PageTabsLayout } from "@/components/ui/page-tabs-layout";
 import { AsyncPageContent, statusFrom } from "@/components/ui/async";
-import { PageHeader } from "@/components/ui/page-header";
 import {
   ShieldCheck, KeyRound, ClipboardList, AlertTriangle, UserMinus,
   Lock, FileArchive, Download, RefreshCw, FileText, Database,
@@ -35,18 +34,72 @@ type EvidencePack = Awaited<ReturnType<typeof api.compliance.evidencePack>>;
 
 function StatChip({ label, value, tone, source }: { label: string; value: string | number; tone?: 'good' | 'warn' | 'bad' | 'neutral'; source?: MetricProvenance }) {
   const colors: Record<string, string> = {
-    good: 'text-accent',
+    good: 'text-[var(--rag-healthy)]',
     warn: 'text-[var(--warning)]',
     bad: 'text-neg',
     neutral: 't-primary',
   };
   return (
-    <div className="p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-      <div className="flex items-center justify-between">
-        <div className="text-label mb-1">{label}</div>
+    <div className="px-4 py-3.5 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="text-label">{label}</div>
         {source && <MetricSource source={source} />}
       </div>
-      <div className={`text-xl font-semibold ${colors[tone || 'neutral']}`}>{value}</div>
+      <div
+        className={`text-2xl font-bold tracking-tight ${colors[tone || 'neutral']}`}
+        style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * RingStat — circular progress ring with a centered "passed / total" count,
+ * mirroring the framework cards in the approved mockup. Pure presentation:
+ * the caller passes already-computed numerator/denominator from real data.
+ */
+function RingStat({
+  numerator,
+  denominator,
+  tone,
+}: {
+  numerator: number;
+  denominator: number;
+  tone: 'good' | 'warn' | 'bad';
+}): JSX.Element {
+  const pct = denominator > 0 ? Math.min(Math.max(numerator / denominator, 0), 1) : 0;
+  const r = 30;
+  const c = 2 * Math.PI * r;
+  const stroke: Record<string, string> = {
+    good: 'var(--rag-healthy)',
+    warn: 'var(--warning)',
+    bad: 'var(--neg)',
+  };
+  return (
+    <div className="relative w-[76px] h-[76px] shrink-0" aria-hidden="true">
+      <svg width="76" height="76" viewBox="0 0 76 76" className="-rotate-90">
+        <circle cx="38" cy="38" r={r} fill="none" stroke="var(--bg-secondary)" strokeWidth="6" />
+        <circle
+          cx="38"
+          cy="38"
+          r={r}
+          fill="none"
+          stroke={stroke[tone]}
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - pct)}
+          style={{ transition: 'stroke-dashoffset 600ms cubic-bezier(0.23,1,0.32,1)' }}
+        />
+      </svg>
+      <div
+        className="absolute inset-0 flex items-center justify-center text-base font-bold t-primary"
+        style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+      >
+        {Math.round(pct * 100)}%
+      </div>
     </div>
   );
 }
@@ -168,30 +221,135 @@ function ComplianceEvidence(): JSX.Element {
   const privilegedDisabledTone = pack.deprovisioning.privilegedDisabled > 0 ? 'warn' : 'good';
   const plaintextTone = pack.encryption.erpPlaintext > 0 ? 'warn' : 'good';
 
+  // Overall posture score = MFA coverage %, the page's one genuine ratio
+  // metric. Mirrors the centered hero score in the approved mockup.
+  const postureScore = pack.mfa.mfaCoveragePct;
+  const postureLabel = mfaTone === 'good' ? 'Healthy' : mfaTone === 'warn' ? 'Watch' : 'At risk';
+  const postureBadge: 'success' | 'warning' | 'danger' =
+    mfaTone === 'good' ? 'success' : mfaTone === 'warn' ? 'warning' : 'danger';
+
+  // Framework-overview cards — each is a real control roll-up with a
+  // numerator / denominator ring, reusing existing pack figures only.
+  const frameworks: {
+    key: string;
+    title: string;
+    control: string;
+    numerator: number;
+    denominator: number;
+    tone: 'good' | 'warn' | 'bad';
+    blurb: string;
+  }[] = [
+    {
+      key: 'mfa',
+      title: 'MFA Enforcement',
+      control: 'SOC 2 · CC6.1',
+      numerator: pack.mfa.mfaEnabled,
+      denominator: pack.mfa.totalUsers,
+      tone: mfaTone,
+      blurb: `${pack.mfa.mfaEnabled} of ${pack.mfa.totalUsers} active users enrolled. Gate: ≥ 95% for CC6.1 pass.`,
+    },
+    {
+      key: 'incident',
+      title: 'Incident Response',
+      control: 'SOC 2 · CC7.3, CC7.4',
+      numerator: pack.incidentResponse.resolvedCriticalLast90d,
+      denominator: pack.incidentResponse.totalCriticalLast90d,
+      tone: incidentTone,
+      blurb: `${pack.incidentResponse.openCritical} open P0/P1 of ${pack.incidentResponse.totalCriticalLast90d} in the last 90 days.`,
+    },
+    {
+      key: 'encryption',
+      title: 'Encryption at Rest',
+      control: 'SOC 2 · CC6.7',
+      numerator: pack.encryption.erpEncrypted,
+      denominator: pack.encryption.totalConnections,
+      tone: plaintextTone,
+      blurb: `${pack.encryption.erpEncrypted} of ${pack.encryption.totalConnections} ERP credentials encrypted.`,
+    },
+    {
+      key: 'access',
+      title: 'Access Reviews',
+      control: 'SOC 2 · CC6.1, CC6.2',
+      numerator: pack.accessReviews.mfaEnabledCount,
+      denominator: pack.accessReviews.activeUserCount,
+      tone: pack.accessReviews.activeUserCount > 0 && pack.accessReviews.mfaEnabledCount / pack.accessReviews.activeUserCount >= 0.9 ? 'good' : 'warn',
+      blurb: `${pack.accessReviews.activeAdminCount} active admins · ${pack.accessReviews.roleChangesLast90d} role changes (90d).`,
+    },
+  ];
+
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6" data-testid="compliance-page">
-      <PageHeader
-        eyebrow="Compliance · Controls"
-        title="Compliance"
-        dek={`SOC 2 Evidence Pack · Generated ${new Date(pack.generatedAt).toLocaleString()}`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button onClick={() => { setRefreshing(true); load(); }} variant="ghost" size="sm" disabled={refreshing}>
-              <RefreshCw size={14} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Button onClick={() => setShareOpen(true)} variant="ghost" size="sm">
-              <Share2 size={14} className="mr-2" />
-              Share with auditor
-            </Button>
-            <Button onClick={downloadJson} variant="primary" size="sm">
-              <Download size={14} className="mr-2" />
-              Download JSON
-            </Button>
-          </div>
-        }
-      />
+    <div className="px-6 py-8 max-w-7xl mx-auto" data-testid="compliance-page">
       <ShareWithAuditorModal open={shareOpen} onClose={() => setShareOpen(false)} />
+
+      {/* Hero — centered posture score */}
+      <header className="relative text-center pb-10">
+        <div className="absolute right-0 top-0 flex items-center gap-2">
+          <Button onClick={() => { setRefreshing(true); load(); }} variant="ghost" size="sm" disabled={refreshing}>
+            <RefreshCw size={14} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button onClick={() => setShareOpen(true)} variant="ghost" size="sm">
+            <Share2 size={14} className="mr-2" />
+            Share with auditor
+          </Button>
+          <Button onClick={downloadJson} variant="primary" size="sm">
+            <Download size={14} className="mr-2" />
+            Download JSON
+          </Button>
+        </div>
+
+        <div className="inline-flex items-center gap-2 mb-3">
+          <span className={`inline-block w-2 h-2 rounded-full ${mfaTone === 'good' ? 'bg-[var(--rag-healthy)]' : mfaTone === 'warn' ? 'bg-[var(--warning)]' : 'bg-[var(--neg)]'}`} aria-hidden="true" />
+          <Badge variant={postureBadge} size="sm">{postureLabel}</Badge>
+        </div>
+        <div
+          className="text-[64px] leading-none font-bold tracking-tight t-primary"
+          style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+        >
+          {postureScore}%
+        </div>
+        <div className="text-label mt-4">Overall Posture Score · {postureLabel}</div>
+        <p className="text-sm t-secondary mt-2">
+          SOC 2 Evidence Pack · Continuous control monitoring.
+        </p>
+        <p className="text-caption t-muted mt-1">
+          Generated {new Date(pack.generatedAt).toLocaleString()}
+        </p>
+      </header>
+
+      {/* Frameworks overview */}
+      <div className="text-label mb-3">Compliance Frameworks Overview</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        {frameworks.map(fw => (
+          <Card key={fw.key} className="p-5 flex flex-col">
+            <div className="text-label mb-4">{fw.control}</div>
+            <div className="flex items-center gap-4 mb-4">
+              <RingStat numerator={fw.numerator} denominator={fw.denominator} tone={fw.tone} />
+              <div className="min-w-0">
+                <div
+                  className="text-xl font-bold t-primary tracking-tight"
+                  style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+                >
+                  {fw.numerator} / {fw.denominator}
+                </div>
+                <Badge
+                  variant={fw.tone === 'good' ? 'success' : fw.tone === 'warn' ? 'warning' : 'danger'}
+                  size="sm"
+                  className="mt-1.5"
+                >
+                  {fw.tone === 'good' ? 'Healthy' : fw.tone === 'warn' ? 'Watch' : 'At risk'}
+                </Badge>
+              </div>
+            </div>
+            <h3 className="text-sm font-semibold t-primary mb-1">{fw.title}</h3>
+            <p className="text-caption t-muted leading-relaxed">{fw.blurb}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Detailed controls */}
+      <div className="text-label mb-3">Active Controls &amp; Status</div>
+      <div className="space-y-6">
 
       {/* Access reviews */}
       <Card className="p-5">
@@ -369,7 +527,9 @@ function ComplianceEvidence(): JSX.Element {
         </div>
       </Card>
 
-      <div className="text-caption t-muted text-center pt-2">
+      </div>{/* /Active controls */}
+
+      <div className="text-caption t-muted text-center pt-8">
         This report is read-only over existing tables. SOC 2 controls not surfaced here (change
         management, vulnerability management, DR) live in the runbook + GitHub Actions history.
       </div>

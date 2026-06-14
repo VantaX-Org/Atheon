@@ -13,14 +13,67 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
-import { PageHeader } from '@/components/ui/page-header';
-import { Shield, Loader2, RefreshCw, XCircle, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Shield, Loader2, RefreshCw, XCircle, ArrowLeft, AlertTriangle, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
 import { MFAEnrollmentWizard } from '@/components/MFAEnrollmentWizard';
 import { BackupCodesDisplay } from '@/components/BackupCodesDisplay';
 
 const ADMIN_ROLES = new Set(['superadmin', 'support_admin', 'admin']);
+
+/**
+ * Presentational enrollment stepper (Login → MFA Setup → Confirmation).
+ * `activeStep` is derived purely from existing page state — no new data.
+ *   1 = login already done (always complete on this route)
+ *   2 = MFA setup (active while not yet enabled)
+ *   3 = confirmation (complete once MFA is enabled)
+ */
+function MfaStepper({ activeStep }: { activeStep: 1 | 2 | 3 }) {
+  const steps = [
+    { n: 1, label: 'Step 1 · Login' },
+    { n: 2, label: 'Step 2 · MFA Setup' },
+    { n: 3, label: 'Step 3 · Confirmation' },
+  ] as const;
+  return (
+    <ol className="flex items-start justify-center gap-0" aria-label="Setup progress">
+      {steps.map((s, i) => {
+        const done = s.n < activeStep;
+        const active = s.n === activeStep;
+        const reached = s.n <= activeStep;
+        return (
+          <li key={s.n} className="flex items-start">
+            <div className="flex flex-col items-center gap-2" style={{ width: 132 }}>
+              <span
+                aria-current={active ? 'step' : undefined}
+                className="flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold transition-colors"
+                style={
+                  reached
+                    ? { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }
+                    : { background: 'var(--bg-input)', color: 'var(--text-muted)', border: '1px solid var(--border-card)' }
+                }
+              >
+                {done ? <Check size={14} /> : s.n}
+              </span>
+              <span
+                className="text-label text-center leading-tight"
+                style={{ color: active ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                {s.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <span
+                aria-hidden
+                className="mt-3.5 h-px"
+                style={{ width: 56, background: s.n < activeStep ? 'var(--accent)' : 'var(--border-card)' }}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export function MFASetupPage() {
   const user = useAppStore((s) => s.user);
@@ -48,6 +101,9 @@ export function MFASetupPage() {
 
   const isAdminRole = useMemo(() => (user?.role ? ADMIN_ROLES.has(user.role) : false), [user?.role]);
   const graceExpired = isAdminRole && mfaEnforcementWarning && mfaEnforcementWarning.daysRemaining <= 0;
+
+  // Stepper position (presentation only): enabled → confirmation, otherwise MFA-setup stage.
+  const activeStep: 1 | 2 | 3 = status?.enabled ? 3 : 2;
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -112,31 +168,39 @@ export function MFASetupPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn max-w-3xl">
-      <div className="flex items-center gap-3">
+    <div className="animate-fadeIn mx-auto max-w-5xl pb-10">
+      {/* Back affordance — preserved for navigation/a11y, set quietly above the editorial masthead. */}
+      <div className="mb-8">
         <button
           type="button"
           onClick={() => navigate('/settings')}
-          className="w-8 h-8 rounded-md flex items-center justify-center t-muted hover:t-primary transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
-          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
+          className="inline-flex items-center gap-2 text-sm t-muted hover:t-primary transition-[color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
           title="Back to settings"
           aria-label="Back to settings"
         >
           <ArrowLeft size={14} />
+          Back to Settings
         </button>
-        <span className="text-sm t-muted">Back to Settings</span>
       </div>
 
-      <PageHeader
-        eyebrow="Access · Two-Factor"
-        title="Two-Factor Authentication"
-        dek="Manage MFA & recovery codes for your account"
-      />
+      {/* Enrollment stepper */}
+      <div className="mb-10">
+        <MfaStepper activeStep={activeStep} />
+      </div>
+
+      {/* Editorial masthead */}
+      <header className="text-center mb-12">
+        <p className="text-label t-accent mb-3">Access · Two-Factor</p>
+        <h1 className="text-hero t-primary mx-auto max-w-3xl">Secure Your Financial Assurance Account</h1>
+        <p className="text-body-sm t-secondary mt-4 max-w-xl mx-auto">
+          Enable Multi-Factor Authentication (MFA) for enhanced protection of your account and recovery codes.
+        </p>
+      </header>
 
       {mfaEnforcementWarning && !status?.enabled && (
         <div
           role="alert"
-          className="flex items-start gap-3 p-4 rounded-md border"
+          className="flex items-start gap-3 p-4 rounded-md border mx-auto max-w-2xl mb-8"
           style={{
             background: graceExpired ? 'rgb(var(--neg-rgb) / 0.08)' : 'rgb(var(--warning-rgb, 180 120 60) / 0.08)',
             borderColor: graceExpired ? 'rgb(var(--neg-rgb) / 0.35)' : 'rgb(var(--warning-rgb, 180 120 60) / 0.35)',
@@ -160,10 +224,10 @@ export function MFASetupPage() {
         </div>
       )}
 
-      <Card>
-        <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-accent" /> Status
-        </h3>
+      <Card size="relaxed" className="mx-auto max-w-2xl">
+        <p className="text-label t-muted mb-5 flex items-center gap-2">
+          <Shield className="w-3.5 h-3.5 text-accent" /> Authentication Status
+        </p>
 
         {statusLoading ? (
           <div className="flex items-center gap-2 text-xs t-muted"><Loader2 size={14} className="animate-spin" /> Loading status...</div>
@@ -234,24 +298,36 @@ export function MFASetupPage() {
               </div>
               <Badge variant="warning" size="sm">Disabled</Badge>
             </div>
-            {statusError && <p className="text-xs text-neg">{statusError}</p>}
+            {statusError && <p className="text-xs text-neg text-center">{statusError}</p>}
             {!showWizard && (
-              <Button variant="primary" size="sm" onClick={() => setShowWizard(true)} title="Start MFA enrollment">
-                <Shield size={14} /> Enable MFA
-              </Button>
+              <div className="pt-1 space-y-3">
+                <p className="text-caption t-muted text-center max-w-md mx-auto">
+                  Your account security is our priority. This step adds an essential layer of defense.
+                </p>
+                <Button variant="primary" className="w-full justify-center" onClick={() => setShowWizard(true)} title="Start MFA enrollment">
+                  <Shield size={16} /> Verify &amp; Enable
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/settings')}
+                  className="block w-full text-center text-sm t-secondary hover:t-primary transition-[color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
+                >
+                  Cancel Setup
+                </button>
+              </div>
             )}
           </div>
         )}
       </Card>
 
       {showWizard && !status?.enabled && (
-        <Card>
+        <Card size="relaxed" className="mx-auto max-w-2xl mt-6">
           <MFAEnrollmentWizard onComplete={handleWizardComplete} onCancel={() => setShowWizard(false)} />
         </Card>
       )}
 
-      <div className="text-xs t-muted">
-        Back to <Link to="/settings" className="font-medium" style={{ color: 'var(--accent)' }}>Settings</Link>
+      <div className="text-xs t-muted text-center mt-10 pt-6" style={{ borderTop: '1px solid var(--divider)' }}>
+        Return to <Link to="/settings" className="font-medium" style={{ color: 'var(--accent)' }}>Settings</Link>
       </div>
 
       {/* Regenerate backup codes — uses canonical Modal primitive. */}

@@ -80,11 +80,24 @@ const marketingCSS = `
   border: 1px solid var(--ink);
   color: var(--ink) !important;
   background: transparent;
-  border-radius: 2px;
-  transition: background-color 120ms cubic-bezier(0.23, 1, 0.32, 1), color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  border-radius: 999px;
+  transition: background-color 120ms cubic-bezier(0.23, 1, 0.32, 1), color 120ms cubic-bezier(0.23, 1, 0.32, 1), border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .mk5-nav-cta:hover { background: var(--ink); color: var(--field) !important; }
 .mk5-nav-cta span { position: relative; z-index: 1; }
+/* Primary filled pill (mockup "Book Demo") */
+.mk5-nav-cta.primary {
+  border-color: var(--accent-c);
+  background: var(--accent-c);
+  color: #fff !important;
+}
+.mk5-nav-cta.primary:hover { background: var(--accent-hover-c); border-color: var(--accent-hover-c); color: #fff !important; }
+.mk5-nav-cta.quiet {
+  border-color: transparent;
+  color: var(--ink-2) !important;
+  padding-left: .5rem !important; padding-right: .5rem !important;
+}
+.mk5-nav-cta.quiet:hover { background: transparent; color: var(--ink) !important; }
 
 /* MOBILE HAMBURGER */
 .mk5-hamburger {
@@ -114,42 +127,124 @@ const marketingCSS = `
   color: var(--ink); padding: .75rem 0; border-bottom: 1px solid var(--rule);
 }
 
-/* HERO */
+/* HERO — bold editorial split: heavy headline left, royal-blue metric + dashboard panel right */
 .mk5-hero {
   position: relative;
   min-height: calc(100vh - 64px);
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  padding: 6rem 3rem 5rem;
-  align-items: end;
+  display: grid; grid-template-columns: 1.08fr 1fr;
+  gap: 4.5rem;
+  padding: 5.5rem 3rem 6rem;
+  align-items: center;
   border-bottom: 1px solid var(--rule);
 }
 .mk5-hero-eyebrow {
   font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2);
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
   display: flex; align-items: center; gap: .75rem;
 }
 .mk5-hero-eyebrow::before {
   content: ""; display: inline-block; width: 24px; height: 1px; background: var(--ink-2);
 }
 .mk5-hero-left h1 {
-  font-size: clamp(2.75rem, 6.5vw, 6.25rem);
-  line-height: 0.96; letter-spacing: -0.03em;
-  font-weight: 500;
+  font-size: clamp(2.5rem, 5.6vw, 5rem);
+  line-height: 0.98; letter-spacing: -0.035em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 1.75rem;
 }
-.mk5-hero-left h1 .thin { font-weight: 300; color: var(--ink-3); }
-.mk5-hero-left h1 i { font-style: italic; color: var(--accent-c); font-weight: 500; }
+.mk5-hero-left h1 .thin { font-weight: 300; color: var(--ink-3); text-transform: none; }
+.mk5-hero-left h1 i { font-style: italic; color: var(--accent-c); font-weight: 700; }
 .mk5-hero-desc {
   font-size: 1.0625rem; line-height: 1.55;
   color: var(--ink-2);
-  max-width: 32rem;
-  margin-bottom: 2.5rem;
+  max-width: 34rem;
+  margin-bottom: 2.25rem;
 }
-.mk5-hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+.mk5-hero-actions { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
+/* text-link secondary action ("see how it works") */
+.mk5-hero-textlink {
+  font-family: 'Space Mono', monospace;
+  font-size: .75rem; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink);
+  background: transparent; border: 0; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; gap: .5rem;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: .25rem;
+  transition: color 120ms cubic-bezier(0.23, 1, 0.32, 1), border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.mk5-hero-textlink:hover { color: var(--accent-c); border-color: var(--accent-c); }
+
+/* RIGHT: hero metric + dashboard panel */
+.mk5-hero-right { display: flex; flex-direction: column; gap: 2rem; }
+.mk5-hero-metric { display: flex; flex-direction: column; gap: .75rem; }
+.mk5-hero-metric-num {
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
+  font-size: clamp(2.75rem, 5vw, 4.25rem);
+  font-weight: 700; letter-spacing: -0.025em; line-height: 1;
+  color: var(--accent-c);
+}
+.mk5-hero-metric-caption {
+  display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+  font-family: 'Space Mono', monospace;
+  font-size: .6875rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.mk5-hero-metric-caption .up { color: var(--rag-healthy, #1c8a4a); }
+
+/* Dashboard preview panel — frosted card with hairline rows + sparkline */
+.mk5-hero-panel {
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  border-radius: 8px;
+  box-shadow: 0 24px 60px -28px rgba(15, 17, 21, 0.18), 0 2px 8px -4px rgba(15, 17, 21, 0.08);
+  overflow: hidden;
+}
+.mk5-hero-panel-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--field-2);
+}
+.mk5-hero-panel-bar .name {
+  font-family: 'Space Mono', monospace;
+  font-size: .625rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.mk5-hero-panel-bar .pill {
+  font-family: 'Space Mono', monospace;
+  font-size: .5625rem; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: .2rem .55rem; border-radius: 999px;
+  color: var(--accent-c); background: var(--accent-tint);
+  border: 1px solid var(--accent-c);
+}
+.mk5-hero-panel-body {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 1px; background: var(--rule);
+}
+.mk5-hero-panel-cell {
+  padding: 1rem 1.1rem; background: var(--paper);
+  display: flex; flex-direction: column; gap: .4rem;
+}
+.mk5-hero-panel-cell.chart { grid-column: 1 / -1; padding-bottom: .75rem; }
+.mk5-hero-panel-cell .k {
+  font-family: 'Space Mono', monospace;
+  font-size: .5625rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mk5-hero-panel-cell .v {
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
+  font-size: 1.0625rem; font-weight: 500; letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.mk5-hero-panel-cell .v.accent { color: var(--accent-c); }
+.mk5-hero-spark { width: 100%; height: 56px; margin-top: .25rem; }
+
 .mk5-hero-scroll {
-  position: absolute; left: 3rem; bottom: 2rem;
+  position: absolute; left: 3rem; bottom: 1.75rem;
   display: flex; align-items: center; gap: .75rem;
   font-family: 'Space Mono', monospace; font-size: .6875rem;
   letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3);
@@ -923,7 +1018,8 @@ const marketingCSS = `
 
 /* RESPONSIVE */
 @media(max-width: 1100px) {
-  .mk5-hero { grid-template-columns: 1fr; gap: 2rem; padding: 4rem 2rem 3rem; align-items: start; min-height: 0; }
+  .mk5-hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 4rem 2rem 3rem; align-items: start; min-height: 0; }
+  .mk5-hero-scroll { display: none; }
   .mk5-ss { grid-template-columns: 1fr; gap: 1rem; padding: 2rem; }
   .mk5-ss-figure { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); padding-top: 1rem; }
   .mk5-evo { grid-template-columns: 1fr; }
@@ -1188,10 +1284,10 @@ export function MarketingPage() {
           <a href="#security">Security</a>
           <a href="#compare">Compare</a>
           <a href="#proof">Proof</a>
-          <a href="/login" className="mk5-nav-cta" style={{ marginRight: '0.5rem' }}>
+          <a href="/login" className="mk5-nav-cta quiet" style={{ marginRight: '0.25rem' }}>
             <span>Login</span>
           </a>
-          <a href="#cta-s" className="mk5-nav-cta" onClick={(e) => { e.preventDefault(); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
+          <a href="#cta-s" className="mk5-nav-cta primary" onClick={(e) => { e.preventDefault(); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
             <span>Early Access</span>
           </a>
         </div>
@@ -1225,8 +1321,6 @@ export function MarketingPage() {
             <span className="thin">Agents evolve.</span><br />
             <i>Catalysts</i> <span className="thin">emerge.</span>
           </h1>
-        </div>
-        <div className="mk5-hero-right">
           <p className="mk5-hero-desc">
             Agents automate tasks. Copilots assist individuals. A Catalyst does what neither
             can&nbsp;&mdash; it governs, correlates, and synthesises across your entire
@@ -1237,11 +1331,53 @@ export function MarketingPage() {
             <button className="mk5-btn-main" onClick={() => document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" })}>
               Request Access
             </button>
-            <button className="mk5-btn-line" onClick={() => document.getElementById("layers")?.scrollIntoView({ behavior: "smooth" })}>
-              See the architecture
+            <button className="mk5-hero-textlink" onClick={() => document.getElementById("layers")?.scrollIntoView({ behavior: "smooth" })}>
+              See the architecture &#8599;
             </button>
           </div>
         </div>
+
+        <div className="mk5-hero-right">
+          {/* Hero metric — realised shared-savings, the figure the CFO bills against */}
+          <div className="mk5-hero-metric">
+            <div className="mk5-hero-metric-num mk5-mono">$6.1m</div>
+            <div className="mk5-hero-metric-caption">
+              <span>Realised &middot; trailing 90 days</span>
+              <span className="up">&#8599; Ledgered to ERP</span>
+            </div>
+          </div>
+
+          {/* Assurance dashboard preview panel */}
+          <div className="mk5-hero-panel" aria-label="Shared-savings ledger preview">
+            <div className="mk5-hero-panel-bar">
+              <span className="name">Shared-Savings Ledger</span>
+              <span className="pill">Q2 2026</span>
+            </div>
+            <div className="mk5-hero-panel-body">
+              <div className="mk5-hero-panel-cell">
+                <span className="k">Identified</span>
+                <span className="v mk5-mono">$12.4m</span>
+              </div>
+              <div className="mk5-hero-panel-cell">
+                <span className="k">Approved</span>
+                <span className="v mk5-mono">$8.6m</span>
+              </div>
+              <div className="mk5-hero-panel-cell chart">
+                <span className="k">Realised, by month</span>
+                <svg className="mk5-hero-spark" viewBox="0 0 280 56" preserveAspectRatio="none" aria-hidden>
+                  <line x1="0" y1="55" x2="280" y2="55" stroke="var(--rule)" strokeWidth="1" />
+                  <polyline
+                    points="0,44 40,40 80,42 120,30 160,26 200,18 240,14 280,8"
+                    fill="none" stroke="var(--accent, #2456d6)" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                  />
+                  <circle cx="280" cy="8" r="3" fill="var(--accent, #2456d6)" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mk5-hero-scroll">
           <div className="mk5-scroll-line" />
           <span>Scroll</span>

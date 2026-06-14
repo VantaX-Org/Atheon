@@ -1,24 +1,30 @@
 /**
- * Sidebar — Stitch "Athens Executive Interface" 5-section IA.
+ * Sidebar — Higgsfield "Atheon Executive" curated nav (v4 mockup).
  *
- * Lifted directly from the Stitch design (projects/4059809207181456952):
+ * The primary navigation is a FLAT, six-item executive rail lifted from
+ * docs/ui-redesign/higgsfield/v4-01-dashboard.png:
  *
- *   Intelligence      → Dashboard · Apex · Pulse · Catalysts · Chat · Mind · Memory · Trust · Exec Briefing
- *   Data              → Integrations · Webhooks · Connectivity · Integration Health · Compliance · Audit
- *   Administration    → IAM · Custom Roles · Bulk Users · Clients · Support (file ticket)
- *   Platform Ops      → Control Plane · Deployments · Assessments · Platform Health · System Alerts · Feature Flags
- *   Admin Tooling     → Revenue · Support Console · Support Triage · Impersonate
+ *   DASHBOARD · ASSURANCE · SAVINGS · FINDINGS · REPORTS · SETTINGS
  *
- * Each section header is a Material-Symbols-labelled row that expands /
- * collapses its child routes. The section whose route the user is currently
- * on is auto-expanded. Active row gets a blue left-rule + accent-subtle wash
- * (Luminous Editorial brand-active state).
+ * Each row is a small outline icon + a Space-Mono UPPERCASE label. The active
+ * row gets a 3px royal-blue left-rule and an accent-subtle wash (Luminous
+ * Editorial brand-active state). The header is the ATHEON wordmark + triangle;
+ * the footer is the signed-in identity ("EXECUTIVE USER" in the mockup).
  *
- * Footer: Support · Settings. Same shape as Stitch.
+ * The app has ~50 routes the six-item mockup can't show. Rather than lose them,
+ * the non-core pages live in two COLLAPSED disclosures below the primary rail:
  *
- * Two layouts:
- *   - Desktop: 240px expanded column, sticky, scrollable
- *   - Mobile:  drawer over content, opens via Header burger
+ *   WORKSPACE → Apex · Pulse · Board Digest · Memory · Mind   (product extras)
+ *   ADMIN     → integrations / IAM / platform-ops / tooling    (PLATFORM_ADMIN+)
+ *
+ * Executives see a clean six-item rail (+ Workspace where roled); admins get
+ * the full surface, one disclosure deep, in the same flat mono language.
+ *
+ * Scoped read-only roles keep their narrow landing:
+ *   auditor       → ASSURANCE (/compliance) + SETTINGS
+ *   board_member  → REPORTS (/board-digest) + SETTINGS
+ *
+ * Two layouts: desktop 240px sticky column, mobile drawer (Header burger).
  */
 import { useMemo, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -26,6 +32,8 @@ import { useAppStore } from "@/stores/appStore";
 import { Link, useLocation } from "react-router-dom";
 import { X, ChevronDown } from "lucide-react";
 import type { UserRole } from "@/types";
+
+const MONO = "'Space Mono', ui-monospace, monospace";
 
 // ──────────────────────────────────────────────────────────────
 // Role groups
@@ -37,114 +45,104 @@ const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'ex
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
 const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'];
 const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
-// Phase AT: auditors see ONLY /compliance + /settings. The sidebar should
-// render exactly two items for them — anything else exposes the wrong scope.
-const COMPLIANCE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'auditor'];
-// Phase AU: board members see ONLY /board-digest + /settings. Same scope
-// pattern as auditor — narrow read-only landing, nothing operational.
 const BOARD_DIGEST_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'board_member'];
 
 // ──────────────────────────────────────────────────────────────
-// Nav model — 5 sections + footer
+// Nav model
 // ──────────────────────────────────────────────────────────────
-type SectionKey = 'intelligence' | 'data' | 'administration' | 'platform-ops' | 'admin-tooling';
-
-interface NavLeaf {
+interface NavItem {
   path: string;
+  /** UPPERCASE display label (rendered in Space Mono). */
   label: string;
-  /** Material Symbols Outlined ligature name. Falls back to the section glyph. */
+  /** Material Symbols Outlined ligature name. */
   symbol: string;
-  /** Optional one-line role descriptor — rendered below the label for brand-named routes. */
-  descriptor?: string;
   roles?: UserRole[];
 }
 
-interface NavSection {
-  key: SectionKey;
+interface NavGroup {
+  key: string;
   label: string;
-  /** Material Symbols Outlined ligature for the section header row. */
-  symbol: string;
-  children: NavLeaf[];
+  roles?: UserRole[];
+  children: NavItem[];
 }
 
-const SECTIONS: NavSection[] = [
-  {
-    key: 'intelligence',
-    label: 'Intelligence',
-    symbol: 'insights',
-    children: [
-      { path: '/dashboard',         label: 'Dashboard',     symbol: 'dashboard',         descriptor: 'Daily command' },
-      { path: '/apex',              label: 'Apex',          symbol: 'workspace_premium', descriptor: 'Executive view',       roles: EXECUTIVE_ROLES },
-      { path: '/pulse',             label: 'Pulse',         symbol: 'monitor_heart',     descriptor: 'Operations health',    roles: STANDARD_ROLES },
-      { path: '/catalysts',         label: 'Catalysts',     symbol: 'bolt',              descriptor: 'Action queue',         roles: OPERATOR_ROLES },
-      { path: '/mind',              label: 'Mind',          symbol: 'psychology',        descriptor: 'AI workspace',         roles: PLATFORM_ADMIN_ROLES },
-      { path: '/memory',            label: 'Memory',        symbol: 'memory',            descriptor: 'Knowledge base',       roles: MANAGER_ROLES },
-      { path: '/trust',             label: 'Trust',         symbol: 'verified',          descriptor: 'Audit & compliance',   roles: STANDARD_ROLES },
-      { path: '/executive-summary', label: 'Exec Briefing', symbol: 'description',       descriptor: 'Weekly narrative',     roles: EXECUTIVE_ROLES },
-      { path: '/board-digest',      label: 'Board Digest',  symbol: 'workspaces',        descriptor: 'Quarterly readout',    roles: BOARD_DIGEST_ROLES },
-    ],
-  },
-  {
-    key: 'data',
-    label: 'Data',
-    symbol: 'database',
-    children: [
-      { path: '/integrations',        label: 'Integrations',        symbol: 'hub',            roles: PLATFORM_ADMIN_ROLES },
-      { path: '/webhooks',            label: 'Webhooks',            symbol: 'webhook',        roles: PLATFORM_ADMIN_ROLES },
-      { path: '/action-layer',        label: 'Operator Queue',      symbol: 'inbox',          roles: PLATFORM_ADMIN_ROLES },
-      { path: '/connectivity',        label: 'Connectivity',        symbol: 'lan',            roles: PLATFORM_ADMIN_ROLES },
-      { path: '/integration-health',  label: 'Integration Health',  symbol: 'cable',          roles: PLATFORM_ADMIN_ROLES },
-      { path: '/compliance',          label: 'Compliance',          symbol: 'verified_user',  roles: COMPLIANCE_ROLES },
-    ],
-  },
-  {
-    key: 'administration',
-    label: 'Administration',
-    symbol: 'settings_account_box',
-    children: [
-      { path: '/iam',             label: 'IAM',           symbol: 'admin_panel_settings', roles: PLATFORM_ADMIN_ROLES },
-      { path: '/custom-roles',    label: 'Custom Roles',  symbol: 'manage_accounts',      roles: PLATFORM_ADMIN_ROLES },
-      { path: '/bulk-users',      label: 'Bulk Users',    symbol: 'group_add',            roles: PLATFORM_ADMIN_ROLES },
-      { path: '/tenants',         label: 'Clients',       symbol: 'apartment',            roles: SUPERADMIN_ROLES },
-      { path: '/support-tickets', label: 'Support',       symbol: 'support' },
-    ],
-  },
-  {
-    key: 'platform-ops',
-    label: 'Platform Ops',
-    symbol: 'settings_input_component',
-    children: [
-      { path: '/control-plane',    label: 'Control Plane',    symbol: 'memory',         roles: PLATFORM_ADMIN_ROLES },
-      { path: '/deployments',      label: 'Deployments',      symbol: 'rocket_launch',  roles: SUPERADMIN_ROLES },
-      { path: '/assessments',      label: 'Assessments',      symbol: 'fact_check',     roles: PLATFORM_ADMIN_ROLES },
-      { path: '/platform-health',  label: 'Operations Health', symbol: 'health_metrics', roles: PLATFORM_ADMIN_ROLES },
-      { path: '/system-alerts',    label: 'System Alerts',    symbol: 'notifications',  roles: PLATFORM_ADMIN_ROLES },
-      { path: '/admin/incidents',  label: 'Incident Manager', symbol: 'report',         roles: SUPPORT_ROLES },
-      { path: '/feature-flags',    label: 'Feature Flags',    symbol: 'flag',           roles: SUPERADMIN_ROLES },
-    ],
-  },
-  {
-    key: 'admin-tooling',
-    label: 'Admin Tooling',
-    symbol: 'construction',
-    children: [
-      { path: '/revenue',         label: 'Revenue',         symbol: 'payments',          roles: SUPERADMIN_ROLES },
-      { path: '/support',         label: 'Support Console', symbol: 'support_agent',     roles: SUPPORT_ROLES },
-      { path: '/support-triage',  label: 'Support Triage',  symbol: 'inbox_customize',   roles: PLATFORM_ADMIN_ROLES },
-      { path: '/impersonate',     label: 'Impersonate',     symbol: 'manage_search',     roles: SUPPORT_ROLES },
-    ],
-  },
+// The curated six-item executive rail (mockup v4-01).
+const PRIMARY: NavItem[] = [
+  { path: '/dashboard',         label: 'Dashboard',  symbol: 'dashboard',      roles: STANDARD_ROLES },
+  { path: '/trust',             label: 'Assurance',  symbol: 'verified_user',  roles: STANDARD_ROLES },
+  { path: '/roi-dashboard',     label: 'Savings',    symbol: 'savings',        roles: EXECUTIVE_ROLES },
+  { path: '/catalysts',         label: 'Findings',   symbol: 'fact_check',     roles: OPERATOR_ROLES },
+  { path: '/executive-summary', label: 'Reports',    symbol: 'description',    roles: EXECUTIVE_ROLES },
 ];
 
-const FOOTER_ITEMS: NavLeaf[] = [
-  { path: '/settings', label: 'Settings', symbol: 'settings' },
-];
+// Product pages beyond the core six — collapsed by default so the rail stays
+// clean. Each is still role-gated; an empty group hides itself.
+const WORKSPACE: NavGroup = {
+  key: 'workspace',
+  label: 'Workspace',
+  children: [
+    { path: '/apex',         label: 'Apex',         symbol: 'workspace_premium', roles: EXECUTIVE_ROLES },
+    { path: '/pulse',        label: 'Pulse',        symbol: 'monitor_heart',     roles: STANDARD_ROLES },
+    { path: '/board-digest', label: 'Board Digest', symbol: 'workspaces',        roles: BOARD_DIGEST_ROLES },
+    { path: '/memory',       label: 'Memory',       symbol: 'memory',            roles: MANAGER_ROLES },
+    { path: '/mind',         label: 'Mind',         symbol: 'psychology',        roles: PLATFORM_ADMIN_ROLES },
+  ],
+};
+
+// Everything operational/administrative, one disclosure deep. Gated to
+// platform admins as a whole; individual leaves narrow further.
+const ADMIN: NavGroup = {
+  key: 'admin',
+  label: 'Admin',
+  roles: PLATFORM_ADMIN_ROLES,
+  children: [
+    { path: '/integrations',       label: 'Integrations',       symbol: 'hub',                  roles: PLATFORM_ADMIN_ROLES },
+    { path: '/webhooks',           label: 'Webhooks',           symbol: 'webhook',              roles: PLATFORM_ADMIN_ROLES },
+    { path: '/action-layer',       label: 'Operator Queue',     symbol: 'inbox',                roles: PLATFORM_ADMIN_ROLES },
+    { path: '/connectivity',       label: 'Connectivity',       symbol: 'lan',                  roles: PLATFORM_ADMIN_ROLES },
+    { path: '/integration-health', label: 'Integration Health', symbol: 'cable',                roles: PLATFORM_ADMIN_ROLES },
+    { path: '/compliance',         label: 'Compliance',         symbol: 'verified',             roles: PLATFORM_ADMIN_ROLES },
+    { path: '/iam',                label: 'IAM',                symbol: 'admin_panel_settings', roles: PLATFORM_ADMIN_ROLES },
+    { path: '/custom-roles',       label: 'Custom Roles',       symbol: 'manage_accounts',      roles: PLATFORM_ADMIN_ROLES },
+    { path: '/bulk-users',         label: 'Bulk Users',         symbol: 'group_add',            roles: PLATFORM_ADMIN_ROLES },
+    { path: '/tenants',            label: 'Clients',            symbol: 'apartment',            roles: SUPERADMIN_ROLES },
+    { path: '/support-tickets',    label: 'Support',            symbol: 'support',              roles: PLATFORM_ADMIN_ROLES },
+    { path: '/control-plane',      label: 'Control Plane',      symbol: 'memory',               roles: PLATFORM_ADMIN_ROLES },
+    { path: '/deployments',        label: 'Deployments',        symbol: 'rocket_launch',        roles: SUPERADMIN_ROLES },
+    { path: '/assessments',        label: 'Assessments',        symbol: 'fact_check',           roles: SUPERADMIN_ROLES },
+    { path: '/platform-health',    label: 'Operations Health',  symbol: 'health_metrics',       roles: PLATFORM_ADMIN_ROLES },
+    { path: '/system-alerts',      label: 'System Alerts',      symbol: 'notifications',        roles: PLATFORM_ADMIN_ROLES },
+    { path: '/admin/incidents',    label: 'Incident Manager',   symbol: 'report',               roles: SUPPORT_ROLES },
+    { path: '/feature-flags',      label: 'Feature Flags',      symbol: 'flag',                 roles: SUPERADMIN_ROLES },
+    { path: '/revenue',            label: 'Revenue',            symbol: 'payments',             roles: SUPERADMIN_ROLES },
+    { path: '/support',            label: 'Support Console',    symbol: 'support_agent',        roles: SUPPORT_ROLES },
+    { path: '/support-triage',     label: 'Support Triage',     symbol: 'inbox_customize',      roles: PLATFORM_ADMIN_ROLES },
+    { path: '/impersonate',        label: 'Impersonate',        symbol: 'manage_search',        roles: SUPPORT_ROLES },
+  ],
+};
+
+const SETTINGS_ITEM: NavItem = { path: '/settings', label: 'Settings', symbol: 'settings' };
+
+// ──────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────
+function visibleFor(items: NavItem[], role: UserRole | undefined): NavItem[] {
+  return items.filter((i) => !i.roles || (role && i.roles.includes(role)));
+}
+
+function isActivePath(pathname: string, path: string): boolean {
+  return pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
+}
+
+function roleLabel(role: UserRole | undefined): string {
+  if (!role) return 'USER';
+  return role.replace(/_/g, ' ').toUpperCase();
+}
 
 // ──────────────────────────────────────────────────────────────
 // Components
 // ──────────────────────────────────────────────────────────────
-
-function MaterialIcon({ name, className = '', filled = false, size = 20 }: { name: string; className?: string; filled?: boolean; size?: number }) {
+function MaterialIcon({ name, className = '', filled = false, size = 18 }: { name: string; className?: string; filled?: boolean; size?: number }) {
   return (
     <span
       className={cn('material-symbols-outlined', className)}
@@ -162,92 +160,83 @@ function MaterialIcon({ name, className = '', filled = false, size = 20 }: { nam
   );
 }
 
-interface SidebarSectionProps {
-  section: NavSection;
-  visible: NavLeaf[];
-  isExpanded: boolean;
-  isActiveSection: boolean;
-  onToggle: () => void;
-  closeMobile?: () => void;
-  pathname: string;
-}
-
-function SidebarSection({ section, visible, isExpanded, isActiveSection, onToggle, closeMobile, pathname }: SidebarSectionProps) {
+/** Flat primary/footer row — small icon + Space-Mono uppercase label. */
+function NavRow({ item, pathname, onNavigate }: { item: NavItem; pathname: string; onNavigate?: () => void }) {
+  const active = isActivePath(pathname, item.path);
   return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
+    <li>
+      <Link
+        to={item.path}
+        onClick={onNavigate}
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2 rounded-md',
+          'group relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-md',
           'transition-[background-color,color,transform] duration-[var(--dur-press)]',
           '[transition-timing-function:var(--ease-out)] active:scale-[0.98]',
-          isActiveSection ? 't-primary' : 't-secondary hover:t-primary hover:bg-[var(--bg-secondary)]',
+          active ? '' : 't-secondary hover:t-primary hover:bg-[var(--bg-card-hover)]',
         )}
-        aria-expanded={isExpanded}
-        aria-controls={`section-${section.key}`}
+        style={active ? { background: 'var(--accent-subtle)', color: 'var(--text-primary)' } : undefined}
+        aria-current={active ? 'page' : undefined}
       >
-        <span className="flex items-center gap-3">
-          <MaterialIcon name={section.symbol} size={18} filled={isActiveSection} className={isActiveSection ? 'text-accent' : ''} />
-          <span className={cn('text-body-sm', isActiveSection ? 'font-semibold' : 'font-medium')}>{section.label}</span>
+        {active && (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r"
+            style={{ background: 'var(--accent)' }}
+          />
+        )}
+        <MaterialIcon name={item.symbol} size={18} filled={active} className={active ? 'text-accent' : 't-muted group-hover:t-secondary'} />
+        <span
+          className={cn('text-[11px] tracking-[0.14em] uppercase', active ? 'font-bold text-accent' : 'font-medium')}
+          style={{ fontFamily: MONO }}
+        >
+          {item.label}
         </span>
-        <ChevronDown
-          size={14}
-          className={cn('t-muted transition-transform duration-200', isExpanded ? 'rotate-0' : '-rotate-90')}
-          aria-hidden="true"
-        />
+      </Link>
+    </li>
+  );
+}
+
+/** Collapsible disclosure (WORKSPACE / ADMIN) holding flat NavRows. */
+function Disclosure({ label, items, pathname, onNavigate }: { label: string; items: NavItem[]; pathname: string; onNavigate?: () => void }) {
+  const hasActive = items.some((i) => isActivePath(pathname, i.path));
+  const [open, setOpen] = useState(hasActive);
+  // Auto-open when navigating into a child route.
+  useEffect(() => {
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between pl-4 pr-3 py-2 rounded-md t-muted hover:t-secondary hover:bg-[var(--bg-card-hover)] transition-colors"
+        aria-expanded={open}
+      >
+        <span className="text-[10px] tracking-[0.18em] uppercase font-bold" style={{ fontFamily: MONO }}>{label}</span>
+        <ChevronDown size={13} className={cn('transition-transform duration-200', open ? 'rotate-0' : '-rotate-90')} aria-hidden="true" />
       </button>
-      {isExpanded && (
-        <ul id={`section-${section.key}`} className="mt-0.5 mb-1 pl-3 border-l border-[var(--border-card)] ml-4 space-y-0.5">
-          {visible.map((leaf) => {
-            const isActive = pathname === leaf.path || (leaf.path !== '/dashboard' && pathname.startsWith(leaf.path));
-            return (
-              <li key={leaf.path}>
-                <Link
-                  to={leaf.path}
-                  onClick={closeMobile}
-                  className={cn(
-                    'flex items-start gap-2.5 pl-3 pr-2 py-1.5 rounded-md text-body-sm',
-                    'transition-[background-color,color,transform] duration-[var(--dur-press)]',
-                    '[transition-timing-function:var(--ease-out)] active:scale-[0.98]',
-                    isActive
-                      ? 'font-medium border-l-[3px] bg-[var(--accent-subtle)]'
-                      : 't-secondary hover:t-primary hover:bg-[var(--bg-card-hover)]',
-                  )}
-                  style={isActive ? { borderColor: 'var(--accent)', color: 'var(--text-primary)' } : undefined}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <MaterialIcon name={leaf.symbol} size={16} className={cn('mt-[2px] shrink-0', isActive ? 'text-accent' : 't-muted')} filled={isActive} />
-                  <span className="min-w-0 flex-1">
-                    <span className={cn('truncate block', isActive && 'font-semibold tracking-tight')}>{leaf.label}</span>
-                    {leaf.descriptor && (
-                      <span aria-hidden="true" className="block text-caption t-muted truncate leading-tight mt-0.5">{leaf.descriptor}</span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+      {open && (
+        <ul className="mt-0.5 mb-1 space-y-0.5">
+          {items.map((item) => (
+            <NavRow key={item.path} item={item} pathname={pathname} onNavigate={onNavigate} />
+          ))}
         </ul>
       )}
-    </div>
+    </li>
   );
 }
 
 function AtheonSidebarLogo() {
   return (
-    <svg width="28" height="28" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg width="26" height="26" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <defs>
-        <linearGradient id="sbBg" x1="0" y1="0" x2="36" y2="36">
-          <stop offset="0%" stopColor="var(--text-primary)" />
-          <stop offset="100%" stopColor="var(--text-primary)" />
-        </linearGradient>
         <linearGradient id="sbStroke" x1="0" y1="0" x2="36" y2="36">
           <stop offset="0%" stopColor="var(--accent)" />
           <stop offset="100%" stopColor="var(--bronze)" />
         </linearGradient>
       </defs>
-      <rect width="36" height="36" rx="9" fill="url(#sbBg)" />
+      <rect width="36" height="36" rx="9" fill="var(--text-primary)" />
       <rect x="0.5" y="0.5" width="35" height="35" rx="8.5" fill="none" stroke="rgb(var(--accent-rgb) / 0.18)" />
       <path d="M18 6L28 29H8L18 6Z" fill="none" stroke="url(#sbStroke)" strokeWidth="1.6" strokeLinejoin="round" />
       <line x1="11" y1="22" x2="25" y2="22" stroke="var(--accent)" strokeWidth=".8" opacity=".7" />
@@ -257,137 +246,87 @@ function AtheonSidebarLogo() {
   );
 }
 
-/**
- * Returns the section key that owns the given route path, or null if none of
- * the section children match. Used to auto-expand the active section on load.
- */
-function findActiveSection(pathname: string): SectionKey | null {
-  for (const section of SECTIONS) {
-    for (const child of section.children) {
-      if (pathname === child.path || (child.path !== '/dashboard' && pathname.startsWith(child.path))) {
-        return section.key;
-      }
-    }
-  }
-  return null;
-}
-
 export function Sidebar() {
   const { mobileSidebarOpen, setMobileSidebarOpen, user } = useAppStore();
   const location = useLocation();
   const closeMobile = () => setMobileSidebarOpen(false);
   const userRole = user?.role as UserRole | undefined;
+  const pathname = location.pathname;
 
-  // Track expanded sections. Default: only the section the user is currently
-  // on is expanded. Subsequent toggles persist for the lifetime of the mount.
-  const initialExpanded = useMemo<Set<SectionKey>>(() => {
-    const active = findActiveSection(location.pathname);
-    return new Set<SectionKey>(active ? [active] : ['intelligence']);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [expanded, setExpanded] = useState<Set<SectionKey>>(initialExpanded);
+  // Scoped read-only roles get a narrow two-item rail and no disclosures.
+  const isScoped = userRole === 'auditor' || userRole === 'board_member';
 
-  // When the route changes, ensure the section that owns the new route is
-  // expanded. Existing expanded sections stay open (additive).
-  useEffect(() => {
-    const active = findActiveSection(location.pathname);
-    if (active && !expanded.has(active)) {
-      setExpanded((prev) => new Set(prev).add(active));
+  const primaryItems = useMemo<NavItem[]>(() => {
+    if (userRole === 'auditor') {
+      return [{ path: '/compliance', label: 'Assurance', symbol: 'verified_user' }];
     }
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggleSection = (key: SectionKey) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  // Pre-compute role-filtered children per section. Scoped read-only roles
-  // (auditor, board_member) are restricted strictly to items that explicitly
-  // opt them in — un-roled items (Dashboard, Support tickets) would
-  // otherwise leak into their sidebar and defeat the narrow-scope intent.
-  const sectionsForRender = useMemo(() => {
-    const isScoped = userRole === 'auditor' || userRole === 'board_member';
-    return SECTIONS.map((section) => ({
-      section,
-      visible: section.children.filter((c) => {
-        if (isScoped) return !!(c.roles && userRole && c.roles.includes(userRole));
-        return !c.roles || (userRole && c.roles.includes(userRole));
-      }),
-    })).filter((s) => s.visible.length > 0);
+    if (userRole === 'board_member') {
+      return [{ path: '/board-digest', label: 'Reports', symbol: 'description' }];
+    }
+    return visibleFor(PRIMARY, userRole);
   }, [userRole]);
 
-  const activeSectionKey = findActiveSection(location.pathname);
+  const workspaceItems = useMemo(() => (isScoped ? [] : visibleFor(WORKSPACE.children, userRole)), [userRole, isScoped]);
+  const adminVisible = !isScoped && !!userRole && !!ADMIN.roles && ADMIN.roles.includes(userRole);
+  const adminItems = useMemo(() => (adminVisible ? visibleFor(ADMIN.children, userRole) : []), [userRole, adminVisible]);
 
-  // Shared sidebar body (used by desktop + mobile drawer).
-  // Logo target is role-aware — scoped read-only roles land on their own
-  // home page (auditor → /compliance, board_member → /board-digest); others
-  // go to the operational dashboard.
+  // Logo target is role-aware — scoped roles land on their own home.
   const homeTarget =
     userRole === 'auditor' ? '/compliance'
     : userRole === 'board_member' ? '/board-digest'
     : '/dashboard';
+
   const sidebarBody = (
     <>
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+      <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
         <Link to={homeTarget} className="flex items-center gap-2.5" onClick={closeMobile}>
           <AtheonSidebarLogo />
-          <div className="min-w-0">
-            <p className="font-display text-headline-md font-bold t-primary leading-none tracking-tight">Atheon AI</p>
-            <p className="text-caption t-muted uppercase tracking-widest mt-1">Enterprise Intelligence</p>
-          </div>
+          <span
+            className="text-[15px] font-bold tracking-[0.22em] uppercase t-primary leading-none"
+            style={{ fontFamily: MONO }}
+          >
+            Atheon
+          </span>
         </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3" aria-label="Primary navigation">
-        {/* Wave H-2: section spacing lifted from `space-y-0.5` (sections bled
-            together) to `space-y-2`. Gives each Stitch IA section its own
-            visual block, restores the breathing room executives expect. */}
-        <ul className="space-y-2">
-          {sectionsForRender.map(({ section, visible }) => (
-            <li key={section.key}>
-              <SidebarSection
-                section={section}
-                visible={visible}
-                isExpanded={expanded.has(section.key)}
-                isActiveSection={activeSectionKey === section.key}
-                onToggle={() => toggleSection(section.key)}
-                closeMobile={closeMobile}
-                pathname={location.pathname}
-              />
-            </li>
+        <ul className="space-y-0.5">
+          {primaryItems.map((item) => (
+            <NavRow key={item.path} item={item} pathname={pathname} onNavigate={closeMobile} />
           ))}
+
+          {workspaceItems.length > 0 && (
+            <>
+              <li aria-hidden="true" className="h-px mx-4 my-2 bg-[var(--border-card)]" />
+              <Disclosure label={WORKSPACE.label} items={workspaceItems} pathname={pathname} onNavigate={closeMobile} />
+            </>
+          )}
+
+          {adminItems.length > 0 && (
+            <Disclosure label={ADMIN.label} items={adminItems} pathname={pathname} onNavigate={closeMobile} />
+          )}
+
+          <NavRow item={SETTINGS_ITEM} pathname={pathname} onNavigate={closeMobile} />
         </ul>
       </nav>
 
-      <ul className="border-t border-[var(--border-card)] pt-2 pb-3 px-3 space-y-0.5">
-        {FOOTER_ITEMS.map((leaf) => {
-          const isActive = location.pathname.startsWith(leaf.path);
-          return (
-            <li key={leaf.path}>
-              <Link
-                to={leaf.path}
-                onClick={closeMobile}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-body-sm',
-                  'transition-[background-color,color,transform] duration-[var(--dur-press)]',
-                  '[transition-timing-function:var(--ease-out)] active:scale-[0.98]',
-                  isActive
-                    ? 'font-semibold text-accent'
-                    : 't-secondary hover:t-primary hover:bg-[var(--bg-secondary)]',
-                )}
-                style={isActive ? { background: 'var(--accent-subtle)' } : undefined}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <MaterialIcon name={leaf.symbol} size={18} filled={isActive} className={isActive ? 'text-accent' : 't-muted'} />
-                <span>{leaf.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {/* Footer — signed-in identity (mockup: "EXECUTIVE USER") */}
+      <div className="border-t border-[var(--border-card)] px-4 py-3 flex items-center gap-3">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-full shrink-0 text-[11px] font-bold text-accent"
+          style={{ background: 'var(--accent-subtle)', fontFamily: MONO }}
+          aria-hidden="true"
+        >
+          {(user?.name?.[0] ?? roleLabel(userRole)[0] ?? 'U').toUpperCase()}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[11px] tracking-[0.12em] uppercase font-bold t-primary truncate" style={{ fontFamily: MONO }}>
+            {roleLabel(userRole)}
+          </span>
+          <span className="block text-caption t-muted truncate">{user?.name ?? user?.email ?? 'Signed in'}</span>
+        </span>
+      </div>
     </>
   );
 
@@ -400,7 +339,7 @@ export function Sidebar() {
         />
       )}
 
-      {/* Desktop — 240px sticky column with the Stitch 5-section IA */}
+      {/* Desktop — 240px sticky column */}
       <aside
         className="fixed left-0 top-0 h-full z-40 w-sidebar-expanded hidden md:flex flex-col transition-colors duration-200"
         style={{

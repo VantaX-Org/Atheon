@@ -273,8 +273,8 @@ export function ControlPlanePage() {
     <div className="space-y-6 animate-fadeIn">
       <PageHeader
         eyebrow="Platform · Control Plane"
-        title="Agent Control Plane"
-        dek="Deploy, scale & monitor Catalyst agents per tenant"
+        title="Control Plane Overview"
+        dek="Board-grade service assurance — real-time health & metrics"
         live
         actions={
           <div className="flex items-center gap-2">
@@ -487,121 +487,183 @@ export function ControlPlanePage() {
         </div></Portal>
       )}
 
-      {/* Health Overview */}
-      {health && (
-        <Card>
-          <div className="flex items-center gap-3 mb-3">
-            <Activity size={16} className="text-accent" />
-            <h3 className="text-sm font-semibold t-primary">Platform Health</h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div><span className="text-caption t-muted">Overall Health</span><p className="text-lg font-bold font-mono tnum text-accent">{health.overallHealth}%</p></div>
-            <div><span className="text-caption t-muted">Overall Uptime</span><p className="text-lg font-bold font-mono tnum t-primary">{health.overallUptime}%</p></div>
-            <div><span className="text-caption t-muted">Deployment Status</span><div className="flex gap-2 mt-0.5 flex-wrap">{Object.entries(health.deploymentStatus || {}).map(([s, c]) => <Badge key={s} variant={s === 'running' ? 'success' : s === 'stopped' ? 'danger' : 'default'} size="sm">{s}: {c}</Badge>)}</div></div>
-            <div><span className="text-caption t-muted">Last Checked</span><p className="text-sm font-bold t-primary">{new Date(health.lastChecked).toLocaleTimeString()}</p></div>
-          </div>
-        </Card>
-      )}
+      {/* System Metrics Overview — hero metric + health breakdown + platform stats */}
+      <Card variant="prominent" size="relaxed">
+        <div className="flex items-center gap-2 mb-5">
+          <Activity size={14} className="text-accent" />
+          <span className="text-label">System Metrics Overview</span>
+        </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <span className="text-xs t-secondary">Total Deployments</span>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{deployments.length}</p>
-          <span className="text-xs text-accent font-mono tnum">{computed.running} running</span>
-        </Card>
-        <Card>
-          <span className="text-xs t-secondary">Total Replicas</span>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">{computed.totalReplicas}</p>
-        </Card>
-        <Card>
-          <span className="text-xs t-secondary">Avg Uptime</span>
-          <p className="text-headline-lg font-bold text-accent tabular-nums font-mono mt-1">
-            {computed.avgUptime.toFixed(2)}%
-          </p>
-        </Card>
-        <Card>
-          <span className="text-xs t-secondary">Avg Health</span>
-          <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">
-            {Math.round(computed.avgHealth)}%
-          </p>
-        </Card>
-      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          {/* Hero: active services */}
+          <div className="flex items-baseline gap-3">
+            <span className="text-display font-bold t-primary tabular-nums font-mono leading-none">{computed.running}</span>
+            <span className="text-label leading-tight max-w-[7rem]">Active<br />Services</span>
+          </div>
+
+          {/* RAG health breakdown */}
+          <div className="space-y-2.5 lg:border-l lg:pl-6" style={{ borderColor: 'var(--border-card)' }}>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-label" style={{ color: 'var(--rag-healthy)' }}>Healthy</span>
+              <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--rag-healthy)' }}>
+                {Math.round(computed.avgHealth)}%
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-label" style={{ color: 'var(--warning)' }}>Watch</span>
+              <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--warning)' }}>
+                {deployments.filter(d => d.healthScore >= 60 && d.healthScore < 80).length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-label" style={{ color: 'var(--neg)' }}>At-Risk</span>
+              <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>
+                {deployments.filter(d => d.healthScore < 60).length}
+              </span>
+            </div>
+          </div>
+
+          {/* Platform supporting stats */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 lg:border-l lg:pl-6" style={{ borderColor: 'var(--border-card)' }}>
+            <div>
+              <span className="text-label block">Total Replicas</span>
+              <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{computed.totalReplicas}</p>
+            </div>
+            <div>
+              <span className="text-label block">Avg Uptime</span>
+              <p className="text-headline-md font-bold text-accent tabular-nums font-mono mt-0.5">{computed.avgUptime.toFixed(2)}%</p>
+            </div>
+            {health && (
+              <>
+                <div>
+                  <span className="text-label block">Overall Health</span>
+                  <p className="text-headline-md font-bold text-accent tabular-nums font-mono mt-0.5">{health.overallHealth}%</p>
+                </div>
+                <div>
+                  <span className="text-label block">Last Checked</span>
+                  <p className="text-headline-sm font-semibold t-primary tabular-nums font-mono mt-0.5">{new Date(health.lastChecked).toLocaleTimeString()}</p>
+                </div>
+              </>
+            )}
+            {!health && (
+              <div>
+                <span className="text-label block">Deployments</span>
+                <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{deployments.length}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {health && Object.keys(health.deploymentStatus || {}).length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t" style={{ borderColor: 'var(--border-card)' }}>
+            <span className="text-label mr-1">Status</span>
+            {Object.entries(health.deploymentStatus || {}).map(([s, c]) => (
+              <Badge key={s} variant={s === 'running' ? 'success' : s === 'stopped' ? 'danger' : 'default'} size="sm">{s}: {c}</Badge>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* Deployments List */}
       {deployments.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Bot size={24} className="mx-auto t-muted mb-2" />
-          <p className="text-sm t-primary font-medium">No deployments yet</p>
-          <p className="text-xs t-muted mt-1">Click &quot;Deploy Agent&quot; to provision your first Catalyst agent.</p>
+        <Card size="relaxed" className="text-center">
+          <Bot size={24} className="mx-auto t-muted mb-3" />
+          <p className="text-label mb-1">No Service Instances</p>
+          <p className="text-headline-sm font-semibold t-primary">No deployments yet</p>
+          <p className="text-body-sm t-muted mt-1">Click &quot;Deploy Agent&quot; to provision your first Catalyst agent.</p>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {deployments.map((dep) => {
             const sConfig = statusConfig[dep.status] || statusConfig.pending;
             const StatusIcon = sConfig.icon;
             const cfg = dep.config as DeploymentConfig;
             const replicas = typeof cfg.replicas === 'number' ? cfg.replicas : 1;
+            const isExpanded = expandedDep === dep.id;
+            const hVariant = healthVariant(dep.healthScore);
+            const ragColor = hVariant === 'success' ? 'var(--rag-healthy)' : hVariant === 'warning' ? 'var(--warning)' : 'var(--neg)';
+            const ragLabel = hVariant === 'success' ? 'Healthy' : hVariant === 'warning' ? 'Watch' : 'At-Risk';
             return (
               <Card
                 key={dep.id}
                 hover
-                onClick={() => setExpandedDep(expandedDep === dep.id ? null : dep.id)}
+                className={isExpanded ? 'md:col-span-2 xl:col-span-3' : ''}
+                onClick={() => setExpandedDep(isExpanded ? null : dep.id)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-md bg-accent/15 flex items-center justify-center">
-                      <Bot className="w-5 h-5 text-accent" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold t-primary">{dep.name || dep.clusterName || dep.id}</h3>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className="text-xs t-muted">{dep.tenantName || dep.tenantId}</span>
-                        <Badge variant={dep.deploymentModel === 'saas' ? 'info' : dep.deploymentModel === 'on-premise' ? 'warning' : 'default'} size="sm">
-                          {dep.deploymentModel === 'saas' && <Cloud size={10} className="mr-1" />}
-                          {dep.deploymentModel === 'on-premise' && <Server size={10} className="mr-1" />}
-                          {dep.deploymentModel === 'hybrid' && <GitBranch size={10} className="mr-1" />}
-                          {dep.deploymentModel}
-                        </Badge>
-                        <Badge variant="outline" size="sm">{dep.agentType}</Badge>
-                      </div>
-                    </div>
+                {/* Eyebrow row: region/tenant + RAG status pill */}
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-label truncate" title={dep.tenantName || dep.tenantId}>
+                    {dep.tenantName || dep.tenantId}
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono shrink-0"
+                    style={{
+                      color: ragColor,
+                      borderColor: ragColor,
+                      background: `color-mix(in srgb, ${ragColor} 10%, transparent)`,
+                    }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: ragColor }} aria-hidden />
+                    <span className="text-caption font-bold uppercase tracking-wide">{ragLabel}</span>
+                  </span>
+                </div>
+
+                {/* Hero metric: uptime + mono data label */}
+                <div className="flex items-baseline gap-3 mt-3">
+                  <span className="text-display font-bold t-primary tabular-nums font-mono leading-none">
+                    {dep.uptime.toFixed(dep.uptime % 1 === 0 ? 0 : 1)}<span className="text-headline-md">%</span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-label leading-tight">Uptime</p>
+                    <p className="text-headline-sm font-semibold t-primary truncate mt-0.5" title={dep.name || dep.clusterName || dep.id}>
+                      {dep.name || dep.clusterName || dep.id}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <StatusIcon size={14} className={sConfig.color} />
-                      <span className={`text-sm font-medium ${sConfig.color}`}>{sConfig.label}</span>
-                    </div>
-                    <Badge variant={healthVariant(dep.healthScore)} size="sm">{dep.healthScore}%</Badge>
-                    {expandedDep === dep.id ? <ChevronUp size={14} className="t-muted" /> : <ChevronDown size={14} className="t-muted" />}
+                  <span className="ml-auto self-start">
+                    {isExpanded ? <ChevronUp size={16} className="t-muted" /> : <ChevronDown size={16} className="t-muted" />}
+                  </span>
+                </div>
+
+                {/* Sub-stat row */}
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  <div>
+                    <span className="text-label block">Health</span>
+                    <p className="text-headline-sm font-bold tabular-nums font-mono mt-0.5" style={{ color: ragColor }}>{dep.healthScore}%</p>
+                  </div>
+                  <div>
+                    <span className="text-label block">Replicas</span>
+                    <p className="text-headline-sm font-bold t-primary tabular-nums font-mono mt-0.5">{replicas}</p>
+                  </div>
+                  <div>
+                    <span className="text-label block">Tasks</span>
+                    <p className="text-headline-sm font-bold t-primary tabular-nums font-mono mt-0.5">{dep.tasksExecuted.toLocaleString()}</p>
                   </div>
                 </div>
 
-                {/* Quick Metrics */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mt-4">
-                  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-caption t-muted">Replicas</span>
-                    <p className="text-sm font-bold t-primary">{replicas}</p>
+                {/* Footer: active state + model + agent type */}
+                <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t" style={{ borderColor: 'var(--border-card)' }}>
+                  <div className="flex items-center gap-1.5">
+                    <StatusIcon size={13} className={sConfig.color} />
+                    <span className={`text-caption font-mono font-bold uppercase tracking-wide ${sConfig.color}`}>{sConfig.label}</span>
                   </div>
-                  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-caption t-muted">Uptime</span>
-                    <p className="text-sm font-bold font-mono tnum text-accent">{dep.uptime.toFixed(1)}%</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-caption t-muted">Version</span>
-                    <p className="text-sm font-bold t-primary">{dep.version}</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-caption t-muted">Tasks</span>
-                    <p className="text-sm font-bold t-primary">{dep.tasksExecuted.toLocaleString()}</p>
-                  </div>
-                  <div className="text-center p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
-                    <span className="text-caption t-muted">Heartbeat</span>
-                    <p className="text-sm font-bold t-primary">{dep.lastHeartbeat ? new Date(dep.lastHeartbeat).toLocaleTimeString() : 'N/A'}</p>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={dep.deploymentModel === 'saas' ? 'info' : dep.deploymentModel === 'on-premise' ? 'warning' : 'default'} size="sm">
+                      {dep.deploymentModel === 'saas' && <Cloud size={10} className="mr-1" />}
+                      {dep.deploymentModel === 'on-premise' && <Server size={10} className="mr-1" />}
+                      {dep.deploymentModel === 'hybrid' && <GitBranch size={10} className="mr-1" />}
+                      {dep.deploymentModel}
+                    </Badge>
+                    <Badge variant="outline" size="sm">{dep.agentType}</Badge>
                   </div>
                 </div>
 
-                {expandedDep === dep.id && (
+                {/* Secondary stats — version + heartbeat, mono data voice */}
+                <div className="flex items-center justify-between gap-3 mt-3 text-caption font-mono t-muted">
+                  <span>v{dep.version}</span>
+                  <span>{dep.lastHeartbeat ? new Date(dep.lastHeartbeat).toLocaleTimeString() : 'N/A'}</span>
+                </div>
+
+                {isExpanded && (
                   <div className="mt-4 space-y-4 animate-fadeIn">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Config */}

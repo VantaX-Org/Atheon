@@ -216,44 +216,102 @@ function SuperadminPlatformHealth() {
         }
       />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Database size={14} className="text-accent" />
-            <span className="text-label">DB Status</span>
+      {/* Incident counter + headline metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Incident counter — editorial hero card */}
+        <Card className="lg:col-span-4 p-5 flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-label">Incident Counter</span>
+            <span
+              aria-hidden
+              className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ background: criticalAlerts.length ? 'var(--neg)' : 'var(--rag-healthy)' }}
+            />
           </div>
-          <p className="text-xl font-bold t-primary capitalize">{infra.dbStatus ?? '—'}</p>
-          <p className="text-caption t-muted">Worker: {infra.workerStatus ?? '—'}</p>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Users size={14} className="text-accent" />
-            <span className="text-label">Platform Users</span>
+          <div className="flex items-end gap-3 mb-1">
+            <p className="font-mono font-bold t-primary tabular-nums leading-none" style={{ fontSize: '3.25rem' }}>
+              {String(unacknowledgedAlerts.length).padStart(2, '0')}
+            </p>
+            <p className="text-label mb-2">Active<br />Incidents</p>
           </div>
-          <p className="text-xl font-bold t-primary">{platformHealth?.users?.total ?? '—'}</p>
-          <p className="text-caption t-muted">Across {platformHealth?.tenants?.total ?? tenants.length} tenants</p>
-        </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={14} className="text-accent" />
-            <span className="text-label">API Calls (1h)</span>
+          <div className="mt-4 space-y-2 flex-1">
+            {unacknowledgedAlerts.length === 0 ? (
+              <p className="text-caption t-muted flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'var(--rag-healthy)' }} />
+                No active incidents
+              </p>
+            ) : (
+              unacknowledgedAlerts.slice(0, 3).map((a, idx) => (
+                <div key={a.id ?? idx} className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="inline-block w-2 h-2 rounded-full shrink-0"
+                    style={{ background: a.severity === 'critical' ? 'var(--neg)' : a.severity === 'warning' ? 'var(--warning)' : 'var(--info)' }}
+                  />
+                  <Badge
+                    variant={a.severity === 'critical' ? 'danger' : a.severity === 'warning' ? 'warning' : 'info'}
+                    className="text-caption shrink-0"
+                  >
+                    {a.severity ?? 'info'}
+                  </Badge>
+                  <span className="text-caption t-secondary truncate">{a.title ?? 'Alert'}</span>
+                </div>
+              ))
+            )}
           </div>
-          <p className="text-xl font-bold t-primary">
-            {typeof infra.totalRequestsLastHour === 'number'
-              ? infra.totalRequestsLastHour.toLocaleString()
-              : '—'}
-          </p>
-          <p className="text-caption t-muted">Avg {infra.apiResponseMs ?? '—'} ms</p>
+          <button
+            onClick={() => setActiveTab('alerts')}
+            className="text-label t-accent text-left mt-4 hover:underline"
+          >
+            View all incidents →
+          </button>
         </Card>
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle size={14} style={{ color: 'var(--warning)' }} />
-            <span className="text-label">Active Alerts</span>
-          </div>
-          <p className="text-xl font-bold t-primary">{unacknowledgedAlerts.length}</p>
-          <p className="text-caption t-muted">{criticalAlerts.length} critical</p>
-        </Card>
+
+        {/* Headline infrastructure metrics */}
+        <div className="lg:col-span-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <Database size={14} className="text-accent" />
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ background: `var(--rag-${healthStatusColor(infra.dbStatus) === 'success' ? 'healthy' : healthStatusColor(infra.dbStatus) === 'warning' ? 'watch' : 'risk'})` }}
+              />
+            </div>
+            <span className="text-label mb-1">DB Status</span>
+            <p className="text-2xl font-bold t-primary capitalize leading-none mt-auto">{infra.dbStatus ?? '—'}</p>
+            <p className="text-caption t-muted mt-1.5">Worker: {infra.workerStatus ?? '—'}</p>
+          </Card>
+          <Card className="p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <Users size={14} className="text-accent" />
+            </div>
+            <span className="text-label mb-1">Platform Users</span>
+            <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">{platformHealth?.users?.total ?? '—'}</p>
+            <p className="text-caption t-muted mt-1.5">Across {platformHealth?.tenants?.total ?? tenants.length} tenants</p>
+          </Card>
+          <Card className="p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <Zap size={14} className="text-accent" />
+            </div>
+            <span className="text-label mb-1">API Calls (1h)</span>
+            <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">
+              {typeof infra.totalRequestsLastHour === 'number'
+                ? infra.totalRequestsLastHour.toLocaleString()
+                : '—'}
+            </p>
+            <p className="text-caption t-muted mt-1.5">Avg {infra.apiResponseMs ?? '—'} ms</p>
+          </Card>
+          <Card className="p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <AlertTriangle size={14} style={{ color: 'var(--warning)' }} />
+              {criticalAlerts.length > 0 && (
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'var(--neg)' }} />
+              )}
+            </div>
+            <span className="text-label mb-1">Active Alerts</span>
+            <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">{unacknowledgedAlerts.length}</p>
+            <p className="text-caption t-muted mt-1.5">{criticalAlerts.length} critical</p>
+          </Card>
+        </div>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -268,80 +326,83 @@ function SuperadminPlatformHealth() {
             </p>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">API Response Time</span>
-                <Badge variant={
-                  typeof infra.apiResponseMs !== 'number' ? 'default' :
-                  infra.apiResponseMs < 200 ? 'success' :
-                  infra.apiResponseMs < 500 ? 'warning' : 'danger'
-                } className="text-caption">
-                  {typeof infra.apiResponseMs !== 'number' ? 'n/a' :
-                   infra.apiResponseMs < 200 ? 'healthy' :
-                   infra.apiResponseMs < 500 ? 'degraded' : 'critical'}
-                </Badge>
-              </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">
-                {infra.apiResponseMs ?? '—'}
-                <span className="text-sm t-muted ml-1">ms</span>
-              </p>
-              <p className="text-caption t-muted mt-1">Rolling avg, last 60 min</p>
-            </Card>
+          <>
+            <p className="text-label mb-3">Subsystem Health Grid</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">API Response Time</span>
+                  <Badge variant={
+                    typeof infra.apiResponseMs !== 'number' ? 'default' :
+                    infra.apiResponseMs < 200 ? 'success' :
+                    infra.apiResponseMs < 500 ? 'warning' : 'danger'
+                  } className="text-caption">
+                    {typeof infra.apiResponseMs !== 'number' ? 'n/a' :
+                     infra.apiResponseMs < 200 ? 'healthy' :
+                     infra.apiResponseMs < 500 ? 'degraded' : 'critical'}
+                  </Badge>
+                </div>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-2">
+                  {infra.apiResponseMs ?? '—'}
+                  <span className="text-sm t-muted ml-1">ms</span>
+                </p>
+                <p className="text-caption t-muted mt-1">Rolling avg, last 60 min</p>
+              </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">Requests / Hour</span>
-                <CheckCircle size={14} className="text-accent" />
-              </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">
-                {typeof infra.totalRequestsLastHour === 'number'
-                  ? infra.totalRequestsLastHour.toLocaleString()
-                  : '—'}
-              </p>
-              <p className="text-caption t-muted mt-1">Observed inbound traffic</p>
-            </Card>
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">Requests / Hour</span>
+                  <CheckCircle size={14} className="text-accent" />
+                </div>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-2">
+                  {typeof infra.totalRequestsLastHour === 'number'
+                    ? infra.totalRequestsLastHour.toLocaleString()
+                    : '—'}
+                </p>
+                <p className="text-caption t-muted mt-1">Observed inbound traffic</p>
+              </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">D1 Database</span>
-                <Badge variant={healthStatusColor(infra.dbStatus)} className="text-caption">
-                  {infra.dbStatus ?? 'unknown'}
-                </Badge>
-              </div>
-              <p className="text-2xl font-bold t-primary capitalize">{infra.dbStatus ?? '—'}</p>
-              <p className="text-caption t-muted mt-1">SELECT 1 probe</p>
-            </Card>
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">D1 Database</span>
+                  <Badge variant={healthStatusColor(infra.dbStatus)} className="text-caption">
+                    {infra.dbStatus ?? 'unknown'}
+                  </Badge>
+                </div>
+                <p className="text-2xl font-bold t-primary capitalize mt-2">{infra.dbStatus ?? '—'}</p>
+                <p className="text-caption t-muted mt-1">SELECT 1 probe</p>
+              </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">Worker</span>
-                <Badge variant={healthStatusColor(infra.workerStatus)} className="text-caption">
-                  {infra.workerStatus ?? 'unknown'}
-                </Badge>
-              </div>
-              <p className="text-2xl font-bold t-primary capitalize">{infra.workerStatus ?? '—'}</p>
-              <p className="text-caption t-muted mt-1">Cloudflare Worker runtime</p>
-            </Card>
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">Worker</span>
+                  <Badge variant={healthStatusColor(infra.workerStatus)} className="text-caption">
+                    {infra.workerStatus ?? 'unknown'}
+                  </Badge>
+                </div>
+                <p className="text-2xl font-bold t-primary capitalize mt-2">{infra.workerStatus ?? '—'}</p>
+                <p className="text-caption t-muted mt-1">Cloudflare Worker runtime</p>
+              </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">Total Tenants</span>
-                <Building2 size={14} className="text-accent" />
-              </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{platformHealth.tenants?.total ?? '—'}</p>
-              <p className="text-caption t-muted mt-1">Non-deleted tenants</p>
-            </Card>
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">Total Tenants</span>
+                  <Building2 size={14} className="text-accent" />
+                </div>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-2">{platformHealth.tenants?.total ?? '—'}</p>
+                <p className="text-caption t-muted mt-1">Non-deleted tenants</p>
+              </Card>
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs t-muted">Total Users</span>
-                <Users size={14} className="text-accent" />
-              </div>
-              <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{platformHealth.users?.total ?? '—'}</p>
-              <p className="text-caption t-muted mt-1">All tenants combined</p>
-            </Card>
-          </div>
+              <Card className="p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-label">Total Users</span>
+                  <Users size={14} className="text-accent" />
+                </div>
+                <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-2">{platformHealth.users?.total ?? '—'}</p>
+                <p className="text-caption t-muted mt-1">All tenants combined</p>
+              </Card>
+            </div>
+          </>
         )}
       </TabPanel>
 
