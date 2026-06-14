@@ -2,7 +2,7 @@
  * AccessStatePage — Stitch-styled "System — Access Denied (403)" + 404.
  *
  * One component, two surfaces. Centred card on the page-pattern radial
- * gradient (the Stitch body background). Material Symbols icon, sage
+ * gradient (the Stitch body background). Lucide icon, sage
  * accent tile, headline-xl title, body copy, primary CTA back to the
  * dashboard.
  *
@@ -12,6 +12,7 @@
  */
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { ShieldX, Compass, type LucideIcon } from 'lucide-react';
 
 interface AccessStatePageProps {
   kind: '403' | '404';
@@ -19,22 +20,22 @@ interface AccessStatePageProps {
   requiredRoles?: string[];
 }
 
-const COPY = {
+const COPY: Record<'403' | '404', { Icon: LucideIcon; title: string; code: string; body: string; cta: string }> = {
   '403': {
-    symbol: 'block',
+    Icon: ShieldX,
     title: 'Access Denied',
     code: '403',
     body: "You don't have permission to access this page. If you think this is wrong, ask your tenant admin to grant your role the required permissions.",
     cta: 'Back to Dashboard',
   },
   '404': {
-    symbol: 'travel_explore',
+    Icon: Compass,
     title: 'Page not found',
     code: '404',
     body: "The page you're looking for doesn't exist, or has been moved. Check the URL or head back to the dashboard.",
     cta: 'Back to Dashboard',
   },
-} as const;
+};
 
 export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): JSX.Element {
   const c = COPY[kind];
@@ -72,17 +73,8 @@ export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): 
             }}
             aria-hidden="true"
           >
-            <span
-              className="material-symbols-outlined"
-              style={{
-                fontVariationSettings: "'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24",
-                fontSize: 28,
-                color: 'var(--accent)',
-                lineHeight: 1,
-              }}
-            >
-              {c.symbol}
-            </span>
+            <c.Icon size={28} strokeWidth={1.75} style={{ color: 'var(--accent)' }} />
+
           </div>
           <div className="flex flex-col justify-center min-w-0">
             <p

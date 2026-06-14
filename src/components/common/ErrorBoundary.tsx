@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { DownloadCloud, TriangleAlert } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -80,17 +81,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 }}
                 aria-hidden="true"
               >
-                <span
-                  className="material-symbols-outlined"
-                  style={{
-                    fontVariationSettings: "'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24",
-                    fontSize: 28,
-                    color: isChunkError ? 'var(--accent)' : 'var(--neg)',
-                    lineHeight: 1,
-                  }}
-                >
-                  {isChunkError ? 'cloud_download' : 'report'}
-                </span>
+                {isChunkError ? (
+                  <DownloadCloud size={28} strokeWidth={1.75} style={{ color: 'var(--accent)' }} />
+                ) : (
+                  <TriangleAlert size={28} strokeWidth={1.75} style={{ color: 'var(--neg)' }} />
+                )}
               </div>
 
               <h2 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mb-3">{title}</h2>
