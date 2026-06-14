@@ -95,16 +95,21 @@ describe('uncapped count endpoints', () => {
 
   it('GET /pulse/anomalies/count exceeds the capped list page (divergence fixed)', async () => {
     const list = await authedRequest('/api/v1/pulse/anomalies', token);
-    const listBody = await list.json() as { anomalies: unknown[]; total: number };
-    // The list page caps at LIMIT 50 — its own total is therefore capped.
-    expect(listBody.total).toBe(50);
+    const listBody = await list.json() as { anomalies: unknown[]; total: number; returned: number; truncated: boolean };
+    // The list page caps the returned rows at LIMIT 50, but now exposes the
+    // true tenant total (uncapped) so the badge no longer undercounts.
+    expect(listBody.returned).toBe(50);
+    expect(listBody.anomalies.length).toBe(50);
+    expect(listBody.total).toBe(ANOMALY_TOTAL);
+    expect(listBody.truncated).toBe(true);
 
     const res = await authedRequest('/api/v1/pulse/anomalies/count', token);
     expect(res.status).toBe(200);
     const body = await res.json() as { count: number };
-    // The count endpoint reports the true uncapped total.
+    // The count endpoint agrees with the list's uncapped total and exceeds the page.
     expect(body.count).toBe(ANOMALY_TOTAL);
-    expect(body.count).toBeGreaterThan(listBody.total);
+    expect(body.count).toBe(listBody.total);
+    expect(body.count).toBeGreaterThan(listBody.returned);
   });
 
   it('GET /pulse/anomalies/count honours the severity filter', async () => {
