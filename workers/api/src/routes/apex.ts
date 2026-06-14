@@ -206,23 +206,15 @@ apex.get('/health/dimensions/:dimension', async (c) => {
     startedAt: r.started_at,
   }));
   
-  // Get KPIs for this dimension from contributing sub-cataulysts
+  // Get KPIs for this dimension from contributing sub-cataulysts.
+  // Filter by category IN SQL so the LIMIT applies to the requested dimension —
+  // previously it grabbed the 50 most-recent rows across ALL categories then
+  // filtered in JS, which could silently drop financial KPIs that exist.
   const kpiQuery = await c.env.DB.prepare(
-    'SELECT kd.id, kd.kpi_name, kd.category, kd.unit, kd.direction, kv.value, kv.status, kv.measured_at, scr.sub_catalyst_name, scr.id as run_id FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id LEFT JOIN sub_catalyst_runs scr ON kv.run_id = scr.id WHERE kd.tenant_id = ? AND kv.status != ? ORDER BY kv.measured_at DESC LIMIT 50'
-  ).bind(tenantId, 'green').all();
-  
-  const relevantKpis = (kpiQuery.results || []).filter(k => {
-    // Filter by category matching dimension
-    const categoryToDimension: Record<string, string> = {
-      'financial': 'financial',
-      'operational': 'operational',
-      'compliance': 'compliance',
-      'strategic': 'strategic',
-      'technology': 'technology',
-      'risk': 'risk',
-    };
-    return categoryToDimension[k.category as string] === dimension;
-  }).map(k => ({
+    'SELECT kd.id, kd.kpi_name, kd.category, kd.unit, kd.direction, kv.value, kv.status, kv.measured_at, scr.sub_catalyst_name, scr.id as run_id FROM sub_catalyst_kpi_values kv JOIN sub_catalyst_kpi_definitions kd ON kv.definition_id = kd.id LEFT JOIN sub_catalyst_runs scr ON kv.run_id = scr.id WHERE kd.tenant_id = ? AND kv.status != ? AND kd.category = ? ORDER BY kv.measured_at DESC LIMIT 50'
+  ).bind(tenantId, 'green', dimension).all();
+
+  const relevantKpis = (kpiQuery.results || []).map(k => ({
     kpiId: k.id,
     kpiName: k.kpi_name,
     category: k.category,
@@ -512,6 +504,9 @@ apex.get('/risks/:riskId/trace', async (c) => {
       targetValue: i.target_value,
       difference: i.difference,
     })),
+    // flaggedItems is capped at 50 detail rows; the run's true totals live in
+    // sourceRun.discrepancies/exceptions and the full list via drillDownPath.items.
+    flaggedItemsTruncated: flaggedItems.length >= 50,
     relatedAnomalies: relatedAnomalies.map(a => ({
       anomalyId: a.id,
       metric: a.metric,

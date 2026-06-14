@@ -315,22 +315,33 @@ billing.get('/usage', async (c) => {
 billing.get('/invoices', async (c) => {
   const auth = c.get('auth') as AuthContext;
 
-  const invoices = await c.env.DB.prepare(
-    'SELECT * FROM billing_invoices WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50'
-  ).bind(auth.tenantId).all().catch(() => ({ results: [] }));
+  // Invoices are a billing artefact: cap the returned rows but expose the true
+  // total so a CFO reconciling charges can tell the list is partial.
+  const INVOICE_CAP = 50;
+  const [invoices, invoiceCount] = await Promise.all([
+    c.env.DB.prepare(
+      'SELECT * FROM billing_invoices WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).bind(auth.tenantId, INVOICE_CAP).all().catch(() => ({ results: [] })),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM billing_invoices WHERE tenant_id = ?')
+      .bind(auth.tenantId).first<{ count: number }>().catch(() => ({ count: 0 })),
+  ]);
+
+  const returned = (invoices.results || []).map((inv: Record<string, unknown>) => ({
+    id: inv.id,
+    amount: inv.amount,
+    currency: inv.currency,
+    status: inv.status,
+    periodStart: inv.period_start,
+    periodEnd: inv.period_end,
+    paidAt: inv.paid_at,
+    invoiceUrl: inv.invoice_url,
+    createdAt: inv.created_at,
+  }));
+  const total = invoiceCount?.count ?? returned.length;
 
   return c.json({
-    invoices: (invoices.results || []).map((inv: Record<string, unknown>) => ({
-      id: inv.id,
-      amount: inv.amount,
-      currency: inv.currency,
-      status: inv.status,
-      periodStart: inv.period_start,
-      periodEnd: inv.period_end,
-      paidAt: inv.paid_at,
-      invoiceUrl: inv.invoice_url,
-      createdAt: inv.created_at,
-    })),
+    invoices: returned,
+    meta: { returned: returned.length, total, truncated: total > returned.length, cap: INVOICE_CAP },
   });
 });
 
