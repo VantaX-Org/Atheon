@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 /* ============================================================
-   ATHEON MARKETING PAGE — Swiss Editorial (UI-v3)
-   Warm white field. Ledger green accent. Hairline grid.
-   Archivo grotesk + IBM Plex Mono. Light-only.
+   ATHEON MARKETING PAGE — Luminous Editorial
+   Warm white field. Royal-blue brand accent. Hairline grid.
+   Inter + Space Mono. Light-only. Tokens ride the global brand.
    ============================================================ */
 
 const marketingCSS = `
@@ -17,12 +17,12 @@ const marketingCSS = `
   --ink-3: #9a9ea6;
   --rule: #e4e2db;
   --rule-strong: #0f1115;
-  --accent-c: #0a7d4f;
-  --accent-hover-c: #096a43;
-  --accent-tint: rgba(10, 125, 79, 0.06);
+  --accent-c: var(--accent, #2456d6);
+  --accent-hover-c: var(--accent-hover, #1c46ad);
+  --accent-tint: var(--accent-subtle, rgba(36, 86, 214, 0.07));
   --bronze: #9a6b1f;
   --neg-c: #b03423;
-  font-family: 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-feature-settings: "ss01", "ss02";
   background: var(--field);
   color: var(--ink);
@@ -33,14 +33,14 @@ const marketingCSS = `
 .mk5-body ::selection { background: var(--accent-c); color: #fff; }
 .mk5-body a { color: inherit; text-decoration: none; }
 .mk5-body h1, .mk5-body h2, .mk5-body h3, .mk5-body h4 {
-  font-family: 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 500;
   letter-spacing: -0.018em;
   color: var(--ink);
 }
 .mk5-body em, .mk5-body i { font-style: italic; font-weight: 500; color: var(--accent-c); }
 .mk5-body strong { font-weight: 600; color: var(--ink); }
-.mk5-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-feature-settings: "tnum", "zero"; }
+.mk5-mono { font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-feature-settings: "tnum", "zero"; }
 
 /* Section frame helper */
 .mk5-frame { border-top: 1px solid var(--rule); }
@@ -60,12 +60,12 @@ const marketingCSS = `
 }
 .mk5-nav-logo {
   display: flex; align-items: center; gap: .55rem;
-  font-family: 'Archivo', sans-serif; font-weight: 600;
+  font-family: 'Inter', sans-serif; font-weight: 600;
   font-size: 1.0625rem; letter-spacing: -0.005em; color: var(--ink);
 }
 .mk5-nav-links { display: flex; gap: 2.25rem; align-items: center; }
 .mk5-nav-links a {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; font-weight: 400;
   letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink-2);
@@ -73,7 +73,7 @@ const marketingCSS = `
 }
 .mk5-nav-links a:hover { color: var(--ink); }
 .mk5-nav-cta {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem !important; font-weight: 500 !important;
   letter-spacing: 0.16em !important; text-transform: uppercase;
   padding: .55rem 1.1rem !important;
@@ -109,7 +109,7 @@ const marketingCSS = `
 }
 .mk5-mobile-menu.open { display: flex; }
 .mk5-mobile-menu a {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink); padding: .75rem 0; border-bottom: 1px solid var(--rule);
 }
@@ -125,7 +125,7 @@ const marketingCSS = `
   border-bottom: 1px solid var(--rule);
 }
 .mk5-hero-eyebrow {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2);
   margin-bottom: 2.5rem;
@@ -151,14 +151,14 @@ const marketingCSS = `
 .mk5-hero-scroll {
   position: absolute; left: 3rem; bottom: 2rem;
   display: flex; align-items: center; gap: .75rem;
-  font-family: 'IBM Plex Mono', monospace; font-size: .6875rem;
+  font-family: 'Space Mono', monospace; font-size: .6875rem;
   letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-3);
 }
 .mk5-scroll-line { width: 36px; height: 1px; background: var(--ink-3); }
 
 /* BUTTONS */
 .mk5-btn-main {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; font-weight: 500;
   letter-spacing: 0.14em; text-transform: uppercase;
   padding: .85rem 1.6rem;
@@ -173,7 +173,7 @@ const marketingCSS = `
 .mk5-btn-main:hover { background: var(--accent-hover-c); border-color: var(--accent-hover-c); }
 .mk5-btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
 .mk5-btn-line {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; font-weight: 500;
   letter-spacing: 0.14em; text-transform: uppercase;
   padding: .85rem 1.6rem;
@@ -197,7 +197,7 @@ const marketingCSS = `
 .mk5-ticker-track {
   display: flex; gap: 3rem; white-space: nowrap;
   animation: mk5-marquee 60s linear infinite;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -220,12 +220,12 @@ const marketingCSS = `
   background: var(--field);
 }
 .mk5-ss-label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--ink-2);
 }
 .mk5-ss-meta {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; color: var(--ink-3);
   letter-spacing: 0.04em;
 }
@@ -234,13 +234,13 @@ const marketingCSS = `
   min-width: 9rem; padding-left: 2rem; border-left: 1px solid var(--rule);
 }
 .mk5-ss-amount {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-size: 1.625rem; font-weight: 500; letter-spacing: -0.01em;
   color: var(--ink);
 }
 .mk5-ss-amount.accent { color: var(--accent-c); }
 .mk5-ss-tag {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -277,7 +277,7 @@ const marketingCSS = `
 .mk5-evo-item:last-child { border-right: 0; }
 .mk5-evo-item.future { background: var(--accent-tint); }
 .mk5-evo-era {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -301,7 +301,7 @@ const marketingCSS = `
   gap: 4rem; margin-bottom: 5rem;
 }
 .mk5-layers-intro-left {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2);
   position: sticky; top: 5rem; align-self: start;
@@ -322,7 +322,7 @@ const marketingCSS = `
 }
 .mk5-layer-block:last-child { border-bottom: 1px solid var(--rule); }
 .mk5-layer-num {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-size: 2.5rem; font-weight: 400; color: var(--ink-3);
   letter-spacing: -0.01em;
 }
@@ -331,7 +331,7 @@ const marketingCSS = `
   color: var(--ink); margin-bottom: .25rem;
 }
 .mk5-layer-role {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--ink-2); margin-bottom: 1.25rem;
 }
@@ -343,7 +343,7 @@ const marketingCSS = `
 }
 .mk5-layer-tags { display: flex; flex-wrap: wrap; gap: .5rem; }
 .mk5-layer-tag {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.1em;
   padding: .35rem .75rem;
   border: 1px solid var(--rule);
@@ -390,13 +390,13 @@ const marketingCSS = `
 }
 .mk5-stat-item:last-child { border-right: 0; }
 .mk5-stat-num {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-size: 3rem; font-weight: 500; letter-spacing: -0.02em;
   color: var(--ink);
 }
 .mk5-stat-num .accent { color: var(--accent-c); }
 .mk5-stat-label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -411,7 +411,7 @@ const marketingCSS = `
   gap: 4rem; margin-bottom: 3rem;
 }
 .mk5-personas-header .left {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -436,7 +436,7 @@ const marketingCSS = `
 }
 .mk5-persona:last-child { border-right: 0; }
 .mk5-persona-role {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -448,7 +448,7 @@ const marketingCSS = `
   font-size: .8125rem; line-height: 1.55; color: var(--ink-2);
 }
 .mk5-persona-want {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.04em;
   color: var(--accent-c);
   padding-top: .75rem;
@@ -477,7 +477,7 @@ const marketingCSS = `
   background: var(--paper);
 }
 .mk5-ch {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.18em; text-transform: uppercase;
   padding: 1rem; color: var(--ink-2);
   border-bottom: 1px solid var(--rule);
@@ -498,10 +498,10 @@ const marketingCSS = `
 }
 .mk5-cc:last-child { border-right: 0; }
 .mk5-cc.rl { font-weight: 500; color: var(--ink); }
-.mk5-cc.cy { color: var(--ink-2); font-family: 'IBM Plex Mono', monospace; font-size: .875rem; }
-.mk5-cc.cp { color: var(--bronze); font-family: 'IBM Plex Mono', monospace; font-size: .75rem; }
-.mk5-cc.cn { color: var(--ink-3); font-family: 'IBM Plex Mono', monospace; font-size: .875rem; }
-.mk5-cc.ca { color: var(--accent-c); font-family: 'IBM Plex Mono', monospace; font-size: .875rem; font-weight: 500; background: var(--accent-tint); }
+.mk5-cc.cy { color: var(--ink-2); font-family: 'Space Mono', monospace; font-size: .875rem; }
+.mk5-cc.cp { color: var(--bronze); font-family: 'Space Mono', monospace; font-size: .75rem; }
+.mk5-cc.cn { color: var(--ink-3); font-family: 'Space Mono', monospace; font-size: .875rem; }
+.mk5-cc.ca { color: var(--accent-c); font-family: 'Space Mono', monospace; font-size: .875rem; font-weight: 500; background: var(--accent-tint); }
 
 /* PROOF LEDGER (new — evidenced shared-savings rows) */
 .mk5-proof {
@@ -513,7 +513,7 @@ const marketingCSS = `
   gap: 4rem; margin-bottom: 2.5rem;
 }
 .mk5-proof-header .left {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2);
 }
@@ -531,7 +531,7 @@ const marketingCSS = `
   background: var(--paper);
 }
 .mk5-plh {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.18em; text-transform: uppercase;
   padding: 1rem; color: var(--ink-2);
   border-bottom: 1px solid var(--rule);
@@ -549,11 +549,11 @@ const marketingCSS = `
 .mk5-plc:last-child { border-right: 0; }
 .mk5-plc .title { font-weight: 500; color: var(--ink); }
 .mk5-plc .sub {
-  font-family: 'IBM Plex Mono', monospace; font-size: .6875rem;
+  font-family: 'Space Mono', monospace; font-size: .6875rem;
   letter-spacing: 0.04em; color: var(--ink-3);
 }
 .mk5-plc .amount {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-weight: 500; color: var(--accent-c); font-size: .9375rem;
 }
 .mk5-plc.muted { color: var(--ink-2); }
@@ -586,7 +586,7 @@ const marketingCSS = `
 }
 .mk5-int-item:hover { background: var(--paper-hover); }
 .mk5-int-icon {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: 1.25rem; color: var(--accent-c);
   line-height: 1;
 }
@@ -595,7 +595,7 @@ const marketingCSS = `
   letter-spacing: -0.005em;
 }
 .mk5-int-type {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .625rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -629,7 +629,7 @@ const marketingCSS = `
 }
 .mk5-ind-featured-badge {
   display: inline-block;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.16em; text-transform: uppercase;
   padding: .35rem .75rem;
   border: 1px solid var(--accent-c);
@@ -652,7 +652,7 @@ const marketingCSS = `
   display: flex; flex-wrap: wrap; gap: .5rem;
 }
 .mk5-ind-featured-cap {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.08em;
   padding: .35rem .75rem;
   border: 1px solid var(--rule);
@@ -671,12 +671,12 @@ const marketingCSS = `
 }
 .mk5-ind-stat-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .mk5-ind-stat-num {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-size: 2.5rem; font-weight: 500; letter-spacing: -0.02em;
   color: var(--accent-c); margin-bottom: .25rem;
 }
 .mk5-ind-stat-label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink-2); line-height: 1.5;
 }
@@ -697,7 +697,7 @@ const marketingCSS = `
 }
 .mk5-ind-card:hover { background: var(--paper-hover); }
 .mk5-ind-card-icon {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: 1.25rem; color: var(--accent-c); line-height: 1;
 }
 .mk5-ind-card-name {
@@ -708,7 +708,7 @@ const marketingCSS = `
   font-size: .875rem; line-height: 1.55; color: var(--ink-2);
 }
 .mk5-ind-card-cats {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.04em;
   color: var(--ink-3);
   padding-top: .75rem;
@@ -741,7 +741,7 @@ const marketingCSS = `
   background: var(--paper);
 }
 .mk5-feat-item-label {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--accent-c); margin-bottom: .75rem;
 }
@@ -758,7 +758,7 @@ const marketingCSS = `
   border-top: 1px solid var(--rule);
 }
 .mk5-feat-item-bullets li {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.02em;
   color: var(--ink-2);
   padding: .55rem 0;
@@ -786,7 +786,7 @@ const marketingCSS = `
   position: relative;
 }
 .mk5-ethos-num {
-  font-family: 'IBM Plex Mono', monospace; font-feature-settings: "tnum";
+  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
   font-size: 1rem; letter-spacing: 0.06em;
   color: var(--ink-3); margin-bottom: 1.5rem;
 }
@@ -812,7 +812,7 @@ const marketingCSS = `
   max-width: 56rem; margin: 0 auto; text-align: center;
 }
 .mk5-cta-ey {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--ink-2); margin-bottom: 2rem;
   display: inline-flex; align-items: center; gap: .75rem;
@@ -848,13 +848,13 @@ const marketingCSS = `
 }
 .mk5-contact-field { display: flex; flex-direction: column; gap: .35rem; }
 .mk5-contact-field span {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--ink-2);
 }
 .mk5-contact-field input,
 .mk5-contact-field textarea {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: .9375rem; color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--rule);
@@ -868,7 +868,7 @@ const marketingCSS = `
   outline: none; border-color: var(--accent-c);
 }
 .mk5-contact-error {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; color: var(--neg-c);
   padding: .75rem; border: 1px solid var(--neg-c);
   background: rgba(176, 52, 35, 0.04);
@@ -897,19 +897,19 @@ const marketingCSS = `
   gap: 2rem; align-items: end;
 }
 .mk5-fl {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600; font-size: 1rem; color: var(--ink);
   letter-spacing: -0.005em;
 }
 .mk5-fc {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .75rem; letter-spacing: 0.06em;
   color: var(--ink-2); line-height: 1.6;
 }
 .mk5-fc a { color: var(--ink-2); }
 .mk5-fc a:hover { color: var(--ink); }
 .mk5-fr {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Space Mono', monospace;
   font-size: .6875rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink-3); text-align: right;
 }
@@ -977,10 +977,10 @@ const marketingCSS = `
 
 const AtheonLogo = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-    <path d="M16 4L27 27H5L16 4Z" fill="none" stroke="var(--accent, #0a7d4f)" strokeWidth="1.5" />
-    <line x1="9" y1="20" x2="23" y2="20" stroke="var(--accent, #0a7d4f)" strokeWidth=".8" opacity=".6" />
-    <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="var(--accent, #0a7d4f)" strokeWidth=".8" opacity=".45" />
-    <circle cx="16" cy="9" r="1.5" fill="var(--accent, #0a7d4f)" />
+    <path d="M16 4L27 27H5L16 4Z" fill="none" stroke="var(--accent, #2456d6)" strokeWidth="1.5" />
+    <line x1="9" y1="20" x2="23" y2="20" stroke="var(--accent, #2456d6)" strokeWidth=".8" opacity=".6" />
+    <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="var(--accent, #2456d6)" strokeWidth=".8" opacity=".45" />
+    <circle cx="16" cy="9" r="1.5" fill="var(--accent, #2456d6)" />
   </svg>
 );
 
@@ -998,13 +998,13 @@ function LayerPictogram({ tier }: { tier: 1 | 2 | 3 }) {
           <g key={r}>
             {Array.from({ length: dots }).map((_, i) => {
               const cx = 120 + ((i - (dots - 1) / 2) * spread) / (dots - 1);
-              return <circle key={i} cx={cx} cy={y} r="1.6" fill="var(--accent, #0a7d4f)" opacity={0.55 - r * 0.12} />;
+              return <circle key={i} cx={cx} cy={y} r="1.6" fill="var(--accent, #2456d6)" opacity={0.55 - r * 0.12} />;
             })}
             <line x1="40" y1={y} x2="200" y2={y} stroke="var(--border-card, #e4e2db)" strokeWidth="1" />
           </g>
         );
       })}
-      <text x="200" y="170" fontFamily="IBM Plex Mono, monospace" fontSize="9" letterSpacing="0.18em" fill="var(--text-muted, #9a9ea6)" textAnchor="end">
+      <text x="200" y="170" fontFamily="Space Mono, monospace" fontSize="9" letterSpacing="0.18em" fill="var(--text-muted, #9a9ea6)" textAnchor="end">
         L{tier.toString().padStart(2, "0")}
       </text>
     </svg>

@@ -17,7 +17,7 @@ export const chartTheme = {
   text: {
     fill: 'var(--chart-text)',
     fontSize: 12,
-    fontFamily: "'Archivo', system-ui, sans-serif",
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
   tooltip: {
     background: 'var(--chart-tooltip-bg)',

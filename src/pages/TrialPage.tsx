@@ -5,6 +5,8 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import type { TrialResultsResponse } from '@/lib/api';
+import { formatCompactCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 import { Upload, CheckCircle2, AlertTriangle, ArrowRight, Loader2, Shield, BarChart3, TrendingUp, FileText } from 'lucide-react';
 
 type Step = 'info' | 'upload' | 'processing' | 'results';
@@ -12,6 +14,7 @@ type Step = 'info' | 'upload' | 'processing' | 'results';
 const INDUSTRIES = ['fmcg', 'healthcare', 'mining', 'agriculture', 'logistics', 'technology', 'manufacturing', 'retail', 'general'];
 
 export function TrialPage() {
+  const currency = useTenantCurrency();
   const [step, setStep] = useState<Step>('info');
   const [trialId, setTrialId] = useState<string | null>(null);
   const [results, setResults] = useState<TrialResultsResponse | null>(null);
@@ -300,7 +303,7 @@ export function TrialPage() {
                         <div>
                           <span className="font-medium t-primary">{risk.title}</span>
                           <span className="t-muted"> — {risk.description}</span>
-                          {risk.impact > 0 && <span className="font-mono tnum ml-1" style={{ color: 'var(--neg)' }}>(R{risk.impact.toLocaleString()})</span>}
+                          {risk.impact > 0 && <span className="font-mono tnum ml-1" style={{ color: 'var(--neg)' }}>({formatCompactCurrency(risk.impact, currency)})</span>}
                         </div>
                       </li>
                     ))}
@@ -319,7 +322,7 @@ export function TrialPage() {
                         <div>
                           <span className="font-medium t-primary">{opp.title}</span>
                           <span className="t-muted"> — {opp.description}</span>
-                          {opp.value > 0 && <span className="text-accent font-mono tnum ml-1">(R{opp.value.toLocaleString()})</span>}
+                          {opp.value > 0 && <span className="text-accent font-mono tnum ml-1">({formatCompactCurrency(opp.value, currency)})</span>}
                         </div>
                       </li>
                     ))}

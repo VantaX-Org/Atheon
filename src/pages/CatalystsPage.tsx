@@ -30,7 +30,8 @@ import { ValueLedgerPanel } from "@/pages/catalysts/ValueLedgerPanel";
 import { ApprovalQueuePanel } from "@/pages/catalysts/ApprovalQueuePanel";
 import { ConfidenceThresholdsPanel } from "@/pages/catalysts/ConfidenceThresholdsPanel";
 import type { AutonomyTier } from "@/types";
-import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
+import { useAppStore, useSelectedCompanyId, useTenantCurrency } from "@/stores/appStore";
+import { formatCompactCurrency } from "@/lib/format-currency";
 import { SubCatalystOpsPanel } from "@/components/SubCatalystOpsPanel";
 import { ProcessMiningPanel } from "@/components/catalysts/ProcessMiningPanel";
 import { CSVExportButton } from "@/components/common/CSVExportButton";
@@ -64,6 +65,7 @@ export function CatalystsPage() {
  const toast = useToast();
  const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin' || user?.role === 'executive';
  const { activeTab, setActiveTab } = useTabState('clusters');
+ const currency = useTenantCurrency();
  const [expandedAction, setExpandedAction] = useState<string | null>(null);
  const [clusters, setClusters] = useState<ClusterItem[]>([]);
  const [actions, setActions] = useState<ActionItem[]>([]);
@@ -2983,11 +2985,11 @@ export function CatalystsPage() {
        </div>
        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
-         <p className="text-lg font-bold font-mono tabular-nums" style={{ color: 'var(--positive)' }}>R{(roiData.totalDiscrepancyValueRecovered / 1000).toFixed(0)}k</p>
+         <p className="text-lg font-bold font-mono tabular-nums" style={{ color: 'var(--positive)' }}>{formatCompactCurrency(roiData.totalDiscrepancyValueRecovered, currency)}</p>
          <p className="text-caption t-muted">Recovered</p>
         </div>
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
-         <p className="text-lg font-bold font-mono tabular-nums t-primary">R{(roiData.totalPreventedLosses / 1000).toFixed(0)}k</p>
+         <p className="text-lg font-bold font-mono tabular-nums t-primary">{formatCompactCurrency(roiData.totalPreventedLosses, currency)}</p>
          <p className="text-caption t-muted">Prevented</p>
         </div>
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
@@ -2995,7 +2997,7 @@ export function CatalystsPage() {
          <p className="text-caption t-muted">Hours Saved</p>
         </div>
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
-         <p className="text-lg font-bold t-primary">R{(roiData.platformCost / 1000).toFixed(0)}k</p>
+         <p className="text-lg font-bold t-primary">{formatCompactCurrency(roiData.platformCost, currency)}</p>
          <p className="text-caption t-muted">Platform Cost</p>
         </div>
        </div>
@@ -3012,7 +3014,7 @@ export function CatalystsPage() {
             <div className="flex-1 min-w-0">
              <div className="flex items-center justify-between mb-0.5">
               <span className="text-xs font-medium t-primary truncate">{row.label}</span>
-              <span className="text-xs t-muted">R{(row.recoveredValue / 1000).toFixed(0)}k · {Math.round(row.share * 100)}%</span>
+              <span className="text-xs t-muted">{formatCompactCurrency(row.recoveredValue, currency)} · {Math.round(row.share * 100)}%</span>
              </div>
              <div className="h-1.5 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
               <div className="h-full" style={{ width: `${Math.max(2, row.share * 100)}%`, background: 'var(--positive)' }} />
@@ -3036,22 +3038,22 @@ export function CatalystsPage() {
          <div className="grid grid-cols-3 gap-2">
           <div className="p-2 rounded-md border" style={{ background: 'rgb(var(--accent-rgb) / 0.05)', borderColor: 'rgb(var(--accent-rgb) / 0.15)' }}>
            <p className="text-caption t-muted">Automated by Atheon</p>
-           <p className="text-base font-bold font-mono tabular-nums" style={{ color: 'var(--positive)' }}>R{(roiData.breakdown.byActionState.automated_value_zar / 1000).toFixed(0)}k</p>
+           <p className="text-base font-bold font-mono tabular-nums" style={{ color: 'var(--positive)' }}>{formatCompactCurrency(roiData.breakdown.byActionState.automated_value_zar, currency)}</p>
            <p className="text-caption t-muted">{roiData.breakdown.byActionState.automated_count} actions completed</p>
           </div>
           <div className="p-2 rounded-md border" style={{ background: 'rgb(var(--neg-rgb) / 0.05)', borderColor: 'rgb(var(--neg-rgb) / 0.15)' }}>
            <p className="text-caption t-muted">Pending approval</p>
-           <p className="text-base font-bold font-mono tabular-nums" style={{ color: 'var(--warning)' }}>R{(roiData.breakdown.byActionState.pending_value_zar / 1000).toFixed(0)}k</p>
+           <p className="text-base font-bold font-mono tabular-nums" style={{ color: 'var(--warning)' }}>{formatCompactCurrency(roiData.breakdown.byActionState.pending_value_zar, currency)}</p>
            <p className="text-caption t-muted">{roiData.breakdown.byActionState.pending_count} awaiting</p>
           </div>
           <div className="p-2 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
            <p className="text-caption t-muted">Open opportunity</p>
-           <p className="text-base font-bold t-primary">R{(roiData.breakdown.byActionState.open_value_zar / 1000).toFixed(0)}k</p>
+           <p className="text-base font-bold t-primary">{formatCompactCurrency(roiData.breakdown.byActionState.open_value_zar, currency)}</p>
            <p className="text-caption t-muted">no automation yet</p>
           </div>
          </div>
          <p className="text-caption t-muted mt-2">
-          Of R{((roiData.totalDiscrepancyValueIdentified || 0) / 1000).toFixed(0)}k identified, the split shows where each rand sits in the realisation pipeline.
+          Of {formatCompactCurrency(roiData.totalDiscrepancyValueIdentified || 0, currency)} identified, the split shows where each rand sits in the realisation pipeline.
          </p>
         </div>
        )}

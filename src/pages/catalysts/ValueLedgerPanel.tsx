@@ -4,7 +4,8 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/state';
 import { Wallet, RefreshCw, TrendingUp, TrendingDown, Minus, FileSearch, Receipt, ShieldCheck, FileText, Download, KeyRound, Loader2 } from 'lucide-react';
 import { api, ApiError, isStepUpRequired } from '@/lib/api';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, useTenantCurrency } from '@/stores/appStore';
+import { formatPreciseCurrency } from '@/lib/format-currency';
 
 type LedgerResp = Awaited<ReturnType<typeof api.catalysts.valueLedger>>;
 type LedgerCatalyst = LedgerResp['catalysts'][number];
@@ -20,11 +21,8 @@ const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
   { key: 'ytd', label: 'YTD' },
 ];
 
-function fmtZar(n: number): string {
-  if (!Number.isFinite(n)) return 'R 0';
-  if (Math.abs(n) >= 1_000_000) return `R ${(n / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1_000) return `R ${(n / 1_000).toFixed(1)}k`;
-  return `R ${Math.round(n).toLocaleString('en-ZA')}`;
+function fmtZar(n: number, currency: string): string {
+  return formatPreciseCurrency(n, currency);
 }
 
 function fmtPct(n: number): string {
@@ -59,6 +57,7 @@ type PackToast = { hash: string; sizeBytes: number; sourceLabel: string } | null
 
 export function ValueLedgerPanel() {
   const companyId = useAppStore((s) => s.selectedCompanyId);
+  const currency = useTenantCurrency();
   const [data, setData] = useState<LedgerResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,14 +200,14 @@ export function ValueLedgerPanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <SummaryTile
           label="Realized savings"
-          value={fmtZar(data.summary.totalRealizedSavingsZar)}
+          value={fmtZar(data.summary.totalRealizedSavingsZar, currency)}
           icon={<Wallet size={14} className="text-accent" />}
           accent="var(--accent)"
           big
         />
         <SummaryTile
           label="Atheon revenue"
-          value={fmtZar(data.summary.atheonRevenueZar)}
+          value={fmtZar(data.summary.atheonRevenueZar, currency)}
           sub={`${data.summary.atheonSharePct.toFixed(0)}% share`}
           icon={<Receipt size={14} className="text-accent" />}
         />
@@ -264,8 +263,8 @@ export function ValueLedgerPanel() {
                     </td>
                     <td className="py-2.5 pr-3 t-secondary capitalize">{c.domain || '—'}</td>
                     <td className="py-2.5 pr-3 text-right tabular-nums font-mono t-secondary">{c.runsCount.toLocaleString('en-ZA')}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums font-mono t-secondary">{fmtZar(c.valueProcessedZar)}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums font-mono font-semibold" style={{ color: 'var(--accent)' }}>{fmtZar(c.realizedSavingsZar)}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums font-mono t-secondary">{fmtZar(c.valueProcessedZar, currency)}</td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums font-mono font-semibold" style={{ color: 'var(--accent)' }}>{fmtZar(c.realizedSavingsZar, currency)}</td>
                     <td className="py-2.5 pr-3 text-right tabular-nums font-mono t-secondary">{fmtPct(c.successRatePct)}</td>
                     <td className="py-2.5 pr-3 text-right tabular-nums font-mono t-secondary">{fmtPct(c.roiEstimatePct)}</td>
                     <td className="py-2.5 pr-3 text-right">
@@ -418,6 +417,7 @@ export function ValueLedgerPanel() {
 }
 
 function LineItemRow({ item, onAuditPack }: { item: LedgerLineItem; onAuditPack: () => void }) {
+  const currency = useTenantCurrency();
   return (
     <li className="flex items-start justify-between gap-3 p-2.5 rounded-md border border-[var(--border-card)] bg-[var(--bg-card-solid)] hover:bg-[var(--bg-secondary)] transition-[background-color] duration-[var(--dur-press,160ms)] [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]">
       <div className="min-w-0 flex-1">
@@ -429,7 +429,7 @@ function LineItemRow({ item, onAuditPack }: { item: LedgerLineItem; onAuditPack:
         </div>
       </div>
       <div className="text-right flex-shrink-0">
-        <div className="text-sm font-semibold tabular-nums font-mono" style={{ color: 'var(--accent)' }}>{fmtZar(item.attributedSavingsZar)}</div>
+        <div className="text-sm font-semibold tabular-nums font-mono" style={{ color: 'var(--accent)' }}>{fmtZar(item.attributedSavingsZar, currency)}</div>
         <div className="mt-1 flex justify-end">{confidencePill(item.confidence)}</div>
         <button
           onClick={onAuditPack}
@@ -444,6 +444,7 @@ function LineItemRow({ item, onAuditPack }: { item: LedgerLineItem; onAuditPack:
 }
 
 function BillingPeriodRow({ period, onAuditPack }: { period: LedgerBillingPeriod; onAuditPack: () => void }) {
+  const currency = useTenantCurrency();
   const statusVariant: 'completed' | 'amber' | 'failed' | 'pending' =
     period.status === 'finalized' || period.status === 'invoiced' ? 'completed'
     : period.status === 'pending' ? 'amber'
@@ -457,8 +458,8 @@ function BillingPeriodRow({ period, onAuditPack }: { period: LedgerBillingPeriod
         <div className="text-caption t-muted mt-0.5">Atheon share {period.atheonSharePct.toFixed(0)}% · generated {fmtDate(period.generatedAt)}</div>
       </div>
       <div className="text-right flex-shrink-0">
-        <div className="text-sm font-semibold tabular-nums font-mono t-primary">{fmtZar(period.atheonRevenueZar)}</div>
-        <div className="text-caption t-muted tabular-nums font-mono">of {fmtZar(period.totalRealisedSavingsZar)}</div>
+        <div className="text-sm font-semibold tabular-nums font-mono t-primary">{fmtZar(period.atheonRevenueZar, currency)}</div>
+        <div className="text-caption t-muted tabular-nums font-mono">of {fmtZar(period.totalRealisedSavingsZar, currency)}</div>
         <div className="mt-1 flex justify-end"><StatusPill status={statusVariant} label={period.status} /></div>
         <button
           onClick={onAuditPack}
