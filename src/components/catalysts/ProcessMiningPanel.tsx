@@ -129,7 +129,7 @@ function ProcessMiningRunCard({
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  const accent = "#0a7d4f";
+  const accent = "var(--accent)";
 
   return (
     <div className="space-y-3">
@@ -150,7 +150,7 @@ function ProcessMiningRunCard({
               return (
                 <div key={b.label} className="grid grid-cols-12 items-center gap-2 text-[11px]">
                   <span className="col-span-2 t-secondary tabular-nums">{b.label}</span>
-                  <div className="col-span-8 h-3 rounded-[2px]" style={{ background: "rgba(10,125,79,0.08)" }}>
+                  <div className="col-span-8 h-3 rounded-[2px]" style={{ background: "rgba(36,86,214,0.08)" }}>
                     <div
                       className="h-3 rounded-[2px]"
                       style={{ width: `${Math.max(pct, count > 0 ? 2 : 0)}%`, background: accent }}
@@ -206,7 +206,7 @@ function ProcessMiningRunCard({
               <span className="col-span-2 text-right tabular-nums t-primary">{count}</span>
               <span className="col-span-3 text-right">
                 <div className="inline-flex items-center gap-1.5">
-                  <div className="w-14 h-1.5 rounded-[2px]" style={{ background: "rgba(10,125,79,0.08)" }}>
+                  <div className="w-14 h-1.5 rounded-[2px]" style={{ background: "rgba(36,86,214,0.08)" }}>
                     <div className="h-1.5 rounded-[2px]" style={{ width: `${sharePct}%`, background: accent }} />
                   </div>
                   <span className="tabular-nums t-secondary">{sharePct.toFixed(0)}%</span>
@@ -272,7 +272,7 @@ function BottleneckRank({
 
   const med = median(ranked.map((r) => r.avg));
   const top3 = ranked.slice(0, 3);
-  const accent = "#0a7d4f";
+  const accent = "var(--accent)";
 
   return (
     <div className="p-3 rounded-[2px] border border-[var(--border-card)]" style={{ background: "#fbfaf7" }}>
@@ -292,7 +292,7 @@ function BottleneckRank({
             <div key={row.name} className="grid grid-cols-12 items-center gap-2 text-[11px]">
               <span className="col-span-1 t-muted tabular-nums">#{i + 1}</span>
               <span className="col-span-5 t-secondary truncate" title={row.name}>{row.name}</span>
-              <div className="col-span-3 h-2 rounded-[2px]" style={{ background: "rgba(10,125,79,0.08)" }}>
+              <div className="col-span-3 h-2 rounded-[2px]" style={{ background: "rgba(36,86,214,0.08)" }}>
                 <div className="h-2 rounded-[2px]" style={{ width: `${relWidth}%`, background: accent }} />
               </div>
               <span className="col-span-2 text-right tabular-nums font-semibold" style={{ color: accent }}>
@@ -336,7 +336,7 @@ export function ProcessMiningPanel(props: ProcessMiningPanelProps) {
   } = props;
 
   const toast = useToast();
-  const accent = "#0a7d4f";
+  const accent = "var(--accent)";
 
   // Aggregate insights across runs — dedupe + cap.
   const aggregatedInsights = Array.from(
@@ -464,7 +464,7 @@ export function ProcessMiningPanel(props: ProcessMiningPanelProps) {
                     <span className="text-caption t-muted">Pending</span>
                     <p className="text-sm font-bold t-secondary">{run.summary.pending}</p>
                   </div>
-                  <div className="text-center p-2 rounded-[2px] border" style={{ background: "rgba(10,125,79,0.05)", borderColor: "rgba(10,125,79,0.15)" }}>
+                  <div className="text-center p-2 rounded-[2px] border" style={{ background: "rgba(36,86,214,0.05)", borderColor: "rgba(36,86,214,0.15)" }}>
                     <span className="text-caption" style={{ color: accent }}>Auto-Approved</span>
                     <p className="text-sm font-bold" style={{ color: accent }}>{run.summary.autoApproved}</p>
                   </div>
@@ -480,7 +480,7 @@ export function ProcessMiningPanel(props: ProcessMiningPanelProps) {
                           const height = (count / maxCount) * 100;
                           return (
                             <div key={bucket} className="flex-1 flex flex-col items-center gap-1">
-                              <div className="w-full rounded-t-[2px]" style={{ height: `${Math.max(height, 4)}%`, background: "rgba(10,125,79,0.3)" }} />
+                              <div className="w-full rounded-t-[2px]" style={{ height: `${Math.max(height, 4)}%`, background: "rgba(36,86,214,0.3)" }} />
                               <span className="text-[8px] t-muted">{bucket}</span>
                             </div>
                           );

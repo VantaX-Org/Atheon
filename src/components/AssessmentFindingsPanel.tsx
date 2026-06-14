@@ -70,10 +70,8 @@ const SEVERITY_RANK: Record<AssessmentFindingSeverity, number> = {
   critical: 4, high: 3, medium: 2, low: 1,
 };
 
-import { formatZarFull } from '@/lib/format-currency';
-
-const formatZAR = (amount: number): string =>
-  Number.isFinite(amount) ? formatZarFull(amount) : 'R 0';
+import { formatFullCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 
 /**
  * Option B confidence model. A finding is *unverified* iff its confidence gate
@@ -113,6 +111,12 @@ export function AssessmentFindingsPanel({
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
+
+  // Currency is tenant-level — these *_zar fields hold figures in the tenant's
+  // currency (legacy field name); render with the tenant symbol, not a literal R.
+  const currency = useTenantCurrency();
+  const fmt = (amount: number): string =>
+    Number.isFinite(amount) ? formatFullCurrency(amount, currency) : formatFullCurrency(0, currency);
 
   const sourceFindings = useMemo(() => {
     if (!companyFilter) return findings;
@@ -234,7 +238,7 @@ export function AssessmentFindingsPanel({
               <>
                 <div className="text-label">{unverified ? 'Potential (unverified)' : 'Value at risk'}</div>
                 <div className={`text-base font-semibold ${unverified ? 't-muted' : 'text-accent'}`}>
-                  {formatZAR(f.value_at_risk_zar)}
+                  {fmt(f.value_at_risk_zar)}
                 </div>
               </>
             ) : (
@@ -284,7 +288,7 @@ export function AssessmentFindingsPanel({
                         <span className="t-muted">{c.methodology}</span>
                       </span>
                       <span className="t-primary font-medium whitespace-nowrap">
-                        {formatZAR(c.amount_zar)}
+                        {fmt(c.amount_zar)}
                       </span>
                     </div>
                   ))}
@@ -317,7 +321,7 @@ export function AssessmentFindingsPanel({
                             {r.amount_native !== undefined && r.currency
                               ? `${r.currency} ${r.amount_native.toLocaleString()}`
                               : r.amount_zar !== undefined
-                                ? formatZAR(r.amount_zar)
+                                ? fmt(r.amount_zar)
                                 : '—'}
                           </td>
                           <td className="px-3 py-2 t-muted whitespace-nowrap">{r.date || '—'}</td>
@@ -411,11 +415,11 @@ export function AssessmentFindingsPanel({
             <div className="text-right">
               <div className="text-label">Value at risk</div>
               <div className="text-2xl font-semibold text-accent" data-testid="findings-total-value">
-                {formatZAR(totalValue)}
+                {fmt(totalValue)}
               </div>
               {potentialUnverified > 0 && (
                 <div className="text-caption t-muted mt-1" data-testid="findings-potential-value">
-                  + {formatZAR(potentialUnverified)} indicative, pending confirmation
+                  + {fmt(potentialUnverified)} indicative, pending confirmation
                 </div>
               )}
             </div>

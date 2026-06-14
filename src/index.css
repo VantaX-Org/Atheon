@@ -3,10 +3,13 @@
 @tailwind utilities;
 
 /* ============================================================
-   ATHEON DESIGN SYSTEM — Obsidian Authority
-   Obsidian field, frosted raised surfaces, bone ink, neon spruce.
-   Archivo grotesk + IBM Plex Mono. Depth via translucent layers
-   and considered shadow — never decoration. Sharp corners. Dark.
+   ATHEON DESIGN SYSTEM — Luminous Editorial
+   Warm-white field with faint blue gradient-mesh blooms, frosted-
+   glass panels, warm near-black ink, royal-blue brand accent.
+   Inter (display + oversized tabular numerals) + Space Mono
+   (uppercase letterspaced micro-labels). Depth via translucent
+   glass + soft elevation — never decoration. RAG (green/amber/red)
+   is reserved for STATUS & HEALTH ONLY, never brand. Light.
    ============================================================ */
 
 /* L6: Font imports consolidated in index.html with font-display:swap for better performance */
@@ -30,116 +33,139 @@
     --dur-medium:   260ms;   /* modal/sheet enter */
     --dur-slow:     360ms;   /* drawer enter, page reveals */
     /* ───────────────────────────────────────────────────────────
-     * SWISS CALM AUTHORITY — warm-white field, ink type, one accent.
-     * Hairline rules carry structure; cards sit flat (no shadow).
-     * Ledger green is the single accent + positive signed-delta;
-     * --neg is reserved for genuine negatives. Sharp corners.
+     * LUMINOUS EDITORIAL — warm-white field with faint blue
+     * gradient-mesh blooms, frosted-glass surfaces, warm-black ink,
+     * royal-blue brand accent. Blue carries brand/active ONLY; RAG
+     * (green/amber/red) carries STATUS & HEALTH ONLY — they never
+     * mix. Soft elevation on glass; hairline rules carry structure.
      * Tabular figures everywhere data appears.
      * ─────────────────────────────────────────────────────────── */
-    --radius: 0.25rem;
+    --radius: 0.625rem;        /* 10px — glass cards/panels */
+    --radius-control: 0.25rem; /* 4px — buttons, inputs, chips */
 
     /* ── Field ─────────────────────────────────────────── */
-    --bg-primary: #fbfaf7;     /* warm white */
-    --bg-secondary: #f4f2ec;
-    --bg-pattern: none;
-    --field-gradient: none;
+    --bg-primary: #faf9f5;     /* warm white */
+    --bg-secondary: #f1efe8;
+    /* Faint blue gradient-mesh blooms — top-left + far-right, very
+       low alpha so glass panels read as floating over light. */
+    --field-gradient:
+      radial-gradient(58rem 42rem at 8% -8%, rgba(36, 86, 214, 0.07), transparent 62%),
+      radial-gradient(48rem 40rem at 104% 6%, rgba(36, 86, 214, 0.05), transparent 60%);
+    --bg-pattern: var(--field-gradient);
 
-    /* ── Surfaces (flat, defined by hairlines) ─────────── */
+    /* ── Surfaces — frosted glass over the field ───────── */
     --bg-card: #ffffff;
     --bg-card-solid: #ffffff;
-    --bg-card-hover: #fbfaf7;
+    --bg-card-hover: #f7f5ee;
     --bg-elevated: #ffffff;
-    --bg-sidebar: #fbfaf7;
-    --bg-header: rgba(251, 250, 247, 0.92);
+    --bg-sidebar: rgba(250, 249, 245, 0.72);
+    --bg-header: rgba(250, 249, 245, 0.78);
     --bg-input: #ffffff;
     --bg-input-focus: #ffffff;
-    --bg-modal: #ffffff;
+    --bg-modal: rgba(255, 255, 255, 0.86);
+
+    /* ── Glass — translucent frosted surfaces ──────────── */
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.86);
+    --glass-border: rgba(26, 26, 23, 0.08);
+    --glass-blur: 16px;
+    --glass-shadow: 0 8px 32px rgba(26, 26, 23, 0.08);
+    --glass-shadow-hover: 0 14px 44px rgba(26, 26, 23, 0.12);
 
     /* ── Borders / rules ───────────────────────────────── */
-    --border-primary: #e4e2db;
-    --border-card: #e4e2db;
-    --border-subtle: #ecebe4;
-    --divider: #e4e2db;
-    --line-strong: #0f1115;     /* 1.5px section/header rule — ink */
+    --border-primary: #e6e3da;
+    --border-card: #e6e3da;
+    --border-subtle: #efece3;
+    --divider: #e6e3da;
+    --line-strong: #1a1a17;     /* 1.5px section/header rule — ink */
 
     /* ── Text ──────────────────────────────────────────── */
-    --text-primary: #0f1115;    /* ink */
-    --text-secondary: #6c7079;  /* muted */
-    --text-muted: #9a9ea6;      /* faint — eyebrow/label/scale */
+    --text-primary: #1a1a17;    /* warm near-black ink */
+    --text-secondary: #5c5f63;  /* muted */
+    --text-muted: #9498a0;      /* faint — eyebrow/label/scale */
     --text-on-accent: #ffffff;
 
-    /* ── Single accent: ledger green (= positive) ──────── */
-    --accent: #0a7d4f;
-    --accent-rgb: 10, 125, 79;
-    --accent-hover: #096a43;
-    --accent-glow: rgba(10, 125, 79, 0.14);
-    --accent-subtle: rgba(10, 125, 79, 0.07);
-    --accent-dark: #07532f;
-    --sage: #0a7d4f;
-    --sage-b: #07532f;
+    /* ── Brand accent: royal blue (NOT a status colour) ── */
+    --accent: #2456d6;
+    --accent-rgb: 36, 86, 214;
+    --accent-hover: #1c46ad;
+    --accent-glow: rgba(36, 86, 214, 0.14);
+    --accent-subtle: rgba(36, 86, 214, 0.07);
+    --accent-dark: #16357f;
+    --sage: #2456d6;            /* legacy alias → blue brand */
+    --sage-b: #16357f;          /* legacy alias → blue brand dark */
     --bronze: #9a6b1f;          /* chart tertiary / warning family */
     --sky: #6c7a8e;             /* chart secondary / slate */
 
-    /* ── Reserved negative ─────────────────────────────── */
-    --neg: #b03423;
-    --neg-rgb: 176, 52, 35;
+    /* ── RAG status semantics (status & health ONLY) ───── */
+    --rag-healthy: #1a7d4f;
+    --rag-healthy-rgb: 26, 125, 79;
+    --rag-watch: #d98a00;
+    --rag-watch-rgb: 217, 138, 0;
+    --rag-risk: #c0392b;
+    --rag-risk-rgb: 192, 57, 43;
 
-    /* ── Elevation — Swiss is flat; only modals carry shadow.
-       Cards/panels are defined by 1px hairline borders, not lift.
+    /* ── Reserved negative (= RAG risk) ────────────────── */
+    --neg: #c0392b;
+    --neg-rgb: 192, 57, 43;
+
+    /* ── Elevation — Luminous Editorial uses soft glass lift.
+       Cards/panels float on faint shadow + hairline border.
        Tier mapping:
-         elev-0 — flat (everything except modals)
-         elev-1..3 — kept as alias to flat for back-compat
-         elev-4 — modals, dialogs (the only real shadow) */
+         elev-0 — flush (chips, inline)
+         elev-1 — resting glass card
+         elev-2 — hovered card / dropdown
+         elev-3 — popovers
+         elev-4 — modals, dialogs (deepest) */
     --elev-0: none;
-    --elev-1: none;
-    --elev-2: none;
-    --elev-3: 0 8px 24px rgba(15, 17, 21, 0.08);
-    --elev-4: 0 24px 60px rgba(15, 17, 21, 0.18);
+    --elev-1: 0 8px 32px rgba(26, 26, 23, 0.08);
+    --elev-2: 0 14px 44px rgba(26, 26, 23, 0.12);
+    --elev-3: 0 12px 32px rgba(26, 26, 23, 0.14);
+    --elev-4: 0 28px 64px rgba(26, 26, 23, 0.20);
 
     /* Semantic aliases (preferred for component-level usage) */
-    --shadow-xs: none;
-    --shadow-card: none;
-    --shadow-card-hover: 0 1px 2px rgba(15, 17, 21, 0.04);
-    --shadow-raised: none;
-    --shadow-glass: 0 8px 24px rgba(15, 17, 21, 0.08);
+    --shadow-xs: 0 1px 2px rgba(26, 26, 23, 0.05);
+    --shadow-card: var(--glass-shadow);
+    --shadow-card-hover: var(--glass-shadow-hover);
+    --shadow-raised: var(--elev-2);
+    --shadow-glass: var(--glass-shadow);
     --shadow-dropdown: var(--elev-3);
     --shadow-modal: var(--elev-4);
 
     /* ── Overlay (floating layers only) ────────────────── */
-    --overlay-bg: rgba(255, 255, 255, 0.92);
-    --overlay-blur: 14px;
-    --overlay-border: #e4e2db;
-    --glass-blur: 10px;
+    --overlay-bg: var(--glass-bg-strong);
+    --overlay-blur: 20px;
+    --overlay-border: var(--glass-border);
 
     /* ── Form & interaction ────────────────────────────── */
-    --placeholder: #9a9ea6;
+    --placeholder: #9498a0;
     --option-bg: #ffffff;
-    --scrollbar-thumb: rgba(15, 17, 21, 0.18);
-    --scrollbar-thumb-hover: rgba(15, 17, 21, 0.32);
-    --toggle-bg: #ecebe4;
-    --ring-focus: rgba(10, 125, 79, 0.45);
+    --scrollbar-thumb: rgba(26, 26, 23, 0.18);
+    --scrollbar-thumb-hover: rgba(26, 26, 23, 0.32);
+    --toggle-bg: #e6e3da;
+    --ring-focus: rgba(36, 86, 214, 0.45);
 
-    /* ── Semantic — status only ────────────────────────── */
-    --positive: #0a7d4f;
-    --warning: #9a6b1f;
-    --warning-rgb: 154, 107, 31;
-    --critical: #b03423;
+    /* ── Semantic — status only (RAG, never brand) ─────── */
+    --positive: var(--rag-healthy);
+    --warning: var(--rag-watch);
+    --warning-rgb: var(--rag-watch-rgb);
+    --critical: var(--rag-risk);
     --info: #6c7a8e;
-    --teal: #0a7d4f;
-    --teal-light: rgba(10, 125, 79, 0.07);
-    --teal-dark: #07532f;
+    --teal: #2456d6;            /* legacy alias → blue brand */
+    --teal-light: rgba(36, 86, 214, 0.07);
+    --teal-dark: #16357f;
 
-    /* ── Chart theme — accent + ink + slate ────────────── */
+    /* ── Chart theme — blue brand + slate + RAG accents ── */
     --chart-primary: var(--accent);
     --chart-secondary: #6c7a8e;
-    --chart-tertiary: #9a9ea6;
-    --chart-success: var(--accent);
-    --chart-warning: var(--warning);
-    --chart-danger: var(--neg);
-    --chart-grid: rgba(15, 17, 21, 0.06);
+    --chart-tertiary: #9498a0;
+    --chart-success: var(--rag-healthy);
+    --chart-warning: var(--rag-watch);
+    --chart-danger: var(--rag-risk);
+    --chart-grid: rgba(26, 26, 23, 0.06);
     --chart-text: var(--text-secondary);
-    --chart-tooltip-bg: #ffffff;
-    --chart-tooltip-border: #e4e2db;
+    --chart-tooltip-bg: rgba(255, 255, 255, 0.92);
+    --chart-tooltip-border: var(--glass-border);
 
     /* ── Legacy aliases (kept; repointed) ─────────────── */
     --shadow-card-light: none;
@@ -151,15 +177,17 @@
   * { border-color: var(--divider); }
 
   body {
-    /* Archivo is the single grotesk for body + display (weight does the
-       work, not a second face). IBM Plex Mono is the data/figure face,
-       applied via .font-mono / Tailwind's mono family on numerals. */
-    font-family: "Archivo", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Inter is the single grotesk for body + display (weight + optical
+       sizing do the work). Space Mono is the data/micro-label face,
+       applied via .font-mono / Tailwind's mono family on numerals and
+       uppercase letterspaced labels. */
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-primary);
     background-image: var(--bg-pattern);
     background-attachment: fixed;
     color: var(--text-primary);
     min-height: 100vh;
+    font-feature-settings: "tnum" 1, "cv05" 1, "ss01" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -223,11 +251,14 @@
   }
   .provenance-link:hover { color: var(--sage); }
 
-  /* `.glass-card` — flat content card (Swiss: hairline border defines
-     the surface, no blur, no shadow on content). Sharp corners. */
+  /* `.glass-card` — frosted-glass content card (Luminous Editorial:
+     translucent white over the field bloom, hairline border, soft
+     elevation, blurred backdrop). Rounded. */
   .glass-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-card);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
     transition: transform var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
@@ -259,7 +290,7 @@
   .text-caption { font-size: 11px; line-height: 1.4;  font-weight: 500; letter-spacing: 0.01em; }
   /* `.text-label` is uppercase tracked caption — section headers,
       column labels, tab labels. Reuses caption sizing. */
-  .text-label   { font-size: 11px; line-height: 1.4;  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+  .text-label   { font-family: "Space Mono", ui-monospace, monospace; font-size: 11px; line-height: 1.4;  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 
   /* Headline aliases — semantic names used across hero headers, cards,
      dashboards. Mapped onto the same numeric scale so there is one
@@ -307,17 +338,18 @@
      pages. Single source of truth for severity coding. */
   .pill {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 2px;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    letter-spacing: 0.01em;
-    font-size: 11px; font-weight: 500; line-height: 1.4;
+    padding: 2px 8px; border-radius: var(--radius-control);
+    font-family: "Space Mono", ui-monospace, monospace;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    font-size: 10.5px; font-weight: 700; line-height: 1.4;
     border: 1px solid transparent;
   }
-  /* Swiss print palette — drawn from the brand tokens, hairline borders. */
-  .pill-success { background: rgb(var(--accent-rgb) / 0.10); color: var(--accent);  border-color: rgb(var(--accent-rgb) / 0.24); }
-  .pill-warning { background: rgba(154, 107, 31, 0.10);      color: var(--warning);  border-color: rgba(154, 107, 31, 0.24); }
-  .pill-danger  { background: rgb(var(--neg-rgb) / 0.10);    color: var(--neg);      border-color: rgb(var(--neg-rgb) / 0.26); }
-  .pill-info    { background: rgba(59, 63, 71, 0.08);        color: var(--info);     border-color: rgba(59, 63, 71, 0.22); }
+  /* RAG status pills use the RAG palette (healthy/watch/risk); the brand
+     pill uses blue. success === RAG healthy, NOT the brand accent. */
+  .pill-success { background: rgb(var(--rag-healthy-rgb) / 0.10); color: var(--rag-healthy); border-color: rgb(var(--rag-healthy-rgb) / 0.24); }
+  .pill-warning { background: rgb(var(--rag-watch-rgb) / 0.12);   color: var(--rag-watch);   border-color: rgb(var(--rag-watch-rgb) / 0.28); }
+  .pill-danger  { background: rgb(var(--rag-risk-rgb) / 0.10);    color: var(--rag-risk);    border-color: rgb(var(--rag-risk-rgb) / 0.26); }
+  .pill-info    { background: rgba(108, 122, 142, 0.10);          color: var(--info);        border-color: rgba(108, 122, 142, 0.24); }
   .pill-muted   { background: var(--bg-secondary); color: var(--text-muted); border-color: var(--border-subtle); }
   .pill-accent  { background: var(--accent-subtle); color: var(--accent); border-color: rgb(var(--accent-rgb) / 0.20); }
   .text-gradient { color: var(--accent); }
@@ -331,16 +363,19 @@
   .border-theme { border-color: var(--border-card); }
   .border-theme-subtle { border-color: var(--border-subtle); }
 
-  /* Swiss surface — white field, single hairline rule, sharp corners, flat.
-     The card's authority comes from precise alignment and the hairline grid,
-     never from drop shadows or rounded softness. */
+  /* Luminous surface — frosted glass over the field bloom, hairline
+     rule, soft elevation, rounded. The card floats; its authority comes
+     from precise alignment, the glass depth, and the hairline grid. */
   .card-swiss {
-    background: var(--bg-card);
-    border: 1px solid var(--border-card);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+    transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
   }
+  .card-swiss:hover { box-shadow: var(--shadow-card-hover); }
 
   /* Borderless section block anchored by a 1.5px ink top-rule. */
   .card-panel {
@@ -360,14 +395,17 @@
   }
   .card-accent:hover { border-color: rgb(var(--accent-rgb) / 0.5); }
 
-  /* `.card-hero` — the one anchor card per screen. Sage wash, taller padding,
-     accent left-rule, larger interior breathing room. Reserve for the page's
-     dominant metric (e.g. Shared Savings on Dashboard, Recovered $ on
-     BoardDigest, Health Score on Apex). Never render two on a single screen. */
+  /* `.card-hero` — the one anchor card per screen. Blue gradient-mesh wash,
+     taller padding, accent left-rule, larger interior breathing room. Reserve
+     for the page's dominant metric (e.g. Shared Savings on Dashboard, Recovered
+     $ on BoardDigest, Health Score on Apex). Never render two on a single screen. */
   .card-hero {
     background:
-      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.06) 0%, rgb(var(--accent-rgb) / 0.02) 60%, transparent 100%),
-      var(--bg-card);
+      radial-gradient(36rem 24rem at 0% 0%, rgb(var(--accent-rgb) / 0.12), transparent 70%),
+      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08) 0%, rgb(var(--accent-rgb) / 0.02) 60%, transparent 100%),
+      var(--glass-bg-strong);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
     border: 1px solid rgb(var(--accent-rgb) / 0.22);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius);
@@ -390,10 +428,11 @@
   /* `.hero-eyebrow` — uppercase tracked label that sits above a hero number.
      Same metrics as .text-label but coloured for the sage hero band. */
   .hero-eyebrow {
+    font-family: "Space Mono", ui-monospace, monospace;
     font-size: 11px;
     line-height: 1;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--accent);
   }
@@ -411,13 +450,15 @@
   }
 
   /* Legacy aliases — keep until the page-rollout phases migrate direct
-     className references off them. All resolve to the Swiss surface. */
-  .card-glass, .card-dark, .card-black, .card-mint { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius); box-shadow: var(--shadow-card); transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out); }
-  .card-teal { background: var(--bg-card); border: 1px solid rgb(var(--accent-rgb) / 0.28); border-radius: var(--radius); box-shadow: var(--shadow-card); }
+     className references off them. All resolve to the Luminous glass surface. */
+  .card-glass, .card-dark, .card-black, .card-mint { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--shadow-card); transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out); }
+  .card-teal { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid rgb(var(--accent-rgb) / 0.28); border-radius: var(--radius); box-shadow: var(--shadow-card); }
 
   .bg-glass {
-    background: var(--bg-card);
-    border: 1px solid var(--border-card);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: 1rem;
     box-shadow: var(--shadow-card);
     transition: transform var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
@@ -433,8 +474,10 @@
     border-radius: 1rem;
   }
   .bg-glass-subtle {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: 1rem;
   }
   .glow-cyan { box-shadow: 0 0 24px var(--accent-glow); }
@@ -454,8 +497,10 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
 
   .glass-panel {
-    background: var(--bg-card);
-    border: 1px solid var(--border-card);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     box-shadow: var(--shadow-card);
     border-radius: 1rem;
     transition: transform var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);

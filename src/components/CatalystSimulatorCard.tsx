@@ -37,12 +37,14 @@ interface Props {
 
 const MIN_PRIORS_FOR_CI = 5;
 
-import { formatZarFull } from '@/lib/format-currency';
-
-const formatZAR = formatZarFull;
+import { formatFullCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 
 export function CatalystSimulatorCard({ clusterId, subCatalystName, initialStats, initialHistory }: Props): JSX.Element {
   const toast = useToast();
+  // Tenant-level currency — *_zar fields carry tenant-currency figures.
+  const currency = useTenantCurrency();
+  const formatZAR = (n: number): string => formatFullCurrency(n, currency);
   const [latest, setLatest] = useState<CatalystSimulationResult | null>(null);
   const [stats, setStats] = useState<CatalystCalibrationStats | null>(initialStats ?? null);
   const [history, setHistory] = useState<CatalystSimulationHistoryRow[]>(initialHistory ?? []);

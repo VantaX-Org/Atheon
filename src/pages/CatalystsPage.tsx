@@ -2951,7 +2951,7 @@ export function CatalystsPage() {
         }} />
        </div>
        <p className="text-headline-lg font-bold t-primary tabular-nums font-mono mt-1">
-        <Numeric value={intellOverview.summary.totalValueProcessed} unit="ZAR" compact size="lg" />
+        <Numeric value={intellOverview.summary.totalValueProcessed} unit="currency" compact size="lg" />
        </p>
       </div>
       <div className="p-4 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)] hover:border-[var(--border-card)] transition-colors active:scale-[0.97]">

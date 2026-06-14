@@ -11,8 +11,8 @@
  *
  * Each section header is a Material-Symbols-labelled row that expands /
  * collapses its child routes. The section whose route the user is currently
- * on is auto-expanded. Active row gets a sage right-border (matches Stitch
- * `border-r-2 border-primary` exactly).
+ * on is auto-expanded. Active row gets a blue left-rule + accent-subtle wash
+ * (Luminous Editorial brand-active state).
  *
  * Footer: Support · Settings. Same shape as Stitch.
  *
@@ -405,7 +405,9 @@ export function Sidebar() {
         className="fixed left-0 top-0 h-full z-40 w-sidebar-expanded hidden md:flex flex-col transition-colors duration-200"
         style={{
           background: 'var(--bg-sidebar)',
-          borderRight: '1px solid var(--border-card)',
+          backdropFilter: 'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+          borderRight: '1px solid var(--glass-border)',
         }}
         role="navigation"
         aria-label="Main navigation"
@@ -419,7 +421,7 @@ export function Sidebar() {
           'fixed left-0 top-0 h-full z-50 flex flex-col transition-transform duration-300 w-72 md:hidden',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
-        style={{ background: 'var(--bg-modal)', borderRight: '1px solid var(--border-card)', boxShadow: 'var(--shadow-dropdown)' }}
+        style={{ background: 'var(--bg-modal)', backdropFilter: 'blur(var(--overlay-blur))', WebkitBackdropFilter: 'blur(var(--overlay-blur))', borderRight: '1px solid var(--glass-border)', boxShadow: 'var(--shadow-dropdown)' }}
         role="navigation"
         aria-label="Mobile navigation"
         aria-hidden={!mobileSidebarOpen}

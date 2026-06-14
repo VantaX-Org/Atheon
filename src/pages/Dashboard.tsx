@@ -8,7 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 // cleanLlmText now used by IntelligencePanel sub-component
-import { useAppStore, useSelectedCompanyId } from "@/stores/appStore";
+import { useAppStore, useSelectedCompanyId, useTenantCurrency } from "@/stores/appStore";
+import { formatCompactCurrency } from "@/lib/format-currency";
 import { ActionQueuePanel } from "@/components/dashboard/ActionQueuePanel";
 import type { HealthScore, Risk, Metric, AnomalyItem, ClusterItem, ActionItem, ControlPlaneHealth, HealthDimensionTraceResponse, DashboardIntelligenceResponse, RadarContextResponse, DiagnosticSummaryResponse, ROITrackingResponse, BaselineComparisonResponse } from "@/lib/api";
 import { TraceabilityModal } from "@/components/TraceabilityModal";
@@ -22,8 +23,8 @@ import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { MetricSource, type MetricProvenance } from "@/components/ui/metric-source";
 import { PageHeader } from "@/components/ui/page-header";
-import { MetricGrid } from "@/components/ui/metric-grid";
-import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
+import { ExecutiveOverview } from "@/components/dashboard/ExecutiveOverview";
+import { FindingsReviewTable } from "@/components/dashboard/FindingsReviewTable";
 import { WorkingCapitalCard } from "@/components/dashboard/WorkingCapitalCard";
 import { CloseCycleCard } from "@/components/dashboard/CloseCycleCard";
 import { KpiGrid } from "./dashboard/KpiCards";
@@ -63,6 +64,7 @@ export function Dashboard() {
   const industry = useAppStore((s) => s.industry);
   const user = useAppStore((s) => s.user);
   const companyId = useSelectedCompanyId();
+  const currency = useTenantCurrency();
   const toast = useToast();
   const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
   const [health, setHealth] = useState<HealthScore | null>(null);
@@ -264,13 +266,23 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Wave H-3: Dashboard is THE executive landing page, and the
-          shared-savings recovered figure IS its anchor metric. Promote
-          the strip to a hero card (.card-hero + .text-hero, 44px tabular
-          number) so the no-brainer financial proof is the first thing
-          executives see. Drilldown pages (Apex, ROI, Pulse,
-          ExecutiveSummary, Catalysts) keep the default slim strip. */}
-      <SharedSavingsStrip variant="hero" />
+      {/* Executive spine — the Higgsfield "Swiss Calm Authority" render
+          (docs/ui-redesign/higgsfield/01-dashboard.png) wired to real data.
+          ExecutiveOverview is the board-grade first screen: verified-savings
+          hero + KPI band (active catalysts · avg savings/run · ROI-confidence
+          gauge) + cumulative savings trajectory. FindingsReviewTable directly
+          beneath is the billing proof — each row a real finding with its ERP
+          record and field mapping. The deeper operational sections below are
+          retained pending their own per-surface redesign. */}
+      <ExecutiveOverview
+        activeCatalysts={activeCatalysts}
+        valueRecovered={valueRecovered}
+        catalystCount={catalystCount}
+        overallScore={overallScore}
+        history={history?.series ?? null}
+      />
+
+      <FindingsReviewTable />
 
       {/* MASTHEAD — Swiss page-band: letterspaced eyebrow + live tick, the
           greeting set in Archivo display, a single restrained dek, closed by
@@ -386,36 +398,12 @@ export function Dashboard() {
         <CloseCycleCard />
       </div>
 
-      {/* Executive band. One MetricGrid carries the three signature figures
-          (recovered value lead · Atheon score · catalysts), then a hairline
-          split pairs the business-dimension ledger against the single
-          Atheon-journey figure. */}
+      {/* The three signature figures (recovered value · Atheon score ·
+          catalysts) now lead the page inside ExecutiveOverview, so the old
+          MetricGrid band is removed to avoid showing the same numbers twice.
+          The hairline split below pairs the business-dimension ledger against
+          the single Atheon-journey figure. */}
       <>
-      <MetricGrid
-        className="py-1"
-        cells={[
-          {
-            k: 'Value recovered',
-            value: `R${Math.round(valueRecovered).toLocaleString('en-ZA')}`,
-            sub: valueRecovered > 0
-              ? `Verified · traced to ERP record across ${catalystCount} catalyst run${catalystCount === 1 ? '' : 's'}`
-              : 'No recovered value yet · run a catalyst to begin',
-            lead: true,
-          },
-          {
-            k: 'Atheon score',
-            value: overallScore,
-            delta: scoreDelta,
-            sub: baselineScore != null ? `from baseline ${baselineScore}` : `${upCount} improving · ${downCount} declining`,
-          },
-          {
-            k: 'Catalysts run',
-            value: catalystCount,
-            sub: `${pendingApprovals} awaiting your approval`,
-          },
-        ]}
-      />
-
       {/* Lower split — business-dimension ledger | Atheon journey. The whole
           dimension row is the trace trigger (Eye affordance on hover); the
           top-scoring dimension reads in the accent, the rest in ink. */}
@@ -748,13 +736,13 @@ export function Dashboard() {
                   <div>
                     <p className="text-caption t-muted">Recovered</p>
                     <p className="text-xs font-medium font-mono tnum" style={{ color: 'var(--positive)' }}>
-                      R{((roiData.totalDiscrepancyValueRecovered ?? 0) / 1000000).toFixed(1)}M
+                      {formatCompactCurrency(roiData.totalDiscrepancyValueRecovered ?? 0, currency)}
                     </p>
                   </div>
                   <div>
                     <p className="text-caption t-muted">Prevented</p>
                     <p className="text-xs font-medium font-mono tnum" style={{ color: 'var(--accent)' }}>
-                      R{((roiData.totalPreventedLosses ?? 0) / 1000000).toFixed(1)}M
+                      {formatCompactCurrency(roiData.totalPreventedLosses ?? 0, currency)}
                     </p>
                   </div>
                 </div>

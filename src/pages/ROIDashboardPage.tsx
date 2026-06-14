@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
+import { SavingsPipeline } from '@/components/roi/SavingsPipeline';
 import { TrendingUp, Shield, Activity, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import type {
@@ -215,6 +216,14 @@ export default function ROIDashboardPage(): JSX.Element {
           <div className="text-sm t-muted">No billing data yet.</div>
         </Card>
       )}
+
+      {/* Savings pipeline / ROI tracking — Higgsfield render 02
+          (docs/ui-redesign/higgsfield/02-pipeline.png) wired to api.roi.get():
+          identified ▸ verified ▸ recovered funnel + return multiple +
+          savings-by-domain bars + per-connection attribution. */}
+      <Card className="p-6 md:p-7">
+        <SavingsPipeline />
+      </Card>
 
       {/* Forecast accuracy */}
       <Card className="p-6">

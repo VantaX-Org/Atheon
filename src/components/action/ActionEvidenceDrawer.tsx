@@ -213,7 +213,7 @@ export function ActionEvidenceDrawer({
             {/* 1. Action header */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat label="Status" value={<StatusPill status={pillKind(action.status)} size="sm" />} />
-              <Stat label="Value" value={<Numeric value={action.value_zar} unit="ZAR" compact size="sm" />} />
+              <Stat label="Value" value={<Numeric value={action.value_zar} unit="currency" compact size="sm" />} />
               <Stat label="Catalyst" value={<span className="text-body-sm t-primary">{action.catalyst_name}</span>} />
               <Stat label="Type" value={<span className="text-body-sm t-secondary">{action.action_type.replace(/_/g, ' ')}</span>} />
             </div>
@@ -287,10 +287,10 @@ export function ActionEvidenceDrawer({
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t" style={{ borderColor: 'var(--border-card)' }}>
-                      <SmallStat label="Financial impact" value={<Numeric value={finding.financial_impact} unit="ZAR" compact size="sm" />} />
+                      <SmallStat label="Financial impact" value={<Numeric value={finding.financial_impact} unit="currency" compact size="sm" />} />
                       <SmallStat label="Affected" value={<><Numeric value={finding.affected_records} size="sm" /> records</>} />
-                      <SmallStat label="Immediate" value={<Numeric value={finding.immediate_value} unit="ZAR" compact size="sm" />} />
-                      <SmallStat label="Monthly" value={<Numeric value={finding.ongoing_monthly_value} unit="ZAR" compact size="sm" />} />
+                      <SmallStat label="Immediate" value={<Numeric value={finding.immediate_value} unit="currency" compact size="sm" />} />
+                      <SmallStat label="Monthly" value={<Numeric value={finding.ongoing_monthly_value} unit="currency" compact size="sm" />} />
                     </div>
 
                     {(finding.root_cause || finding.prescription) && (
@@ -348,7 +348,7 @@ export function ActionEvidenceDrawer({
                           <td className="px-4 py-2 t-secondary">{r.source_value ?? '—'}</td>
                           <td className="px-4 py-2 t-secondary">{r.target_value ?? '—'}</td>
                           <td className="px-4 py-2 text-right font-mono">
-                            {r.difference !== undefined ? <Numeric value={r.difference} unit="ZAR" compact size="sm" /> : '—'}
+                            {r.difference !== undefined ? <Numeric value={r.difference} unit="currency" compact size="sm" /> : '—'}
                           </td>
                         </tr>
                       ))}

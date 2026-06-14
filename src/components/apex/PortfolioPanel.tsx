@@ -87,7 +87,8 @@ const GATE_LABEL: Record<Gate, string> = {
 
 const GATE_ORDER: Gate[] = ['discovery', 'build', 'scale', 'done', 'killed'];
 
-import { formatZarPrecise as fmtZAR } from '@/lib/format-currency';
+import { formatPreciseCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 
 function pct(num: number, denom: number): number {
   if (denom === 0) return 0;
@@ -98,8 +99,15 @@ interface PortfolioPanelProps {
   tenantId?: string;
 }
 
+// Tenant-level currency — *_zar / value fields carry tenant-currency figures.
+function useFmtZAR() {
+  const currency = useTenantCurrency();
+  return (n: number | null | undefined) => formatPreciseCurrency(n, currency);
+}
+
 export function PortfolioPanel({ tenantId }: PortfolioPanelProps) {
   const currentUser = useAppStore((s) => s.user);
+  const fmtZAR = useFmtZAR();
   const canEdit = useMemo(() => {
     const role = currentUser?.role;
     return role === 'superadmin' || role === 'support_admin' || role === 'admin' || role === 'executive';
@@ -341,6 +349,7 @@ function MetricTile({ label, value, sublabel, tone }: { label: string; value: st
 }
 
 function CapitalAllocationRow({ row, maxPlanned }: { row: CapitalAllocation; maxPlanned: number }) {
+  const fmtZAR = useFmtZAR();
   const planPct = pct(row.planned_value, maxPlanned);
   const realisedPct = pct(row.actual_value, row.planned_value);
   return (
@@ -376,6 +385,7 @@ function InitiativeRow({ initiative, canEdit, onEdit, onDelete }: {
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const fmtZAR = useFmtZAR();
   const init = initiative;
   const valueRealised = init.planned_value_zar > 0 ? pct(init.actual_value_zar, init.planned_value_zar) : 0;
   const budgetUsed = init.budget_zar > 0 ? pct(init.spend_to_date_zar, init.budget_zar) : 0;

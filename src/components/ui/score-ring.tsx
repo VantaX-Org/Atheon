@@ -17,9 +17,9 @@ const sizeConfig = {
 };
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return 'var(--accent)';
-  if (score >= 50) return 'var(--warning)';
-  return 'var(--neg)';
+  if (score >= 80) return 'var(--rag-healthy)';
+  if (score >= 50) return 'var(--rag-watch)';
+  return 'var(--rag-risk)';
 }
 
 export function ScoreRing({ score, maxScore = 100, size = 'lg', label, sublabel, className }: ScoreRingProps) {

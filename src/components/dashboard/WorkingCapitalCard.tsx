@@ -5,16 +5,17 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/state';
 import { Wallet, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { formatZarCompact, formatZarDelta } from '@/lib/format-currency';
-import { useAppStore } from '@/stores/appStore';
+import { formatCompactCurrency, formatDeltaCurrency } from '@/lib/format-currency';
+import { useAppStore, useTenantCurrency } from '@/stores/appStore';
 
 type WCResp = Awaited<ReturnType<typeof api.dashboard.workingCapital>>;
 
-const fmtZAR = formatZarCompact;
-const fmtDelta = formatZarDelta;
-
 export function WorkingCapitalCard() {
   const companyId = useAppStore((s) => s.selectedCompanyId);
+  // Tenant-level currency — *Zar fields carry tenant-currency figures.
+  const currency = useTenantCurrency();
+  const fmtZAR = (n: number | null | undefined) => formatCompactCurrency(n, currency);
+  const fmtDelta = (n: number | null | undefined) => formatDeltaCurrency(n, currency);
   const [data, setData] = useState<WCResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

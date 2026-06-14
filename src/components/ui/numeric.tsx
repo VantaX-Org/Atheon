@@ -17,12 +17,13 @@
  * Example usage:
  *
  *   <Numeric value={overall} precision={0} />                    // 55
- *   <Numeric value={revenue} unit="ZAR" compact />               // R 2.5M
+ *   <Numeric value={revenue} unit="currency" compact />          // tenant symbol, e.g. R 2.5M / $ 2.5M
  *   <Numeric value={delta}   precision={1} trend />              // ▲ 3.2
  *   <Numeric value={null} />                                     // —
  */
 import type { CSSProperties } from 'react';
-import { formatZarCompact } from '@/lib/format-currency';
+import { formatCompactCurrency, formatFullCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 
 export type NumericTrend = 'up' | 'down' | 'flat' | 'auto';
 
@@ -31,16 +32,19 @@ export interface NumericProps {
   value: number | null | undefined;
   /** Decimal places. `0` (default) for counts; `1` or `2` for percentages. */
   precision?: number;
-  /** Currency code (`ZAR`, `USD`, `EUR`, `GBP`) or `%` or any unit string.
-   *  Currency codes drive the symbol + locale (`Intl.NumberFormat`).
-   *  Plain strings (`days`, `runs`) render as a small trailing label. */
+  /** `currency` → tenant display currency (preferred; never hardcode 'R').
+   *  An explicit ISO code (`ZAR`, `USD`, `EUR`, `GBP`) overrides the tenant
+   *  currency and drives the symbol + locale (`Intl.NumberFormat`).
+   *  `%` renders a percent; plain strings (`days`, `runs`) render as a small
+   *  trailing label. */
   unit?: string;
   /** Compact form: 1,234,567 → "1.2M". Default false. */
   compact?: boolean;
   /** Render a leading trend glyph (▲ / ▼ / ·). `auto` derives from sign. */
   trend?: NumericTrend | boolean;
-  /** Override trend tone colour. Otherwise: positive=accent, negative=neg,
-   *  flat=muted. Pass `mute` to render the glyph but stay foreground-neutral. */
+  /** Override trend tone colour. Otherwise: positive=RAG healthy, negative=RAG
+   *  risk, flat=muted. Trend direction is a HEALTH signal, not brand — it never
+   *  uses brand blue. Pass `mute` to render the glyph but stay foreground-neutral. */
   tone?: 'positive' | 'negative' | 'neutral' | 'mute';
   /** Visual weight. `lg` is hero numbers (the one big number per screen). */
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -74,28 +78,18 @@ function isFiniteNumber(v: unknown): v is number {
 }
 
 function formatCompact(n: number, currency?: string): string {
-  // ZAR delegates to the shared helper so JSX and string-context renders
-  // (tooltips, PDF, table cells) match digit-for-digit.
-  if (currency === 'ZAR') return formatZarCompact(n);
+  // Currency delegates to the shared helper so JSX and string-context renders
+  // (tooltips, PDF, table cells) match digit-for-digit across any tenant ISO.
+  if (currency) return formatCompactCurrency(n, currency);
   const abs = Math.abs(n);
-  const sym = currency && CURRENCY_LOCALES[currency]
-    ? (currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '')
-    : '';
-  if (abs >= 1_000_000_000) return `${sym}${(n / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `${sym}${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sym}${(n / 1_000).toFixed(0)}k`;
-  return `${sym}${Math.round(n)}`;
+  if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+  return `${Math.round(n)}`;
 }
 
 function formatFull(n: number, precision: number, currency?: string): string {
-  if (currency && CURRENCY_LOCALES[currency]) {
-    return new Intl.NumberFormat(CURRENCY_LOCALES[currency], {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: precision,
-      maximumFractionDigits: precision,
-    }).format(n);
-  }
+  if (currency) return formatFullCurrency(n, currency);
   return n.toLocaleString(undefined, {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision,
@@ -119,12 +113,13 @@ const GLYPH: Record<NumericTrend, string> = {
 };
 
 function toneClass(t: NumericProps['tone'], trend: NumericTrend | null): string {
+  // Trend tone is HEALTH semantics → RAG tokens, never brand blue.
   if (t === 'mute') return 't-muted';
-  if (t === 'positive') return 'text-[var(--accent)]';
-  if (t === 'negative') return 'text-[var(--neg)]';
+  if (t === 'positive') return 'text-[var(--rag-healthy)]';
+  if (t === 'negative') return 'text-[var(--rag-risk)]';
   if (t === 'neutral') return 't-primary';
   if (!trend || trend === 'flat') return 't-primary';
-  return trend === 'up' ? 'text-[var(--accent)]' : 'text-[var(--neg)]';
+  return trend === 'up' ? 'text-[var(--rag-healthy)]' : 'text-[var(--rag-risk)]';
 }
 
 export function Numeric({
@@ -140,6 +135,10 @@ export function Numeric({
   style,
   title,
 }: NumericProps): JSX.Element {
+  // Tenant display currency — resolved unconditionally (hook) so `unit="currency"`
+  // renders the tenant's symbol. Must precede any early return.
+  const tenantCurrency = useTenantCurrency();
+
   // Null / undefined / NaN / Infinity → the placeholder. Never let Bloomberg
   // see "Infinity days".
   if (!isFiniteNumber(value)) {
@@ -155,11 +154,15 @@ export function Numeric({
     );
   }
 
-  const isCurrency = !!unit && CURRENCY_LOCALES[unit] !== undefined;
+  // `unit="currency"` → tenant currency; an explicit known ISO code overrides it.
+  const currencyCode = unit === 'currency'
+    ? tenantCurrency
+    : (unit && CURRENCY_LOCALES[unit] !== undefined ? unit : undefined);
+  const isCurrency = currencyCode !== undefined;
   const isPercent = unit === '%';
   const formatted = compact
-    ? formatCompact(value, isCurrency ? unit : undefined)
-    : formatFull(value, precision, isCurrency ? unit : undefined);
+    ? formatCompact(value, currencyCode)
+    : formatFull(value, precision, currencyCode);
 
   const resolvedTrend = trend ? resolveTrend(trend, value) : null;
   const tc = toneClass(tone, resolvedTrend);
@@ -170,7 +173,7 @@ export function Numeric({
     <span
       className={`tabular-nums font-mono ${sizeClass[size]} ${tc} ${strike ? 'line-through opacity-60' : ''} ${className}`}
       style={style}
-      title={title ?? (compact ? formatFull(value, precision, isCurrency ? unit : undefined) : undefined)}
+      title={title ?? (compact ? formatFull(value, precision, currencyCode) : undefined)}
     >
       {resolvedTrend && (
         <span aria-hidden="true" className="mr-1 inline-block">

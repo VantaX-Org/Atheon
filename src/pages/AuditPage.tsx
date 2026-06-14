@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { ProvenanceVerifyPanel } from "@/components/ProvenanceVerifyPanel";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProvenanceTimeline } from "@/components/audit/ProvenanceTimeline";
+import { BillingProofFindings } from "@/components/audit/BillingProofFindings";
 
 export function AuditPage() {
  const toast = useToast();
@@ -149,6 +150,19 @@ export function AuditPage() {
    </div>
   }
  />
+
+ {/* Billing-proof findings — Higgsfield render 03
+     (docs/ui-redesign/higgsfield/03-audit.png). Each row is a real value-
+     assessment finding with the ERP cells that disagreed (source → target →
+     difference); expanding a row reveals its statistical provenance. This is
+     the dollar-level audit chain that backs every shared-savings invoice. */}
+ <Card className="p-6 md:p-7">
+  <div className="flex items-center gap-2 mb-4">
+   <Shield size={18} style={{ color: 'var(--accent)' }} />
+   <h2 className="text-headline-md font-semibold t-primary">Findings detail · billing-proof view</h2>
+  </div>
+  <BillingProofFindings />
+ </Card>
 
  {/* Cryptographic provenance ledger — sits above the standard audit log
      so the tamper-evidence story is the first thing on the page. */}

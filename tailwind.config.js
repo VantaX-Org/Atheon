@@ -1,23 +1,24 @@
 /** @type {import('tailwindcss').Config} */
-// Design tokens — Swiss Calm Authority. Source of truth is CSS variables in
-// src/index.css. Never inline a hex that has a CSS-var equivalent.
+// Design tokens — Luminous Editorial. Source of truth is CSS variables in
+// src/index.css. Never inline a hex that has a CSS-var equivalent. Blue accent
+// is brand/active ONLY; RAG (rag-healthy/watch/risk) is status & health ONLY.
 export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
     extend: {
       borderRadius: {
-        DEFAULT: '2px',
-        sm: '2px',
-        md: '4px',
+        DEFAULT: '4px',
+        sm: '4px',
+        md: '6px',
         lg: 'var(--radius)',
-        xl: '6px',
+        xl: '14px',
         full: '9999px',
       },
       colors: {
         accent: 'rgb(var(--accent-rgb) / <alpha-value>)',
 
-        // ── Swiss surfaces / rules (CSS-var references) ────────
+        // ── Luminous surfaces / rules (CSS-var references) ─────
         paper:           'var(--bg-primary)',
         ink:             'var(--text-primary)',
         line:            'var(--border-card)',
@@ -31,25 +32,30 @@ export default {
         // ── Border ─────────────────────────────────────────────
         'border-card':     'var(--border-card)',
 
-        // ── Reserved negative ──────────────────────────────────
+        // ── Reserved negative (= RAG risk) ─────────────────────
         neg: 'rgb(var(--neg-rgb) / <alpha-value>)',
 
         // ── Restrained chart/data neutrals ─────────────────────
         info:   'var(--info)',
         bronze: 'var(--bronze)',
 
-        // ── Semantic — status only (accent doubles as success) ──
-        success: 'rgb(var(--accent-rgb) / <alpha-value>)',
-        warning: '#9a6b1f',
-        danger:  'rgb(var(--neg-rgb) / <alpha-value>)',
+        // ── RAG status semantics (status & health ONLY) ────────
+        'rag-healthy': 'rgb(var(--rag-healthy-rgb) / <alpha-value>)',
+        'rag-watch':   'rgb(var(--rag-watch-rgb) / <alpha-value>)',
+        'rag-risk':    'rgb(var(--rag-risk-rgb) / <alpha-value>)',
+
+        // ── Semantic — status only (success === RAG healthy) ───
+        success: 'rgb(var(--rag-healthy-rgb) / <alpha-value>)',
+        warning: 'rgb(var(--rag-watch-rgb) / <alpha-value>)',
+        danger:  'rgb(var(--rag-risk-rgb) / <alpha-value>)',
       },
       fontFamily: {
-        sans:        ['Archivo', 'system-ui', '-apple-system', 'sans-serif'],
-        body:        ['Archivo', 'system-ui', '-apple-system', 'sans-serif'],
-        display:     ['Archivo Expanded', 'Archivo', 'system-ui', 'sans-serif'],
-        headline:    ['Archivo', 'system-ui', 'sans-serif'],
-        mono:        ['IBM Plex Mono', 'ui-monospace', 'monospace'],
-        'mono-data': ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+        sans:        ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        body:        ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display:     ['Inter', 'system-ui', 'sans-serif'],
+        headline:    ['Inter', 'system-ui', 'sans-serif'],
+        mono:        ['Space Mono', 'ui-monospace', 'monospace'],
+        'mono-data': ['Space Mono', 'ui-monospace', 'monospace'],
       },
       fontSize: {
         // Swiss grotesk scale — heavy display, restrained body.

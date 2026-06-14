@@ -100,7 +100,7 @@ export function ExecutiveActionsCallout({ risks, onTrace }: Props): JSX.Element 
                           >
                             <Numeric
                               value={r.impactValue}
-                              unit={r.impactUnit === 'currency' ? 'ZAR' : (r.impactUnit ?? undefined)}
+                              unit={r.impactUnit === 'currency' ? 'currency' : (r.impactUnit ?? undefined)}
                               compact
                               size="sm"
                             />
@@ -108,7 +108,7 @@ export function ExecutiveActionsCallout({ risks, onTrace }: Props): JSX.Element 
                         ) : (
                           <Numeric
                             value={r.impactValue}
-                            unit={r.impactUnit === 'currency' ? 'ZAR' : (r.impactUnit ?? undefined)}
+                            unit={r.impactUnit === 'currency' ? 'currency' : (r.impactUnit ?? undefined)}
                             compact
                             size="sm"
                           />

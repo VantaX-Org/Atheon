@@ -154,7 +154,7 @@ export function ActionQueuePanel({
             )}
             {!loading && valueAtStake > 0 && (
               <p className="text-caption t-muted">
-                <Numeric value={valueAtStake} unit="ZAR" compact size="sm" tone="mute" /> at stake
+                <Numeric value={valueAtStake} unit="currency" compact size="sm" tone="mute" /> at stake
               </p>
             )}
           </div>
@@ -177,7 +177,7 @@ export function ActionQueuePanel({
             <p className="text-caption t-muted">
               {summary.pending_approval_count} pending · {summary.completed_count} completed
               {summary.completed_value_zar > 0 && (
-                <> · <Numeric value={summary.completed_value_zar} unit="ZAR" compact size="sm" tone="mute" /> acted on</>
+                <> · <Numeric value={summary.completed_value_zar} unit="currency" compact size="sm" tone="mute" /> acted on</>
               )}
             </p>
           )}
@@ -248,7 +248,7 @@ export function ActionQueuePanel({
                       <td className="py-1.5 pr-3 text-right">
                         <Numeric
                           value={Number.isFinite(a.value_zar) && (a.value_zar as number) > 0 ? (a.value_zar as number) : null}
-                          unit="ZAR"
+                          unit="currency"
                           compact
                           size="sm"
                         />

@@ -651,7 +651,7 @@ export function CatalystRunDetailPage() {
           <Card className="p-5 mb-6" style={{ borderRadius: '2px' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <GitCompare className="w-4 h-4" style={{ color: '#0a7d4f' }} />
+                <GitCompare className="w-4 h-4" style={{ color: 'var(--accent)' }} />
                 <h3 className="text-sm font-semibold t-primary tracking-tight">Run comparison</h3>
                 {comparison && comparison.run_b && (
                   <span className="text-xs t-muted font-mono">
@@ -712,14 +712,14 @@ export function CatalystRunDetailPage() {
                       const isExceptionsRow = row.label === 'Exceptions';
                       const isNeutralRow = row.label === 'Total value';
                       const deltaColor = row.delta == null
-                        ? '#64748b'
+                        ? 'var(--text-muted)'
                         : isNeutralRow
-                          ? '#334155'
+                          ? 'var(--text-secondary)'
                           : (row.delta > 0)
-                            ? (isExceptionsRow ? 'var(--neg)' : '#0a7d4f')
+                            ? (isExceptionsRow ? 'var(--neg)' : 'var(--accent)')
                             : row.delta < 0
-                              ? (isExceptionsRow ? '#0a7d4f' : 'var(--neg)')
-                              : '#334155';
+                              ? (isExceptionsRow ? 'var(--accent)' : 'var(--neg)')
+                              : 'var(--text-secondary)';
                       const fmt = (n: number | null) => {
                         if (n == null) return '—';
                         if (row.isPct) return `${n.toFixed(1)}%`;
@@ -734,10 +734,10 @@ export function CatalystRunDetailPage() {
                       return (
                         <div
                           key={row.label}
-                          className="p-3 bg-[#fbfaf7] border border-[var(--border-card)]"
+                          className="p-3 bg-[var(--bg-primary)] border border-[var(--border-card)]"
                           style={{ borderRadius: '2px' }}
                         >
-                          <div className="text-caption uppercase tracking-wider t-muted mb-2" style={{ color: '#334155' }}>{row.label}</div>
+                          <div className="text-caption uppercase tracking-wider t-muted mb-2" style={{ color: 'var(--text-secondary)' }}>{row.label}</div>
                           <div className="flex items-baseline justify-between gap-2">
                             <div>
                               <div className="text-xs t-muted">This run</div>
@@ -771,7 +771,7 @@ export function CatalystRunDetailPage() {
         {(runMeta?.parent_run_id || lineage.length > 0) && (
           <Card className="p-4 mb-6" style={{ borderRadius: '2px' }}>
             <div className="flex items-center gap-2 mb-3">
-              <GitBranch className="w-4 h-4" style={{ color: '#0a7d4f' }} />
+              <GitBranch className="w-4 h-4" style={{ color: 'var(--accent)' }} />
               <h3 className="text-sm font-semibold t-primary tracking-tight">Run lineage</h3>
               <span className="text-xs t-muted">retried from prior runs</span>
             </div>
@@ -781,9 +781,9 @@ export function CatalystRunDetailPage() {
                 className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs"
                 style={{
                   borderRadius: '2px',
-                  background: '#fbfaf7',
-                  borderColor: '#0a7d4f',
-                  color: '#0a7d4f',
+                  background: 'var(--bg-primary)',
+                  borderColor: 'var(--accent)',
+                  color: 'var(--accent)',
                 }}
               >
                 <span className="font-mono tnum">{new Date(run.startedAt).toLocaleDateString()}</span>
@@ -797,8 +797,8 @@ export function CatalystRunDetailPage() {
                   <button
                     type="button"
                     onClick={() => navigate(`/catalysts/runs/${ancestor.id}`)}
-                    className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs hover:bg-[#fbfaf7] transition-colors"
-                    style={{ borderRadius: '2px', borderColor: 'var(--border-card)', color: '#334155' }}
+                    className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs hover:bg-[var(--bg-primary)] transition-colors"
+                    style={{ borderRadius: '2px', borderColor: 'var(--border-card)', color: 'var(--text-secondary)' }}
                     aria-label={`View ancestor run from ${new Date(ancestor.started_at).toLocaleDateString()}`}
                   >
                     <span className="font-mono tnum">{new Date(ancestor.started_at).toLocaleDateString()}</span>
@@ -897,7 +897,7 @@ export function CatalystRunDetailPage() {
                 <Database size={16} className="t-muted" />
               </div>
             </div>
-            <Numeric value={run.totalValue ?? null} unit="ZAR" compact size="lg" />
+            <Numeric value={run.totalValue ?? null} unit="currency" compact size="lg" />
           </div>
         </div>
           );
@@ -1262,7 +1262,7 @@ export function CatalystRunDetailPage() {
           {/* Insights — surfaced from runAnalyticsDetail(runId).insights */}
           <Card className="p-6" style={{ borderRadius: '2px' }}>
             <div className="flex items-center gap-3 mb-4">
-              <Lightbulb className="w-5 h-5" style={{ color: '#0a7d4f' }} />
+              <Lightbulb className="w-5 h-5" style={{ color: 'var(--accent)' }} />
               <h3 className="text-lg font-semibold t-primary">Insights ({insights.length})</h3>
             </div>
             {insightsLoading ? (
@@ -1282,7 +1282,7 @@ export function CatalystRunDetailPage() {
                   >
                     <span
                       className="mt-1.5 inline-block w-1.5 h-1.5 flex-shrink-0"
-                      style={{ background: '#0a7d4f', borderRadius: '2px' }}
+                      style={{ background: 'var(--accent)', borderRadius: '2px' }}
                       aria-hidden
                     />
                     <span>{insight}</span>

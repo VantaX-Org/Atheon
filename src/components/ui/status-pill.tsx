@@ -88,12 +88,12 @@ const STATUS_DEF: Record<StatusKind, StatusVisual> = {
 const TONE_CLASS: Record<StatusVisual['tone'], { solid: string; outline: string; dot: string }> = {
   success:  {
     solid:   'pill-success',
-    outline: 'bg-transparent text-[var(--accent)] border-[rgb(var(--accent-rgb)/0.4)]',
-    dot:     'text-[var(--accent)]',
+    outline: 'bg-transparent text-[var(--rag-healthy)] border-[rgb(var(--rag-healthy-rgb)/0.4)]',
+    dot:     'text-[var(--rag-healthy)]',
   },
   warning:  {
     solid:   'pill-warning',
-    outline: 'bg-transparent text-[var(--warning)] border-[rgba(154,107,31,.4)]',
+    outline: 'bg-transparent text-[var(--warning)] border-[rgb(var(--rag-watch-rgb)/0.4)]',
     dot:     'text-[var(--warning)]',
   },
   critical: {

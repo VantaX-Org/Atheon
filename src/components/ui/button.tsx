@@ -31,15 +31,16 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   trailing?: ReactNode;
 }
 
-// Swiss: the default primary action is ink-filled — the accent is reserved
-// for brand/positive emphasis (`accent` variant) so green stays meaningful.
+// Luminous Editorial: the default primary action is the blue brand fill.
+// `accent` is the same blue (kept for back-compat). `success` uses RAG green
+// (a status colour), never the brand — so green stays meaningful.
 const variants: Record<string, string> = {
-  primary:   'text-[var(--bg-primary)] hover:opacity-90',
+  primary:   'text-[var(--text-on-accent)] hover:opacity-90',
   accent:    'text-[var(--text-on-accent)] hover:opacity-90',
   secondary: 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-input-focus)] t-primary border border-[var(--border-card)]',
   ghost:     'bg-transparent hover:bg-[var(--bg-secondary)] t-secondary hover:t-primary',
   danger:    'bg-[rgb(var(--neg-rgb)/0.10)] hover:bg-[rgb(var(--neg-rgb)/0.16)] text-[var(--neg)] border border-[rgb(var(--neg-rgb)/0.30)]',
-  success:   'bg-[rgb(var(--accent-rgb)/0.10)] hover:bg-[rgb(var(--accent-rgb)/0.16)] text-[var(--accent)] border border-[rgb(var(--accent-rgb)/0.30)]',
+  success:   'bg-[rgb(var(--rag-healthy-rgb)/0.10)] hover:bg-[rgb(var(--rag-healthy-rgb)/0.16)] text-[var(--rag-healthy)] border border-[rgb(var(--rag-healthy-rgb)/0.30)]',
   outline:   'bg-transparent hover:bg-[var(--bg-secondary)] t-secondary border border-[var(--border-card)]',
 };
 
@@ -54,8 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const mergedStyle: React.CSSProperties =
-    variant === 'primary' ? { background: 'var(--text-primary)', ...style }
-    : variant === 'accent' ? { background: 'var(--accent)', ...style }
+    (variant === 'primary' || variant === 'accent') ? { background: 'var(--accent)', ...style }
     : (style ?? {});
 
   const isDisabled = disabled || loading;

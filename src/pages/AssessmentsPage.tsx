@@ -1058,22 +1058,22 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
                             <div
                               className="mt-2 px-3 py-2 text-xs italic"
                               style={{
-                                background: '#fbfaf7',
-                                borderLeft: '2px solid #0a7d4f',
+                                background: 'var(--bg-primary)',
+                                borderLeft: '2px solid var(--accent)',
                                 borderRadius: '2px',
-                                color: '#1f2a24',
+                                color: 'var(--text-primary)',
                               }}
                             >
                               <div className="flex items-center gap-2 mb-1 not-italic">
                                 <span
                                   className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded-sm"
-                                  style={{ background: '#0a7d4f', color: '#fbfaf7' }}
+                                  style={{ background: 'var(--accent)', color: 'var(--bg-primary)' }}
                                 >
                                   AI
                                 </span>
                                 <span
                                   className="text-[10px] font-medium uppercase tracking-wider"
-                                  style={{ color: '#0a7d4f' }}
+                                  style={{ color: 'var(--accent)' }}
                                 >
                                   Insight
                                 </span>

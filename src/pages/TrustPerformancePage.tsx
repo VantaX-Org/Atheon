@@ -24,13 +24,17 @@ import { api, ApiError } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { ProvenanceVerifyResult, FederatedPattern } from '@/lib/api';
 import { formatDays } from '@/lib/utils';
-import { formatZarPrecise as formatZAR } from '@/lib/format-currency';
+import { formatPreciseCurrency } from '@/lib/format-currency';
+import { useTenantCurrency } from '@/stores/appStore';
 
 type CalibrationSummary = Awaited<ReturnType<typeof api.catalysts.getCalibrationSummary>>;
 type ProvenanceRoot = Awaited<ReturnType<typeof api.provenance.root>>;
 
 export function TrustPerformancePage(): JSX.Element {
   const toast = useToast();
+  // Tenant-level currency — calibration value fields are in tenant currency.
+  const currency = useTenantCurrency();
+  const formatZAR = (n: number | null | undefined) => formatPreciseCurrency(n, currency);
   const [calibration, setCalibration] = useState<CalibrationSummary | null>(null);
   const [root, setRoot] = useState<ProvenanceRoot | null>(null);
   const [verifyResult, setVerifyResult] = useState<ProvenanceVerifyResult | null>(null);

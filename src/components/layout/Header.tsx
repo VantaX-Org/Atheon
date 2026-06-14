@@ -185,7 +185,7 @@ export function Header() {
   return (
     <header
       className="fixed top-0 right-0 z-30 h-header-height flex items-center justify-between px-4 sm:px-5 transition-colors duration-200 left-0 md:left-sidebar-expanded"
-      style={{ background: 'var(--bg-header)', borderBottom: '1px solid var(--border-card)' }}
+      style={{ background: 'var(--bg-header)', backdropFilter: 'blur(var(--glass-blur))', WebkitBackdropFilter: 'blur(var(--glass-blur))', borderBottom: '1px solid var(--glass-border)' }}
     >
       <div className="flex items-center gap-2.5 flex-1">
         <button

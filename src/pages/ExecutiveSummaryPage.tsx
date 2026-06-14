@@ -26,6 +26,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { ScoreRing } from '@/components/ui/score-ring';
 import { Sparkline } from '@/components/ui/sparkline';
 import { SharedSavingsStrip } from '@/components/SharedSavingsStrip';
+import { FindingsReviewTable } from '@/components/dashboard/FindingsReviewTable';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import type { ExecutiveSummaryResponse } from '@/lib/api';
 import {
@@ -208,6 +209,13 @@ export function ExecutiveSummaryPage() {
           <p className="text-caption t-muted mt-1">External radar signals</p>
         </Card>
       </div>
+
+      {/* Billing proof — same findings & field-mapping table as the dashboard
+          (Higgsfield render 01), giving the exec briefing the dollar-level
+          traceability behind the recovered figure above. */}
+      <Card className="p-5 md:p-6">
+        <FindingsReviewTable />
+      </Card>
 
       {/* Dimensions */}
       {dimensionEntries.length > 0 && (

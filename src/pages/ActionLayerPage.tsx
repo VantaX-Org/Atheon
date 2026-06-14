@@ -446,7 +446,7 @@ export function ActionLayerPage(): JSX.Element {
                 sample: count,
                 refreshedAt: loadedAt,
                 drillTo: `/action-layer?status=${tile.key}`,
-                notes: [{ label: 'Value', value: <Numeric value={value} unit="ZAR" compact size="sm" /> }],
+                notes: [{ label: 'Value', value: <Numeric value={value} unit="currency" compact size="sm" /> }],
               };
               return (
                 <div
@@ -476,7 +476,7 @@ export function ActionLayerPage(): JSX.Element {
                     <Numeric value={count} size="lg" />
                   </div>
                   <div className="text-caption font-mono t-muted mt-1">
-                    <Numeric value={value} unit="ZAR" compact size="sm" tone="mute" />
+                    <Numeric value={value} unit="currency" compact size="sm" tone="mute" />
                   </div>
                 </div>
               );
@@ -674,7 +674,7 @@ export function ActionLayerPage(): JSX.Element {
                           <td className="px-4 py-3 t-secondary">{a.action_type.replace(/_/g, ' ')}</td>
                           <td className="px-4 py-3 t-muted">{a.catalyst_name}</td>
                           <td className="px-4 py-3 text-right">
-                            <Numeric value={a.value_zar} unit="ZAR" compact size="sm" />
+                            <Numeric value={a.value_zar} unit="currency" compact size="sm" />
                           </td>
                           <td className="px-4 py-3 t-muted" title={new Date(a.created_at).toLocaleString()}>{relativeTime(a.created_at)}</td>
                           <td className="px-4 py-3 text-right">

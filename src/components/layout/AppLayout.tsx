@@ -14,6 +14,7 @@ import { clearChunkReloadGuard } from "@/lib/lazy-with-retry";
 export function AppLayout() {
   const { user, setUser } = useAppStore();
   const loadCompanies = useAppStore((s) => s.loadCompanies);
+  const loadCurrency = useAppStore((s) => s.loadCurrency);
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
 
@@ -59,7 +60,8 @@ export function AppLayout() {
   useEffect(() => {
     if (!user) return;
     loadCompanies();
-  }, [user, activeTenantId, loadCompanies]);
+    loadCurrency();
+  }, [user, activeTenantId, loadCompanies, loadCurrency]);
 
   // Clear the chunk-load reload guard once the layout mounts successfully.
   // This lets a subsequent stale-cache scenario (mid-session second deploy)
@@ -92,7 +94,7 @@ export function AppLayout() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-primary)', backgroundImage: 'var(--field-gradient)', backgroundAttachment: 'fixed' }}>
       {/* TASK-006: Skip to content link */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-md focus:bg-[var(--accent)] focus:text-[var(--text-on-accent)] focus:text-sm">
         Skip to main content

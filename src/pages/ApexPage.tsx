@@ -232,7 +232,7 @@ function ExecutiveBriefHero({
                       Impact:{' '}
                       <Numeric
                         value={r.impactValue}
-                        unit={r.impactUnit === 'currency' ? 'ZAR' : (r.impactUnit ?? undefined)}
+                        unit={r.impactUnit === 'currency' ? 'currency' : (r.impactUnit ?? undefined)}
                         compact
                         size="sm"
                         tone="mute"
@@ -1059,7 +1059,7 @@ export function ApexPage() {
            Impact:
            <Numeric
             value={risk.impactValue}
-            unit={risk.impactUnit === 'currency' ? 'ZAR' : (risk.impactUnit ?? undefined)}
+            unit={risk.impactUnit === 'currency' ? 'currency' : (risk.impactUnit ?? undefined)}
             compact
             size="sm"
             tone="mute"
@@ -1378,7 +1378,7 @@ export function ApexPage() {
        Impact:
        <Numeric
          value={risk.impactValue}
-         unit={risk.impactUnit === 'currency' ? 'ZAR' : (risk.impactUnit ?? undefined)}
+         unit={risk.impactUnit === 'currency' ? 'currency' : (risk.impactUnit ?? undefined)}
          compact
          size="sm"
          tone="mute"

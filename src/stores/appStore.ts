@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import type { ERPCompany } from '@/lib/api';
 
 const SELECTED_COMPANY_LS_KEY = 'atheon_selected_company_id';
+const CURRENCY_LS_KEY = 'atheon_tenant_currency';
 
 export type Theme = 'dark' | 'light';
 export type AccentColor = 'indigo' | 'blue' | 'violet' | 'emerald' | 'rose';
@@ -39,6 +40,11 @@ interface AppState {
   companies: ERPCompany[];
   companiesLoaded: boolean;
   selectedCompanyId: string | null;
+  // Tenant display currency (ISO 4217). Currency is a tenant-level setting,
+  // so figures must never hardcode 'R' — read this and format via
+  // format-currency helpers. Hydrated once from the billing summary; ZAR
+  // until that resolves (and for fresh tenants with no billing yet).
+  currency: string;
   setUser: (user: User | null) => void;
   setCurrentLayer: (layer: AtheonLayer) => void;
   toggleSidebar: () => void;
@@ -55,6 +61,8 @@ interface AppState {
   // Multi-company actions
   loadCompanies: () => Promise<void>;
   setSelectedCompanyId: (id: string | null) => void;
+  /** Hydrate the tenant display currency from the billing summary. */
+  loadCurrency: () => Promise<void>;
 }
 
 // Swiss Calm Authority is light-only; the legacy .atheon-dark class is
@@ -68,6 +76,7 @@ if (rawAccent && legacyMap[rawAccent] && typeof window !== 'undefined') { localS
 const savedAccent = (migratedAccent && VALID_ACCENTS.includes(migratedAccent as AccentColor) ? migratedAccent : null) as AccentColor | null;
 const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('atheon-onboarding-dismissed') === 'true' : false;
 const savedSelectedCompanyId = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_COMPANY_LS_KEY) : null;
+const savedCurrency = (typeof window !== 'undefined' ? localStorage.getItem(CURRENCY_LS_KEY) : null) || 'ZAR';
 
 // Light-only (Swiss): defensively clear any persisted dark class on load.
 if (typeof document !== 'undefined') {
@@ -95,6 +104,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   companies: [],
   companiesLoaded: false,
   selectedCompanyId: savedSelectedCompanyId,
+  currency: savedCurrency,
   setUser: (user) => set({ user }),
   setCurrentLayer: (layer) => set({ currentLayer: layer }),
   mobileSidebarOpen: false,
@@ -136,8 +146,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     // Clear company selection when switching tenants — companies are tenant-scoped.
     // Companies will be reloaded for the new tenant by loadCompanies().
-    if (typeof window !== 'undefined') localStorage.removeItem(SELECTED_COMPANY_LS_KEY);
-    set({ companies: [], companiesLoaded: false, selectedCompanyId: null });
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SELECTED_COMPANY_LS_KEY);
+      // Currency is tenant-scoped — drop the prior tenant's symbol so the new
+      // tenant's loadCurrency() re-hydrates instead of flashing a stale code.
+      localStorage.removeItem(CURRENCY_LS_KEY);
+    }
+    set({ companies: [], companiesLoaded: false, selectedCompanyId: null, currency: 'ZAR' });
   },
   loadCompanies: async () => {
     try {
@@ -164,6 +179,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ selectedCompanyId: id });
   },
+  loadCurrency: async () => {
+    try {
+      const b = await api.insightsStats.billingSummary();
+      const cur = b?.currency || 'ZAR';
+      if (typeof window !== 'undefined') localStorage.setItem(CURRENCY_LS_KEY, cur);
+      set({ currency: cur });
+    } catch {
+      // Fresh tenant or billing not yet available — keep the ZAR default.
+    }
+  },
   setMfaEnforcementWarning: (w) => {
     if (typeof window !== 'undefined') {
       if (w) localStorage.setItem('atheon-mfa-warning', JSON.stringify(w));
@@ -180,4 +205,12 @@ export const useAppStore = create<AppState>((set, get) => ({
  */
 export function useSelectedCompanyId(): string | null {
   return useAppStore((s) => s.selectedCompanyId);
+}
+
+/**
+ * Hook: the tenant's display currency (ISO 4217, e.g. 'ZAR', 'USD').
+ * Pass into formatCompactCurrency / formatCurrency rather than hardcoding 'R'.
+ */
+export function useTenantCurrency(): string {
+  return useAppStore((s) => s.currency);
 }
