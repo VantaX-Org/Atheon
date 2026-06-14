@@ -104,7 +104,10 @@
 // silently apply a weak rule). is_locked freezes a billed/delivered finding so
 // realised-outcome reconciliation has a stable anchor — enforced by the
 // `AND is_locked = 0` guard on every findings UPDATE in value-assessment-engine.
-export const MIGRATION_VERSION = 'v83-finding-traceability';
+// v84-user-preferences: adds user_preferences table (per-user notification
+// toggles persisted by Settings → /api/auth/me PATCH). Version bump forces the
+// healer to re-run so prod/staging gain the table on deploy.
+export const MIGRATION_VERSION = 'v84-user-preferences';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -221,6 +224,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS canonical_endpoints (id TEXT PRIMARY KEY, domain TEXT NOT NULL, path TEXT NOT NULL, method TEXT NOT NULL DEFAULT 'GET', description TEXT, request_schema TEXT, response_schema TEXT, rate_limit INTEGER NOT NULL DEFAULT 100, version TEXT NOT NULL DEFAULT 'v1');
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT, action TEXT NOT NULL, layer TEXT NOT NULL, resource TEXT, details TEXT, outcome TEXT NOT NULL DEFAULT 'success', ip_address TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS audit_share_tokens (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), token TEXT NOT NULL UNIQUE, created_by_user_id TEXT NOT NULL, label TEXT, expires_at TEXT NOT NULL, revoked_at TEXT, access_count INTEGER NOT NULL DEFAULT 0, last_accessed_at TEXT, last_accessed_ip TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY REFERENCES users(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), notification_prefs TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS strategic_objectives (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), title TEXT NOT NULL, description TEXT, owner TEXT, status TEXT NOT NULL DEFAULT 'on_track', priority TEXT NOT NULL DEFAULT 'normal', quarter TEXT NOT NULL, progress_pct REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS strategic_key_results (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), objective_id TEXT NOT NULL REFERENCES strategic_objectives(id), description TEXT NOT NULL, metric TEXT, target_value REAL, current_value REAL, unit TEXT, status TEXT NOT NULL DEFAULT 'on_track', due_date TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS strategic_initiatives (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, description TEXT, sponsor TEXT, owner TEXT, gate TEXT NOT NULL DEFAULT 'discovery', status TEXT NOT NULL DEFAULT 'green', planned_value_zar REAL NOT NULL DEFAULT 0, actual_value_zar REAL NOT NULL DEFAULT 0, spend_to_date_zar REAL NOT NULL DEFAULT 0, budget_zar REAL NOT NULL DEFAULT 0, start_date TEXT, target_completion_date TEXT, business_unit TEXT, linked_objective_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
@@ -343,6 +347,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)',
     'CREATE INDEX IF NOT EXISTS idx_audit_share_tokens_tenant ON audit_share_tokens(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_audit_share_tokens_token ON audit_share_tokens(token)',
+    'CREATE INDEX IF NOT EXISTS idx_user_preferences_tenant ON user_preferences(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_strategic_objectives_tenant ON strategic_objectives(tenant_id)',
     'CREATE INDEX IF NOT EXISTS idx_strategic_objectives_quarter ON strategic_objectives(tenant_id, quarter)',
     'CREATE INDEX IF NOT EXISTS idx_strategic_key_results_objective ON strategic_key_results(objective_id)',
