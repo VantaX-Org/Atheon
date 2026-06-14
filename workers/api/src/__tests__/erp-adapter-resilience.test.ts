@@ -222,11 +222,15 @@ describe('fetchWithRetry - shared ERP adapter resilience helper', () => {
     const t2 = await runOnce();
 
     // Base backoff is 50ms (no jitter lower bound), capped by 50 + 500 = 550ms
-    // of jitter. Allow generous headroom for scheduler noise but ensure we
-    // don't blow past a couple of seconds.
+    // of jitter. The ceiling only guards against catastrophic backoff (minutes,
+    // not the intended sub-second sleep). Run isolated this finishes in <1s, but
+    // inside the full ~850-test suite the cloudflare worker pool saturates all
+    // cores and a 550ms timer can be starved out to several seconds — so the
+    // ceiling must absorb scheduler starvation, not just jitter. 10s stays far
+    // below the 25s mocked-hang the timeout test relies on.
     for (const t of [t1, t2]) {
       expect(t).toBeGreaterThanOrEqual(30);
-      expect(t).toBeLessThan(3000);
+      expect(t).toBeLessThan(10000);
     }
   });
 });
