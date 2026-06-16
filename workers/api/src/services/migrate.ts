@@ -891,6 +891,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     'CREATE INDEX IF NOT EXISTS idx_erp_customers_dataset ON erp_customers(tenant_id, dataset_id)',
     'CREATE INDEX IF NOT EXISTS idx_erp_suppliers_dataset ON erp_suppliers(tenant_id, dataset_id)',
     'CREATE INDEX IF NOT EXISTS idx_erp_products_dataset ON erp_products(tenant_id, dataset_id)',
+    // One uploaded dataset per assessment — enforces the ingest invariant and
+    // makes the dataset upsert idempotent on re-upload.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_assessment_datasets_assessment ON assessment_datasets(assessment_id)',
   ];
 
   // ERP indexes — same batch-first-fail-fast pattern as top-level indexes.
