@@ -1,6 +1,28 @@
 import { CONFIG } from '../config';
 import { generateTotp } from './totp';
 
+/**
+ * fetch that retries only THROWN network errors (e.g. prod TLS `ECONNRESET` /
+ * "fetch failed" mid-flight — observed crashing globalSetup during a long
+ * reconciliation execute). HTTP error statuses are returned untouched so every
+ * caller's status-based logic and retries stay authoritative; this only papers
+ * over transport-level flakes against the live API. Reads are idempotent; an
+ * execute POST may create one duplicate run on retry, which is harmless and
+ * deterministic on the same seed.
+ */
+async function fetchRetry(url: string, init?: RequestInit, attempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) await new Promise<void>(r => setTimeout(r, attempt * 1500));
+    }
+  }
+  throw lastErr;
+}
+
 export interface AuthedUser {
   id: string;
   email: string;
@@ -92,7 +114,7 @@ export class ApiClient {
    * outages still surface loudly.
    */
   private async demoLogin(): Promise<boolean> {
-    const resp = await fetch(`${this.baseUrl}/api/v1/auth/demo-login`, {
+    const resp = await fetchRetry(`${this.baseUrl}/api/v1/auth/demo-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Demo-Secret': CONFIG.demoSecret },
       body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, role: this.demoRole }),
@@ -124,7 +146,7 @@ export class ApiClient {
     const MAX_ATTEMPTS = 3;
     let lastStatus = 0;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const resp = await fetch(`${this.baseUrl}/api/v1/auth/login`, {
+      const resp = await fetchRetry(`${this.baseUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: this.email, password: this.password, tenant_slug: CONFIG.tenantSlug }),
@@ -181,7 +203,7 @@ export class ApiClient {
       );
     }
     const code = generateTotp(CONFIG.adminTotpSeed);
-    const resp = await fetch(`${this.baseUrl}/api/v1/auth/mfa/validate`, {
+    const resp = await fetchRetry(`${this.baseUrl}/api/v1/auth/mfa/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ challenge_token: challengeToken, code }),
@@ -199,7 +221,7 @@ export class ApiClient {
     if (!this.token) throw new Error('authedFetch called before login()');
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${this.token}`);
-    return fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    return fetchRetry(`${this.baseUrl}${path}`, { ...init, headers });
   }
 
   async reseed(): Promise<unknown> {
