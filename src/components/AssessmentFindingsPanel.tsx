@@ -27,6 +27,7 @@ import {
   TrendingUp, Building2, FileText, Search,
 } from 'lucide-react';
 import { PeerInsightsBadge } from '@/components/PeerInsightsBadge';
+import { confidenceGauge, immediateVsOngoing, sourceVsTarget } from '@/lib/finding-charts';
 import type {
   AssessmentFinding,
   AssessmentFindingSeverity,
@@ -100,6 +101,11 @@ const TONE_VARIANT: Record<ConfidenceTone, 'success' | 'info' | 'warning'> = {
   info: 'info',
   warn: 'warning',
 };
+
+function Svg({ markup }: { markup: string }) {
+  if (!markup) return null;
+  return <span className="inline-block" dangerouslySetInnerHTML={{ __html: markup }} />;
+}
 
 export function AssessmentFindingsPanel({
   findings, summary, findingsByCompany, companyProfile, onDeployCatalyst,
@@ -332,6 +338,28 @@ export function AssessmentFindingsPanel({
                 </div>
               </div>
             )}
+
+            {/* Per-finding charts: source/target, one-off/recurring, confidence */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-center"
+              style={{ borderTop: '1px solid var(--border-card)', paddingTop: 12 }}>
+              <div>
+                <div className="text-xs t-muted mb-1">Source vs target</div>
+                <Svg markup={sourceVsTarget((f.sample_records ?? []).map(s => ({
+                  ref: s.ref,
+                  source_value: (s.metadata?.source_value as number | string) ?? s.amount_native ?? 0,
+                  target_value: (s.metadata?.target_value as number | string) ?? s.amount_zar ?? 0,
+                  difference: Number(s.metadata?.difference ?? 0),
+                })))} />
+              </div>
+              <div>
+                <div className="text-xs t-muted mb-1">One-off vs recurring</div>
+                <Svg markup={immediateVsOngoing(Number(f.value_at_risk_zar) || 0, 0)} />
+              </div>
+              <div>
+                <div className="text-xs t-muted mb-1">Confidence</div>
+                <Svg markup={confidenceGauge(Number(f.confidence ?? 0), f.confidence_gate_passed !== false)} />
+              </div>
+            </div>
 
             {/* Currency breakdown if multi-currency */}
             {Object.keys(f.currency_breakdown).length > 1 && (
