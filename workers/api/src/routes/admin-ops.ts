@@ -49,4 +49,20 @@ adminOps.post('/run-phase10-chain', async (c) => {
   return c.json({ ok: true, chain_result: chainResult });
 });
 
+// POST /resolve-rca { tenant_slug, rca_id } — mirror markResolved's UPDATE so
+// a synthesized (status='active') RCA clears billing's status gate, isolating
+// the verified-action gate for the A2 boundary test.
+adminOps.post('/resolve-rca', async (c) => {
+  const g = await gate(c);
+  if (g instanceof Response) return g;
+  const rcaId = typeof g.body.rca_id === 'string' ? g.body.rca_id : '';
+  if (!rcaId) return c.json({ error: 'rca_id required' }, 400);
+  const res = await (c.env as Env).DB.prepare(
+    `UPDATE root_cause_analyses
+        SET status = 'resolved', resolved_at = datetime('now')
+      WHERE id = ? AND tenant_id = ? AND status != 'resolved'`
+  ).bind(rcaId, g.tenantId).run();
+  return c.json({ ok: true, resolved: (res.meta.changes ?? 0) > 0 });
+});
+
 export default adminOps;

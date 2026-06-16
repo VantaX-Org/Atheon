@@ -48,3 +48,32 @@ describe('admin-ops gate', () => {
     expect(json.chain_result).toBeTruthy();
   });
 });
+
+describe('resolve-rca', () => {
+  const RCA_ID = 'ao-rca-resolve-1';
+  beforeAll(async () => {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO root_cause_analyses
+         (id, tenant_id, metric_id, metric_name, trigger_status, causal_chain, confidence, status, generated_at)
+       VALUES (?, ?, 'm1', 'Test Metric', 'red', '[]', 88, 'active', datetime('now'))`
+    ).bind(RCA_ID, TENANT_ID).run();
+  });
+
+  it('marks an active RCA resolved', async () => {
+    const resp = await ops('/resolve-rca', { tenant_slug: SLUG, rca_id: RCA_ID });
+    expect(resp.status).toBe(200);
+    const json = await resp.json() as { ok: boolean; resolved: boolean };
+    expect(json.resolved).toBe(true);
+    const row = await env.DB.prepare('SELECT status, resolved_at FROM root_cause_analyses WHERE id = ?')
+      .bind(RCA_ID).first<{ status: string; resolved_at: string | null }>();
+    expect(row?.status).toBe('resolved');
+    expect(row?.resolved_at).toBeTruthy();
+  });
+
+  it('returns resolved=false for an rca_id that does not belong to the tenant', async () => {
+    const resp = await ops('/resolve-rca', { tenant_slug: SLUG, rca_id: 'nonexistent' });
+    expect(resp.status).toBe(200);
+    const json = await resp.json() as { resolved: boolean };
+    expect(json.resolved).toBe(false);
+  });
+});
