@@ -84,8 +84,16 @@ export interface RcaChain {
 /** Billing preview period (GET /api/billing/period, persist:false). */
 export interface BillingLineItem {
   rca_id: string;
+  metric_name?: string;
   attributed_savings: number;
-  verified_action_ids: string[];
+  confidence?: number; // billing scale is 0..1 here (not 0..100)
+  // The verified-action anchor lives in the evidence blob, not at top level.
+  evidence: {
+    verified_action_ids: string[];
+    causal_factor_id?: string;
+    max_factor_impact?: number;
+    [k: string]: unknown;
+  };
 }
 export interface BillingPeriod {
   line_items: BillingLineItem[];
