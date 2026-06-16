@@ -11,6 +11,7 @@ import {
 } from '../services/catalyst-templates';
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
+import { hasWord } from '../services/catalyst-match-utils';
 import { generateKpiDefinitions } from '../services/kpi-definitions';
 import { loadLlmConfig, llmChatWithFallback, stripCodeFences, checkAndReserveBudget, recordLlmUsage, estimateTokensFor } from '../services/llm-provider';
 import type { LlmMessage } from '../services/llm-provider';
@@ -1111,7 +1112,8 @@ type ExecutionResultRecord = {
     matched: number;
     unmatched_source: number;
     unmatched_target: number;
-    discrepancies: number;
+    discrepancies: number;          // field-level mismatch count
+    discrepant_records?: number;    // matched records with >=1 mismatched field
   };
   discrepancies?: Array<{
     source_record: Record<string, unknown>;
@@ -1864,7 +1866,8 @@ async function performReconciliation(
   }
 
   let matchedCount = 0;
-  let discrepancyCount = 0;
+  let discrepancyCount = 0;        // field-level mismatches (one matched record may add several)
+  let discrepantRecordCount = 0;   // matched records with at least one mismatched field
   let skippedSource = 0;
   const discrepancies: ExecutionResultRecord['discrepancies'] = [];
   const matched_records: Array<{ source: Record<string, unknown>; target: Record<string, unknown>; confidence: number; matched_on: string }> = [];
@@ -1907,8 +1910,10 @@ async function performReconciliation(
       const tgtVal = String(tgtRow[primaryKey.target_field] ?? '').toLowerCase().trim();
       if (!tgtVal) continue; // skip records with empty key field
 
+      // Fuzzy matches on a token boundary, not a raw substring: 'pos' must not
+      // match inside 'exposure'. 'contains' keeps raw substring semantics.
       const isMatch = primaryKey.match_type === 'exact' ? srcVal === tgtVal :
-        primaryKey.match_type === 'fuzzy' ? (srcVal.includes(tgtVal) || tgtVal.includes(srcVal)) :
+        primaryKey.match_type === 'fuzzy' ? (hasWord(srcVal, tgtVal) || hasWord(tgtVal, srcVal)) :
         primaryKey.match_type === 'contains' ? srcVal.includes(tgtVal) :
         srcVal === tgtVal;
 
@@ -1956,6 +1961,7 @@ async function performReconciliation(
         // If discrepancy found on a matched record, adjust confidence
         if (hasDiscrepancy && matched_records.length > 0) {
           matched_records[matched_records.length - 1].confidence = 0.7;
+          discrepantRecordCount++;
         }
         break;
       }
@@ -1994,6 +2000,7 @@ async function performReconciliation(
       unmatched_source: sourceData.length - skippedSource - matchedCount,
       unmatched_target: targetData.length - skippedTargetCount - matchedTargetIndices.size,
       discrepancies: discrepancyCount,
+      discrepant_records: discrepantRecordCount,
     },
     discrepancies: discrepancies?.length ? discrepancies : undefined,
     matched_records: matched_records.length ? matched_records : undefined,

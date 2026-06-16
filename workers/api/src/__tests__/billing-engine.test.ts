@@ -147,6 +147,27 @@ describe('Phase 10-19 — shared-savings billing engine', () => {
       expect(period.line_items.length).toBe(0);
     });
 
+    it('RCA below the confidence floor → excluded (prefer false-negative)', () => {
+      const period = buildBillablePeriod({
+        ...baseInput,
+        rcas: [{ id: 'r1', metric_id: 'm1', metric_name: 'M', resolved_at: '2026-04-15', confidence: 60 }],
+        factorAgg: new Map([['r1', { max: 1_000_000, count: 1 }]]),
+        verifiedActions: new Map([['r1', ['a1']]]), // verified, but confidence 0.60 < 0.70 floor
+      });
+      expect(period.line_items.length).toBe(0);
+      expect(period.atheon_revenue).toBe(0);
+    });
+
+    it('RCA exactly at the confidence floor → billed', () => {
+      const period = buildBillablePeriod({
+        ...baseInput,
+        rcas: [{ id: 'r1', metric_id: 'm1', metric_name: 'M', resolved_at: '2026-04-15', confidence: 70 }],
+        factorAgg: new Map([['r1', { max: 1_000_000, count: 1 }]]),
+        verifiedActions: new Map([['r1', ['a1']]]),
+      });
+      expect(period.line_items.length).toBe(1);
+    });
+
     it('passes all gates → line item with attributed_savings', () => {
       const period = buildBillablePeriod({
         ...baseInput,

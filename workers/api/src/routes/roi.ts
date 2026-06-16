@@ -100,7 +100,7 @@ roi.get('/', async (c) => {
       { key: 'period', label: 'Period' }, { key: 'identified', label: 'Value Identified (ZAR)' },
       { key: 'recovered', label: 'Value Recovered (ZAR)' }, { key: 'prevented', label: 'Prevented Losses (ZAR)' },
       { key: 'hoursSaved', label: 'Person Hours Saved' }, { key: 'runs', label: 'Catalyst Runs' },
-      { key: 'cost', label: 'Platform Cost (ZAR)' }, { key: 'roiMultiple', label: 'ROI Multiple' },
+      { key: 'cost', label: 'Platform Cost (ZAR)' }, { key: 'roiMultiple', label: 'Operational ROI (vs Licence)' },
     ]), 'roi-tracking.csv');
   }
 

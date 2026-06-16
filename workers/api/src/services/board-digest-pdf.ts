@@ -42,12 +42,15 @@ export async function collectDigestData(db: D1Database, tenantId: string): Promi
   // Same lookback the /forecast-accuracy endpoint and the page default to (90d).
   const forecast = await getForecastAccuracyStats(db, tenantId, 90);
 
+  // Open exposure only — must reconcile with the /apex/risks/count and
+  // /pulse/anomalies/count badges (both filter active/open). Resolved items
+  // never inflate the board headline.
   const risksRow = await db.prepare(
-    'SELECT COUNT(*) AS n FROM risk_alerts WHERE tenant_id = ?'
+    "SELECT COUNT(*) AS n FROM risk_alerts WHERE tenant_id = ? AND status = 'active'"
   ).bind(tenantId).first<{ n: number }>();
 
   const anomaliesRow = await db.prepare(
-    'SELECT COUNT(*) AS n FROM anomalies WHERE tenant_id = ?'
+    "SELECT COUNT(*) AS n FROM anomalies WHERE tenant_id = ? AND status = 'open'"
   ).bind(tenantId).first<{ n: number }>();
 
   const recovered = Number(billing?.recovered ?? 0);
@@ -131,11 +134,15 @@ export async function generateBoardDigestPDF(data: DigestData, reportDate: strin
   doc.setTextColor(180, 200, 230);
   doc.text('Recovered by Atheon', pageW / 2, 181, { align: 'center' });
 
-  // Supporting ledger: Billed + ROI multiple
+  // Supporting ledger: Billed + savings multiple.
+  // NOTE: this is the shared-savings multiple (value recovered ÷ Atheon fee),
+  // a distinct metric from roi_tracking.roi_multiple ((recovered + labour) ÷
+  // licence cost) surfaced on the /roi page. Labelled separately so the two
+  // numbers are never read as the same "ROI".
   doc.setFontSize(10);
   doc.setTextColor(...white);
   doc.text(
-    `Billed: ${fmtMoney(data.billed)}        ROI Multiple: ${data.roiMultiple.toFixed(1)}x`,
+    `Billed: ${fmtMoney(data.billed)}        Savings Multiple: ${data.roiMultiple.toFixed(1)}x`,
     pageW / 2, 196, { align: 'center' },
   );
 

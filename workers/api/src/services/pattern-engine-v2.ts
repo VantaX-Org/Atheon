@@ -211,6 +211,10 @@ export async function calculateROI(
 
   const identified = valueResult?.identified || 0;
   const recovered = resolvedResult?.recovered || 0;
+  // Operational ROI: (value recovered + imputed labour) ÷ annual licence cost.
+  // Distinct from the board digest's shared-savings multiple (recovered ÷
+  // Atheon fee). The two answer different questions and are labelled separately
+  // on their surfaces; do not reconcile them to one number.
   const roiMultiple = licenceCost > 0 ? Math.round(((recovered + personHours * 150) / licenceCost) * 10) / 10 : 0;
 
   const id = crypto.randomUUID();

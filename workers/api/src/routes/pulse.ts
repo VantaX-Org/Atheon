@@ -222,14 +222,14 @@ pulse.get('/anomalies', async (c) => {
   });
 });
 
-// GET /api/pulse/anomalies/count — uncapped tenant total, decoupled from the
-// list endpoint's LIMIT. Reconciles with the board-digest COUNT(*) so the
-// on-screen badge stays correct past the 50-row list page.
+// GET /api/pulse/anomalies/count — uncapped count of OPEN exposure (status='open').
+// Headline badges and the board digest count open anomalies only; resolved ones
+// must not inflate the executive number. Matches pulse/summary openAnomalies.
 pulse.get('/anomalies/count', async (c) => {
   const tenantId = getTenantId(c);
   const severity = c.req.query('severity');
 
-  let query = 'SELECT COUNT(*) as count FROM anomalies WHERE tenant_id = ?';
+  let query = "SELECT COUNT(*) as count FROM anomalies WHERE tenant_id = ? AND status = 'open'";
   const binds: unknown[] = [tenantId];
   if (severity) {
     query += ' AND severity = ?';

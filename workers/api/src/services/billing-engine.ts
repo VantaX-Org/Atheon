@@ -34,6 +34,13 @@ import { getTenantCurrency } from './tenant-currency';
 
 const DEFAULT_SHARE_PCT = 0.2;
 
+// Inference-strength floor for billing. A shared-savings invoice is a real
+// claim, so an RCA must clear a minimum confidence before a single Rand is
+// attributed. Below the floor we bill nothing (prefer a false-negative —
+// surface it to the customer — over silently claiming a weak inference).
+// 0.70 mirrors the mode-share / RCA-confidence floor used upstream.
+const MIN_BILLABLE_CONFIDENCE = 0.7;
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export interface BillableLineItem {
@@ -214,11 +221,14 @@ export function buildBillablePeriod(input: BuildInput): BillablePeriod {
     if (!factors || factors.max <= 0) continue;
     const verifiedIds = input.verifiedActions.get(rca.id) || [];
     if (verifiedIds.length === 0) continue;
+    // Confidence gate: weak RCAs are not billed (prefer false-negative).
+    const confidence = Math.max(0, Math.min(1, rca.confidence / 100));
+    if (confidence < MIN_BILLABLE_CONFIDENCE) continue;
     items.push({
       rca_id: rca.id,
       metric_name: rca.metric_name,
       attributed_savings: factors.max,
-      confidence: Math.max(0, Math.min(1, rca.confidence / 100)),
+      confidence,
       evidence: {
         causal_factors_count: factors.count,
         max_factor_impact: factors.max,

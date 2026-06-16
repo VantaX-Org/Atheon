@@ -318,14 +318,15 @@ apex.get('/risks', async (c) => {
   return c.json({ risks: formatted, total: formatted.length });
 });
 
-// GET /api/apex/risks/count — uncapped tenant total, decoupled from list paging.
-// Reconciles with the board-digest COUNT(*) so the on-screen badge never
-// diverges from the digest when a tenant has many risks.
+// GET /api/apex/risks/count — uncapped count of OPEN exposure (status='active').
+// Headline badges and the board digest both count open risks only; resolved
+// risks must not inflate the executive number. Matches the narrative engine and
+// board-report-engine, which also filter status='active'.
 apex.get('/risks/count', async (c) => {
   const tenantId = getTenantId(c);
   const severity = c.req.query('severity');
 
-  let query = 'SELECT COUNT(*) as count FROM risk_alerts WHERE tenant_id = ?';
+  let query = "SELECT COUNT(*) as count FROM risk_alerts WHERE tenant_id = ? AND status = 'active'";
   const binds: unknown[] = [tenantId];
   if (severity) {
     query += ' AND severity = ?';

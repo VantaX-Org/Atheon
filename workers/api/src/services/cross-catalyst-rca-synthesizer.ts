@@ -48,6 +48,12 @@ import {
 const DEBOUNCE_HOURS = 24;
 const MIN_CAUSAL_FACTORS = 2;
 const MAX_LAYER_BREADTH = 3;
+// Inference-strength floors (0..100). A driver below the floor is dropped; an
+// RCA whose surviving drivers don't average above the floor is not persisted.
+// Prefer a false-negative (no RCA) over emitting a weakly-evidenced cause that
+// could later anchor a billing claim. Mirrors the 0.70 billing/mode-share floor.
+const MIN_FACTOR_CONFIDENCE = 70;
+const MIN_RCA_CONFIDENCE = 70;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -432,10 +438,19 @@ export async function synthesizeCrossCatalystRca(
       result.symptomsSkippedDebounced++;
       continue;
     }
-    const factors = await assembleChain(db, tenantId, symptom, currency, tenantBase);
-    // factors[0] is L0 symptom; everything beyond is signal/correlation drivers.
-    const driverCount = factors.length - 1;
-    if (driverCount < MIN_CAUSAL_FACTORS) {
+    const rawFactors = await assembleChain(db, tenantId, symptom, currency, tenantBase);
+    // Inference-strength floor: keep the L0 symptom, drop drivers below the
+    // confidence floor before counting (prefer false-negatives over weak rules).
+    const symptomFactor = rawFactors.filter((f) => f.layer === 'L0');
+    const drivers = rawFactors.filter((f) => f.layer !== 'L0' && f.confidence >= MIN_FACTOR_CONFIDENCE);
+    const factors = [...symptomFactor, ...drivers];
+    if (drivers.length < MIN_CAUSAL_FACTORS) {
+      result.symptomsSkippedThin++;
+      continue;
+    }
+    // Aggregate floor: surviving drivers must average above the confidence floor.
+    const avgDriverConfidence = drivers.reduce((s, f) => s + f.confidence, 0) / drivers.length;
+    if (avgDriverConfidence < MIN_RCA_CONFIDENCE) {
       result.symptomsSkippedThin++;
       continue;
     }
