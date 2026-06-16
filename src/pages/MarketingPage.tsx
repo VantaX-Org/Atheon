@@ -2086,8 +2086,6 @@ export function MarketingPage() {
             {' · '}
             <a href="/legal/performance">Performance</a>
             {' · '}
-            <a href="/pricing">Pricing</a>
-            {' · '}
             <a href="/login">Sign in</a>
           </div>
         </div>

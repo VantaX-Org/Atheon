@@ -74,7 +74,6 @@ const SupportTicketDetailPage = lazyWithRetry(() => import("@/pages/SupportTicke
 const SupportTriagePage = lazyWithRetry(() => import("@/pages/admin/SupportTriagePage").then(m => ({ default: m.SupportTriagePage })));
 const TrustPerformancePage = lazyWithRetry(() => import("@/pages/TrustPerformancePage"));
 const OnboardingWizardPage = lazyWithRetry(() => import("@/pages/OnboardingWizardPage"));
-const PricingPage = lazyWithRetry(() => import("@/pages/PricingPage"));
 const CompliancePage = lazyWithRetry(() => import("@/pages/CompliancePage"));
 
 /**
@@ -142,10 +141,6 @@ export default function App() {
       <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route path="/" element={<MarketingPage />} />
-          {/* Public pricing page — public so prospects can land on it from
-              the marketing site, and so trial users can navigate to it
-              from the upgrade banner without being logged in. */}
-          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reset-password" element={<LoginPage />} />
           <Route path="/trial" element={<TrialPage />} />
