@@ -12,6 +12,8 @@ import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { formatDays } from '@/lib/utils';
 import { useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
+import { downloadTemplate, parseCsv, INGEST_DOMAINS } from '@/lib/ingest-client';
+import { validateDomainRows } from '@/lib/ingest-validate';
 
 type View = 'list' | 'new' | 'running' | 'results';
 
@@ -350,6 +352,21 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
   const [prospectIndustry, setProspectIndustry] = useState('');
   const [erpConnectionId, setErpConnectionId] = useState('');
 
+  // Step 2: Connection / Data — use the tenant's existing ERP-backed data
+  // (current behaviour) OR upload prospect CSVs into an isolated dataset.
+  const [dataMode, setDataMode] = useState<'tenant' | 'upload'>('tenant');
+  const [files, setFiles] = useState<Record<string, { header: string[]; rows: Array<Record<string, unknown>>; errors: { row: number; column: string; message: string }[] }>>({});
+
+  const onFile = async (domain: string, file: File) => {
+    const { header, rows } = await parseCsv(file);
+    const { errors } = validateDomainRows(domain, header, rows);
+    setFiles(f => ({ ...f, [domain]: { header, rows, errors } }));
+  };
+
+  const uploadInvalid = dataMode === 'upload' && Object.values(files).some(f => f.errors.length > 0);
+  const noData = dataMode === 'upload' && Object.keys(files).length === 0;
+  const dataStepBlocked = uploadInvalid || noData;
+
   // Step 2: Config
   const [config, setConfig] = useState({
     deployment_model: 'saas' as 'saas' | 'on-premise' | 'hybrid',
@@ -397,17 +414,32 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
       onError('Period start must be on or before period end');
       return;
     }
+    if (dataMode === 'upload' && Object.keys(files).length === 0) {
+      onError('Upload at least one prospect data file, or switch to existing tenant data');
+      return;
+    }
+    if (dataMode === 'upload' && Object.values(files).some(f => f.errors.length > 0)) {
+      onError('Fix the validation errors before running');
+      return;
+    }
     try {
       setSubmitting(true);
-      const data = await api.assessments.create({
+      const { id } = await api.assessments.create({
         prospect_name: prospectName,
         prospect_industry: prospectIndustry,
-        erp_connection_id: erpConnectionId || undefined,
+        erp_connection_id: dataMode === 'tenant' ? (erpConnectionId || undefined) : undefined,
         config,
         period_start: periodStart || null,
         period_end: periodEnd || null,
+        defer_run: dataMode === 'upload',
       });
-      onCreated(data.id);
+      if (dataMode === 'upload') {
+        const domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> = {};
+        for (const [domain, f] of Object.entries(files)) domains[domain] = { header: f.header, rows: f.rows };
+        await api.assessments.uploadDataset(id, domains);
+        await api.assessments.runAssessment(id);
+      }
+      onCreated(id);
     } catch (err) {
       reportError('Failed to start assessment', err);
     } finally {
@@ -421,7 +453,7 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
     <div className="max-w-2xl mx-auto rounded-md p-6" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-card)' }}>
       {/* Steps indicator */}
       <div className="flex items-center gap-2 mb-6">
-        {[1, 2, 3].map(s => (
+        {[1, 2, 3, 4].map(s => (
           <div key={s} className="flex items-center gap-2">
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium`}
@@ -429,11 +461,11 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
             >
               {s}
             </div>
-            {s < 3 && <div className="w-12 h-0.5 rounded" style={{ background: s < step ? 'var(--accent)' : 'var(--bg-secondary)' }} />}
+            {s < 4 && <div className="w-12 h-0.5 rounded" style={{ background: s < step ? 'var(--accent)' : 'var(--bg-secondary)' }} />}
           </div>
         ))}
         <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
-          {step === 1 ? 'Prospect Details' : step === 2 ? 'Configuration' : 'Review & Run'}
+          {step === 1 ? 'Prospect Details' : step === 2 ? 'Connection & Data' : step === 3 ? 'Configuration' : 'Review & Run'}
         </span>
       </div>
 
@@ -460,14 +492,6 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>ERP Connection (optional)</label>
-            <select value={erpConnectionId} onChange={e => setErpConnectionId(e.target.value)} className="w-full rounded-md px-3 py-2 text-sm" style={inputStyle}>
-              <option value="">No ERP connection — use estimated data</option>
-              {erpConnections.map(c => <option key={c.id} value={c.id}>{c.company_name} ({c.erp_type})</option>)}
-            </select>
-          </div>
-
           <button
             onClick={() => { if (prospectName && prospectIndustry) setStep(2); else onError('Fill in prospect name and industry'); }}
             className="w-full py-2.5 text-sm font-medium rounded-md" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
@@ -477,8 +501,143 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
         </div>
       )}
 
-      {/* Step 2: Config */}
+      {/* Step 2: Connection & Data */}
       {step === 2 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Connection &amp; Data</h3>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Choose where this assessment's data comes from. Either analyse the tenant's
+            connected ERP data, or upload the prospect's own exports.
+          </p>
+
+          {/* Mode toggle */}
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { key: 'tenant', label: 'Use existing tenant data', desc: 'Analyse the connected ERP / tenant database.' },
+              { key: 'upload', label: 'Upload prospect data', desc: 'Import the prospect’s own CSV exports.' },
+            ] as const).map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setDataMode(opt.key)}
+                className="text-left rounded-md p-3 border transition"
+                style={{
+                  background: dataMode === opt.key ? 'var(--bg-secondary)' : 'var(--bg-card)',
+                  borderColor: dataMode === opt.key ? 'var(--accent)' : 'var(--border-card)',
+                }}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <span
+                    className="inline-block w-3.5 h-3.5 rounded-full border"
+                    style={{ borderColor: dataMode === opt.key ? 'var(--accent)' : 'var(--border-card)', background: dataMode === opt.key ? 'var(--accent)' : 'transparent' }}
+                  />
+                  {opt.label}
+                </div>
+                <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+
+          {dataMode === 'tenant' && (
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>ERP Connection (optional)</label>
+              <select value={erpConnectionId} onChange={e => setErpConnectionId(e.target.value)} className="w-full rounded-md px-3 py-2 text-sm" style={inputStyle}>
+                <option value="">Tenant default data</option>
+                {erpConnections.map(c => <option key={c.id} value={c.id}>{c.company_name} ({c.erp_type})</option>)}
+              </select>
+              <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                Leave on tenant default to use the home tenant's records, or pick a specific connection.
+              </p>
+            </div>
+          )}
+
+          {dataMode === 'upload' && (
+            <div className="space-y-3">
+              {INGEST_DOMAINS.map(({ domain, label }) => {
+                const f = files[domain];
+                return (
+                  <div key={domain} className="rounded-md p-3 border" style={{ borderColor: 'var(--border-card)', background: 'var(--bg-secondary)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => downloadTemplate(domain)}
+                          className="text-xs px-2 py-1 rounded-md"
+                          style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                        >
+                          Download template
+                        </button>
+                        <label
+                          className="text-xs px-2 py-1 rounded-md cursor-pointer"
+                          style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
+                        >
+                          Choose CSV
+                          <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            className="hidden"
+                            onChange={e => { const file = e.target.files?.[0]; if (file) void onFile(domain, file); }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    {f && (
+                      <div className="mt-2 text-xs">
+                        {f.errors.length === 0 ? (
+                          <span
+                            className="inline-block px-2 py-0.5 rounded-full"
+                            style={{ background: 'var(--bg-card)', color: 'var(--success, #16a34a)', border: '1px solid var(--border-card)' }}
+                          >
+                            {f.rows.length} valid {f.rows.length === 1 ? 'row' : 'rows'}
+                          </span>
+                        ) : (
+                          <div>
+                            <span
+                              className="inline-block px-2 py-0.5 rounded-full"
+                              style={{ background: 'var(--bg-card)', color: 'var(--danger, #dc2626)', border: '1px solid var(--border-card)' }}
+                            >
+                              {f.errors.length} {f.errors.length === 1 ? 'error' : 'errors'}
+                            </span>
+                            <ul className="mt-1 space-y-0.5" style={{ color: 'var(--danger, #dc2626)' }}>
+                              {f.errors.slice(0, 5).map((e, i) => (
+                                <li key={i}>
+                                  {e.row > 0 ? `Row ${e.row}: ` : ''}{e.column ? `${e.column} — ` : ''}{e.message}
+                                </li>
+                              ))}
+                              {f.errors.length > 5 && <li>…and {f.errors.length - 5} more</li>}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {noData && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Upload at least one file to continue.</p>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={() => setStep(1)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
+              &larr; Back
+            </button>
+            <button
+              onClick={() => { if (!dataStepBlocked) setStep(3); else onError(uploadInvalid ? 'Fix the validation errors before continuing' : 'Upload at least one prospect data file'); }}
+              disabled={dataStepBlocked}
+              className="flex-1 py-2.5 text-sm font-medium rounded-md disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
+            >
+              Next &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Config */}
+      {step === 3 && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Assessment Configuration</h3>
 
@@ -595,18 +754,18 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => setStep(1)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
+            <button onClick={() => setStep(2)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
               &larr; Back
             </button>
-            <button onClick={() => setStep(3)} className="flex-1 py-2.5 text-sm font-medium rounded-md" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>
+            <button onClick={() => setStep(4)} className="flex-1 py-2.5 text-sm font-medium rounded-md" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>
               Next &rarr;
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 3: Review & Run */}
-      {step === 3 && (
+      {/* Step 4: Review & Run */}
+      {step === 4 && (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Review &amp; Run</h3>
 
@@ -620,9 +779,13 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{prospectIndustry}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span style={{ color: 'var(--text-muted)' }}>ERP Connection</span>
+              <span style={{ color: 'var(--text-muted)' }}>Data Source</span>
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                {erpConnectionId ? erpConnections.find(c => c.id === erpConnectionId)?.company_name || erpConnectionId : 'Estimated data'}
+                {dataMode === 'upload'
+                  ? `Uploaded prospect data (${Object.values(files).reduce((n, f) => n + f.rows.length, 0)} rows)`
+                  : erpConnectionId
+                    ? erpConnections.find(c => c.id === erpConnectionId)?.company_name || erpConnectionId
+                    : 'Existing tenant data'}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -645,14 +808,14 @@ function NewAssessmentWizard({ onCreated, onError, reportError }: {
             </div>
           </div>
 
-          {!erpConnectionId && (
-            <div className="p-3 rounded-md text-xs" style={{ background: 'var(--bg-secondary)', color: 'var(--warning)', border: '1px solid var(--border-card)' }}>
-              No ERP connection selected. Estimated data will be used for volume estimation.
+          {dataMode === 'upload' && (
+            <div className="p-3 rounded-md text-xs" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
+              This assessment will run against the uploaded prospect data only, isolated from other tenant records.
             </div>
           )}
 
           <div className="flex gap-2">
-            <button onClick={() => setStep(2)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
+            <button onClick={() => setStep(3)} className="flex-1 py-2.5 text-sm rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}>
               &larr; Back
             </button>
             <button

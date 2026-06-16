@@ -54,6 +54,9 @@ assessments.post('/', async (c) => {
     period_start?: string | null;
     /** ISO date (YYYY-MM-DD). Optional — null/empty means unbounded end. */
     period_end?: string | null;
+    /** When true: create the assessment 'pending' and DON'T auto-run. The
+     *  caller uploads a dataset then triggers POST /:id/run. */
+    defer_run?: boolean;
   }>();
 
   if (!body.prospect_name || !body.prospect_industry) {
@@ -94,6 +97,12 @@ assessments.post('/', async (c) => {
     periodEnd,
     auth!.userId
   ).run();
+
+  // Deferred run: the caller will upload a dataset then POST /:id/run. Leave
+  // the assessment 'pending' and do NOT dispatch a background run now.
+  if (body.defer_run) {
+    return c.json({ id, status: 'pending' }, 201);
+  }
 
   // If a ready uploaded dataset already exists for this assessment, scope the
   // run to it so the assessment reads ONLY that dataset's rows (data isolation).
@@ -195,6 +204,50 @@ assessments.post('/:id/dataset', async (c) => {
   ).bind(datasetId, assessmentId, tenantId, JSON.stringify(rowCounts)).run();
 
   return c.json({ dataset_id: datasetId, status: 'ready', row_counts: rowCounts });
+});
+
+// ── POST /api/assessments/:id/run ─────────────────────────────────────────
+// Trigger the run for a deferred (status='pending') assessment, scoping it to
+// the ready uploaded dataset. Mirrors the auto-run path in POST '/'.
+assessments.post('/:id/run', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessmentId = c.req.param('id');
+  const a = await c.env.DB.prepare(
+    'SELECT id, tenant_id, prospect_name, prospect_industry, erp_connection_id, config, period_start, period_end FROM assessments WHERE id = ?'
+  ).bind(assessmentId).first<{
+    id: string; tenant_id: string; prospect_name: string; prospect_industry: string;
+    erp_connection_id: string | null; config: string; period_start: string | null; period_end: string | null;
+  }>();
+  if (!a) return c.json({ error: 'assessment not found' }, 404);
+
+  const config = { ...DEFAULT_ASSESSMENT_CONFIG, ...(JSON.parse(a.config || '{}') as Partial<AssessmentConfig>) };
+
+  // Resolve the ready dataset (same lookup as the create handler) so the run
+  // reads ONLY that dataset's rows.
+  const dataset = await c.env.DB.prepare(
+    "SELECT id FROM assessment_datasets WHERE assessment_id = ? AND status = 'ready'"
+  ).bind(assessmentId).first<{ id: string }>();
+  const datasetId = dataset?.id;
+
+  const promise = runAssessment(
+    c.env.DB,
+    c.env.AI,
+    c.env.STORAGE,
+    a.tenant_id,
+    assessmentId,
+    a.erp_connection_id || '',
+    config,
+    a.prospect_industry,
+    a.prospect_name,
+    { periodStart: a.period_start, periodEnd: a.period_end },
+    datasetId,
+  );
+
+  c.executionCtx.waitUntil(promise);
+
+  return c.json({ id: assessmentId, status: 'running' });
 });
 
 // ── GET /api/assessments/config/defaults — return default config ──────────
