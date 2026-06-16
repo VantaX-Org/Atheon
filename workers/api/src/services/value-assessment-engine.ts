@@ -1979,6 +1979,35 @@ export async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Ar
   doc.rect(60, y - 2, 3, 3, 'F');
   doc.text('Ongoing Annual Value', 65, y);
 
+  // Severity distribution — portfolio roll-up stacked bar.
+  if (y > pageH - 40) { doc.addPage(); pg++; pageHeader('Value by Domain', pg); y = 28; }
+  y += 12;
+  setText(NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Findings by Severity', 14, y);
+  y += 4;
+  const sevCounts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of args.findings) { const s = String(f.severity); if (s in sevCounts) sevCounts[s]++; }
+  const sevTotal = Object.values(sevCounts).reduce((a, b) => a + b, 0) || 1;
+  let sx2 = 14; const sevBarW = pageW - 28; const sevY = y + 2;
+  for (const k of ['critical', 'high', 'medium', 'low']) {
+    const seg = (sevCounts[k] / sevTotal) * sevBarW;
+    if (seg <= 0) continue;
+    setFill(SEV[k]); doc.rect(sx2, sevY, seg, 5, 'F');
+    sx2 += seg;
+  }
+  // Count legend
+  let lx = 14; const legendY = sevY + 11;
+  for (const k of ['critical', 'high', 'medium', 'low']) {
+    setFill(SEV[k]); doc.rect(lx, legendY - 2.5, 3, 3, 'F');
+    setText(TEXT); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const lbl = `${k.charAt(0).toUpperCase()}${k.slice(1)} ${sevCounts[k]}`;
+    doc.text(lbl, lx + 4, legendY);
+    lx += doc.getTextWidth(lbl) + 12;
+  }
+  y = legendY + 8;
+
   // Domain detail blocks
   y += 10;
   setText(NAVY);

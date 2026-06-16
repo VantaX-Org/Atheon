@@ -27,7 +27,7 @@ import {
   TrendingUp, Building2, FileText, Search,
 } from 'lucide-react';
 import { PeerInsightsBadge } from '@/components/PeerInsightsBadge';
-import { confidenceGauge, immediateVsOngoing, sourceVsTarget } from '@/lib/finding-charts';
+import { confidenceGauge, immediateVsOngoing, sourceVsTarget, domainWaterfall, severityDistribution } from '@/lib/finding-charts';
 import type {
   AssessmentFinding,
   AssessmentFindingSeverity,
@@ -160,6 +160,22 @@ export function AssessmentFindingsPanel({
     () => visibleFindings.filter(f => isUnverified(f)),
     [visibleFindings],
   );
+
+  const severityCounts = useMemo(() => {
+    const c = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of findings) c[f.severity as keyof typeof c] = (c[f.severity as keyof typeof c] ?? 0) + 1;
+    return c;
+  }, [findings]);
+  const domainValues = useMemo(() => {
+    const m = new Map<string, { immediate: number; ongoing: number }>();
+    for (const f of findings) {
+      const k = f.category || 'other';
+      const e = m.get(k) ?? { immediate: 0, ongoing: 0 };
+      e.immediate += Number(f.value_at_risk_zar) || 0;
+      m.set(k, e);
+    }
+    return Array.from(m, ([domain, v]) => ({ domain, ...v }));
+  }, [findings]);
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
@@ -477,6 +493,18 @@ export function AssessmentFindingsPanel({
             <span className="t-muted text-xs ml-auto">Click a severity to toggle filter</span>
           </div>
         )}
+
+        {/* Portfolio roll-ups — domain waterfall + severity distribution */}
+        <div className="mt-4 flex flex-wrap items-end gap-6" style={{ borderTop: '1px solid var(--border-card)', paddingTop: 12 }}>
+          <div>
+            <div className="text-label mb-1">Value by domain</div>
+            <Svg markup={domainWaterfall(domainValues)} />
+          </div>
+          <div>
+            <div className="text-label mb-1">Severity distribution</div>
+            <Svg markup={severityDistribution(severityCounts)} />
+          </div>
+        </div>
       </Card>
 
       {/* Per-company tabs (only for multinationals) */}
