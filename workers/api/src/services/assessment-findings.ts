@@ -223,6 +223,12 @@ export interface FindingsContext {
    */
   periodStart?: string | null;
   periodEnd?: string | null;
+  /**
+   * Optional uploaded-dataset id. When set, EVERY erp_* query restricts to rows
+   * tagged with this dataset_id (data isolation for a per-assessment upload).
+   * When unset, behavior is unchanged (tenant-wide). Applied via datasetFilter().
+   */
+  datasetId?: string;
 }
 
 // ── Catalyst mapping ──────────────────────────────────────────────────────
@@ -567,6 +573,52 @@ function periodFilter(
   };
 }
 
+interface DatasetFilterClause {
+  /** Joins onto the SQL string with ` ${clause}` if non-empty, else ''. */
+  clause: string;
+  /** Bind value(s) appended to the query parameter array (in clause order). */
+  binds: string[];
+}
+
+/**
+ * Build an `AND <alias>.dataset_id = ?` filter for an erp_* table. Returns an
+ * empty clause when `ctx.datasetId` is unset (= tenant-wide, unchanged). EVERY
+ * erp_* read in a detector — including erp_* sub-queries / joined erp_* tables —
+ * must append one of these so an uploaded dataset's assessment can never read
+ * the tenant's other rows. `alias` qualifies the column when the query aliases
+ * the table or joins more than one erp_* table.
+ */
+function datasetFilter(ctx: FindingsContext, alias = ''): DatasetFilterClause {
+  if (!ctx.datasetId) {
+    return { clause: '', binds: [] };
+  }
+  const ref = alias ? `${alias}.dataset_id` : 'dataset_id';
+  return {
+    clause: `AND ${ref} = ?`,
+    binds: [ctx.datasetId],
+  };
+}
+
+/**
+ * Only 8 canonical erp_* tables carry a `dataset_id` column (added by the v85
+ * self-heal in migrate.ts) and are the ONLY tables the dataset-ingest path
+ * writes (see INGEST_MANIFEST): erp_invoices, erp_purchase_orders,
+ * erp_journal_entries, erp_bank_transactions, erp_employees, erp_customers,
+ * erp_suppliers, erp_products. Detectors that read ANY other erp_* table
+ * (erp_gl_accounts, erp_tax_entries, erp_projects, erp_time_entries,
+ * erp_companies) cannot be dataset-scoped — there is no column to filter on, and
+ * an uploaded dataset never populates them. On a scoped run those detectors MUST
+ * yield nothing rather than read the tenant's unrelated rows (which would leak).
+ * Guard such detectors with `if (datasetUnscopable(ctx)) return null;`.
+ *
+ * Returns true when a dataset scope is active; the caller reads only un-scopable
+ * tables and must therefore no-op so it cannot read (or bill against) data
+ * outside the uploaded dataset.
+ */
+function datasetUnscopable(ctx: FindingsContext): boolean {
+  return !!ctx.datasetId;
+}
+
 /** Build a base Finding from required + optional fields. Severity etc. stay caller-controlled. */
 export function makeFinding(args: {
   code: FindingCode;
@@ -645,6 +697,7 @@ async function detectAgingBucket(
     : `${ageExpr} >= ${minDays} AND ${ageExpr} < ${maxDays}`;
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, invoice_number, customer_name, invoice_date, due_date,
             total, amount_due, currency, payment_status, status
@@ -655,9 +708,10 @@ async function detectAgingBucket(
         AND ${bucketWhere}
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY amount_due DESC
       LIMIT 200`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<InvoiceRow>()).results || [];
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<InvoiceRow>()).results || [];
   if (rows.length === 0) return null;
 
   let totalZar = 0;
@@ -721,6 +775,7 @@ async function detectArAging90Plus(db: D1Database, tenantId: string, ctx: Findin
 
 async function detectArCreditLimitBreach(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, name, credit_limit, credit_balance, currency, payment_terms, status
        FROM erp_customers
@@ -728,9 +783,10 @@ async function detectArCreditLimitBreach(db: D1Database, tenantId: string, ctx: 
         AND credit_limit > 0
         AND credit_balance > credit_limit
         ${cf.clause}
+        ${df.clause}
       ORDER BY (credit_balance - credit_limit) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; name: string; credit_limit: number; credit_balance: number;
     currency: string | null; payment_terms: string | null; status: string | null;
   }>()).results || [];
@@ -779,13 +835,14 @@ async function detectArCreditLimitBreach(db: D1Database, tenantId: string, ctx: 
 async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT customer_name, COUNT(*) as inv_count, SUM(amount_due) as outstanding, currency
        FROM erp_invoices
-      WHERE tenant_id = ? AND payment_status != 'paid' ${cf.clause} ${pf.clause}
+      WHERE tenant_id = ? AND payment_status != 'paid' ${cf.clause} ${pf.clause} ${df.clause}
       GROUP BY customer_name, currency
       ORDER BY outstanding DESC`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     customer_name: string; inv_count: number; outstanding: number; currency: string | null;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -846,6 +903,7 @@ async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, 
 async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'order_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, po_number, supplier_name, order_date, delivery_date, total, currency, status, delivery_status
        FROM erp_purchase_orders
@@ -855,9 +913,10 @@ async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: Fi
         AND COALESCE(delivery_status, 'pending') != 'received'
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY total DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; po_number: string; supplier_name: string | null;
     order_date: string; delivery_date: string; total: number; currency: string | null;
     status: string | null; delivery_status: string | null;
@@ -906,6 +965,7 @@ async function detectApOverdueDelivery(db: D1Database, tenantId: string, ctx: Fi
 async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
   // Heuristic: invoices marked paid but amount_paid != total (off by > R1 or > 0.1%).
   // Real 3-way needs PO+receipt+invoice linkage; we approximate using the paid/total mismatch.
   const rows = (await db.prepare(
@@ -918,9 +978,10 @@ async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: F
         AND ABS(amount_paid - total) / total > 0.001
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY ABS(amount_paid - total) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     total: number; amount_paid: number; currency: string | null; invoice_date: string;
   }>()).results || [];
@@ -965,6 +1026,7 @@ async function detectApThreeWayMismatch(db: D1Database, tenantId: string, ctx: F
 async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'transaction_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, bank_account, transaction_date, description, debit, credit, balance, reference
        FROM erp_bank_transactions
@@ -973,9 +1035,10 @@ async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: F
         AND date(transaction_date) < date('now', '-30 days')
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY (COALESCE(debit, 0) + COALESCE(credit, 0)) DESC
       LIMIT 200`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; bank_account: string; transaction_date: string;
     description: string | null; debit: number; credit: number; balance: number;
     reference: string | null;
@@ -1015,6 +1078,9 @@ async function detectApUnreconciledBank(db: D1Database, tenantId: string, ctx: F
 }
 
 async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_gl_accounts has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, account_code, account_name, account_type, account_class, currency, balance
@@ -1075,6 +1141,7 @@ async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: Fi
 async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'journal_date');
+  const df = datasetFilter(ctx);
   // SQLite strftime('%w', x) returns 0=Sun .. 6=Sat. Hours via strftime('%H').
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by, created_at
@@ -1087,9 +1154,10 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
         )
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY total_debit DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
     created_at: string | null;
@@ -1127,6 +1195,7 @@ async function detectGlJournalOffHours(db: D1Database, tenantId: string, ctx: Fi
 async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'journal_date');
+  const df = datasetFilter(ctx);
   // Suspiciously round = above R10k AND ends in '000.00' (multiples of 1000).
   const rows = (await db.prepare(
     `SELECT id, journal_number, journal_date, description, total_debit, posted_by
@@ -1137,9 +1206,10 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
         AND ABS(total_debit - ROUND(total_debit, -3)) < 0.01
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY total_debit DESC
       LIMIT 50`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; journal_number: string; journal_date: string;
     description: string | null; total_debit: number; posted_by: string | null;
   }>()).results || [];
@@ -1176,6 +1246,7 @@ async function detectGlRoundAmountJournals(db: D1Database, tenantId: string, ctx
 async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'journal_date');
+  const df = datasetFilter(ctx);
   // Heuristic: any journal with posted_by in (manual user list) or description LIKE 'Manual%'
   // and a high count over the last 90 days. We don't have a "source" column,
   // so fall back to description heuristic + count.
@@ -1189,8 +1260,9 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
        AND status = 'posted'
        AND date(journal_date) >= date('now', '-90 days')
        ${cf.clause}
-       ${pf.clause}`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).first<{ manual_count: number; total_count: number; manual_value: number }>();
+       ${pf.clause}
+       ${df.clause}`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).first<{ manual_count: number; total_count: number; manual_value: number }>();
   if (!r || r.total_count < 20) return null; // not enough data to reason about
   const manualPct = (r.manual_count / r.total_count) * 100;
   if (manualPct < 50) return null;
@@ -1209,9 +1281,10 @@ async function detectGlHighManualVolume(db: D1Database, tenantId: string, ctx: F
         AND (LOWER(COALESCE(description, '')) LIKE 'manual%' OR posted_by NOT LIKE '%system%')
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY total_debit DESC
       LIMIT 10`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     journal_number: string; journal_date: string; description: string | null;
     total_debit: number; posted_by: string | null;
   }>()).results || [];
@@ -1256,6 +1329,12 @@ async function detectProcMaverickSpend(db: D1Database, tenantId: string, ctx: Fi
   // Real-world deployments will refine via line_items inspection.
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date', 'i');
+  const df = datasetFilter(ctx, 'i');
+  // The NOT EXISTS subquery reads erp_purchase_orders — scope it to the dataset
+  // too, otherwise a maverick invoice could be falsely cleared by another
+  // dataset's PO (and vice versa). dfSub binds appear BEFORE the outer
+  // cf/pf/df binds because the subquery is earlier in the SQL text.
+  const dfSub = datasetFilter(ctx, 'p');
   const rows = (await db.prepare(
     `SELECT i.id, i.invoice_number, i.customer_name, i.total, i.amount_due, i.currency, i.invoice_date
        FROM erp_invoices i
@@ -1266,12 +1345,14 @@ async function detectProcMaverickSpend(db: D1Database, tenantId: string, ctx: Fi
           SELECT 1 FROM erp_purchase_orders p
            WHERE p.tenant_id = i.tenant_id
              AND p.supplier_name = i.customer_name
+             ${dfSub.clause}
         )
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY i.total DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...dfSub.binds, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     total: number; amount_due: number; currency: string | null; invoice_date: string;
   }>()).results || [];
@@ -1317,19 +1398,20 @@ async function detectProcMaverickSpend(db: D1Database, tenantId: string, ctx: Fi
 }
 
 async function detectProcDuplicateSuppliers(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const df = datasetFilter(ctx);
   // Duplicates by (vat_number) or (registration_number) where both are non-empty.
   const rows = (await db.prepare(
     `SELECT vat_number, registration_number, COUNT(*) as dup_count, GROUP_CONCAT(name, ' | ') as names
        FROM erp_suppliers
       WHERE tenant_id = ?
         AND status = 'active'
+        ${df.clause}
       GROUP BY COALESCE(NULLIF(vat_number, ''), NULLIF(registration_number, ''))
      HAVING COUNT(*) > 1
         AND COALESCE(NULLIF(vat_number, ''), NULLIF(registration_number, '')) IS NOT NULL
      ORDER BY dup_count DESC
      LIMIT 50`,
-  ).bind(tenantId).all<{
+  ).bind(tenantId, ...df.binds).all<{
     vat_number: string | null; registration_number: string | null; dup_count: number; names: string;
   }>()).results || [];
   if (rows.length === 0) return null;
@@ -1365,6 +1447,7 @@ async function detectProcDuplicateSuppliers(db: D1Database, tenantId: string, ct
 async function detectProcSupplierConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'order_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT supplier_name, COUNT(*) as po_count, SUM(total) as spend, currency
        FROM erp_purchase_orders
@@ -1372,9 +1455,10 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
         AND date(order_date) >= date('now', '-12 months')
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       GROUP BY supplier_name, currency
       ORDER BY spend DESC`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     supplier_name: string; po_count: number; spend: number; currency: string | null;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -1431,6 +1515,9 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
 async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id', 'p');
   const pf = periodFilter(ctx, 'order_date', 'p');
+  // Both joined erp_* tables (POs and suppliers) must be dataset-scoped.
+  const df = datasetFilter(ctx, 'p');
+  const dfS = datasetFilter(ctx, 's');
   const rows = (await db.prepare(
     `SELECT p.id, p.po_number, p.supplier_name, p.order_date, p.total, p.currency, p.delivery_status
        FROM erp_purchase_orders p
@@ -1441,9 +1528,11 @@ async function detectProcInactiveWithOpenPos(db: D1Database, tenantId: string, c
         AND COALESCE(p.delivery_status, 'pending') != 'received'
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
+        ${dfS.clause}
       ORDER BY p.total DESC
       LIMIT 50`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds, ...dfS.binds).all<{
     id: string; po_number: string; supplier_name: string;
     order_date: string; total: number; currency: string | null; delivery_status: string | null;
   }>()).results || [];
@@ -1491,6 +1580,11 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
   // bound — we want to flag pre-existing stock that didn't move during the
   // window, not exclude old SKUs from the assessment.
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
+  // The "recent movement" subquery reads erp_invoices — scope it to the dataset
+  // too so a SKU isn't falsely treated as moving because of another dataset's
+  // invoice lines. dfInv binds sit inside the subquery (before the outer cf/df).
+  const dfInv = datasetFilter(ctx, 'erp_invoices');
   // Stale = active product, stock_on_hand > 0, no recent invoice line referencing the SKU.
   // Without a movements table we approximate with: product.created_at older than 6 months
   // AND product not in any line_items in the last 6 months. Line_items check is an
@@ -1509,11 +1603,13 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
              AND date(invoice_date) >= date('now', '-6 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
              ${pf.clause}
+             ${dfInv.clause}
         )
         ${cf.clause}
+        ${df.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId, ...pf.binds, ...cf.binds).all<{
+  ).bind(tenantId, tenantId, ...pf.binds, ...dfInv.binds, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number; selling_price: number;
     warehouse: string | null; created_at: string | null;
@@ -1551,6 +1647,8 @@ async function detectInvStaleStock(db: D1Database, tenantId: string, ctx: Findin
 async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
+  const dfInv = datasetFilter(ctx, 'erp_invoices');
   // Dead stock = same as stale but 12+ months. Reuse the same query template.
   const rows = (await db.prepare(
     `SELECT id, sku, name, category, stock_on_hand, cost_price
@@ -1566,11 +1664,13 @@ async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: Finding
              AND date(invoice_date) >= date('now', '-12 months')
              AND json_extract(value, '$.product_id') IS NOT NULL
              ${pf.clause}
+             ${dfInv.clause}
         )
         ${cf.clause}
+        ${df.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, tenantId, ...pf.binds, ...cf.binds).all<{
+  ).bind(tenantId, tenantId, ...pf.binds, ...dfInv.binds, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; category: string | null;
     stock_on_hand: number; cost_price: number;
   }>()).results || [];
@@ -1607,15 +1707,17 @@ async function detectInvDeadStock(db: D1Database, tenantId: string, ctx: Finding
 
 async function detectInvNegativeStock(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, cost_price, warehouse
        FROM erp_products
       WHERE tenant_id = ?
         AND stock_on_hand < 0
         ${cf.clause}
+        ${df.clause}
       ORDER BY stock_on_hand ASC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1649,6 +1751,7 @@ async function detectInvNegativeStock(db: D1Database, tenantId: string, ctx: Fin
 
 async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, reorder_level, reorder_quantity, cost_price, warehouse
        FROM erp_products
@@ -1658,9 +1761,10 @@ async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: Find
         AND stock_on_hand < reorder_level
         AND stock_on_hand >= 0
         ${cf.clause}
+        ${df.clause}
       ORDER BY (reorder_level - stock_on_hand) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     reorder_level: number; reorder_quantity: number; cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1702,6 +1806,7 @@ async function detectInvBelowReorder(db: D1Database, tenantId: string, ctx: Find
 
 async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, sku, name, cost_price, selling_price, stock_on_hand, category
        FROM erp_products
@@ -1711,9 +1816,10 @@ async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: Fin
         AND selling_price > 0
         AND cost_price >= selling_price
         ${cf.clause}
+        ${df.clause}
       ORDER BY (cost_price - selling_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; cost_price: number;
     selling_price: number; stock_on_hand: number; category: string | null;
   }>()).results || [];
@@ -1752,6 +1858,7 @@ async function detectInvMarginErosion(db: D1Database, tenantId: string, ctx: Fin
 
 async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, sku, name, stock_on_hand, cost_price, warehouse
        FROM erp_products
@@ -1760,9 +1867,10 @@ async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx:
         AND stock_on_hand > 0
         AND cost_price > 0
         ${cf.clause}
+        ${df.clause}
       ORDER BY (stock_on_hand * cost_price) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; sku: string; name: string; stock_on_hand: number;
     cost_price: number; warehouse: string | null;
   }>()).results || [];
@@ -1801,6 +1909,7 @@ async function detectInvInactiveWithValue(db: D1Database, tenantId: string, ctx:
 async function detectSalesCustomerConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT customer_name, SUM(total) as revenue, currency, COUNT(*) as inv_count
        FROM erp_invoices
@@ -1809,9 +1918,10 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
         AND status NOT IN ('draft', 'cancelled')
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       GROUP BY customer_name, currency
       ORDER BY revenue DESC`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     customer_name: string; revenue: number; currency: string | null; inv_count: number;
   }>()).results || [];
   if (rows.length < 5) return null;
@@ -1868,6 +1978,9 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
 async function detectSalesInactiveWithAr(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id', 'i');
   const pf = periodFilter(ctx, 'invoice_date', 'i');
+  // Both joined erp_* tables (invoices and customers) must be dataset-scoped.
+  const df = datasetFilter(ctx, 'i');
+  const dfC = datasetFilter(ctx, 'c');
   const rows = (await db.prepare(
     `SELECT i.id, i.invoice_number, i.customer_name, c.name as customer_master_name,
             i.amount_due, i.currency, i.invoice_date, c.status as customer_status
@@ -1879,9 +1992,11 @@ async function detectSalesInactiveWithAr(db: D1Database, tenantId: string, ctx: 
         AND c.status != 'active'
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
+        ${dfC.clause}
       ORDER BY i.amount_due DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds, ...dfC.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     customer_master_name: string; amount_due: number; currency: string | null;
     invoice_date: string; customer_status: string;
@@ -1929,6 +2044,7 @@ async function detectSalesInactiveWithAr(db: D1Database, tenantId: string, ctx: 
 
 async function detectSalesCreditNoCheck(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, name, credit_limit, credit_balance, payment_terms, currency, created_at
        FROM erp_customers
@@ -1937,9 +2053,10 @@ async function detectSalesCreditNoCheck(db: D1Database, tenantId: string, ctx: F
         AND COALESCE(credit_limit, 0) = 0
         AND credit_balance > 0
         ${cf.clause}
+        ${df.clause}
       ORDER BY credit_balance DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; name: string; credit_limit: number; credit_balance: number;
     payment_terms: string | null; currency: string | null; created_at: string;
   }>()).results || [];
@@ -1985,6 +2102,7 @@ async function detectSalesCreditNoCheck(db: D1Database, tenantId: string, ctx: F
 
 async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT id, employee_number, first_name, last_name, department, gross_salary,
             status, termination_date, salary_frequency
@@ -1993,9 +2111,10 @@ async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx
         AND status IN ('terminated', 'resigned', 'retired')
         AND COALESCE(gross_salary, 0) > 0
         ${cf.clause}
+        ${df.clause}
       ORDER BY gross_salary DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     id: string; employee_number: string; first_name: string; last_name: string;
     department: string | null; gross_salary: number; status: string;
     termination_date: string | null; salary_frequency: string;
@@ -2036,18 +2155,19 @@ async function detectHrTerminatedInPayroll(db: D1Database, tenantId: string, ctx
 
 async function detectHrHighPayrollConcentration(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const summary = await db.prepare(
     `SELECT SUM(gross_salary) as total_payroll, COUNT(*) as headcount
-       FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause}`,
-  ).bind(tenantId, ...cf.binds).first<{ total_payroll: number; headcount: number }>();
+       FROM erp_employees WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause}${df.clause ? ' ' + df.clause : ''}`,
+  ).bind(tenantId, ...cf.binds, ...df.binds).first<{ total_payroll: number; headcount: number }>();
   if (!summary || !summary.total_payroll || summary.headcount < 5) return null;
 
   const top5 = await db.prepare(
     `SELECT employee_number, first_name, last_name, department, position, gross_salary
        FROM erp_employees
-      WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause}
+      WHERE tenant_id = ? AND status = 'active' AND salary_frequency = 'monthly' AND gross_salary > 0 ${cf.clause} ${df.clause}
       ORDER BY gross_salary DESC LIMIT 5`,
-  ).bind(tenantId, ...cf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{
     employee_number: string; first_name: string; last_name: string;
     department: string | null; position: string | null; gross_salary: number;
   }>();
@@ -2085,6 +2205,9 @@ async function detectHrHighPayrollConcentration(db: D1Database, tenantId: string
 }
 
 async function detectTaxOverdueSubmission(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_tax_entries has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const pf = periodFilter(ctx, 'created_at');
   const rows = (await db.prepare(
     `SELECT id, tax_period, tax_type, output_vat, input_vat, net_vat, status, created_at
@@ -2133,18 +2256,19 @@ async function detectTaxOverdueSubmission(db: D1Database, tenantId: string, ctx:
 }
 
 async function detectTaxMissingVatNumbers(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
-  void ctx;
+  const df = datasetFilter(ctx);
   // Customers with significant balances but no VAT number (B2B exposure)
   const cusRow = await db.prepare(
     `SELECT COUNT(*) as cnt, SUM(credit_balance) as total_bal
        FROM erp_customers
       WHERE tenant_id = ? AND status = 'active'
         AND (vat_number IS NULL OR vat_number = '')
-        AND credit_balance > 10000`,
-  ).bind(tenantId).first<{ cnt: number; total_bal: number }>();
+        AND credit_balance > 10000
+        ${df.clause}`,
+  ).bind(tenantId, ...df.binds).first<{ cnt: number; total_bal: number }>();
   const supRow = await db.prepare(
-    `SELECT COUNT(*) as cnt FROM erp_suppliers WHERE tenant_id = ? AND status = 'active' AND (vat_number IS NULL OR vat_number = '')`,
-  ).bind(tenantId).first<{ cnt: number }>();
+    `SELECT COUNT(*) as cnt FROM erp_suppliers WHERE tenant_id = ? AND status = 'active' AND (vat_number IS NULL OR vat_number = '') ${df.clause}`,
+  ).bind(tenantId, ...df.binds).first<{ cnt: number }>();
   const cusCount = cusRow?.cnt || 0;
   const supCount = supRow?.cnt || 0;
   const total = cusCount + supCount;
@@ -2178,6 +2302,7 @@ async function detectTaxMissingVatNumbers(db: D1Database, tenantId: string, ctx:
 async function detectTaxVatRateAnomaly(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'invoice_date');
+  const df = datasetFilter(ctx);
   // Anomaly = ZA invoice with non-zero subtotal where vat_amount/subtotal is
   // outside 14% .. 16% (the 15% standard rate ± rounding margin).
   const rows = (await db.prepare(
@@ -2190,9 +2315,10 @@ async function detectTaxVatRateAnomaly(db: D1Database, tenantId: string, ctx: Fi
         AND vat_amount > 0
         ${cf.clause}
         ${pf.clause}
+        ${df.clause}
       ORDER BY ABS(vat_amount - (subtotal * 0.15)) DESC
       LIMIT 100`,
-  ).bind(tenantId, ...cf.binds, ...pf.binds).all<{
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
     id: string; invoice_number: string; customer_name: string | null;
     subtotal: number; vat_amount: number; total: number;
     currency: string | null; invoice_date: string;
@@ -2233,6 +2359,7 @@ async function detectTaxVatRateAnomaly(db: D1Database, tenantId: string, ctx: Fi
 
 async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const cf = companyFilter(ctx, 'company_id');
+  const df = datasetFilter(ctx);
   const rows = (await db.prepare(
     `SELECT currency, COUNT(*) as cnt, SUM(amount_due) as outstanding
        FROM erp_invoices
@@ -2241,9 +2368,10 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
         AND currency IS NOT NULL
         AND currency != 'ZAR'
         ${cf.clause}
+        ${df.clause}
       GROUP BY currency
       HAVING SUM(amount_due) > 0`,
-  ).bind(tenantId, ...cf.binds).all<{ currency: string; cnt: number; outstanding: number }>()).results || [];
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{ currency: string; cnt: number; outstanding: number }>()).results || [];
   if (rows.length === 0) return null;
 
   let totalZarExposure = 0;
@@ -2290,6 +2418,7 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
 
 async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
   const pf = periodFilter(ctx, 'order_date');
+  const df = datasetFilter(ctx);
   // A supplier billed in 2+ currencies in the last 12 months.
   const rows = (await db.prepare(
     `SELECT supplier_name, COUNT(DISTINCT currency) as cur_count, GROUP_CONCAT(DISTINCT currency) as currencies
@@ -2297,11 +2426,12 @@ async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: Fi
       WHERE tenant_id = ?
         AND date(order_date) >= date('now', '-12 months')
         ${pf.clause}
+        ${df.clause}
       GROUP BY supplier_name
      HAVING cur_count > 1
       ORDER BY cur_count DESC
       LIMIT 50`,
-  ).bind(tenantId, ...pf.binds).all<{ supplier_name: string; cur_count: number; currencies: string }>()).results || [];
+  ).bind(tenantId, ...pf.binds, ...df.binds).all<{ supplier_name: string; cur_count: number; currencies: string }>()).results || [];
   if (rows.length === 0) return null;
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
@@ -2346,16 +2476,28 @@ async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: Fi
 export async function detectCompanyProfile(
   db: D1Database,
   tenantId: string,
+  datasetId?: string,
 ): Promise<{ profile: CompanyProfile; product_count: number; project_count: number; time_entry_count: number }> {
-  const counts = await db.prepare(
-    `SELECT
-       (SELECT COUNT(*) FROM erp_products WHERE tenant_id = ? AND COALESCE(is_active, 1) = 1) as product_count,
-       (SELECT COUNT(*) FROM erp_projects WHERE tenant_id = ?) as project_count,
-       (SELECT COUNT(*) FROM erp_time_entries WHERE tenant_id = ?) as time_entry_count`,
-  ).bind(tenantId, tenantId, tenantId).first<{ product_count: number; project_count: number; time_entry_count: number }>();
-  const product_count = counts?.product_count || 0;
-  const project_count = counts?.project_count || 0;
-  const time_entry_count = counts?.time_entry_count || 0;
+  // Only erp_products carries a dataset_id column (8-table allowlist) — scope it
+  // when bound. erp_projects / erp_time_entries have no dataset_id and are never
+  // populated by an uploaded dataset, so on a scoped run their counts are 0 by
+  // construction (querying dataset_id there would error). Binds: (tenant, [ds]).
+  const dsAnd = datasetId ? ' AND dataset_id = ?' : '';
+  const dsBind: unknown[] = datasetId ? [datasetId] : [];
+  const product_count = (await db.prepare(
+    `SELECT COUNT(*) as c FROM erp_products WHERE tenant_id = ? AND COALESCE(is_active, 1) = 1${dsAnd}`,
+  ).bind(tenantId, ...dsBind).first<{ c: number }>())?.c || 0;
+  let project_count = 0;
+  let time_entry_count = 0;
+  if (!datasetId) {
+    const counts = await db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM erp_projects WHERE tenant_id = ?) as project_count,
+         (SELECT COUNT(*) FROM erp_time_entries WHERE tenant_id = ?) as time_entry_count`,
+    ).bind(tenantId, tenantId).first<{ project_count: number; time_entry_count: number }>();
+    project_count = counts?.project_count || 0;
+    time_entry_count = counts?.time_entry_count || 0;
+  }
   const hasService = project_count > 0 || time_entry_count > 0;
   const hasProduct = product_count > 0;
   let profile: CompanyProfile = 'unknown';
@@ -2373,6 +2515,9 @@ export async function detectCompanyProfile(
  * 50% is structural waste worth quantifying.
  */
 async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_time_entries has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'work_date');
   const summary = await db.prepare(
@@ -2446,6 +2591,9 @@ async function detectSvcLowBillableUtilisation(db: D1Database, tenantId: string,
  * Each day unbilled is a day the cash conversion cycle stretches.
  */
 async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_time_entries has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'work_date');
   const rows = (await db.prepare(
@@ -2505,6 +2653,9 @@ async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx:
  * project is still active. Each is a margin leak to investigate.
  */
 async function detectSvcProjectOverrun(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_projects has no dataset_id column and is never populated by an uploaded
+  // dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, code, name, customer_name, contract_value, budgeted_cost, actual_cost, currency, project_manager
@@ -2565,6 +2716,9 @@ async function detectSvcProjectOverrun(db: D1Database, tenantId: string, ctx: Fi
  * revenue. These are losses booked but not yet learned from.
  */
 async function detectSvcProjectMarginNegative(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_projects has no dataset_id column and is never populated by an uploaded
+  // dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, code, name, customer_name, contract_value, recognised_revenue, actual_cost, currency
@@ -2621,6 +2775,9 @@ async function detectSvcProjectMarginNegative(db: D1Database, tenantId: string, 
  * obscures utilisation, and is the most common audit finding in services.
  */
 async function detectSvcUnapprovedTimeEntries(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_time_entries has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const pf = periodFilter(ctx, 'work_date');
   const rows = (await db.prepare(
@@ -2670,6 +2827,9 @@ async function detectSvcUnapprovedTimeEntries(db: D1Database, tenantId: string, 
  * billed_to_date — milestone-billing or PoC revenue not yet booked.
  */
 async function detectSvcRevenueRecognitionLag(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_projects has no dataset_id column and is never populated by an uploaded
+  // dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id');
   const rows = (await db.prepare(
     `SELECT id, code, name, customer_name, billed_to_date, recognised_revenue, currency, billing_type
@@ -2727,6 +2887,9 @@ async function detectSvcRevenueRecognitionLag(db: D1Database, tenantId: string, 
  * recorded against a different project (timesheet hygiene issue).
  */
 async function detectSvcZeroHoursActiveProject(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_projects / erp_time_entries have no dataset_id column and are never
+  // populated by an uploaded dataset — no-op on a scoped run.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id', 'p');
   const rows = (await db.prepare(
     `SELECT p.id, p.code, p.name, p.customer_name, p.contract_value, p.start_date, p.currency
@@ -2780,6 +2943,9 @@ async function detectSvcZeroHoursActiveProject(db: D1Database, tenantId: string,
  * timesheet-fraud signal or stale data.
  */
 async function detectSvcInactiveEmployeeBilledTime(db: D1Database, tenantId: string, ctx: FindingsContext): Promise<Finding | null> {
+  // erp_time_entries has no dataset_id column and is never populated by an
+  // uploaded dataset — no-op on a scoped run rather than read tenant-wide data.
+  if (datasetUnscopable(ctx)) return null;
   const cf = companyFilter(ctx, 'company_id', 't');
   const rows = (await db.prepare(
     `SELECT t.id, t.employee_number, t.project_code, t.work_date, t.hours, t.billable_rate, t.currency, e.status

@@ -95,6 +95,15 @@ assessments.post('/', async (c) => {
     auth!.userId
   ).run();
 
+  // If a ready uploaded dataset already exists for this assessment, scope the
+  // run to it so the assessment reads ONLY that dataset's rows (data isolation).
+  // Normally a dataset is uploaded after creation via POST /:id/dataset and a
+  // re-run is triggered separately; this covers the create-after-upload path.
+  const dataset = await c.env.DB.prepare(
+    "SELECT id FROM assessment_datasets WHERE assessment_id = ? AND status = 'ready'"
+  ).bind(id).first<{ id: string }>();
+  const datasetId = dataset?.id;
+
   // Run assessment in background (use waitUntil for Cloudflare Workers)
   const assessmentPromise = runAssessment(
     c.env.DB,
@@ -107,6 +116,7 @@ assessments.post('/', async (c) => {
     body.prospect_industry,
     body.prospect_name,
     { periodStart, periodEnd },
+    datasetId,
   );
 
   c.executionCtx.waitUntil(assessmentPromise);
