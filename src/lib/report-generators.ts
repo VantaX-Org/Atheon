@@ -936,7 +936,7 @@ export async function generateValueAssessmentPDF(
     doc.text('Records', 178, y + 5.5);
     y += 10;
 
-    const sortedFindings = [...findings].sort((a, b) => b.financial_impact - a.financial_impact).slice(0, 25);
+    const sortedFindings = [...findings].sort((a, b) => b.financial_impact - a.financial_impact);
     for (const f of sortedFindings) {
       if (y > pageH - 25) {
         vaFooter();
@@ -962,12 +962,6 @@ export async function generateValueAssessmentPDF(
       doc.setTextColor(...SLATE);
       doc.text(`${f.affected_records}`, 178, y);
       y += titleLines.length > 1 ? 9 : 7;
-    }
-
-    if (findings.length > 25) {
-      doc.setFontSize(7);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`... and ${findings.length - 25} more findings. See Excel report for complete list.`, 18, y + 3);
     }
 
     vaFooter();
