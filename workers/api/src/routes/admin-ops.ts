@@ -65,4 +65,62 @@ adminOps.post('/resolve-rca', async (c) => {
   return c.json({ ok: true, resolved: (res.meta.changes ?? 0) > 0 });
 });
 
+// POST /create-completed-action { tenant_slug, rca_id } — real prescription-
+// linked completed action. Does NOT set verification_status (the verifier does).
+adminOps.post('/create-completed-action', async (c) => {
+  const g = await gate(c);
+  if (g instanceof Response) return g;
+  const db = (c.env as Env).DB;
+  const rcaId = typeof g.body.rca_id === 'string' ? g.body.rca_id : '';
+  if (!rcaId) return c.json({ error: 'rca_id required' }, 400);
+
+  const rca = await db.prepare('SELECT id, metric_name FROM root_cause_analyses WHERE id = ? AND tenant_id = ?')
+    .bind(rcaId, g.tenantId).first<{ id: string; metric_name: string }>();
+  if (!rca) return c.json({ error: 'rca_not_found' }, 404);
+
+  // catalyst_actions.cluster_id is NOT NULL + FK — find or create a harness cluster.
+  let cluster = await db.prepare(`SELECT id FROM catalyst_clusters WHERE tenant_id = ? LIMIT 1`)
+    .bind(g.tenantId).first<{ id: string }>();
+  if (!cluster) {
+    const clusterId = crypto.randomUUID();
+    await db.prepare(
+      `INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status)
+       VALUES (?, ?, 'Verify Harness', 'finance', 'Synthetic cluster for verify-ops actions.', 'active')`
+    ).bind(clusterId, g.tenantId).run();
+    cluster = { id: clusterId };
+  }
+
+  const prescriptionId = crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO diagnostic_prescriptions
+       (id, rca_id, tenant_id, priority, title, description, expected_impact, effort_level, status, created_at)
+     VALUES (?, ?, ?, 'immediate', ?, ?, 'verify-harness', 'low', 'completed', datetime('now'))`
+  ).bind(
+    prescriptionId, rcaId, g.tenantId,
+    `Verify-harness remediation for ${rca.metric_name}`,
+    'Synthetic prescription created by the verify harness to exercise the billing ERP-anchor gate.',
+  ).run();
+
+  // A real connection for the tenant so verifyAction proceeds to the vendor
+  // verifier (SAP → deferred). Null connection also yields deferred — fine.
+  const conn = await db.prepare('SELECT id FROM erp_connections WHERE tenant_id = ? LIMIT 1')
+    .bind(g.tenantId).first<{ id: string }>();
+
+  const actionId = crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO catalyst_actions (
+       id, tenant_id, cluster_id, catalyst_name, action, status, confidence, reasoning,
+       connection_id, action_type, value_zar, source_finding_id, idempotency_key, vendor, output_data,
+       created_at, completed_at
+     ) VALUES (?, ?, ?, 'Verify Harness', 'remediate', 'completed', 90, ?, ?, 'update', 0, ?, ?, 'sap', ?, datetime('now'), datetime('now'))`
+  ).bind(
+    actionId, g.tenantId, cluster.id,
+    'Synthetic completed action for billing ERP-anchor verification.',
+    conn?.id ?? null, prescriptionId, crypto.randomUUID(),
+    JSON.stringify({ mode: 'live', result: 'applied', records: 1 }),
+  ).run();
+
+  return c.json({ ok: true, action_id: actionId, prescription_id: prescriptionId });
+});
+
 export default adminOps;

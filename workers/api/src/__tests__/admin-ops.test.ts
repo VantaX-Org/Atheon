@@ -77,3 +77,40 @@ describe('resolve-rca', () => {
     expect(json.resolved).toBe(false);
   });
 });
+
+describe('create-completed-action', () => {
+  const RCA_ID = 'ao-rca-action-1';
+  beforeAll(async () => {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO root_cause_analyses
+         (id, tenant_id, metric_id, metric_name, trigger_status, causal_chain, confidence, status, generated_at)
+       VALUES (?, ?, 'm2', 'Action Metric', 'red', '[]', 82, 'resolved', datetime('now'))`
+    ).bind(RCA_ID, TENANT_ID).run();
+  });
+
+  it('creates a prescription-linked completed action with no verification status', async () => {
+    const resp = await ops('/create-completed-action', { tenant_slug: SLUG, rca_id: RCA_ID });
+    expect(resp.status).toBe(200);
+    const json = await resp.json() as { ok: boolean; action_id: string; prescription_id: string };
+    expect(json.action_id).toBeTruthy();
+    expect(json.prescription_id).toBeTruthy();
+
+    const action = await env.DB.prepare(
+      'SELECT status, verification_status, source_finding_id, output_data FROM catalyst_actions WHERE id = ?'
+    ).bind(json.action_id).first<{ status: string; verification_status: string | null; source_finding_id: string; output_data: string }>();
+    expect(action?.status).toBe('completed');
+    expect(action?.verification_status).toBeNull();
+    expect(action?.source_finding_id).toBe(json.prescription_id);
+    const out = JSON.parse(action!.output_data) as { mode?: string };
+    expect(out.mode).not.toBe('stub');
+
+    const presc = await env.DB.prepare('SELECT rca_id FROM diagnostic_prescriptions WHERE id = ?')
+      .bind(json.prescription_id).first<{ rca_id: string }>();
+    expect(presc?.rca_id).toBe(RCA_ID);
+  });
+
+  it('returns 404 when the rca_id does not belong to the tenant', async () => {
+    const resp = await ops('/create-completed-action', { tenant_slug: SLUG, rca_id: 'nope' });
+    expect(resp.status).toBe(404);
+  });
+});
