@@ -40,6 +40,7 @@ import agentRoutes from './routes/agent-routes';
 import aiCosts from './routes/ai-costs';
 import seedVantaX from './routes/seed-vantax';
 import demoSeedRoutes from './routes/demo-seed';
+import adminOps from './routes/admin-ops';
 import tenantsAdmin from './routes/tenants-admin';
 import radar from './routes/radar';
 import diagnosticsRoutes from './routes/diagnostics';
@@ -598,6 +599,10 @@ app.route('/api/v1/seed-vantax', seedVantaX);
 // Phase 10-26: SAP ECC end-to-end demo seed. Gated on the SETUP_SECRET
 // shared secret (same gate as /admin/migrate) — deploy-time tool, not
 // behind tenant auth.
+// Verify-ops: SETUP_SECRET deploy-tooling that drives the live synthesis→
+// billing chain for a named tenant (used by the verify harness). Mounted on a
+// specific prefix BEFORE the broad /api/v1/admin mount.
+app.route('/api/v1/admin/verify-ops', adminOps);
 app.route('/api/v1/admin', demoSeedRoutes);
 app.route('/api/admin', demoSeedRoutes);
 
