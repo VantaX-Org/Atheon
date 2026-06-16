@@ -22,4 +22,8 @@ describe('src/lib ↔ workers/api/src/lib mirror parity', () => {
   it('ingest-validate.ts is byte-identical', () => {
     assertMirror('ingest-validate.ts');
   });
+
+  it('finding-charts.ts is byte-identical', () => {
+    assertMirror('finding-charts.ts');
+  });
 });
