@@ -157,27 +157,46 @@ describe('PRODUCTION live simulation', () => {
       return resp.status;
     }
 
-    it('executive may execute a catalyst; analyst/viewer/auditor/board_member may NOT', async () => {
-      const exec = await probe(fleet.get('executive')!.client, EXECUTE_PATH, { method: 'POST' });
-      // Executive clears the role gate (reaches lookup → 404 on the bogus cluster),
-      // never denied (401/403) and never a 5xx (which would mean the gate errored).
-      expect(exec, 'executive not denied at role gate').not.toBe(403);
-      expect(exec, 'executive authenticated').not.toBe(401);
-      expect(exec, 'executive reached lookup, no server error').toBeLessThan(500);
+    // FULL execute matrix — every role in the fleet + the top tier. The execute
+    // gate is isAdminRole(role) || role==='executive' (catalysts.ts:1621): it
+    // gates by ROLE, NOT the catalysts.execute permission. So manager/operator
+    // are denied here even though their seed grants catalysts.execute — direct
+    // sub-catalyst execution is an intentionally privileged admin/exec action
+    // (manager/operator drive work via the approve/task-queue path, not this).
+    const EXECUTE_ALLOWED: Persona[] = ['executive'];
+    const EXECUTE_DENIED: Persona[] = ['manager', 'operator', 'analyst', 'viewer', 'auditor', 'board_member'];
 
-      for (const role of ['analyst', 'viewer', 'auditor', 'board_member'] as Persona[]) {
+    it('execute matrix: top tier + executive clear the gate; all six other roles 403', async () => {
+      // Top tier (the primary admin/superadmin session) clears the gate.
+      const top = await probe(primary, EXECUTE_PATH, { method: 'POST' });
+      expect(top, 'top tier not denied at execute gate').not.toBe(403);
+      expect(top, 'top tier authenticated').not.toBe(401);
+      expect(top, 'top tier reached lookup, no server error').toBeLessThan(500);
+
+      for (const role of EXECUTE_ALLOWED) {
+        const s = await probe(fleet.get(role)!.client, EXECUTE_PATH, { method: 'POST' });
+        // Clears role gate → reaches lookup (404 on the bogus cluster). Never
+        // 401/403, never 5xx (which would mean the gate itself errored).
+        expect(s, `${role} not denied at execute gate`).not.toBe(403);
+        expect(s, `${role} authenticated`).not.toBe(401);
+        expect(s, `${role} reached lookup, no server error`).toBeLessThan(500);
+      }
+
+      for (const role of EXECUTE_DENIED) {
         const s = await probe(fleet.get(role)!.client, EXECUTE_PATH, { method: 'POST' });
         expect(s, `${role} denied catalyst execute`).toBe(403);
       }
     });
 
-    it('admin tier may create users; viewer/analyst/auditor may NOT (write gate)', async () => {
+    it('write gate (create user): top tier 201; ALL non-admin personas 403', async () => {
+      // iam namespace = requireRole(superadmin,support_admin,admin) (index.ts:526).
+      // executive is NOT admin tier, so every persona in the fleet is denied.
       const top = await probe(primary, '/api/v1/iam/users', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: NEW_USER(),
       });
       expect(top, 'top tier can create users').toBe(201);
 
-      for (const role of ['viewer', 'analyst', 'auditor'] as Persona[]) {
+      for (const role of PERSONAS) {
         const s = await probe(fleet.get(role)!.client, '/api/v1/iam/users', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: NEW_USER(),
         });
@@ -185,17 +204,23 @@ describe('PRODUCTION live simulation', () => {
       }
     });
 
-    it('auditor (audit.read) reads the audit log; viewer (no grant) is denied', async () => {
+    it('audit log: auditor (audit.read) reads it; every other persona is denied', async () => {
+      // audit namespace = requireRole(superadmin,support_admin,admin,auditor)
+      // (index.ts:535). Among the fleet only auditor clears it.
       const a = await probe(fleet.get('auditor')!.client, '/api/v1/audit/log');
       expect(a, 'auditor allowed').toBe(200);
-      const v = await probe(fleet.get('viewer')!.client, '/api/v1/audit/log');
-      expect(v, 'viewer denied').toBe(403);
+      for (const role of PERSONAS.filter((r) => r !== 'auditor')) {
+        const s = await probe(fleet.get(role)!.client, '/api/v1/audit/log');
+        expect(s, `${role} denied audit log`).toBe(403);
+      }
     });
 
-    it('billing period (shared-savings) is admin-tier only; operator/viewer denied', async () => {
+    it('billing period (shared-savings) is admin-tier only; ALL personas denied', async () => {
+      // billing namespace = requireRole(admin,support_admin,superadmin,system_admin).
+      // executive included in the denied sweep — billing is admin-tier, not exec.
       const top = await probe(primary, '/api/v1/billing/period?from=2024-01-01&to=2030-01-01');
       expect(top, 'top tier reads billing').toBe(200);
-      for (const role of ['operator', 'viewer'] as Persona[]) {
+      for (const role of PERSONAS) {
         const s = await probe(fleet.get(role)!.client, '/api/v1/billing/period?from=2024-01-01&to=2030-01-01');
         expect(s, `${role} denied billing`).toBe(403);
       }
