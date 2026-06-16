@@ -57,6 +57,62 @@ export interface RunItem {
   discrepancy_reason: string | null;
 }
 
+/** A synthesized/seeded RCA as returned by GET /api/diagnostics. */
+export interface RcaSummary {
+  id: string;
+  metricId: string;
+  metricName?: string;
+  confidence: number; // stored 0–100; billing floor is /100 >= 0.70
+  status: string;
+  generatedAt: string;
+}
+
+/** One causal factor from GET /api/diagnostics/rca/:id/chain. */
+export interface CausalFactor {
+  factorType: string;
+  impactValue: number | null;
+  impactUnit?: string | null;
+  confidence: number;
+  evidence: Record<string, unknown>;
+}
+
+export interface RcaChain {
+  rca: { id: string; metricId: string; metricName?: string; confidence: number; status: string };
+  factors: CausalFactor[];
+}
+
+/** Billing preview period (GET /api/billing/period, persist:false). */
+export interface BillingLineItem {
+  rca_id: string;
+  attributed_savings: number;
+  verified_action_ids: string[];
+}
+export interface BillingPeriod {
+  line_items: BillingLineItem[];
+  total_realised_savings: number;
+}
+
+/** Counts from verifyCompletedActions (run-action-verification op). */
+export interface VerifyCounts {
+  checked: number;
+  verified: number;
+  failed: number;
+  deferred: number;
+  skipped: number;
+}
+
+/** Sub-catalyst execute result (the body returned by the execute endpoint). */
+export interface ExecutionResult {
+  id?: string;
+  sub_catalyst?: string;
+  status?: string; // 'failed' or a success status
+  mode?: string;   // reconciliation | validation | compare | extraction — typed payload
+  executed_at?: string;
+  error?: string;
+  run_id?: string;
+  summary?: Record<string, unknown>;
+}
+
 /** Thin client over the deployed Atheon API for verification suites. */
 export class ApiClient {
   token: string | null = null;
@@ -316,6 +372,98 @@ export class ApiClient {
       contentType: resp.headers.get('content-type') ?? '',
       head: buf.subarray(0, 5).toString('latin1'),
     };
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Verify-ops: SETUP_SECRET deploy-tooling that drives the live synthesis→
+  // billing chain (admin-ops route). No tenant auth — secret-gated.
+  // ────────────────────────────────────────────────────────────────────────
+
+  /** POST a verify-ops op with the SETUP_SECRET header + tenant slug. */
+  private async verifyOps<T>(op: string, extra: Record<string, unknown> = {}): Promise<T> {
+    if (!CONFIG.setupSecret) {
+      throw new Error(`VERIFY_SETUP_SECRET is not set — cannot call verify-ops/${op}.`);
+    }
+    const resp = await fetchRetry(`${this.baseUrl}/api/v1/admin/verify-ops/${op}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Setup-Secret': CONFIG.setupSecret },
+      body: JSON.stringify({ tenant_slug: CONFIG.tenantSlug, ...extra }),
+    });
+    if (!resp.ok) throw new Error(`verify-ops/${op} failed (${resp.status}): ${await resp.text()}`);
+    return resp.json() as Promise<T>;
+  }
+
+  /** Run the live phase-10 synthesis chain for the configured tenant. */
+  async runPhase10Chain(): Promise<{ ok: boolean; chain_result: unknown }> {
+    return this.verifyOps('run-phase10-chain');
+  }
+
+  /** Resolve a synthesized RCA so it clears billing's status gate. */
+  async resolveRca(rcaId: string): Promise<{ ok: boolean; resolved: boolean }> {
+    return this.verifyOps('resolve-rca', { rca_id: rcaId });
+  }
+
+  /** Create a prescription-linked completed (unverified) action for an RCA. */
+  async createCompletedAction(rcaId: string): Promise<{ ok: boolean; action_id: string; prescription_id: string }> {
+    return this.verifyOps('create-completed-action', { rca_id: rcaId });
+  }
+
+  /** Run action verification (cron parity). */
+  async runActionVerification(): Promise<{ ok: boolean; counts: VerifyCounts }> {
+    return this.verifyOps('run-action-verification');
+  }
+
+  // ── Diagnostics + billing reads (tenant-auth) ───────────────────────────
+
+  /** Active (synthesized) RCAs. */
+  async listActiveRcas(): Promise<RcaSummary[]> {
+    const resp = await this.authedFetch('/api/diagnostics/?status=active&limit=100');
+    if (!resp.ok) throw new Error(`listActiveRcas failed (${resp.status}): ${await resp.text()}`);
+    const json = await resp.json() as { analyses: RcaSummary[] };
+    return json.analyses;
+  }
+
+  /** Full RCA + causal-factor chain. */
+  async getRcaChain(rcaId: string): Promise<RcaChain> {
+    const resp = await this.authedFetch(`/api/diagnostics/rca/${rcaId}/chain`);
+    if (!resp.ok) throw new Error(`getRcaChain(${rcaId}) failed (${resp.status}): ${await resp.text()}`);
+    return resp.json() as Promise<RcaChain>;
+  }
+
+  /** Non-destructive billing preview for a period (persist:false). */
+  async getBillingPreview(from: string, to: string): Promise<BillingPeriod> {
+    const resp = await this.authedFetch(`/api/billing/period?from=${from}&to=${to}`);
+    if (!resp.ok) throw new Error(`getBillingPreview failed (${resp.status}): ${await resp.text()}`);
+    const json = await resp.json() as { period: BillingPeriod };
+    return json.period;
+  }
+
+  // ── Catalyst execute sweep (B) ──────────────────────────────────────────
+
+  /** Every ENABLED sub-catalyst across all clusters, with its owning cluster id. */
+  async enabledSubCatalysts(): Promise<Array<{ clusterId: string; name: string }>> {
+    const clusters = await this.listClusters();
+    return clusters.flatMap(cl =>
+      (cl.subCatalysts ?? [])
+        .filter(s => s.enabled)
+        .map(s => ({ clusterId: cl.id, name: s.name })),
+    );
+  }
+
+  /**
+   * Execute a sub-catalyst and return the raw HTTP status + parsed body. Unlike
+   * executeSubCatalyst, does NOT throw on non-2xx — the B sweep needs to treat a
+   * 400 ("No data sources configured" / disabled) as a skip rather than a failure.
+   */
+  async executeRaw(clusterId: string, subName: string): Promise<{ httpStatus: number; result: ExecutionResult }> {
+    const enc = encodeURIComponent(subName);
+    const resp = await this.authedFetch(
+      `/api/v1/catalysts/clusters/${clusterId}/sub-catalysts/${enc}/execute`,
+      { method: 'POST' },
+    );
+    let result: ExecutionResult = {};
+    try { result = await resp.json() as ExecutionResult; } catch { /* non-JSON error body */ }
+    return { httpStatus: resp.status, result };
   }
 }
 

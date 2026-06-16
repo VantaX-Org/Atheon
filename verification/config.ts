@@ -36,6 +36,8 @@ export const CONFIG = {
   //      challenge exactly as a human admin would.
   demoSecret: optionalEnv('VERIFY_DEMO_SECRET', ''),
   adminTotpSeed: optionalEnv('VERIFY_ADMIN_TOTP_SEED', ''),
+  // SETUP_SECRET for the verify-ops admin endpoints (synthesis/billing chain).
+  setupSecret: optionalEnv('VERIFY_SETUP_SECRET', ''),
   // Optional — only needed by the second-tenant isolation enhancement.
   superadminEmail: optionalEnv('VERIFY_SUPERADMIN_EMAIL', ''),
   superadminPassword: optionalEnv('VERIFY_SUPERADMIN_PASSWORD', ''),
