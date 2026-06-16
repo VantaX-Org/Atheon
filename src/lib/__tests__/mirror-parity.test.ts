@@ -18,4 +18,8 @@ describe('src/lib ↔ workers/api/src/lib mirror parity', () => {
   it('ingest-manifest.ts is byte-identical', () => {
     assertMirror('ingest-manifest.ts');
   });
+
+  it('ingest-validate.ts is byte-identical', () => {
+    assertMirror('ingest-validate.ts');
+  });
 });
