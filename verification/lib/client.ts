@@ -417,7 +417,9 @@ export class ApiClient {
 
   /** Active (synthesized) RCAs. */
   async listActiveRcas(): Promise<RcaSummary[]> {
-    const resp = await this.authedFetch('/api/diagnostics/?status=active&limit=100');
+    // No trailing slash before the query — Hono's get('/') under the mount
+    // basePath does not match `/api/v1/diagnostics/`, which 404s.
+    const resp = await this.authedFetch('/api/v1/diagnostics?status=active&limit=100');
     if (!resp.ok) throw new Error(`listActiveRcas failed (${resp.status}): ${await resp.text()}`);
     const json = await resp.json() as { analyses: RcaSummary[] };
     return json.analyses;
@@ -425,14 +427,14 @@ export class ApiClient {
 
   /** Full RCA + causal-factor chain. */
   async getRcaChain(rcaId: string): Promise<RcaChain> {
-    const resp = await this.authedFetch(`/api/diagnostics/rca/${rcaId}/chain`);
+    const resp = await this.authedFetch(`/api/v1/diagnostics/rca/${rcaId}/chain`);
     if (!resp.ok) throw new Error(`getRcaChain(${rcaId}) failed (${resp.status}): ${await resp.text()}`);
     return resp.json() as Promise<RcaChain>;
   }
 
   /** Non-destructive billing preview for a period (persist:false). */
   async getBillingPreview(from: string, to: string): Promise<BillingPeriod> {
-    const resp = await this.authedFetch(`/api/billing/period?from=${from}&to=${to}`);
+    const resp = await this.authedFetch(`/api/v1/billing/period?from=${from}&to=${to}`);
     if (!resp.ok) throw new Error(`getBillingPreview failed (${resp.status}): ${await resp.text()}`);
     const json = await resp.json() as { period: BillingPeriod };
     return json.period;

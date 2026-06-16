@@ -12,11 +12,20 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ApiClient } from '../lib/client';
+import { CONFIG } from '../config';
+
+// These matrices drive the SETUP_SECRET-gated verify-ops endpoints. Without
+// VERIFY_SETUP_SECRET (e.g. the CI go-live gate, which neither sets the secret
+// nor needs runtime synthesis) the whole file is skipped — the file-level
+// beforeAll guards on the same flag so it never calls the live chain blind.
+const ENABLED = !!CONFIG.setupSecret;
+const d = ENABLED ? describe : describe.skip;
 
 const client = new ApiClient();
 let synthesizedRcaIds: string[] = [];
 
 beforeAll(async () => {
+  if (!ENABLED) return;
   await client.login();
   const before = new Set((await client.listActiveRcas()).map(r => r.id));
   await client.runPhase10Chain();
@@ -24,7 +33,7 @@ beforeAll(async () => {
   synthesizedRcaIds = after.filter(r => !before.has(r.id)).map(r => r.id);
 }, 120_000);
 
-describe('A1: runtime synthesis traceability', () => {
+d('A1: runtime synthesis traceability', () => {
   it('synthesizes at least one new RCA from the live chain', () => {
     expect(synthesizedRcaIds.length).toBeGreaterThan(0);
   });
@@ -58,7 +67,7 @@ describe('A1: runtime synthesis traceability', () => {
   });
 });
 
-describe('A2: synthesized → billing ERP-anchor boundary', () => {
+d('A2: synthesized → billing ERP-anchor boundary', () => {
   // A wide period guaranteed to include "now" so both seeded and synthesized
   // resolved RCAs fall in range.
   const FROM = '2026-01-01';
