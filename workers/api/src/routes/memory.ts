@@ -445,12 +445,20 @@ memory.post('/build', async (c) => {
     });
   }
 
+  // Collapse to unique ids before persisting. Case-variant source-system names
+  // (e.g. "CRM" vs "crm", "SAP FI" vs "sap fi") slug to the SAME `auto:sys:*`
+  // id, so the same node can be emitted twice — an INSERT of two rows with the
+  // same PRIMARY KEY aborts the whole batch (500). First occurrence wins; the
+  // relationships already resolve through `sysSlug`, so they point at the kept
+  // node regardless of which variant name survives.
+  const uniqueEntities = Array.from(new Map(entities.map(e => [e.id, e])).values());
+
   // --- Persist: clear prior auto rows, then insert (manual rows preserved) ---
   await c.env.DB.prepare("DELETE FROM graph_relationships WHERE tenant_id = ? AND json_extract(properties, '$.auto') = 1").bind(tenantId).run();
   await c.env.DB.prepare("DELETE FROM graph_entities WHERE tenant_id = ? AND source LIKE 'auto:%'").bind(tenantId).run();
 
   const stmts = [
-    ...entities.map(e => c.env.DB.prepare(
+    ...uniqueEntities.map(e => c.env.DB.prepare(
       'INSERT INTO graph_entities (id, tenant_id, type, name, properties, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).bind(e.id, tenantId, e.type, e.name, JSON.stringify(e.properties), e.confidence, e.source)),
     ...rels.map(rel => c.env.DB.prepare(
@@ -463,12 +471,12 @@ memory.post('/build', async (c) => {
   }
 
   const byType: Record<string, number> = {};
-  for (const e of entities) byType[e.type] = (byType[e.type] || 0) + 1;
+  for (const e of uniqueEntities) byType[e.type] = (byType[e.type] || 0) + 1;
 
   return c.json({
     ok: true,
     tenantId,
-    entities: entities.length,
+    entities: uniqueEntities.length,
     relationships: rels.length,
     entityTypes: byType,
     sources: {
