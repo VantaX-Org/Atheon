@@ -1631,7 +1631,7 @@ export const api = {
         await generateTechnicalPDF(assessment);
       }
     },
-    downloadExcel: async (id: string, assessment?: Assessment) => {
+    downloadExcel: async (id: string, assessment?: Assessment, findings?: ValueAssessmentFinding[]) => {
       // Try backend first; fall back to client-side generation
       try {
         const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
@@ -1649,7 +1649,7 @@ export const api = {
       // Client-side Excel generation
       if (assessment) {
         const { generateExcelReport } = await import('./report-generators');
-        await generateExcelReport(assessment);
+        await generateExcelReport(assessment, findings);
       }
     },
     // ── Value Assessment Engine endpoints ──

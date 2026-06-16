@@ -1138,7 +1138,24 @@ export async function generateValueAssessmentPDF(
 // 4. EXCEL FINANCIAL MODEL
 // ============================================================================
 
-export async function generateExcelReport(assessment: Assessment): Promise<void> {
+export function buildFindingsSheetRows(findings: Array<Record<string, unknown>>): Array<Array<string | number>> {
+  const header = ['ID', 'Title', 'Category', 'Severity', 'Financial Impact (ZAR)', 'Immediate (ZAR)', 'Ongoing/mo (ZAR)', 'Confidence', 'Evidence Refs'];
+  const rows: Array<Array<string | number>> = [header];
+  const sorted = [...findings].sort((a, b) => Number(b.financial_impact) - Number(a.financial_impact));
+  for (const f of sorted) {
+    const ev = (f.evidence ?? {}) as { sample_records?: Array<{ ref?: string }> };
+    const refs = (ev.sample_records ?? []).map(s => s.ref).filter(Boolean).join('; ');
+    rows.push([
+      String(f.id ?? ''), String(f.title ?? ''), String(f.category ?? ''), String(f.severity ?? ''),
+      Math.round(Number(f.financial_impact) || 0), Math.round(Number(f.immediate_value) || 0),
+      Math.round(Number(f.ongoing_monthly_value) || 0),
+      f.confidence == null ? '' : `${Math.round(Number(f.confidence) * 100)}%`, refs,
+    ]);
+  }
+  return rows;
+}
+
+export async function generateExcelReport(assessment: Assessment, findings?: ValueAssessmentFinding[]): Promise<void> {
   const XLSX = await import('xlsx');
   const results = assessment.results as AssessmentResults | null;
   const scores = results?.catalyst_scores ?? [];
@@ -1352,6 +1369,11 @@ export async function generateExcelReport(assessment: Assessment): Promise<void>
   const projSheet = XLSX.utils.aoa_to_sheet(projData);
   projSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(wb, projSheet, 'Financial Projection');
+
+  if (findings && findings.length) {
+    const findingsWs = XLSX.utils.aoa_to_sheet(buildFindingsSheetRows(findings as unknown as Array<Record<string, unknown>>));
+    XLSX.utils.book_append_sheet(wb, findingsWs, 'Findings');
+  }
 
   // Write and download
   const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

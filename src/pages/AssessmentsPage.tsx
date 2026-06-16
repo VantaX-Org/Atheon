@@ -1511,7 +1511,7 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
                 <button onClick={() => api.assessments.downloadBusiness(assessment.id, assessment)}
                   className="px-4 py-2 text-sm font-medium rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
                 >Business Case PDF</button>
-                <button onClick={() => api.assessments.downloadExcel(assessment.id, assessment)}
+                <button onClick={() => api.assessments.downloadExcel(assessment.id, assessment, findings)}
                   className="px-4 py-2 text-sm font-medium rounded-md" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-card)' }}
                 >Excel Model</button>
               </div>
