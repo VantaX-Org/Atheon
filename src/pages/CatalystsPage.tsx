@@ -2749,7 +2749,6 @@ export function CatalystsPage() {
    { mode: 'validation' as const, label: 'Validation', desc: 'Check data quality and completeness in a single source', icon: <CheckCircle size={14} /> },
    { mode: 'compare' as const, label: 'Comparison', desc: 'Side-by-side comparison of record counts between sources', icon: <BarChart3 size={14} /> },
    { mode: 'extract' as const, label: 'Extract', desc: 'Pull and aggregate data from all configured sources', icon: <FileText size={14} /> },
-   { mode: 'sync' as const, label: 'Sync', desc: 'Synchronize records between data sources', icon: <ArrowUpRight size={14} /> },
  ]).map(opt => (
    <button
      key={opt.mode}

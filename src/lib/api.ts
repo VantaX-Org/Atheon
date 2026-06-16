@@ -2985,7 +2985,7 @@ export interface FieldMapping {
 }
 
 export interface ExecutionConfig {
-  mode: 'reconciliation' | 'validation' | 'sync' | 'extract' | 'compare';
+  mode: 'reconciliation' | 'validation' | 'extract' | 'compare';
   parameters?: Record<string, unknown>;
 }
 
