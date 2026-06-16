@@ -123,4 +123,12 @@ adminOps.post('/create-completed-action', async (c) => {
   return c.json({ ok: true, action_id: actionId, prescription_id: prescriptionId });
 });
 
+// POST /run-action-verification { tenant_slug } — same fn the cron calls.
+adminOps.post('/run-action-verification', async (c) => {
+  const g = await gate(c);
+  if (g instanceof Response) return g;
+  const counts = await verifyCompletedActions((c.env as Env).DB, g.tenantId);
+  return c.json({ ok: true, counts });
+});
+
 export default adminOps;

@@ -114,3 +114,24 @@ describe('create-completed-action', () => {
     expect(resp.status).toBe(404);
   });
 });
+
+describe('run-action-verification', () => {
+  it('runs verification and never marks a SAP/no-Xero action verified', async () => {
+    const RCA_ID = 'ao-rca-verify-1';
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO root_cause_analyses
+         (id, tenant_id, metric_id, metric_name, trigger_status, causal_chain, confidence, status, generated_at)
+       VALUES (?, ?, 'm3', 'Verify Metric', 'red', '[]', 80, 'resolved', datetime('now'))`
+    ).bind(RCA_ID, TENANT_ID).run();
+    const created = await (await ops('/create-completed-action', { tenant_slug: SLUG, rca_id: RCA_ID })).json() as { action_id: string };
+
+    const resp = await ops('/run-action-verification', { tenant_slug: SLUG });
+    expect(resp.status).toBe(200);
+    const json = await resp.json() as { ok: boolean; counts: { verified: number } };
+    expect(json.ok).toBe(true);
+
+    const action = await env.DB.prepare('SELECT verification_status FROM catalyst_actions WHERE id = ?')
+      .bind(created.action_id).first<{ verification_status: string | null }>();
+    expect(action?.verification_status).not.toBe('verified');
+  });
+});
