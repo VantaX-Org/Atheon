@@ -1617,7 +1617,7 @@ interface RenderPDFArgs {
   timingRecords: Array<Record<string, unknown>>;
 }
 
-async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
+export async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -1979,6 +1979,35 @@ async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
   doc.rect(60, y - 2, 3, 3, 'F');
   doc.text('Ongoing Annual Value', 65, y);
 
+  // Severity distribution — portfolio roll-up stacked bar.
+  if (y > pageH - 40) { doc.addPage(); pg++; pageHeader('Value by Domain', pg); y = 28; }
+  y += 12;
+  setText(NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Findings by Severity', 14, y);
+  y += 4;
+  const sevCounts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of args.findings) { const s = String(f.severity); if (s in sevCounts) sevCounts[s]++; }
+  const sevTotal = Object.values(sevCounts).reduce((a, b) => a + b, 0) || 1;
+  let sx2 = 14; const sevBarW = pageW - 28; const sevY = y + 2;
+  for (const k of ['critical', 'high', 'medium', 'low']) {
+    const seg = (sevCounts[k] / sevTotal) * sevBarW;
+    if (seg <= 0) continue;
+    setFill(SEV[k]); doc.rect(sx2, sevY, seg, 5, 'F');
+    sx2 += seg;
+  }
+  // Count legend
+  let lx = 14; const legendY = sevY + 11;
+  for (const k of ['critical', 'high', 'medium', 'low']) {
+    setFill(SEV[k]); doc.rect(lx, legendY - 2.5, 3, 3, 'F');
+    setText(TEXT); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const lbl = `${k.charAt(0).toUpperCase()}${k.slice(1)} ${sevCounts[k]}`;
+    doc.text(lbl, lx + 4, legendY);
+    lx += doc.getTextWidth(lbl) + 12;
+  }
+  y = legendY + 8;
+
   // Domain detail blocks
   y += 10;
   setText(NAVY);
@@ -2013,19 +2042,20 @@ async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
   });
 
   // ════════════════════════════════════════════════════════════════
-  // PAGES — PER-FINDING DETAIL (2 per page)
+  // PAGES — PER-FINDING DETAIL (1 per page; native mini-charts in band)
   // ════════════════════════════════════════════════════════════════
+  // One card per A4 page so each finding gets a dedicated chart band below
+  // the prose without overlapping any body copy. cardTop(≈26)+cardH(150)+6
+  // = 182 ≤ 285 (A4 usable height), so the enlarged card always fits.
   const sortedFindings = [...args.findings].sort((a, b) => Number(b.financial_impact) - Number(a.financial_impact));
 
   for (let i = 0; i < sortedFindings.length; i++) {
-    if (i % 2 === 0) {
-      doc.addPage(); pg++;
-      pageHeader('Findings Detail', pg);
-      y = 22;
-    }
+    doc.addPage(); pg++;
+    pageHeader('Findings Detail', pg);
+    y = 22;
     const f = sortedFindings[i];
     const cardTop = y + 4;
-    const cardH = 115;
+    const cardH = 150;
 
     setFill(BG_CARD);
     setDraw(BORDER);
@@ -2133,6 +2163,111 @@ async function renderValueReportPDF(args: RenderPDFArgs): Promise<Uint8Array> {
         }
       }
     } catch { /* evidence parse failed — skip */ }
+
+    // ── Native mini-charts band ───────────────────────────────────────────
+    // Drawn with jsPDF primitives only (mirrors finding-charts.ts geometry).
+    // Sits in a dedicated band near the card bottom (cardTop+116 .. +138),
+    // ABOVE the confidence-basis footer (cardTop+cardH-9 = cardTop+141) and
+    // BELOW the prose, so it never overlaps title/figures/body text.
+    {
+      const bandTop = cardTop + 116;
+      // Faint divider above the chart band.
+      setDraw(BORDER);
+      doc.setLineWidth(0.2);
+      doc.line(20, bandTop - 4, pageW - 20, bandTop - 4);
+
+      // ── Chart 1 (left): immediate (one-off) vs ongoing-annualised ──
+      const imm = Number(f.immediate_value) || 0;
+      const ongAnnual = (Number(f.ongoing_monthly_value) || 0) * 12;
+      const c1x = 20;          // left edge of chart 1
+      const c1LabelW = 26;     // room for row label
+      const c1BarX = c1x + c1LabelW;
+      const c1BarMaxW = 54;    // bar track width (mm)
+      const c1MaxVal = Math.max(1, imm, ongAnnual);
+
+      setText(NAVY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.text('Value profile', c1x, bandTop + 1);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      // One-off bar (BRONZE)
+      const immBarW = (imm / c1MaxVal) * c1BarMaxW;
+      setText(MUTED);
+      doc.text('One-off', c1x, bandTop + 8);
+      setFill(BRONZE);
+      doc.roundedRect(c1BarX, bandTop + 4.5, Math.max(0.5, immBarW), 4, 0.8, 0.8, 'F');
+      setText(NAVY);
+      doc.text(`R${formatZAR(Math.round(imm))}`, c1BarX + Math.max(0.5, immBarW) + 2, bandTop + 8);
+      // Recurring/yr bar (SAGE)
+      const ongBarW = (ongAnnual / c1MaxVal) * c1BarMaxW;
+      setText(MUTED);
+      doc.text('Recur/yr', c1x, bandTop + 16);
+      setFill(SAGE);
+      doc.roundedRect(c1BarX, bandTop + 12.5, Math.max(0.5, ongBarW), 4, 0.8, 0.8, 'F');
+      setText(NAVY);
+      doc.text(`R${formatZAR(Math.round(ongAnnual))}`, c1BarX + Math.max(0.5, ongBarW) + 2, bandTop + 16);
+
+      // ── Chart 2 (right): source-vs-target paired bars from samples ──
+      try {
+        const ev = typeof f.evidence === 'string' ? JSON.parse(f.evidence as string) : f.evidence;
+        const samples: Array<{ ref?: string; source_value?: string | number; target_value?: string | number }>
+          = Array.isArray(ev?.sample_records) ? ev.sample_records : [];
+        if (samples.length > 0) {
+          const cap = 6;
+          const shown = samples.slice(0, cap);
+          const more = samples.length - shown.length;
+          const nums = shown.flatMap((s) => [Number(s.source_value) || 0, Number(s.target_value) || 0]);
+          const sMax = Math.max(1, ...nums.map((n) => Math.abs(n)));
+
+          const c2x = pageW / 2 + 6;           // right half of band
+          const c2Right = pageW - 20;
+          const baseY = bandTop + 18;          // baseline for vertical bars
+          const chartTopY = bandTop + 4;       // top of bar area
+          const barMaxH = baseY - chartTopY;   // 14mm
+          const slotW = (c2Right - c2x) / shown.length;
+          const barW = Math.min(2.6, slotW / 3);
+
+          setText(NAVY);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.5);
+          doc.text('Source vs target', c2x, bandTop + 1);
+
+          // legend
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6);
+          setFill(NAVY);
+          doc.rect(c2x + 28, bandTop - 1.6, 2, 2, 'F');
+          setText(MUTED);
+          doc.text('source', c2x + 31, bandTop + 0.2);
+          setFill(BRONZE);
+          doc.rect(c2x + 44, bandTop - 1.6, 2, 2, 'F');
+          doc.text('target', c2x + 47, bandTop + 0.2);
+
+          shown.forEach((s, k) => {
+            const sv = Number(s.source_value) || 0;
+            const tv = Number(s.target_value) || 0;
+            const sh = (Math.abs(sv) / sMax) * barMaxH;
+            const th = (Math.abs(tv) / sMax) * barMaxH;
+            const gx = c2x + k * slotW;
+            setFill(NAVY);
+            doc.rect(gx, baseY - sh, barW, Math.max(0.3, sh), 'F');
+            setFill(BRONZE);
+            doc.rect(gx + barW + 0.6, baseY - th, barW, Math.max(0.3, th), 'F');
+            // baseline ref label
+            setText(MUTED);
+            doc.setFontSize(5.5);
+            doc.text(String(s.ref || '').slice(0, 6), gx, baseY + 2.6);
+          });
+          if (more > 0) {
+            setText(MUTED);
+            doc.setFontSize(6);
+            doc.text(`+ ${more} more`, c2Right, baseY + 2.6, { align: 'right' });
+          }
+        }
+      } catch { /* evidence parse failed — skip source/target chart */ }
+    }
 
     // Confidence basis footer — the auditor-facing statistical justification.
     // States the basis only; never names a model/provider (trade secret).

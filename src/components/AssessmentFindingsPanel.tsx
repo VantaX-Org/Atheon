@@ -27,6 +27,7 @@ import {
   TrendingUp, Building2, FileText, Search,
 } from 'lucide-react';
 import { PeerInsightsBadge } from '@/components/PeerInsightsBadge';
+import { confidenceGauge, sourceVsTarget, domainWaterfall, severityDistribution } from '@/lib/finding-charts';
 import type {
   AssessmentFinding,
   AssessmentFindingSeverity,
@@ -101,6 +102,11 @@ const TONE_VARIANT: Record<ConfidenceTone, 'success' | 'info' | 'warning'> = {
   warn: 'warning',
 };
 
+function Svg({ markup }: { markup: string }) {
+  if (!markup) return null;
+  return <span className="inline-block" dangerouslySetInnerHTML={{ __html: markup }} />;
+}
+
 export function AssessmentFindingsPanel({
   findings, summary, findingsByCompany, companyProfile, onDeployCatalyst,
 }: Props): JSX.Element {
@@ -154,6 +160,22 @@ export function AssessmentFindingsPanel({
     () => visibleFindings.filter(f => isUnverified(f)),
     [visibleFindings],
   );
+
+  const severityCounts = useMemo(() => {
+    const c = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of findings) c[f.severity as keyof typeof c] = (c[f.severity as keyof typeof c] ?? 0) + 1;
+    return c;
+  }, [findings]);
+  const domainValues = useMemo(() => {
+    const m = new Map<string, { immediate: number; ongoing: number }>();
+    for (const f of findings) {
+      const k = f.category || 'other';
+      const e = m.get(k) ?? { immediate: 0, ongoing: 0 };
+      e.immediate += Number(f.value_at_risk_zar) || 0;
+      m.set(k, e);
+    }
+    return Array.from(m, ([domain, v]) => ({ domain, ...v }));
+  }, [findings]);
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
@@ -333,6 +355,26 @@ export function AssessmentFindingsPanel({
               </div>
             )}
 
+            {/* Per-finding charts: source/target, confidence. No one-off/recurring
+                split — AssessmentFinding carries no ongoing_monthly_value, so that
+                chart would always read R0 recurring and mislead. */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 items-center"
+              style={{ borderTop: '1px solid var(--border-card)', paddingTop: 12 }}>
+              <div>
+                <div className="text-xs t-muted mb-1">Source vs target</div>
+                <Svg markup={sourceVsTarget((f.sample_records ?? []).map(s => ({
+                  ref: s.ref,
+                  source_value: (s.metadata?.source_value as number | string) ?? s.amount_native ?? 0,
+                  target_value: (s.metadata?.target_value as number | string) ?? s.amount_zar ?? 0,
+                  difference: Number(s.metadata?.difference ?? 0),
+                })))} />
+              </div>
+              <div>
+                <div className="text-xs t-muted mb-1">Confidence</div>
+                <Svg markup={confidenceGauge(Number(f.confidence ?? 0), f.confidence_gate_passed !== false)} />
+              </div>
+            </div>
+
             {/* Currency breakdown if multi-currency */}
             {Object.keys(f.currency_breakdown).length > 1 && (
               <div>
@@ -449,6 +491,18 @@ export function AssessmentFindingsPanel({
             <span className="t-muted text-xs ml-auto">Click a severity to toggle filter</span>
           </div>
         )}
+
+        {/* Portfolio roll-ups — domain waterfall + severity distribution */}
+        <div className="mt-4 flex flex-wrap items-end gap-6" style={{ borderTop: '1px solid var(--border-card)', paddingTop: 12 }}>
+          <div>
+            <div className="text-label mb-1">Value by domain</div>
+            <Svg markup={domainWaterfall(domainValues)} />
+          </div>
+          <div>
+            <div className="text-label mb-1">Severity distribution</div>
+            <Svg markup={severityDistribution(severityCounts)} />
+          </div>
+        </div>
       </Card>
 
       {/* Per-company tabs (only for multinationals) */}

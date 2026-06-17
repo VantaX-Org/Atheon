@@ -107,7 +107,11 @@
 // v84-user-preferences: adds user_preferences table (per-user notification
 // toggles persisted by Settings → /api/auth/me PATCH). Version bump forces the
 // healer to re-run so prod/staging gain the table on deploy.
-export const MIGRATION_VERSION = 'v84-user-preferences';
+// v85-assessment-datasets: assessment_datasets table (one uploaded dataset per
+// assessment) + nullable dataset_id (TEXT) on all 8 canonical erp_* tables for
+// per-assessment data isolation. NULL dataset_id = existing tenant/seed rows
+// (back-compat preserved). Index (tenant_id, dataset_id) for scoped run queries.
+export const MIGRATION_VERSION = 'v85-assessment-datasets';
 
 /** Result of a migration run */
 export interface MigrationResult {
@@ -243,6 +247,7 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     CREATE TABLE IF NOT EXISTS execution_logs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), action_id TEXT NOT NULL, step_number INTEGER NOT NULL, step_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running', detail TEXT, duration_ms INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS managed_deployments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), name TEXT NOT NULL, deployment_type TEXT NOT NULL DEFAULT 'hybrid', status TEXT NOT NULL DEFAULT 'pending', licence_key TEXT NOT NULL UNIQUE, licence_expires_at TEXT, agent_version TEXT, api_version TEXT, customer_api_url TEXT, region TEXT DEFAULT 'af-south-1', last_heartbeat TEXT, health_score REAL NOT NULL DEFAULT 0, config TEXT NOT NULL DEFAULT '{}', resource_usage TEXT NOT NULL DEFAULT '{}', error_log TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS assessments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), prospect_name TEXT NOT NULL, prospect_industry TEXT NOT NULL, erp_connection_id TEXT REFERENCES erp_connections(id), status TEXT NOT NULL DEFAULT 'pending', config TEXT NOT NULL DEFAULT '{}', data_snapshot TEXT NOT NULL DEFAULT '{}', results TEXT NOT NULL DEFAULT '{}', business_report_key TEXT, technical_report_key TEXT, excel_model_key TEXT, period_start TEXT, period_end TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), completed_at TEXT);
+    CREATE TABLE IF NOT EXISTS assessment_datasets (id TEXT PRIMARY KEY, assessment_id TEXT NOT NULL REFERENCES assessments(id), tenant_id TEXT NOT NULL REFERENCES tenants(id), status TEXT NOT NULL DEFAULT 'pending', row_counts TEXT NOT NULL DEFAULT '{}', error TEXT, uploaded_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS chat_conversations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL DEFAULT 'New Conversation', model_tier TEXT NOT NULL DEFAULT 'tier-1', messages TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS password_reset_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id), user_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL, key_prefix TEXT, permissions TEXT NOT NULL DEFAULT '["read"]', last_used TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT);
@@ -875,6 +880,20 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     // for catalysts that read profile-driven thresholds on every run.
     'CREATE INDEX IF NOT EXISTS idx_erp_process_profiles_lookup ON erp_process_profiles(tenant_id, connection_id)',
     'CREATE INDEX IF NOT EXISTS idx_erp_connection_config_conn ON erp_connection_config(tenant_id, connection_id, namespace)',
+    // v85: per-assessment dataset isolation — (tenant, dataset) is the hot-path
+    // filter for assessment-scoped catalyst runs. Heal-dependent (dataset_id is
+    // added in the heal pass), so this batch fails fast and the post-heal retry succeeds.
+    'CREATE INDEX IF NOT EXISTS idx_erp_invoices_dataset ON erp_invoices(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_po_dataset ON erp_purchase_orders(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_journal_dataset ON erp_journal_entries(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_bank_dataset ON erp_bank_transactions(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_employees_dataset ON erp_employees(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_customers_dataset ON erp_customers(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_suppliers_dataset ON erp_suppliers(tenant_id, dataset_id)',
+    'CREATE INDEX IF NOT EXISTS idx_erp_products_dataset ON erp_products(tenant_id, dataset_id)',
+    // One uploaded dataset per assessment — enforces the ingest invariant and
+    // makes the dataset upsert idempotent on re-upload.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_assessment_datasets_assessment ON assessment_datasets(assessment_id)',
   ];
 
   // ERP indexes — same batch-first-fail-fast pattern as top-level indexes.
@@ -1178,6 +1197,15 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'erp_gl_accounts',      column: 'connection_id', definition: 'TEXT' },
     { table: 'erp_journal_entries',  column: 'connection_id', definition: 'TEXT' },
     { table: 'erp_bank_transactions',column: 'connection_id', definition: 'TEXT' },
+    // v85: per-assessment dataset isolation. NULL = tenant/seed rows (back-compat).
+    { table: 'erp_invoices',         column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_purchase_orders',  column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_journal_entries',  column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_bank_transactions',column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_employees',        column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_customers',        column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_suppliers',        column: 'dataset_id', definition: 'TEXT' },
+    { table: 'erp_products',         column: 'dataset_id', definition: 'TEXT' },
   ];
 
   // Column-heal — try the whole list as a single batch first. On a fresh

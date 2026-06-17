@@ -307,8 +307,15 @@ export async function persistFindingsToPulseApex(
 export async function collectVolumeSnapshot(
   db: D1Database,
   tenantId: string,
-  erpConnectionId: string
+  erpConnectionId: string,
+  datasetId?: string
 ): Promise<VolumeSnapshot> {
+  // dataset scoping: when a dataset is bound, every erp_* query is restricted to
+  // its rows; otherwise tenant-wide (unchanged). dsAnd is appended INSIDE the
+  // WHERE of every erp_* query; dsBind adds the matching bind value.
+  const dsAnd = datasetId ? ' AND dataset_id = ?' : '';
+  const dsBind: unknown[] = datasetId ? [datasetId] : [];
+
   // Determine source_system from the ERP connection
   let erpSystem = 'unknown';
   try {
@@ -329,8 +336,8 @@ export async function collectVolumeSnapshot(
 
   // Calculate months of data
   const monthsOfData = await queryNum(
-    "SELECT CAST((julianday('now') - julianday(MIN(invoice_date))) / 30 AS INTEGER) FROM erp_invoices WHERE tenant_id = ?",
-    [tenantId]
+    `SELECT CAST((julianday('now') - julianday(MIN(invoice_date))) / 30 AS INTEGER) FROM erp_invoices WHERE tenant_id = ?${dsAnd}`,
+    [tenantId, ...dsBind]
   ) || 1;
 
   const monthDiv = Math.max(monthsOfData, 1);
@@ -343,23 +350,23 @@ export async function collectVolumeSnapshot(
     activeCustomers, activeSuppliers,
     productCount, totalInventoryValue
   ] = await Promise.all([
-    queryNum('SELECT COUNT(*) FROM erp_invoices WHERE tenant_id = ?', [tenantId]),
-    queryNum('SELECT COUNT(*) FROM erp_purchase_orders WHERE tenant_id = ?', [tenantId]),
-    queryNum('SELECT COUNT(*) FROM erp_journal_entries WHERE tenant_id = ?', [tenantId]),
-    queryNum('SELECT COUNT(*) FROM erp_bank_transactions WHERE tenant_id = ?', [tenantId]),
-    queryNum("SELECT COALESCE(SUM(amount_due), 0) FROM erp_invoices WHERE tenant_id = ? AND payment_status != 'paid'", [tenantId]),
-    queryNum("SELECT COALESCE(SUM(total), 0) FROM erp_purchase_orders WHERE tenant_id = ? AND status = 'open'", [tenantId]),
-    queryNum("SELECT COUNT(*) FROM erp_invoices WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid'", [tenantId]),
-    queryNum("SELECT COALESCE(SUM(amount_due), 0) FROM erp_invoices WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid'", [tenantId]),
-    queryNum('SELECT COALESCE(AVG(total), 0) FROM erp_invoices WHERE tenant_id = ?', [tenantId]),
-    queryNum("SELECT COALESCE(SUM(total), 0) FROM erp_invoices WHERE tenant_id = ? AND invoice_date >= datetime('now', '-12 months')", [tenantId]),
-    queryNum("SELECT COALESCE(SUM(total), 0) FROM erp_purchase_orders WHERE tenant_id = ? AND order_date >= datetime('now', '-12 months')", [tenantId]),
-    queryNum("SELECT COUNT(*) FROM erp_employees WHERE tenant_id = ? AND status = 'active'", [tenantId]),
-    queryNum("SELECT COALESCE(SUM(gross_salary), 0) FROM erp_employees WHERE tenant_id = ? AND salary_frequency = 'monthly' AND status = 'active'", [tenantId]),
-    queryNum("SELECT COUNT(*) FROM erp_customers WHERE tenant_id = ? AND status = 'active'", [tenantId]),
-    queryNum("SELECT COUNT(*) FROM erp_suppliers WHERE tenant_id = ? AND status = 'active'", [tenantId]),
-    queryNum('SELECT COUNT(*) FROM erp_products WHERE tenant_id = ? AND is_active = 1', [tenantId]),
-    queryNum('SELECT COALESCE(SUM(stock_on_hand * cost_price), 0) FROM erp_products WHERE tenant_id = ? AND is_active = 1', [tenantId]),
+    queryNum(`SELECT COUNT(*) FROM erp_invoices WHERE tenant_id = ?${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_purchase_orders WHERE tenant_id = ?${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_journal_entries WHERE tenant_id = ?${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_bank_transactions WHERE tenant_id = ?${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(amount_due), 0) FROM erp_invoices WHERE tenant_id = ? AND payment_status != 'paid'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(total), 0) FROM erp_purchase_orders WHERE tenant_id = ? AND status = 'open'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_invoices WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(amount_due), 0) FROM erp_invoices WHERE tenant_id = ? AND due_date < datetime('now') AND payment_status != 'paid'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(AVG(total), 0) FROM erp_invoices WHERE tenant_id = ?${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(total), 0) FROM erp_invoices WHERE tenant_id = ? AND invoice_date >= datetime('now', '-12 months')${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(total), 0) FROM erp_purchase_orders WHERE tenant_id = ? AND order_date >= datetime('now', '-12 months')${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_employees WHERE tenant_id = ? AND status = 'active'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(gross_salary), 0) FROM erp_employees WHERE tenant_id = ? AND salary_frequency = 'monthly' AND status = 'active'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_customers WHERE tenant_id = ? AND status = 'active'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_suppliers WHERE tenant_id = ? AND status = 'active'${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COUNT(*) FROM erp_products WHERE tenant_id = ? AND is_active = 1${dsAnd}`, [tenantId, ...dsBind]),
+    queryNum(`SELECT COALESCE(SUM(stock_on_hand * cost_price), 0) FROM erp_products WHERE tenant_id = ? AND is_active = 1${dsAnd}`, [tenantId, ...dsBind]),
   ]);
 
   // Data completeness scoring
@@ -2402,6 +2409,7 @@ export async function runAssessment(
   prospectIndustry: string,
   prospectName: string,
   periodOpts?: { periodStart: string | null; periodEnd: string | null },
+  datasetId?: string,
 ): Promise<void> {
   const cp = (stage: string) => console.log(`[assessment ${assessmentId}] ${stage}`);
   const periodStart = periodOpts?.periodStart ?? null;
@@ -2416,7 +2424,7 @@ export async function runAssessment(
 
     // 2. Collect volume snapshot
     cp('2.snapshot.begin');
-    const snapshot = await collectVolumeSnapshot(db, tenantId, erpConnectionId);
+    const snapshot = await collectVolumeSnapshot(db, tenantId, erpConnectionId, datasetId);
     await db.prepare('UPDATE assessments SET data_snapshot = ? WHERE id = ?')
       .bind(JSON.stringify(snapshot), assessmentId).run();
     cp('2.snapshot.done');
@@ -2453,6 +2461,7 @@ export async function runAssessment(
       monthsOfData: snapshot.months_of_data,
       periodStart,
       periodEnd,
+      datasetId,
     };
     cp('5.findings.begin');
     const { per_company, consolidated } = await detectAllFindingsByCompany(db, tenantId, findingsContext);
@@ -2464,7 +2473,7 @@ export async function runAssessment(
       findings: pc.findings,
       summary: summariseFindings(pc.findings),
     }));
-    const company_profile = await detectCompanyProfile(db, tenantId);
+    const company_profile = await detectCompanyProfile(db, tenantId, datasetId);
     void detectAllFindings; // Re-export for tests; not used directly in this path.
 
     // 5b. Push findings into Pulse (process_metrics) and Apex (risk_alerts).

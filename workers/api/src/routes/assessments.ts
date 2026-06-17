@@ -13,6 +13,8 @@ import {
   DEFAULT_VALUE_ASSESSMENT_CONFIG,
   type ValueAssessmentConfig,
 } from '../services/value-assessment-engine';
+import { INGEST_MANIFEST } from '../lib/ingest-manifest';
+import { validateDomainRows } from '../lib/ingest-validate';
 
 const assessments = new Hono<AppBindings>();
 
@@ -52,6 +54,9 @@ assessments.post('/', async (c) => {
     period_start?: string | null;
     /** ISO date (YYYY-MM-DD). Optional — null/empty means unbounded end. */
     period_end?: string | null;
+    /** When true: create the assessment 'pending' and DON'T auto-run. The
+     *  caller uploads a dataset then triggers POST /:id/run. */
+    defer_run?: boolean;
   }>();
 
   if (!body.prospect_name || !body.prospect_industry) {
@@ -93,6 +98,21 @@ assessments.post('/', async (c) => {
     auth!.userId
   ).run();
 
+  // Deferred run: the caller will upload a dataset then POST /:id/run. Leave
+  // the assessment 'pending' and do NOT dispatch a background run now.
+  if (body.defer_run) {
+    return c.json({ id, status: 'pending' }, 201);
+  }
+
+  // If a ready uploaded dataset already exists for this assessment, scope the
+  // run to it so the assessment reads ONLY that dataset's rows (data isolation).
+  // Normally a dataset is uploaded after creation via POST /:id/dataset and a
+  // re-run is triggered separately; this covers the create-after-upload path.
+  const dataset = await c.env.DB.prepare(
+    "SELECT id FROM assessment_datasets WHERE assessment_id = ? AND status = 'ready'"
+  ).bind(id).first<{ id: string }>();
+  const datasetId = dataset?.id;
+
   // Run assessment in background (use waitUntil for Cloudflare Workers)
   const assessmentPromise = runAssessment(
     c.env.DB,
@@ -105,11 +125,150 @@ assessments.post('/', async (c) => {
     body.prospect_industry,
     body.prospect_name,
     { periodStart, periodEnd },
+    datasetId,
   );
 
   c.executionCtx.waitUntil(assessmentPromise);
 
   return c.json({ id, status: 'running' }, 201);
+});
+
+// ── POST /api/assessments/:id/dataset ─────────────────────────────────────
+// Ingest uploaded prospect data into an isolated per-assessment dataset.
+// Re-validates server-side (strong inference: any unknown column / type
+// mismatch rejects the WHOLE upload — nothing ingested).
+assessments.post('/:id/dataset', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessmentId = c.req.param('id');
+
+  const assessment = await c.env.DB.prepare('SELECT id, tenant_id FROM assessments WHERE id = ?')
+    .bind(assessmentId).first<{ id: string; tenant_id: string }>();
+  if (!assessment) return c.json({ error: 'assessment not found' }, 404);
+
+  // The dataset belongs to the assessment's own tenant — that is what the run
+  // path resolves against. Derive tenantId from the record, not a query param,
+  // so the uploaded erp_* rows can never be tagged to a divergent tenant. A
+  // mismatched explicit tenant_id is a caller error, not a silent reassignment.
+  const tenantId = assessment.tenant_id;
+  const qpTenant = c.req.query('tenant_id');
+  if (qpTenant && qpTenant !== tenantId) {
+    return c.json({ error: 'tenant_id does not match assessment' }, 400);
+  }
+
+  const body = await c.req.json<{ domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> }>().catch(() => null);
+  if (!body?.domains || typeof body.domains !== 'object') return c.json({ error: 'domains required' }, 400);
+
+  const validated: Record<string, Array<Record<string, unknown>>> = {};
+  const allErrors: Array<{ domain: string; row: number; column: string; message: string }> = [];
+  for (const [domain, payload] of Object.entries(body.domains)) {
+    const def = INGEST_MANIFEST.find(d => d.domain === domain);
+    if (!def) { allErrors.push({ domain, row: 0, column: '', message: `unknown domain ${domain}` }); continue; }
+    const { rows, errors } = validateDomainRows(domain, payload.header || [], payload.rows || []);
+    if (errors.length) { for (const e of errors) allErrors.push({ domain, ...e }); }
+    else validated[domain] = rows;
+  }
+
+  const datasetId = `ds_${assessmentId}_${tenantId}`.replace(/[^a-zA-Z0-9_]/g, '_');
+
+  if (allErrors.length) {
+    await c.env.DB.prepare(
+      `INSERT INTO assessment_datasets (id, assessment_id, tenant_id, status, row_counts, error)
+       VALUES (?, ?, ?, 'failed', '{}', ?)
+       ON CONFLICT(assessment_id) DO UPDATE SET status='failed', error=excluded.error`
+    ).bind(datasetId, assessmentId, tenantId, JSON.stringify(allErrors.slice(0, 200))).run();
+    return c.json({ error: 'validation failed', errors: allErrors.slice(0, 200) }, 422);
+  }
+
+  const rowCounts: Record<string, number> = {};
+  const stmts: D1PreparedStatement[] = [];
+  for (const [domain, rows] of Object.entries(validated)) {
+    const def = INGEST_MANIFEST.find(d => d.domain === domain)!;
+    stmts.push(c.env.DB.prepare(`DELETE FROM ${def.table} WHERE tenant_id = ? AND dataset_id = ?`).bind(tenantId, datasetId));
+    let n = 0;
+    for (const row of rows) {
+      // Only emit columns we actually have a value for. erp_* tables carry
+      // NOT NULL DEFAULT constraints on several numeric/status fields, so
+      // inserting an explicit NULL for an absent optional column violates the
+      // constraint — omit it and let the DB default apply instead.
+      const dataCols = def.columns.filter(col => row[col.name] != null);
+      const cols = ['id', 'tenant_id', 'dataset_id', 'source_system', ...dataCols.map(col => col.name)];
+      const vals = [`${datasetId}_${domain}_${n}`, tenantId, datasetId, 'upload', ...dataCols.map(col => row[col.name])];
+      const placeholders = cols.map(() => '?').join(', ');
+      stmts.push(c.env.DB.prepare(`INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${placeholders})`).bind(...vals));
+      n++;
+    }
+    rowCounts[domain] = n;
+  }
+
+  for (let i = 0; i < stmts.length; i += 50) {
+    await c.env.DB.batch(stmts.slice(i, i + 50));
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO assessment_datasets (id, assessment_id, tenant_id, status, row_counts, error)
+     VALUES (?, ?, ?, 'ready', ?, NULL)
+     ON CONFLICT(assessment_id) DO UPDATE SET status='ready', row_counts=excluded.row_counts, error=NULL`
+  ).bind(datasetId, assessmentId, tenantId, JSON.stringify(rowCounts)).run();
+
+  return c.json({ dataset_id: datasetId, status: 'ready', row_counts: rowCounts });
+});
+
+// ── POST /api/assessments/:id/run ─────────────────────────────────────────
+// Trigger the run for a deferred (status='pending') assessment, scoping it to
+// the ready uploaded dataset. Mirrors the auto-run path in POST '/'.
+assessments.post('/:id/run', async (c) => {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+
+  const assessmentId = c.req.param('id');
+  const a = await c.env.DB.prepare(
+    'SELECT id, tenant_id, status, prospect_name, prospect_industry, erp_connection_id, config, period_start, period_end FROM assessments WHERE id = ?'
+  ).bind(assessmentId).first<{
+    id: string; tenant_id: string; status: string; prospect_name: string; prospect_industry: string;
+    erp_connection_id: string | null; config: string; period_start: string | null; period_end: string | null;
+  }>();
+  if (!a) return c.json({ error: 'assessment not found' }, 404);
+
+  // Reject concurrent kick-offs. Mirrors run-value-assessment: two back-to-back
+  // POSTs would both fire the engine and duplicate findings/dq/timing rows. The
+  // engine does a per-run DELETE, but a true overlap still interleaves inserts.
+  if (a.status === 'running') {
+    return c.json({
+      error: 'assessment_in_progress',
+      message: 'An assessment run for this record is already in progress.',
+      id: assessmentId,
+      status: 'running',
+    }, 409);
+  }
+
+  const config = { ...DEFAULT_ASSESSMENT_CONFIG, ...(JSON.parse(a.config || '{}') as Partial<AssessmentConfig>) };
+
+  // Resolve the ready dataset (same lookup as the create handler) so the run
+  // reads ONLY that dataset's rows.
+  const dataset = await c.env.DB.prepare(
+    "SELECT id FROM assessment_datasets WHERE assessment_id = ? AND status = 'ready'"
+  ).bind(assessmentId).first<{ id: string }>();
+  const datasetId = dataset?.id;
+
+  const promise = runAssessment(
+    c.env.DB,
+    c.env.AI,
+    c.env.STORAGE,
+    a.tenant_id,
+    assessmentId,
+    a.erp_connection_id || '',
+    config,
+    a.prospect_industry,
+    a.prospect_name,
+    { periodStart: a.period_start, periodEnd: a.period_end },
+    datasetId,
+  );
+
+  c.executionCtx.waitUntil(promise);
+
+  return c.json({ id: assessmentId, status: 'running' });
 });
 
 // ── GET /api/assessments/config/defaults — return default config ──────────
@@ -516,8 +675,26 @@ assessments.delete('/:id', async (c) => {
     try { await c.env.STORAGE.delete(key); } catch { /* ignore */ }
   }
 
+  const assessmentId = c.req.param('id');
+
+  // Purge any uploaded dataset(s) and their ingested erp_* rows so deleting an
+  // assessment leaves no orphans. erp_* rows are tagged with the dataset_id; the
+  // assessment_datasets row is keyed by assessment_id.
+  const datasets = await c.env.DB.prepare(
+    'SELECT id FROM assessment_datasets WHERE assessment_id = ?'
+  ).bind(assessmentId).all<{ id: string }>();
+  const datasetIds = (datasets.results ?? []).map(d => d.id);
+  if (datasetIds.length) {
+    const placeholders = datasetIds.map(() => '?').join(', ');
+    const stmts = INGEST_MANIFEST.map(def =>
+      c.env.DB.prepare(`DELETE FROM ${def.table} WHERE dataset_id IN (${placeholders})`).bind(...datasetIds)
+    );
+    stmts.push(c.env.DB.prepare('DELETE FROM assessment_datasets WHERE assessment_id = ?').bind(assessmentId));
+    await c.env.DB.batch(stmts);
+  }
+
   await c.env.DB.prepare('DELETE FROM assessments WHERE id = ?')
-    .bind(c.req.param('id')).run();
+    .bind(assessmentId).run();
 
   return c.json({ success: true });
 });

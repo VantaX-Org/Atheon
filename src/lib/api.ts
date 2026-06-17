@@ -1537,8 +1537,22 @@ export const api = {
       // dated within the window. NULL on either side = all available data.
       period_start?: string | null;
       period_end?: string | null;
+      // When true, the assessment is created in 'pending' WITHOUT auto-running.
+      // The caller is expected to upload a dataset then POST /:id/run.
+      defer_run?: boolean;
     }) =>
       request<{ id: string; status: string }>('/api/assessments', { method: 'POST', body: JSON.stringify(data) }),
+    // Upload prospect data into an isolated per-assessment dataset. Server
+    // re-validates against the ingest manifest (422 on any error).
+    uploadDataset: (
+      id: string,
+      domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }>,
+      tenantId?: string,
+    ): Promise<{ dataset_id: string; status: string; row_counts: Record<string, number> }> =>
+      request(`/api/assessments/${id}/dataset${qs({ tenant_id: tenantId })}`, { method: 'POST', body: JSON.stringify({ domains }) }),
+    // Trigger the run for a deferred assessment, scoped to its ready dataset.
+    runAssessment: (id: string, tenantId?: string): Promise<{ id: string; status: string }> =>
+      request(`/api/assessments/${id}/run${qs({ tenant_id: tenantId })}`, { method: 'POST' }),
     status: (id: string) =>
       request<{ status: string; progress: string }>(`/api/assessments/${id}/status`),
     delete: (id: string) =>
@@ -1617,7 +1631,7 @@ export const api = {
         await generateTechnicalPDF(assessment);
       }
     },
-    downloadExcel: async (id: string, assessment?: Assessment) => {
+    downloadExcel: async (id: string, assessment?: Assessment, findings?: ValueAssessmentFinding[]) => {
       // Try backend first; fall back to client-side generation
       try {
         const headers: Record<string, string> = { 'X-Request-ID': generateRequestId() };
@@ -1635,7 +1649,7 @@ export const api = {
       // Client-side Excel generation
       if (assessment) {
         const { generateExcelReport } = await import('./report-generators');
-        await generateExcelReport(assessment);
+        await generateExcelReport(assessment, findings);
       }
     },
     // ── Value Assessment Engine endpoints ──
