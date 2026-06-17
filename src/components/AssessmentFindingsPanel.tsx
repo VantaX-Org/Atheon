@@ -27,7 +27,7 @@ import {
   TrendingUp, Building2, FileText, Search,
 } from 'lucide-react';
 import { PeerInsightsBadge } from '@/components/PeerInsightsBadge';
-import { confidenceGauge, immediateVsOngoing, sourceVsTarget, domainWaterfall, severityDistribution } from '@/lib/finding-charts';
+import { confidenceGauge, sourceVsTarget, domainWaterfall, severityDistribution } from '@/lib/finding-charts';
 import type {
   AssessmentFinding,
   AssessmentFindingSeverity,
@@ -355,8 +355,10 @@ export function AssessmentFindingsPanel({
               </div>
             )}
 
-            {/* Per-finding charts: source/target, one-off/recurring, confidence */}
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-center"
+            {/* Per-finding charts: source/target, confidence. No one-off/recurring
+                split — AssessmentFinding carries no ongoing_monthly_value, so that
+                chart would always read R0 recurring and mislead. */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 items-center"
               style={{ borderTop: '1px solid var(--border-card)', paddingTop: 12 }}>
               <div>
                 <div className="text-xs t-muted mb-1">Source vs target</div>
@@ -366,10 +368,6 @@ export function AssessmentFindingsPanel({
                   target_value: (s.metadata?.target_value as number | string) ?? s.amount_zar ?? 0,
                   difference: Number(s.metadata?.difference ?? 0),
                 })))} />
-              </div>
-              <div>
-                <div className="text-xs t-muted mb-1">One-off vs recurring</div>
-                <Svg markup={immediateVsOngoing(Number(f.value_at_risk_zar) || 0, 0)} />
               </div>
               <div>
                 <div className="text-xs t-muted mb-1">Confidence</div>

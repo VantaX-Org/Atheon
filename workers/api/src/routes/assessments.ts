@@ -142,11 +142,20 @@ assessments.post('/:id/dataset', async (c) => {
   if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
 
   const assessmentId = c.req.param('id');
-  const tenantId = c.req.query('tenant_id') || auth!.tenantId;
 
   const assessment = await c.env.DB.prepare('SELECT id, tenant_id FROM assessments WHERE id = ?')
     .bind(assessmentId).first<{ id: string; tenant_id: string }>();
   if (!assessment) return c.json({ error: 'assessment not found' }, 404);
+
+  // The dataset belongs to the assessment's own tenant — that is what the run
+  // path resolves against. Derive tenantId from the record, not a query param,
+  // so the uploaded erp_* rows can never be tagged to a divergent tenant. A
+  // mismatched explicit tenant_id is a caller error, not a silent reassignment.
+  const tenantId = assessment.tenant_id;
+  const qpTenant = c.req.query('tenant_id');
+  if (qpTenant && qpTenant !== tenantId) {
+    return c.json({ error: 'tenant_id does not match assessment' }, 400);
+  }
 
   const body = await c.req.json<{ domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> }>().catch(() => null);
   if (!body?.domains || typeof body.domains !== 'object') return c.json({ error: 'domains required' }, 400);
@@ -215,12 +224,24 @@ assessments.post('/:id/run', async (c) => {
 
   const assessmentId = c.req.param('id');
   const a = await c.env.DB.prepare(
-    'SELECT id, tenant_id, prospect_name, prospect_industry, erp_connection_id, config, period_start, period_end FROM assessments WHERE id = ?'
+    'SELECT id, tenant_id, status, prospect_name, prospect_industry, erp_connection_id, config, period_start, period_end FROM assessments WHERE id = ?'
   ).bind(assessmentId).first<{
-    id: string; tenant_id: string; prospect_name: string; prospect_industry: string;
+    id: string; tenant_id: string; status: string; prospect_name: string; prospect_industry: string;
     erp_connection_id: string | null; config: string; period_start: string | null; period_end: string | null;
   }>();
   if (!a) return c.json({ error: 'assessment not found' }, 404);
+
+  // Reject concurrent kick-offs. Mirrors run-value-assessment: two back-to-back
+  // POSTs would both fire the engine and duplicate findings/dq/timing rows. The
+  // engine does a per-run DELETE, but a true overlap still interleaves inserts.
+  if (a.status === 'running') {
+    return c.json({
+      error: 'assessment_in_progress',
+      message: 'An assessment run for this record is already in progress.',
+      id: assessmentId,
+      status: 'running',
+    }, 409);
+  }
 
   const config = { ...DEFAULT_ASSESSMENT_CONFIG, ...(JSON.parse(a.config || '{}') as Partial<AssessmentConfig>) };
 
@@ -654,8 +675,26 @@ assessments.delete('/:id', async (c) => {
     try { await c.env.STORAGE.delete(key); } catch { /* ignore */ }
   }
 
+  const assessmentId = c.req.param('id');
+
+  // Purge any uploaded dataset(s) and their ingested erp_* rows so deleting an
+  // assessment leaves no orphans. erp_* rows are tagged with the dataset_id; the
+  // assessment_datasets row is keyed by assessment_id.
+  const datasets = await c.env.DB.prepare(
+    'SELECT id FROM assessment_datasets WHERE assessment_id = ?'
+  ).bind(assessmentId).all<{ id: string }>();
+  const datasetIds = (datasets.results ?? []).map(d => d.id);
+  if (datasetIds.length) {
+    const placeholders = datasetIds.map(() => '?').join(', ');
+    const stmts = INGEST_MANIFEST.map(def =>
+      c.env.DB.prepare(`DELETE FROM ${def.table} WHERE dataset_id IN (${placeholders})`).bind(...datasetIds)
+    );
+    stmts.push(c.env.DB.prepare('DELETE FROM assessment_datasets WHERE assessment_id = ?').bind(assessmentId));
+    await c.env.DB.batch(stmts);
+  }
+
   await c.env.DB.prepare('DELETE FROM assessments WHERE id = ?')
-    .bind(c.req.param('id')).run();
+    .bind(assessmentId).run();
 
   return c.json({ success: true });
 });
