@@ -30,6 +30,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import { JourneyHome } from '@/pages/JourneyHome';
+import { api } from '@/lib/api';
 
 describe('JourneyHome', () => {
   beforeEach(() => {
@@ -49,5 +50,13 @@ describe('JourneyHome', () => {
   it('shows the needs-you-now hero when approvals are pending', async () => {
     render(<MemoryRouter><JourneyHome /></MemoryRouter>);
     expect(await screen.findByText(/awaiting your approval/i)).toBeInTheDocument();
+  });
+
+  it('renders em-dash for exposure when assessments are running', async () => {
+    vi.mocked(api.assessments.list).mockResolvedValueOnce({ assessments: [{ id: 'a2', status: 'running', createdAt: '2026-07-02' }] });
+    render(<MemoryRouter><JourneyHome /></MemoryRouter>);
+    expect(await screen.findByText('Data')).toBeInTheDocument();
+    const emDashes = await screen.findAllByText('—');
+    expect(emDashes.length).toBeGreaterThan(0);
   });
 });

@@ -45,17 +45,24 @@ export function JourneyHome() {
       // Exposure needs a second hop: latest complete assessment → findings_summary.
       let exposure: StageInput['exposure'] = null;
       if (assessList.status === 'fulfilled') {
-        const latest = [...assessList.value.assessments]
-          .filter((a) => a.status === 'complete')
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
-        if (!latest) {
+        const assessments = assessList.value.assessments;
+        if (assessments.length === 0) {
+          // No assessments at all: truly zero exposure.
           exposure = { openValueZar: 0, findingCount: 0 };
         } else {
-          try {
-            const detail = await api.assessments.get(latest.id);
-            const s = detail.results?.findings_summary;
-            exposure = s ? { openValueZar: s.total_value_at_risk_zar, findingCount: s.total_count } : { openValueZar: 0, findingCount: 0 };
-          } catch { exposure = null; }
+          const latest = [...assessments]
+            .filter((a) => a.status === 'complete')
+            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+          if (!latest) {
+            // Assessments exist but none complete: exposure is unknown (e.g. still running).
+            exposure = null;
+          } else {
+            try {
+              const detail = await api.assessments.get(latest.id);
+              const s = detail.results?.findings_summary;
+              exposure = s ? { openValueZar: s.total_value_at_risk_zar, findingCount: s.total_count } : { openValueZar: 0, findingCount: 0 };
+            } catch { exposure = null; }
+          }
         }
       }
 
