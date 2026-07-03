@@ -40,4 +40,17 @@ describe('DataPage', () => {
     render(<MemoryRouter><DataPage /></MemoryRouter>);
     expect(await screen.findByText(/connect your data/i)).toBeInTheDocument();
   });
+
+  it('renders sync time unknown for malformed lastSync dates and does not crash', async () => {
+    const { api } = await import('@/lib/api');
+    vi.mocked(api.erp.connections).mockResolvedValueOnce({
+      total: 1,
+      connections: [
+        { id: 'c1', adapterId: 'sap', adapterName: 'SAP S/4HANA', adapterSystem: 'sap', adapterProtocol: 'odata', name: 'Bad Date Source', status: 'active', config: {}, lastSync: 'not-a-date', syncFrequency: 'daily', recordsSynced: 100, connectedAt: '2026-01-01' },
+      ],
+    });
+    render(<MemoryRouter><DataPage /></MemoryRouter>);
+    expect(await screen.findByText('Bad Date Source')).toBeInTheDocument();
+    expect(screen.getByText('sync time unknown')).toBeInTheDocument();
+  });
 });

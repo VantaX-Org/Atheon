@@ -20,6 +20,13 @@ function syncKind(status: string): StatusKind {
   return 'pending';
 }
 
+function syncLabel(lastSync: string | null): string {
+  if (!lastSync) return 'never synced';
+  const d = new Date(lastSync);
+  if (Number.isNaN(d.getTime())) return 'sync time unknown';
+  return `synced ${formatDistanceToNow(d, { addSuffix: true })}`;
+}
+
 export default function DataPage() {
   const role = useAppStore((s) => s.user?.role);
   const [connections, setConnections] = useState<ERPConnection[] | null>(null);
@@ -84,7 +91,7 @@ export default function DataPage() {
                   {c.recordsSynced.toLocaleString()} records
                 </p>
                 <p className="text-caption t-muted">
-                  {c.lastSync ? `synced ${formatDistanceToNow(new Date(c.lastSync), { addSuffix: true })}` : 'never synced'}
+                  {syncLabel(c.lastSync)}
                 </p>
                 <StatusPill status={syncKind(c.status)} />
               </Card>
