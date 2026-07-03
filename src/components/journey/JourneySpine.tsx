@@ -12,9 +12,9 @@ import type { JourneyStage } from '@/lib/journey';
 const MONO = "'Space Mono', ui-monospace, monospace";
 
 const RAG_COLOR: Record<JourneyStage['rag'], string | null> = {
-  green: 'var(--pos, #1a7d4f)',
-  amber: 'var(--warning, #d98a00)',
-  red: 'var(--neg, #c0392b)',
+  green: 'var(--positive)',
+  amber: 'var(--warning)',
+  red: 'var(--neg)',
   none: null,
 };
 
