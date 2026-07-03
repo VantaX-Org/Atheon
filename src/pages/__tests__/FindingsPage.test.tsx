@@ -40,4 +40,12 @@ describe('FindingsPage', () => {
     render(<MemoryRouter><FindingsPage /></MemoryRouter>);
     expect(await screen.findByText(/below the confidence gate/i)).toBeInTheDocument();
   });
+
+  it('shows an honest error state when the assessments list rejects', async () => {
+    const { api } = await import('@/lib/api');
+    vi.mocked(api.assessments.list).mockRejectedValueOnce(new Error('outage'));
+    render(<MemoryRouter><FindingsPage /></MemoryRouter>);
+    expect(await screen.findByText(/couldn't load findings/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no completed analysis yet/i)).not.toBeInTheDocument();
+  });
 });

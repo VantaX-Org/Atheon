@@ -41,6 +41,21 @@ describe('DataPage', () => {
     expect(await screen.findByText(/connect your data/i)).toBeInTheDocument();
   });
 
+  it('shows an honest error state when the connections fetch rejects', async () => {
+    const { api } = await import('@/lib/api');
+    vi.mocked(api.erp.connections).mockRejectedValueOnce(new Error('outage'));
+    render(<MemoryRouter><DataPage /></MemoryRouter>);
+    expect(await screen.findByText(/couldn't load your sources/i)).toBeInTheDocument();
+    expect(screen.queryByText(/connect your data/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the Active pill for an active connection, not Completed', async () => {
+    render(<MemoryRouter><DataPage /></MemoryRouter>);
+    expect(await screen.findByText('Production SAP')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  });
+
   it('renders sync time unknown for malformed lastSync dates and does not crash', async () => {
     const { api } = await import('@/lib/api');
     vi.mocked(api.erp.connections).mockResolvedValueOnce({

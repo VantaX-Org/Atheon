@@ -15,7 +15,7 @@ import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
 import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 
 function syncKind(status: string): StatusKind {
-  if (status === 'active' || status === 'connected') return 'completed';
+  if (status === 'active' || status === 'connected') return status;
   if (status === 'error' || status === 'failed') return 'failed';
   return 'pending';
 }
@@ -29,7 +29,7 @@ function syncLabel(lastSync: string | null): string {
 
 export default function DataPage() {
   const role = useAppStore((s) => s.user?.role);
-  const [connections, setConnections] = useState<ERPConnection[] | null>(null);
+  const [connections, setConnections] = useState<ERPConnection[] | null | 'error'>(null);
   const [latestAssessment, setLatestAssessment] = useState<Assessment | null>(null);
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function DataPage() {
     (async () => {
       const [conns, assess] = await Promise.allSettled([api.erp.connections(), api.assessments.list()]);
       if (cancelled) return;
-      setConnections(conns.status === 'fulfilled' ? conns.value.connections : []);
+      setConnections(conns.status === 'fulfilled' ? conns.value.connections : 'error');
       if (assess.status === 'fulfilled') {
         const latest = [...assess.value.assessments]
           .filter((a) => a.status === 'complete')
@@ -68,6 +68,14 @@ export default function DataPage() {
         <div className="space-y-2" aria-hidden="true">
           {[0, 1, 2].map((i) => <div key={i} className="h-14 rounded animate-pulse" style={{ background: 'var(--border-card)' }} />)}
         </div>
+      ) : connections === 'error' ? (
+        <Card className="p-8 text-center">
+          <Database size={22} className="mx-auto t-muted" aria-hidden="true" />
+          <p className="mt-3 t-primary font-medium">Couldn't load your sources.</p>
+          <p className="mt-1 text-caption t-muted">
+            Refresh to try again — this is a loading problem, not your data.
+          </p>
+        </Card>
       ) : connections.length === 0 ? (
         <Card className="p-8 text-center">
           <Database size={22} className="mx-auto t-muted" aria-hidden="true" />

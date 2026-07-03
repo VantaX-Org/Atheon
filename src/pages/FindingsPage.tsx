@@ -17,7 +17,7 @@ import { FindingsReviewTable } from '@/components/dashboard/FindingsReviewTable'
 
 export default function FindingsPage() {
   const currency = useTenantCurrency();
-  const [summary, setSummary] = useState<AssessmentFindingsSummary | null | 'empty'>(null);
+  const [summary, setSummary] = useState<AssessmentFindingsSummary | null | 'empty' | 'error'>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +31,7 @@ export default function FindingsPage() {
         const detail = await api.assessments.get(latest.id);
         if (!cancelled) setSummary(detail.results?.findings_summary ?? 'empty');
       } catch {
-        if (!cancelled) setSummary('empty');
+        if (!cancelled) setSummary('error');
       }
     })();
     return () => { cancelled = true; };
@@ -49,6 +49,10 @@ export default function FindingsPage() {
       <Card className="p-6 mb-8">
         {summary === null ? (
           <div className="h-10 w-48 rounded animate-pulse" aria-hidden="true" style={{ background: 'var(--border-card)' }} />
+        ) : summary === 'error' ? (
+          <p className="t-muted">
+            Couldn't load findings. Refresh to try again — this is a loading problem, not your data.
+          </p>
         ) : summary === 'empty' ? (
           <p className="t-muted">
             No completed analysis yet — <Link to="/data" className="text-accent hover:underline">connect your data</Link> to run one.
