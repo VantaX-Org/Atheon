@@ -5,7 +5,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
 
 const ROUTE_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Home',
+  data: 'Data',
+  findings: 'Findings',
   apex: 'Apex',
   brief: 'Leadership Brief',
   pulse: 'Pulse',

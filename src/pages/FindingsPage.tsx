@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { FindingsReviewTable } from '@/components/dashboard/FindingsReviewTable';
+import { latestCompleteAssessment } from '@/lib/latest-assessment';
 
 export default function FindingsPage() {
   const currency = useTenantCurrency();
@@ -24,9 +25,7 @@ export default function FindingsPage() {
     (async () => {
       try {
         const { assessments } = await api.assessments.list();
-        const latest = [...assessments]
-          .filter((a) => a.status === 'complete')
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+        const latest = latestCompleteAssessment(assessments);
         if (!latest) { if (!cancelled) setSummary('empty'); return; }
         const detail = await api.assessments.get(latest.id);
         if (!cancelled) setSummary(detail.results?.findings_summary ?? 'empty');

@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { useAppStore, useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import { buildJourneyStages, type StageInput } from '@/lib/journey';
+import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import { JourneySpine } from '@/components/journey/JourneySpine';
 import { ActionQueuePanel } from '@/components/dashboard/ActionQueuePanel';
 import { PageHeader } from '@/components/ui/page-header';
@@ -50,9 +51,7 @@ export function JourneyHome() {
           // No assessments at all: truly zero exposure.
           exposure = { openValueZar: 0, findingCount: 0 };
         } else {
-          const latest = [...assessments]
-            .filter((a) => a.status === 'complete')
-            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+          const latest = latestCompleteAssessment(assessments);
           if (!latest) {
             // Assessments exist but none complete: exposure is unknown (e.g. still running).
             exposure = null;

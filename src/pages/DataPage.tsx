@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
 import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
+import { latestCompleteAssessment } from '@/lib/latest-assessment';
 
 function syncKind(status: string): StatusKind {
   if (status === 'active' || status === 'connected') return status;
@@ -39,10 +40,7 @@ export default function DataPage() {
       if (cancelled) return;
       setConnections(conns.status === 'fulfilled' ? conns.value.connections : 'error');
       if (assess.status === 'fulfilled') {
-        const latest = [...assess.value.assessments]
-          .filter((a) => a.status === 'complete')
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
-        setLatestAssessment(latest ?? null);
+        setLatestAssessment(latestCompleteAssessment(assess.value.assessments));
       }
     })();
     return () => { cancelled = true; };

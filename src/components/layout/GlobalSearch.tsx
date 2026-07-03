@@ -49,8 +49,10 @@ interface RouteHit {
 }
 
 const ROUTES: RouteHit[] = [
-  // Intelligence
-  { section: 'Intelligence', label: 'Dashboard',     path: '/dashboard',         haystack: 'dashboard home overview', Icon: LayoutDashboard },
+  // Intelligence — the journey rail (Home · Data · Findings · Fixes · Savings · Reports)
+  { section: 'Intelligence', label: 'Home',          path: '/dashboard',         haystack: 'home dashboard overview journey', Icon: LayoutDashboard },
+  { section: 'Intelligence', label: 'Data',          path: '/data',              haystack: 'data connect sources erp sync connections freshness', Icon: Cable, roles: STANDARD_ROLES },
+  { section: 'Intelligence', label: 'Findings',      path: '/findings',          haystack: 'findings detect exposure value at risk discrepancies', Icon: ClipboardList, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Apex',          path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', Icon: Gem, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'Pulse',         path: '/pulse',             haystack: 'pulse process intelligence anomalies metrics', Icon: Activity, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Fixes',         path: '/catalysts',         haystack: 'fixes catalysts autonomous execution clusters', Icon: Zap, roles: OPERATOR_ROLES },
