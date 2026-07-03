@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
+import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
 import { SavingsPipeline } from '@/components/roi/SavingsPipeline';
@@ -114,6 +115,7 @@ export default function ROIDashboardPage(): JSX.Element {
         title="ROI Dashboard"
         dek="Financial Proof & Inference Calibration"
       />
+      <JourneyStageBar current="recover" />
 
       {/* Wave H-3: ROI's anchor IS the realised-savings figure — the whole
           page exists to prove "you banked R{X} before we billed you R{Y}".

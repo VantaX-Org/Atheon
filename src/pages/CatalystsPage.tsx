@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem, SuccessStoriesResponse } from "@/lib/api";
 import { SuccessStoryCard } from "@/components/ui/success-story-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Numeric } from "@/components/ui/numeric";
@@ -1119,10 +1120,8 @@ export function CatalystsPage() {
  <SharedSavingsStrip />
  <PageHeader
   eyebrow="Catalysts · Autonomous Execution"
-  title={`${clusters.length} Catalyst${clusters.length === 1 ? '' : 's'}`}
-  dek={clusters.length > 0
-   ? `${clusters.length} catalyst${clusters.length === 1 ? '' : 's'} live across your close — ${actions.length} action${actions.length === 1 ? '' : 's'} logged${exceptionCount > 0 ? `, ${exceptionCount} need${exceptionCount === 1 ? 's' : ''} review` : ''}.`
-   : 'No catalysts configured yet. Connect a source system to orchestrate autonomous execution.'}
+  title="Fixes"
+  dek="Catalyst runs — automated remediations, approvals, and the value ledger behind every recovered Rand."
   actions={
    <div className="flex items-center gap-2 flex-shrink-0">
     <SectionFreshness section="Catalyst Runs" />
@@ -1131,6 +1130,7 @@ export function CatalystsPage() {
    </div>
   }
  />
+ <JourneyStageBar current="fix" />
 
  {/* Wave H-4 hero band — Catalysts anchor is autonomous-execution count.
      Total tasks completed across all clusters reads at .text-hero scale;

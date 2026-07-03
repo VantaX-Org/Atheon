@@ -1,10 +1,11 @@
 /**
- * Sidebar — Higgsfield "Atheon Executive" curated nav (v4 mockup).
+ * Sidebar — the plain-language journey rail.
  *
- * The primary navigation is a FLAT, six-item executive rail lifted from
- * docs/ui-redesign/higgsfield/v4-01-dashboard.png:
+ * The primary navigation walks the five-stage value loop in loop order —
+ * CONNECT → DETECT → FIX → RECOVER → REPORT (spec 2026-07-03) — labelled in
+ * everyday words rather than product nouns:
  *
- *   DASHBOARD · ASSURANCE · SAVINGS · FINDINGS · REPORTS · SETTINGS
+ *   HOME · DATA · FINDINGS · FIXES · SAVINGS · REPORTS · SETTINGS
  *
  * Each row is a small outline icon + a Space-Mono UPPERCASE label. The active
  * row gets a 3px royal-blue left-rule and an accent-subtle wash (Luminous
@@ -74,13 +75,15 @@ interface NavGroup {
   children: NavItem[];
 }
 
-// The curated six-item executive rail (mockup v4-01).
+// The journey rail — the five-stage value loop in plain language, in loop
+// order: CONNECT → DETECT → FIX → RECOVER → REPORT (spec 2026-07-03).
 const PRIMARY: NavItem[] = [
-  { path: '/dashboard',         label: 'Dashboard',  icon: LayoutDashboard, roles: STANDARD_ROLES },
-  { path: '/trust',             label: 'Assurance',  icon: ShieldCheck,     roles: STANDARD_ROLES },
-  { path: '/roi-dashboard',     label: 'Savings',    icon: PiggyBank,       roles: EXECUTIVE_ROLES },
-  { path: '/catalysts',         label: 'Catalysts',  icon: ClipboardCheck,  roles: OPERATOR_ROLES },
-  { path: '/executive-summary', label: 'Reports',    icon: FileText,        roles: EXECUTIVE_ROLES },
+  { path: '/dashboard',         label: 'Home',     icon: LayoutDashboard, roles: STANDARD_ROLES },
+  { path: '/data',              label: 'Data',     icon: Cable,           roles: STANDARD_ROLES },
+  { path: '/findings',          label: 'Findings', icon: ClipboardList,   roles: STANDARD_ROLES },
+  { path: '/catalysts',         label: 'Fixes',    icon: ClipboardCheck,  roles: OPERATOR_ROLES },
+  { path: '/roi-dashboard',     label: 'Savings',  icon: PiggyBank,       roles: EXECUTIVE_ROLES },
+  { path: '/executive-summary', label: 'Reports',  icon: FileText,        roles: EXECUTIVE_ROLES },
 ];
 
 // Product pages beyond the core six — collapsed by default so the rail stays
@@ -89,6 +92,7 @@ const WORKSPACE: NavGroup = {
   key: 'workspace',
   label: 'Workspace',
   children: [
+    { path: '/trust',        label: 'Trust',        icon: ShieldCheck, roles: STANDARD_ROLES },
     { path: '/apex',         label: 'Apex',         icon: Gem,         roles: EXECUTIVE_ROLES },
     { path: '/pulse',        label: 'Pulse',        icon: Activity,    roles: STANDARD_ROLES },
     { path: '/board-digest', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
