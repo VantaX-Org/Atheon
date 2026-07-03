@@ -1114,9 +1114,11 @@ Expected: all clean. Also `grep -rn "value-assessment" src --include="*.tsx"` �
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A
+git add src/components/layout/Sidebar.tsx src/components/layout/__tests__/Sidebar.test.tsx src/pages/CatalystsPage.tsx src/pages/ROIDashboardPage.tsx src/pages/ExecutiveSummaryPage.tsx
 git commit -m "feat(journey): plain-language journey sidebar + stage bars + Fixes rename"
 ```
+
+(Never `git add -A` — the working tree holds unrelated untracked files.)
 
 ---
 
@@ -1150,6 +1152,6 @@ Start `npm run dev`, log in with the dev seed, and screenshot: `/dashboard` (spi
 - [ ] **Step 5: Commit any fixes**
 
 ```bash
-git add -A && git commit -m "test(journey): verification sweep fixes"
+git add <only the files you changed> && git commit -m "test(journey): verification sweep fixes"
 ```
-(skip if nothing changed)
+(skip if nothing changed; never `git add -A` — the working tree holds unrelated untracked files)
