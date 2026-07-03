@@ -34,15 +34,15 @@ const SEVERITY_CHIP: Record<Severity, { label: string; color: string; bg: string
 
 const TITLE = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function FindingsReviewTable() {
-  const findings = useLatestFindings(6);
+export function FindingsReviewTable({ limit = 6 }: { limit?: number } = {}) {
+  const findings = useLatestFindings(limit);
   const currency = 'ZAR';
 
   return (
     <section aria-label="Findings and field mapping review" className="pt-7" style={{ borderTop: '1px solid var(--border-card)' }}>
       <div className="flex items-center justify-between mb-4">
         <p className="text-label" style={{ color: 'var(--text-muted)' }}>FINDINGS &amp; FIELD MAPPING REVIEW</p>
-        <Link to="/value-assessment" className="text-caption text-accent hover:underline inline-flex items-center gap-1 font-medium">
+        <Link to="/findings" className="text-caption text-accent hover:underline inline-flex items-center gap-1 font-medium">
           All findings <ArrowRight size={11} />
         </Link>
       </div>

@@ -37,6 +37,7 @@ const StatusIncidentsAdminPage = lazyWithRetry(() => import("@/pages/admin/Statu
 // ApexBriefPage retired 2026-05-12 — duplicated ExecutiveSummaryPage with
 // a slimmer LLM-only layout. /apex/brief now redirects to /executive-summary.
 const DataPage = lazyWithRetry(() => import("@/pages/DataPage"));
+const FindingsPage = lazyWithRetry(() => import("@/pages/FindingsPage"));
 const PulsePage = lazyWithRetry(() => import("@/pages/PulsePage").then(m => ({ default: m.PulsePage })));
 const CatalystsPage = lazyWithRetry(() => import("@/pages/CatalystsPage").then(m => ({ default: m.CatalystsPage })));
 const CatalystRunDetailPage = lazyWithRetry(() => import("@/pages/CatalystRunDetailPage").then(m => ({ default: m.CatalystRunDetailPage })));
@@ -177,6 +178,7 @@ export default function App() {
                 operational data they shouldn't have access to. */}
             <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
             <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
+            <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
             {/* Guided onboarding wizard — full-screen version of the
                 Dashboard's OnboardingChecklist, walks the user through the
                 7 week-1 stop-gates with deep-link CTAs. Open to all auth users
