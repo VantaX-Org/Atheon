@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
 
@@ -55,8 +55,11 @@ describe('JourneyHome', () => {
   it('renders em-dash for exposure when assessments are running', async () => {
     vi.mocked(api.assessments.list).mockResolvedValueOnce({ assessments: [{ id: 'a2', status: 'running', createdAt: '2026-07-02' }] });
     render(<MemoryRouter><JourneyHome /></MemoryRouter>);
-    expect(await screen.findByText('Data')).toBeInTheDocument();
-    const emDashes = await screen.findAllByText('—');
-    expect(emDashes.length).toBeGreaterThan(0);
+    // Scope to the Detect stage card: its headline must be an em-dash while the
+    // assessment is still running (the Reports card always renders '—', so an
+    // unscoped query would pass vacuously).
+    const detectCard = (await screen.findByText('Findings')).closest('li');
+    expect(detectCard).not.toBeNull();
+    expect(within(detectCard as HTMLElement).getByText('—')).toBeInTheDocument();
   });
 });

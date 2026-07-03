@@ -53,7 +53,7 @@ const ROUTES: RouteHit[] = [
   { section: 'Intelligence', label: 'Dashboard',     path: '/dashboard',         haystack: 'dashboard home overview', Icon: LayoutDashboard },
   { section: 'Intelligence', label: 'Apex',          path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', Icon: Gem, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'Pulse',         path: '/pulse',             haystack: 'pulse process intelligence anomalies metrics', Icon: Activity, roles: STANDARD_ROLES },
-  { section: 'Intelligence', label: 'Catalysts',     path: '/catalysts',         haystack: 'catalysts autonomous execution clusters', Icon: Zap, roles: OPERATOR_ROLES },
+  { section: 'Intelligence', label: 'Fixes',         path: '/catalysts',         haystack: 'fixes catalysts autonomous execution clusters', Icon: Zap, roles: OPERATOR_ROLES },
   { section: 'Intelligence', label: 'Mind',          path: '/mind',              haystack: 'mind ai model governance configuration', Icon: Brain, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Intelligence', label: 'Memory',        path: '/memory',            haystack: 'memory knowledge graph entities relationships', Icon: MemoryStick, roles: MANAGER_ROLES },
   { section: 'Intelligence', label: 'Trust',         path: '/trust',             haystack: 'trust calibration provenance peers', Icon: ShieldCheck, roles: STANDARD_ROLES },

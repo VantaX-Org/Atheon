@@ -10,7 +10,7 @@ import type { AtheonLayer } from "@/types";
 const LAYER_LABELS: Record<string, string> = {
   apex: 'Apex',
   pulse: 'Pulse',
-  catalysts: 'Catalysts',
+  catalysts: 'Fixes',
   mind: 'Mind',
   memory: 'Memory',
   'control-plane': 'Control Plane',

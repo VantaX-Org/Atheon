@@ -19,6 +19,8 @@ describe('Sidebar journey nav', () => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     expect(screen.queryByText('Savings')).toBeNull();
+    expect(screen.queryByText('Reports')).toBeNull();
+    expect(screen.queryByText('Fixes')).toBeNull();
     expect(screen.queryByText('Catalysts')).toBeNull(); // renamed
   });
 

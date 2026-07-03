@@ -10,7 +10,7 @@ const ROUTE_LABELS: Record<string, string> = {
   brief: 'Leadership Brief',
   pulse: 'Pulse',
   diagnostics: 'Diagnostics',
-  catalysts: 'Catalysts',
+  catalysts: 'Fixes',
   runs: 'Runs',
   mind: 'Mind',
   memory: 'Memory',
