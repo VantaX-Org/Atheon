@@ -60,12 +60,26 @@ const statusBadgeVariant = (status: string): 'success' | 'warning' | 'danger' | 
  return 'info';
 };
 
+/** trust_score / success_rate come from the API on a 0–1 scale (default 0.5),
+ *  but the UI shows them as whole percentages. Scale 0–1 values up; pass through
+ *  anything already on a 0–100 scale. Fixes trust/success rendering as "1%". */
+const pct = (v: number | null | undefined): number => {
+ const n = Number(v) || 0;
+ return n <= 1 ? n * 100 : n;
+};
+
 export function CatalystsPage() {
  const user = useAppStore((s) => s.user);
  const companyId = useSelectedCompanyId();
  const toast = useToast();
  const isAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin' || user?.role === 'executive';
- const { activeTab, setActiveTab } = useTabState('clusters');
+ // Power users (analysts/managers/admins) see the full operational surface;
+ // an ordinary approver (operator) sees only the two tabs their job needs —
+ // Approvals + Recovered Value — so "Fixes" stays a 2-click approve flow.
+ const isPowerUser = isAdmin || user?.role === 'manager' || user?.role === 'analyst';
+ // Approvals is the actionable landing for everyone (and the only default tab
+ // every role is guaranteed to have).
+ const { activeTab, setActiveTab } = useTabState('approvals');
  const currency = useTenantCurrency();
  const [expandedAction, setExpandedAction] = useState<string | null>(null);
  const [clusters, setClusters] = useState<ClusterItem[]>([]);
@@ -988,17 +1002,23 @@ export function CatalystsPage() {
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [activeTab]);
 
+ // Core: what an ordinary approver needs. Power: the operational/analyst
+ // surface. Admin: governance/config. De-jargoned labels ("Catalyst
+ // Clusters"→"Automations", "Value Ledger"→"Recovered Value", "Action Log"→
+ // "Activity", "Review Assignments"→"Reviewers").
  const tabs = [
- { id: 'clusters', label: 'Catalyst Clusters', icon: <Bot size={14} /> },
- { id: 'approvals', label: 'Approvals', icon: <ShieldCheck size={14} /> },
- { id: 'value-ledger', label: 'Value Ledger', icon: <Wallet size={14} /> },
+ { id: 'approvals', label: 'Approvals', icon: <ShieldCheck size={14} />, count: actions.filter(a => a.status === 'pending_approval').length || undefined },
+ { id: 'value-ledger', label: 'Recovered Value', icon: <Wallet size={14} /> },
+  ...(isPowerUser ? [
+ { id: 'clusters', label: 'Automations', icon: <Bot size={14} /> },
  { id: 'intelligence', label: 'Intelligence', icon: <Brain size={14} />, count: intellOverview?.summary?.criticalPatterns || undefined },
  { id: 'success-stories', label: 'Peer Insights', icon: <Sparkles size={14} />, count: successStories?.stories?.length || undefined },
- { id: 'actions', label: 'Action Log', icon: <Zap size={14} />, count: actions.length },
+ { id: 'actions', label: 'Activity', icon: <Zap size={14} />, count: actions.length },
  { id: 'execution-logs', label: 'Execution Logs', icon: <ScrollText size={14} /> },
  { id: 'exceptions', label: 'Exceptions', icon: <AlertTriangle size={14} />, count: exceptionCount },
-  ...(isAdmin ? [{ id: 'hitl-permissions', label: 'Review Assignments', icon: <Users size={14} /> }] : []),
-  { id: 'run-analytics', label: 'Run Analytics', icon: <BarChart3 size={14} /> },
+ { id: 'run-analytics', label: 'Run Analytics', icon: <BarChart3 size={14} /> },
+  ] : []),
+  ...(isAdmin ? [{ id: 'hitl-permissions', label: 'Reviewers', icon: <Users size={14} /> }] : []),
   ...(isAdmin ? [{ id: 'confidence', label: 'Confidence', icon: <SlidersHorizontal size={14} /> }] : []),
   ...(isAdmin ? [{ id: 'governance', label: 'Governance', icon: <Shield size={14} /> }] : []),
  ];
@@ -1119,7 +1139,7 @@ export function CatalystsPage() {
  <div className="space-y-6 animate-fadeIn">
  <SharedSavingsStrip />
  <PageHeader
-  eyebrow="Catalysts · Autonomous Execution"
+  eyebrow="Journey · 03 Fix"
   title="Fixes"
   dek="Catalyst runs — automated remediations, approvals, and the value ledger behind every recovered Rand."
   actions={
@@ -1140,7 +1160,7 @@ export function CatalystsPage() {
   const totalTasks = clusters.reduce((s, c) => s + (Number(c.tasksCompleted) || 0), 0);
   const activeCount = clusters.filter(c => c.status === 'active').length;
   const avgTrust = clusters.length > 0
-   ? clusters.reduce((s, c) => s + (Number(c.trustScore) || 0), 0) / clusters.length
+   ? clusters.reduce((s, c) => s + pct(c.trustScore), 0) / clusters.length
    : 0;
   // Pipeline health reads off exceptions awaiting review: clear ⇒ healthy,
   // any open exception ⇒ watch. This is presentation of existing data only.
@@ -1339,9 +1359,9 @@ export function CatalystsPage() {
  <div className="mt-4">
  <div className="flex items-center justify-between mb-1.5">
  <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Trust Score</span>
- <span className="text-caption font-mono font-semibold t-secondary tabular-nums">{Number(cluster.trustScore).toFixed(0)}%</span>
+ <span className="text-caption font-mono font-semibold t-secondary tabular-nums">{pct(cluster.trustScore).toFixed(0)}%</span>
  </div>
- <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : cluster.trustScore >= 80 ? 'blue' : 'amber'} size="sm" />
+ <Progress value={pct(cluster.trustScore)} color={pct(cluster.trustScore) >= 90 ? 'emerald' : pct(cluster.trustScore) >= 80 ? 'blue' : 'amber'} size="sm" />
  </div>
 
  {/* Hero metric anchors the card bottom-left; supporting agents / success
@@ -1363,7 +1383,7 @@ export function CatalystsPage() {
    <div>
     <span className="hero-eyebrow" style={{ color: 'var(--text-muted)' }}>Success</span>
     <p className="text-body font-semibold tabular-nums font-mono mt-1" style={{ color: 'var(--positive)' }}>
-     {Number(cluster.successRate).toFixed(0)}<span className="text-caption">%</span>
+     {pct(cluster.successRate).toFixed(0)}<span className="text-caption">%</span>
     </p>
    </div>
   </div>
@@ -1858,8 +1878,8 @@ export function CatalystsPage() {
  <div key={cluster.id} className="flex items-center justify-between">
  <span className="text-sm t-secondary truncate">{cluster.name}</span>
  <div className="flex items-center gap-2">
- <Progress value={cluster.trustScore} color={cluster.trustScore >= 90 ? 'emerald' : 'amber'} size="sm" className="w-20" />
- <span className="text-sm font-medium t-primary w-10 text-right">{Number(cluster.trustScore).toFixed(1)}%</span>
+ <Progress value={pct(cluster.trustScore)} color={pct(cluster.trustScore) >= 90 ? 'emerald' : 'amber'} size="sm" className="w-20" />
+ <span className="text-sm font-medium t-primary w-10 text-right">{pct(cluster.trustScore).toFixed(1)}%</span>
  </div>
  </div>
  ))}

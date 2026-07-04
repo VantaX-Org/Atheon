@@ -103,10 +103,13 @@ export function ApprovalQueuePanel() {
     setError(null);
     try {
       const resp = await api.catalysts.pendingApprovals();
-      setData(resp);
+      // Never trust the shape: a malformed/empty response must not crash the
+      // render (this is the default landing tab now). Normalise to a real array.
+      const approvals = Array.isArray(resp?.approvals) ? resp.approvals : [];
+      setData({ approvals, total: typeof resp?.total === 'number' ? resp.total : approvals.length });
       // Prune selection of IDs that disappeared.
       setSelected((prev) => {
-        const ids = new Set(resp.approvals.map((a) => a.id));
+        const ids = new Set(approvals.map((a) => a.id));
         const next = new Set<string>();
         prev.forEach((id) => { if (ids.has(id)) next.add(id); });
         return next;
