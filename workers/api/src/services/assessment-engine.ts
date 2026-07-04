@@ -2492,12 +2492,13 @@ export async function runAssessment(
     cp('5b.persist.done');
 
     // 6. Generate narrative
-    const baselineSaving = catalystScores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
-    // Findings give us a quantified, evidence-backed second opinion on saving
-    // potential. Take the maximum of the two so the report leads with the
-    // larger, better-grounded number when findings produce more value than
-    // the volume-percentage heuristic.
-    const totalSaving = Math.max(baselineSaving, findingsSummary.total_value_at_risk_zar);
+    // The headline is the gated, confidence-passed, per-record-traceable total
+    // from the detector engine — NEVER the volume-percentage catalyst heuristic.
+    // Previously this took max(heuristic, gated), which let an untraceable
+    // heuristic lead the report whenever it exceeded the confirmed total —
+    // a strong-inference violation. The catalyst-score projection is still
+    // surfaced per-catalyst as modelled potential; it is not the confirmed headline.
+    const totalSaving = findingsSummary.total_value_at_risk_zar;
     const annualLicence = config.deployment_model === 'saas'
       ? technicalSizing.annual_licence_revenue
       : config.deployment_model === 'hybrid' ? config.hybrid_licence_fee_pa : config.onprem_licence_fee_pa;

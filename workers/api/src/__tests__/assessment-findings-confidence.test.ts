@@ -68,15 +68,15 @@ describe('finding classification maps', () => {
     }
   });
 
-  it('locks the direct / inferred split (26 direct, 14 inferred)', () => {
+  it('locks the direct / inferred split (23 direct, 17 inferred)', () => {
     const direct = ALL_CODES.filter(c => FINDING_INFERENCE_KIND[c] === 'direct');
-    expect(direct.length).toBe(26);
-    expect(ALL_CODES.length - direct.length).toBe(14);
+    expect(direct.length).toBe(23);
+    expect(ALL_CODES.length - direct.length).toBe(17);
   });
 
   it('treats observed facts as direct', () => {
     for (const c of [
-      'ar_aging_overdue_90_plus',
+      'ar_credit_limit_breach',
       'ap_three_way_mismatch',
       'inv_dead_stock',
       'hr_terminated_in_payroll',
@@ -89,6 +89,7 @@ describe('finding classification maps', () => {
 
   it('treats ratios / heuristics / trends as inferred', () => {
     for (const c of [
+      'ar_aging_overdue_90_plus',
       'ar_top_debtor_concentration',
       'gl_round_amount_journals',
       'proc_maverick_spend',
@@ -103,7 +104,7 @@ describe('finding classification maps', () => {
 
 describe('makeFinding confidence wiring', () => {
   it('direct observation is 0.95 and never gated, even for a tiny sample', () => {
-    const f = makeFinding(baseArgs('ar_aging_overdue_90_plus', 3));
+    const f = makeFinding(baseArgs('ar_credit_limit_breach', 3));
     expect(f.confidence).toBe(0.95);
     expect(f.confidence_gate_passed).toBe(true);
     expect(f.confidence_explanation).toContain('Direct ERP observation');
@@ -145,7 +146,7 @@ describe('summariseFindings — confirmed vs unverified split', () => {
   // A DIRECT finding always passes the gate (confirmed); an INFERRED finding
   // below the sample minimum (25) fails the gate (unverified/indicative).
   const confirmed = () => {
-    const a = baseArgs('ar_aging_overdue_90_plus', 3);
+    const a = baseArgs('ar_credit_limit_breach', 3);
     a.value_at_risk_zar = 4000;
     const f = makeFinding(a);
     expect(f.confidence_gate_passed).toBe(true); // sanity: direct = confirmed
