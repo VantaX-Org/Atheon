@@ -2,12 +2,13 @@
  * §11.1 Trial Assessment Page — Public route (no auth required)
  * Multi-step wizard: Company Info → Upload CSV → Processing → Results
  */
-import { useState } from 'react';
-import { api } from '@/lib/api';
+import { useRef, useState } from 'react';
+import { api, ApiError } from '@/lib/api';
 import type { TrialResultsResponse } from '@/lib/api';
-import { formatCompactCurrency } from '@/lib/format-currency';
+import { formatCompactCurrency, formatFullCurrency } from '@/lib/format-currency';
+import { parseCsv, downloadTemplate, INGEST_DOMAINS } from '@/lib/ingest-client';
 import { useTenantCurrency } from '@/stores/appStore';
-import { Upload, CheckCircle2, AlertTriangle, ArrowRight, Loader2, Shield, BarChart3, TrendingUp, FileText, Lock } from 'lucide-react';
+import { Upload, CheckCircle2, AlertTriangle, ArrowRight, Loader2, Shield, BarChart3, TrendingUp, FileText, Lock, Download } from 'lucide-react';
 
 type Step = 'info' | 'upload' | 'processing' | 'results';
 
@@ -34,6 +35,12 @@ export function TrialPage() {
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
 
+  // Upload state — the prospect picks which domain their CSV represents (the
+  // lazy honest alternative to a column-mapping wizard) and uploads a real file.
+  const [domain, setDomain] = useState('invoices');
+  const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleStart = async () => {
     if (!companyName || !contactName || !contactEmail) {
       setError('Please fill in all required fields');
@@ -53,17 +60,28 @@ export function TrialPage() {
 
   const handleUpload = async () => {
     if (!trialId) return;
+    if (!file) {
+      setError('Please choose a CSV file to upload.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      // Simulate CSV upload metadata (in production this would parse an actual file)
-      await api.trial.upload(trialId, { filename: 'trial-data.csv', row_count: 100, columns: ['date', 'amount', 'category', 'status'] });
+      // Parse the prospect's REAL file into { header, rows } and ingest it under
+      // the chosen domain. The detectors run on exactly these rows.
+      const { header, rows } = await parseCsv(file);
+      if (!rows.length) throw new Error('That CSV had no data rows.');
+      await api.trial.upload(trialId, { domains: { [domain]: { header, rows } } });
       await api.trial.run(trialId);
       setStep('processing');
-      // Poll for completion
       pollStatus(trialId);
     } catch (err) {
-      setError((err as Error).message);
+      // Surface validation errors (422) honestly — e.g. columns that don't match
+      // the template — rather than silently dropping the upload.
+      const e = err as Error;
+      const body = err instanceof ApiError ? (err.body as { errors?: Array<{ message: string }> } | undefined) : undefined;
+      const detail = body?.errors?.length ? `${e.message}: ${body.errors.slice(0, 3).map(x => x.message).join('; ')}` : e.message;
+      setError(detail);
       setLoading(false);
     }
   };
@@ -260,21 +278,52 @@ export function TrialPage() {
           <div className="rounded-lg border p-8 max-w-2xl mx-auto" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }}>
             <p className="text-label mb-2">Step 02</p>
             <h2 className="text-2xl font-bold t-primary mb-1">Upload Your Data</h2>
-            <p className="t-secondary text-sm mb-6">Upload a CSV file with your transactional or operational data for analysis.</p>
+            <p className="t-secondary text-sm mb-6">Choose which data this file holds, then upload a CSV. We detect exposure only from the real rows you provide — nothing is invented.</p>
 
+            {/* Domain picker — the prospect tells us what the file is (lightweight, honest) */}
+            <div className="mb-4">
+              <label className="block text-label mb-1.5">Data Type</label>
+              <select
+                value={domain} onChange={(e) => setDomain(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-sm border t-primary text-sm focus:outline-none focus:border-[var(--accent)] transition-colors"
+                style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-card)' }}
+              >
+                {INGEST_DOMAINS.map((d) => (
+                  <option key={d.domain} value={d.domain} style={{ background: 'var(--bg-card-solid)' }}>{d.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => downloadTemplate(domain)}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+              >
+                <Download size={12} aria-hidden="true" />
+                Download the {domain} column template
+              </button>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+            />
             <div
+              role="button" tabIndex={0}
               className="border-2 border-dashed rounded-sm p-12 cursor-pointer active:scale-[0.99] text-center transition-colors hover:border-[var(--accent)]"
-              style={{ borderColor: 'var(--border-card)', background: 'var(--bg-secondary)' }}
-              onClick={handleUpload}
+              style={{ borderColor: file ? 'var(--accent)' : 'var(--border-card)', background: 'var(--bg-secondary)' }}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
             >
-              <Upload size={40} className="mx-auto mb-4 t-muted" aria-hidden="true" />
-              <p className="text-sm t-primary font-medium mb-1">Click to upload CSV</p>
-              <p className="text-xs t-muted">Or drag and drop your file here</p>
+              {file ? <CheckCircle2 size={40} className="mx-auto mb-4 text-accent" aria-hidden="true" /> : <Upload size={40} className="mx-auto mb-4 t-muted" aria-hidden="true" />}
+              <p className="text-sm t-primary font-medium mb-1">{file ? file.name : 'Click to choose a CSV'}</p>
+              <p className="text-xs t-muted">{file ? 'Ready to analyse — click Run Assessment' : 'Headers must match the template above'}</p>
             </div>
 
             <button
               onClick={handleUpload}
-              disabled={loading}
+              disabled={loading || !file}
               className="mt-6 w-full py-3 rounded-sm bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)] font-medium text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.97]"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : <BarChart3 size={16} />}
@@ -324,79 +373,78 @@ export function TrialPage() {
               </p>
             </div>
 
-            {/* Hero metric + supporting metrics */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 items-stretch">
-              {/* Hero: Health Score */}
-              <div className="rounded-lg border p-7 flex flex-col justify-between" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-label">Health Score</p>
-                  <span className="pill-success inline-flex items-center rounded-full border px-3 py-1 text-label">Assessed</span>
-                </div>
-                <div className="flex items-end gap-3 mt-4">
-                  <span className="text-7xl font-bold font-mono tnum text-accent leading-none">{results.healthScore ?? '—'}</span>
-                  <span className="text-label mb-2">/ 100</span>
-                </div>
-              </div>
-
-              {/* Issues + ROI stacked */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="rounded-lg border p-6 flex flex-col justify-between" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }}>
-                  <p className="text-label">Issues Found</p>
-                  <span className="text-4xl font-bold font-mono tnum mt-4" style={{ color: 'var(--warning)' }}>{results.issuesFound ?? 0}</span>
-                </div>
-                <div className="rounded-lg border p-6 flex flex-col justify-between" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-label">Projected ROI</p>
-                    <TrendingUp size={16} className="text-accent" aria-hidden="true" />
+            {/* Honest insufficient-data state — no number is shown */}
+            {results.insufficientData ? (
+              <div className="rounded-lg border p-8" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }} data-testid="insufficient-data">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} style={{ color: 'var(--warning)' }} className="shrink-0 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <h3 className="text-lg font-semibold t-primary mb-1">We couldn't confirm exposure from this data</h3>
+                    <p className="text-sm t-secondary max-w-xl">
+                      Nothing in the uploaded file cleared our confidence gate, so we won't put a number on it —
+                      a fabricated figure would be worse than none. Richer data (more rows, or additional data types
+                      like purchase orders and bank transactions) lets our detectors confirm real Rand exposure.
+                      Book a call and we'll walk your data through it.
+                    </p>
                   </div>
-                  <span className="text-4xl font-bold font-mono tnum text-accent mt-4">
-                    {results.projectedRoi ? `${results.projectedRoi.toFixed(1)}x` : '—'}
-                  </span>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Hero: detected exposure — Σ confidence-gated findings, ERP-evidenced */}
+                <div className="rounded-lg border p-7" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }} data-testid="exposure-hero">
+                  <div className="flex items-center justify-between">
+                    <p className="text-label">Detected Exposure</p>
+                    <span className="pill-success inline-flex items-center rounded-full border px-3 py-1 text-label">ERP-evidenced</span>
+                  </div>
+                  <div className="mt-3 text-5xl sm:text-6xl font-bold font-mono tnum leading-none" style={{ color: 'var(--neg)' }}>
+                    {formatFullCurrency(results.estimatedExposure, currency)}
+                  </div>
+                  <p className="text-sm t-secondary mt-3">
+                    Across {results.issuesFound ?? 0} finding{results.issuesFound === 1 ? '' : 's'} · every Rand traces to your uploaded rows
+                  </p>
+                </div>
 
-            {/* Risks & Opportunities */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {results.topRisks.length > 0 && (
-                <div className="rounded-lg p-6 border" style={{ background: 'var(--bg-card-solid)', borderColor: `rgb(var(--neg-rgb) / 0.22)`, boxShadow: 'var(--shadow-card)' }}>
-                  <h3 className="text-label mb-4 flex items-center gap-2" style={{ color: 'var(--neg)' }}>
-                    <AlertTriangle size={13} aria-hidden="true" /> Top Risks
-                  </h3>
-                  <ul className="space-y-3">
-                    {results.topRisks.map((risk, i) => (
-                      <li key={i} className="text-sm t-secondary flex items-start gap-2">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--neg)' }} aria-hidden="true" />
-                        <div>
-                          <span className="font-medium t-primary">{risk.title}</span>
-                          <span className="t-muted"> — {risk.description}</span>
-                          {risk.impact > 0 && <span className="font-mono tnum ml-1" style={{ color: 'var(--neg)' }}>({formatCompactCurrency(risk.impact, currency)})</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {results.topOpportunities.length > 0 && (
-                <div className="rounded-lg p-6 border" style={{ background: 'var(--bg-card-solid)', borderColor: `rgb(var(--accent-rgb) / 0.22)`, boxShadow: 'var(--shadow-card)' }}>
-                  <h3 className="text-label text-accent mb-4 flex items-center gap-2">
-                    <TrendingUp size={13} aria-hidden="true" /> Top Opportunities
-                  </h3>
-                  <ul className="space-y-3">
-                    {results.topOpportunities.map((opp, i) => (
-                      <li key={i} className="text-sm t-secondary flex items-start gap-2">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-                        <div>
-                          <span className="font-medium t-primary">{opp.title}</span>
-                          <span className="t-muted"> — {opp.description}</span>
-                          {opp.value > 0 && <span className="text-accent font-mono tnum ml-1">({formatCompactCurrency(opp.value, currency)})</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+                {/* Findings — each is real, gated, drillable to affected records */}
+                {results.findings.length > 0 && (
+                  <div className="rounded-lg border p-6" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }}>
+                    <h3 className="text-label mb-4">Findings</h3>
+                    <ul className="space-y-3">
+                      {results.findings.slice(0, 12).map((f, i) => (
+                        <li key={i} className="flex items-start justify-between gap-3 border-b last:border-0 pb-3 last:pb-0" style={{ borderColor: 'var(--divider)' }}>
+                          <div>
+                            <span className="text-sm font-medium t-primary">{f.title}</span>
+                            <span className="text-xs t-muted ml-2">{f.affected_count} record{f.affected_count === 1 ? '' : 's'} · ~{Math.round(f.confidence * 100)}% confidence</span>
+                          </div>
+                          <span className="font-mono tnum text-sm shrink-0" style={{ color: 'var(--neg)' }}>{formatCompactCurrency(f.value_at_risk_zar, currency)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Exposure by category — derived from real findings, not invented splits */}
+                {results.topRisks.length > 0 && (
+                  <div className="rounded-lg p-6 border" style={{ background: 'var(--bg-card-solid)', borderColor: `rgb(var(--neg-rgb) / 0.22)`, boxShadow: 'var(--shadow-card)' }}>
+                    <h3 className="text-label mb-4 flex items-center gap-2" style={{ color: 'var(--neg)' }}>
+                      <AlertTriangle size={13} aria-hidden="true" /> Exposure by Area
+                    </h3>
+                    <ul className="space-y-3">
+                      {results.topRisks.map((risk, i) => (
+                        <li key={i} className="text-sm t-secondary flex items-start gap-2">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: 'var(--neg)' }} aria-hidden="true" />
+                          <div>
+                            <span className="font-medium t-primary">{risk.title}</span>
+                            <span className="t-muted"> — {risk.description}</span>
+                            {risk.impact > 0 && <span className="font-mono tnum ml-1" style={{ color: 'var(--neg)' }}>({formatCompactCurrency(risk.impact, currency)})</span>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Upgrade CTA — royal-blue accent card */}
             <div
@@ -409,29 +457,31 @@ export function TrialPage() {
             >
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 items-center">
                 <div>
-                  <p className="text-label text-accent mb-2">Unlock Everything</p>
-                  <h3 className="text-2xl font-bold t-primary mb-1">Start Your Full Atheon Journey</h3>
-                  <p className="text-sm t-secondary max-w-lg">Full historical analysis, unlimited collaborators, priority support, and AI-driven risk assessment across your entire operation.</p>
+                  <p className="text-label text-accent mb-2">Recover This</p>
+                  <h3 className="text-2xl font-bold t-primary mb-1">{results.insufficientData ? 'Talk to us about your data' : 'Want us to recover this exposure?'}</h3>
+                  <p className="text-sm t-secondary max-w-lg">Book a call and our team will walk your ERP data through the full engine — historical analysis, root-cause, and a recovery plan tied to real Rand.</p>
                 </div>
                 <div className="flex flex-col gap-3 md:items-end">
                   <a href="/login" className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-sm bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)] font-medium text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
                     <ArrowRight size={16} aria-hidden="true" />
-                    Get Started
+                    Book a call
                   </a>
-                  <button
-                    onClick={async () => {
-                      if (trialId) {
-                        try {
-                          await api.trial.report(trialId);
-                        } catch { /* report generation is best-effort */ }
-                      }
-                    }}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm border t-primary text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
-                    style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }}
-                  >
-                    <FileText size={14} aria-hidden="true" />
-                    Download Full Report
-                  </button>
+                  {!results.insufficientData && (
+                    <button
+                      onClick={async () => {
+                        if (trialId) {
+                          try {
+                            await api.trial.report(trialId);
+                          } catch { /* report generation is best-effort */ }
+                        }
+                      }}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm border t-primary text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
+                      style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }}
+                    >
+                      <FileText size={14} aria-hidden="true" />
+                      Download Full Report
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
