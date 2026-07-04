@@ -165,6 +165,39 @@ describe('Assessment Findings — AR aging detectors', () => {
     expect(f90.metric_signature).toBe('ar_aging_overdue_90_plus');
   });
 
+  // Tier B honesty: the AR aging value is a PROJECTED 8–12% recovery, not a
+  // fact. It must clear the inference gate — thin AR (< 25 invoices) is
+  // unverified (kept OUT of the confirmed total), a full population is confirmed.
+  async function seedAging90(tenantId: string, n: number) {
+    await seedTenant(tenantId);
+    for (let i = 0; i < n; i++) {
+      const dueDate = new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10);
+      await env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name,
+           invoice_date, due_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-150 days'), ?, 50000, 50000, 'ZAR', 'unpaid', 'sent')`,
+      ).bind(`inv-${tenantId}-${i}`, tenantId, `INV-${i}`, `Customer ${i}`, dueDate).run();
+    }
+  }
+
+  it('gates the AR aging projection: thin data unverified, full population confirmed', async () => {
+    const thin = nextTenantId('ar-thin');
+    await seedAging90(thin, 5); // < MIN_SAMPLE_SIZE (25)
+    const thinF = (await detectAllFindings(env.DB, thin, CTX)).find(f => f.code === 'ar_aging_overdue_90_plus')!;
+    expect(thinF).toBeDefined();                       // still surfaced…
+    expect(thinF.confidence_gate_passed).toBe(false);  // …but as unverified, not confirmed
+    expect(thinF.value_at_risk_zar).toBeGreaterThan(0);
+
+    const full = nextTenantId('ar-full');
+    await seedAging90(full, 30); // ≥ MIN_SAMPLE_SIZE
+    const fullFindings = await detectAllFindings(env.DB, full, CTX);
+    const fullF = fullFindings.find(f => f.code === 'ar_aging_overdue_90_plus')!;
+    expect(fullF.confidence_gate_passed).toBe(true);   // full population → confirmed
+    const summary = summariseFindings(fullFindings);
+    // confirmed headline includes the gate-passed AR projection
+    expect(summary.total_value_at_risk_zar).toBeGreaterThanOrEqual(fullF.value_at_risk_zar);
+  });
+
   it('credit-limit-breach fires for over-limit customers and quotes the breach', async () => {
     const tenantId = nextTenantId('ar-credit');
     await seedTenant(tenantId);

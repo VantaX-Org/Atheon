@@ -364,10 +364,15 @@ const CATEGORY_MAP: Record<FindingCode, FindingCategory> = {
  * `inferred`.
  */
 export const FINDING_INFERENCE_KIND: Record<FindingCode, 'direct' | 'inferred'> = {
-  // AR — aging/breach are observed facts; debtor concentration is a ratio.
-  ar_aging_overdue_30_60: 'direct',
-  ar_aging_overdue_60_90: 'direct',
-  ar_aging_overdue_90_plus: 'direct',
+  // AR — the overdue BALANCE is an observed fact, but the value each aging
+  // finding claims is a PROJECTED recovery (balance × an 8–12% collections
+  // uplift), not a fact. A projection must clear the inference gate, so these
+  // are inferred: below MIN_SAMPLE_SIZE overdue invoices the projected value is
+  // unverified (kept out of the confirmed total), never stamped "no inference
+  // applied". Credit-limit breach is a true observed overage → direct.
+  ar_aging_overdue_30_60: 'inferred',
+  ar_aging_overdue_60_90: 'inferred',
+  ar_aging_overdue_90_plus: 'inferred',
   ar_credit_limit_breach: 'direct',
   ar_top_debtor_concentration: 'inferred',
   // AP — all three are observed mismatches/overdues.
@@ -424,9 +429,9 @@ export const FINDING_INFERENCE_KIND: Record<FindingCode, 'direct' | 'inferred'> 
  * only — never names a model or provider.
  */
 export const FINDING_BASIS: Record<FindingCode, string> = {
-  ar_aging_overdue_30_60: 'invoices 30–60 days past due and unpaid',
-  ar_aging_overdue_60_90: 'invoices 60–90 days past due and unpaid',
-  ar_aging_overdue_90_plus: 'invoices 90+ days past due and unpaid',
+  ar_aging_overdue_30_60: 'a benchmark 8% collections uplift projected on invoices 30–60 days past due and unpaid',
+  ar_aging_overdue_60_90: 'a benchmark 8% collections uplift projected on invoices 60–90 days past due and unpaid',
+  ar_aging_overdue_90_plus: 'a benchmark 12% collections uplift projected on invoices 90+ days past due and unpaid',
   ar_credit_limit_breach: 'customer balances exceeding their assigned credit limit',
   ar_top_debtor_concentration: 'Revenue concentration in a small set of top debtors elevates collection risk.',
   ap_overdue_delivery: 'purchase orders past their expected delivery date',
