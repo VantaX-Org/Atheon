@@ -117,9 +117,9 @@ export function ExecutiveSummaryPage() {
       <SharedSavingsStrip />
 
       <PageHeader
-        eyebrow="Executive · Briefing"
-        title="Value Assurance Summary"
-        dek={`One-page briefing for ${user?.name?.split(' ')[0] || 'executives'} — aggregated from Apex, ROI, diagnostics & signals`}
+        eyebrow="Journey · 05 Report"
+        title="Reports"
+        dek={`One-page executive & board briefing for ${user?.name?.split(' ')[0] || 'executives'} — aggregated from health, savings, diagnostics & signals`}
         actions={
           <button
             onClick={() => load(true)}
