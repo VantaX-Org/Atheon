@@ -23,7 +23,7 @@ const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'exe
 const MODULES: Module[] = [
   { label: 'Apex',      to: '/apex',      roles: EXECUTIVE_ROLES },
   { label: 'Pulse',     to: '/pulse',     roles: STANDARD_ROLES },
-  { label: 'Catalysts', to: '/catalysts', roles: OPERATOR_ROLES },
+  { label: 'Fixes', to: '/catalysts', roles: OPERATOR_ROLES },
 ];
 
 export function ModuleSwitcher(): JSX.Element | null {

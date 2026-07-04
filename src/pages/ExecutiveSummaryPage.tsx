@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { StatusPill } from '@/components/ui/status-pill';
 import { PageHeader } from '@/components/ui/page-header';
+import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { Sparkline } from '@/components/ui/sparkline';
 import { SharedSavingsStrip } from '@/components/SharedSavingsStrip';
 import { FindingsReviewTable } from '@/components/dashboard/FindingsReviewTable';
@@ -130,6 +131,7 @@ export function ExecutiveSummaryPage() {
           </button>
         }
       />
+      <JourneyStageBar current="report" />
 
       {/* Editorial two-rail briefing (Higgsfield render v4-02). Left rail
           anchors the dollar story (hero savings + supporting stat cards);

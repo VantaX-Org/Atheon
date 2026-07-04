@@ -10,7 +10,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { BrandProvider } from "@/components/layout/BrandProvider";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { UpdatePrompt } from "@/components/pwa/UpdatePrompt";
-import { Dashboard } from "@/pages/Dashboard";
+import { JourneyHome } from "@/pages/JourneyHome";
 import { LoginPage } from "@/pages/LoginPage";
 import { MarketingPage } from "@/pages/MarketingPage";
 import { TrialPage } from "@/pages/TrialPage";
@@ -36,6 +36,8 @@ const AuditSharePage = lazyWithRetry(() => import("@/pages/AuditSharePage"));
 const StatusIncidentsAdminPage = lazyWithRetry(() => import("@/pages/admin/StatusIncidentsAdminPage"));
 // ApexBriefPage retired 2026-05-12 — duplicated ExecutiveSummaryPage with
 // a slimmer LLM-only layout. /apex/brief now redirects to /executive-summary.
+const DataPage = lazyWithRetry(() => import("@/pages/DataPage"));
+const FindingsPage = lazyWithRetry(() => import("@/pages/FindingsPage"));
 const PulsePage = lazyWithRetry(() => import("@/pages/PulsePage").then(m => ({ default: m.PulsePage })));
 const CatalystsPage = lazyWithRetry(() => import("@/pages/CatalystsPage").then(m => ({ default: m.CatalystsPage })));
 const CatalystRunDetailPage = lazyWithRetry(() => import("@/pages/CatalystRunDetailPage").then(m => ({ default: m.CatalystRunDetailPage })));
@@ -174,7 +176,9 @@ export default function App() {
                 scoped read-only ones (auditor, board_member), which get
                 redirected to their own landing page instead of seeing
                 operational data they shouldn't have access to. */}
-            <Route path="/dashboard" element={<ScopedRoleRedirect><Dashboard /></ScopedRoleRedirect>} />
+            <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
+            <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
+            <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
             {/* Guided onboarding wizard — full-screen version of the
                 Dashboard's OnboardingChecklist, walks the user through the
                 7 week-1 stop-gates with deep-link CTAs. Open to all auth users

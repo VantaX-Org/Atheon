@@ -1,7 +1,7 @@
 export const enMessages: Record<string, string> = {
   // Navigation
   'nav.dashboard': 'Dashboard',
-  'nav.catalysts': 'Catalysts',
+  'nav.catalysts': 'Fixes',
   'nav.pulse': 'Pulse',
   'nav.apex': 'Apex',
   'nav.mind': 'Mind',

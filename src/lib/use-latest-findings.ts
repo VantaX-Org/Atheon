@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ValueAssessmentFinding } from '@/lib/api';
+import { latestCompleteAssessment } from '@/lib/latest-assessment';
 
 export function useLatestFindings(limit = 6): ValueAssessmentFinding[] | null {
   const [findings, setFindings] = useState<ValueAssessmentFinding[] | null>(null);
@@ -20,10 +21,7 @@ export function useLatestFindings(limit = 6): ValueAssessmentFinding[] | null {
     (async () => {
       try {
         const { assessments } = await api.assessments.list();
-        const latest = [...assessments]
-          .filter((a) => a.status === 'complete')
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0]
-          ?? assessments[0];
+        const latest = latestCompleteAssessment(assessments);
         if (!latest) { if (!cancelled) setFindings([]); return; }
         const { findings } = await api.assessments.findings(latest.id);
         if (cancelled) return;
