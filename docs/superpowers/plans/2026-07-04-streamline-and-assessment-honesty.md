@@ -15,6 +15,16 @@ Executed in waves; each wave is independently verifiable and shippable. Correctn
 
 ---
 
+## ⚠️ Risk tiers (added 2026-07-04 after starting execution)
+
+Wave 1 changes touch a LIVE financial product. Two of them change numbers customers see and are billed on, and one changes a live public lead-gen funnel. These must go through owner review, not blind auto-deploy:
+
+- **TIER A — safe, unambiguous** (ship freely): traceback ids (1.5), LIMIT labeling (1.7), dataset transaction (1.7), toZAR data-quality flag (1.7), honesty tests (1.6), export *parity* where it only makes outputs agree.
+- **TIER B — changes billable/headline numbers** (owner sign-off before merge): AR observed-vs-projected split (1.4) lowers confirmed value for AR-heavy / low-sample tenants; headline `max(heuristic, confirmed)` removal (1.2) lowers the headline where the volume heuristic exceeded the gated total. Both are the *honest* direction, but they move revenue-relevant figures.
+- **TIER C — substantial feature on a live public funnel** (own project, follow the approved spec): trial real-ingest + fabrication removal (1.1/1.2/1.3) = exposure-proof Feature A (`docs/superpowers/specs/2026-06-18-exposure-proof-front-door-design.md`). Removing the `Math.random()` fallback (`trial-assessment.ts:207-229`) WITHOUT wiring real ingest (`trial-assessment.ts:70-101` is a metadata stub) flips every trial to "insufficient data" and changes conversion — so it must be done as the whole feature, not a partial.
+
+Corrected path: the client-side report generators are `src/lib/report-generators.ts` (not `workers/api/src/services/report-generators.ts`). Its business/technical PDF + Excel are built around catalyst `scores.estimated_annual_saving_zar` (a volume projection) — a *legitimately different* number from the gated findings total, so "make them match" needs product intent, not a blind repoint. Confirm with owner whether these reports should headline the gated findings total or stay catalyst-projection reports with a clearer label.
+
 ## WAVE 1 — Assessment honesty (backend, correctness-critical)
 
 ### 1.1 Trial funnel runs real detectors on real data (audit gaps 1-3)
