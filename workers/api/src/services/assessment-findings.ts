@@ -229,6 +229,13 @@ export interface FindingsContext {
    * When unset, behavior is unchanged (tenant-wide). Applied via datasetFilter().
    */
   datasetId?: string;
+  /**
+   * Data-quality sink: currencies for which no exchange rate was found. `toZAR`
+   * keeps the 1:1 fallback (never a silent zero-out) but records the currency
+   * here so a caller can surface a data-quality warning rather than silently
+   * trusting a mistyped currency at face value. Opt-in — pass a Set to collect.
+   */
+  unknownCurrencies?: Set<string>;
 }
 
 // ── Catalyst mapping ──────────────────────────────────────────────────────
@@ -480,7 +487,17 @@ function toZAR(amount: number, currency: string | undefined, ctx: FindingsContex
   const cur = (currency || 'ZAR').toUpperCase();
   if (cur === 'ZAR') return amount;
   const rate = ctx.exchangeRates[cur];
-  if (!rate || rate <= 0) return amount; // unknown rate — treat as 1:1 to avoid a silent zero-out.
+  if (!rate || rate <= 0) {
+    // Unknown/zero rate — keep 1:1 to avoid a silent zero-out, but flag it as a
+    // data-quality issue so a mistyped currency isn't silently trusted at face
+    // value. Warn once per currency when a sink is provided; always otherwise.
+    const set = ctx.unknownCurrencies;
+    if (!set || !set.has(cur)) {
+      console.warn(`[assessment] no exchange rate for currency "${cur}"; using 1:1 ZAR fallback — value may be misstated (data-quality flag)`);
+    }
+    set?.add(cur);
+    return amount;
+  }
   return amount * rate;
 }
 
@@ -714,6 +731,22 @@ async function detectAgingBucket(
   ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<InvoiceRow>()).results || [];
   if (rows.length === 0) return null;
 
+  // The query caps at the top 200 by value (conservative — captures the bulk of
+  // the exposure while bounding cost). Count the TRUE affected population
+  // separately so the finding doesn't undercount when the bucket exceeds 200.
+  const trueCount = (await db.prepare(
+    `SELECT COUNT(*) as cnt
+       FROM erp_invoices
+      WHERE tenant_id = ?
+        AND payment_status != 'paid'
+        AND due_date IS NOT NULL
+        AND ${bucketWhere}
+        ${cf.clause}
+        ${pf.clause}
+        ${df.clause}`,
+  ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).first<{ cnt: number }>())?.cnt ?? rows.length;
+  const capped = trueCount > rows.length;
+
   let totalZar = 0;
   const breakdown: Record<string, number> = {};
   for (const r of rows) {
@@ -743,11 +776,13 @@ async function detectAgingBucket(
   const upliftPct = code === 'ar_aging_overdue_90_plus' ? 12 : 8;
   const uplift = totalZar * (upliftPct / 100);
 
+  const shownNote = capped ? ` — top 200 by value shown` : '';
+  const outstandingLabel = capped ? `${formatZAR(totalZar)} in the top 200 by value` : `${formatZAR(totalZar)} outstanding`;
   return makeFinding({
     code,
-    title: `${rows.length} invoices ${bucketLabel} (${formatZAR(totalZar)} outstanding)`,
-    narrative: `${rows.length} unpaid invoices have aged ${bucketLabel}, exposing ${formatZAR(totalZar)} of working capital. Industry benchmarks indicate that ${upliftPct}% of this balance (${formatZAR(uplift)}) can typically be recovered with a structured collections cadence. The longer the bucket, the lower the recovery odds — invoices past 90 days have a ~50% write-off rate without intervention.`,
-    affected_count: rows.length,
+    title: `${trueCount} invoices ${bucketLabel} (${outstandingLabel})`,
+    narrative: `${trueCount} unpaid invoices have aged ${bucketLabel}${shownNote}, exposing ${formatZAR(totalZar)} of working capital${capped ? ' across the top 200 by value (the true balance is higher)' : ''}. Industry benchmarks indicate that ${upliftPct}% of this balance (${formatZAR(uplift)}) can typically be recovered with a structured collections cadence. The longer the bucket, the lower the recovery odds — invoices past 90 days have a ~50% write-off rate without intervention.`,
+    affected_count: trueCount,
     value_at_risk_zar: uplift,
     value_components: [{
       label: `Recoverable AR (${bucketLabel})`,
@@ -802,8 +837,8 @@ async function detectArCreditLimitBreach(db: D1Database, tenantId: string, ctx: 
   }
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: r.name,
-    description: `Credit balance ${formatZAR(toZAR(r.credit_balance, r.currency || undefined, ctx))} exceeds limit ${formatZAR(toZAR(r.credit_limit, r.currency || undefined, ctx))}`,
+    ref: r.id,
+    description: `${r.name}: credit balance ${formatZAR(toZAR(r.credit_balance, r.currency || undefined, ctx))} exceeds limit ${formatZAR(toZAR(r.credit_limit, r.currency || undefined, ctx))}`,
     amount_native: (r.credit_balance || 0) - (r.credit_limit || 0),
     currency: r.currency || 'ZAR',
     amount_zar: toZAR((r.credit_balance || 0) - (r.credit_limit || 0), r.currency || undefined, ctx),
@@ -837,21 +872,23 @@ async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, 
   const pf = periodFilter(ctx, 'invoice_date');
   const df = datasetFilter(ctx);
   const rows = (await db.prepare(
-    `SELECT customer_name, COUNT(*) as inv_count, SUM(amount_due) as outstanding, currency
+    `SELECT customer_name, COUNT(*) as inv_count, SUM(amount_due) as outstanding, currency, MAX(id) as sample_id
        FROM erp_invoices
       WHERE tenant_id = ? AND payment_status != 'paid' ${cf.clause} ${pf.clause} ${df.clause}
       GROUP BY customer_name, currency
       ORDER BY outstanding DESC`,
   ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
-    customer_name: string; inv_count: number; outstanding: number; currency: string | null;
+    customer_name: string; inv_count: number; outstanding: number; currency: string | null; sample_id: string;
   }>()).results || [];
   if (rows.length < 5) return null;
 
   let totalAr = 0;
-  const aggregated: Record<string, { count: number; outstanding_zar: number; currencies: Record<string, number> }> = {};
+  const aggregated: Record<string, { count: number; outstanding_zar: number; currencies: Record<string, number>; sample_id: string }> = {};
   for (const r of rows) {
     const name = r.customer_name || 'Unknown';
-    if (!aggregated[name]) aggregated[name] = { count: 0, outstanding_zar: 0, currencies: {} };
+    // rows are ordered by outstanding DESC, so the first sample_id seen per name
+    // is a real erp_invoices row id from its largest group — a resolvable traceback.
+    if (!aggregated[name]) aggregated[name] = { count: 0, outstanding_zar: 0, currencies: {}, sample_id: r.sample_id };
     aggregated[name].count += r.inv_count;
     const z = toZAR(r.outstanding, r.currency || undefined, ctx);
     aggregated[name].outstanding_zar += z;
@@ -872,11 +909,11 @@ async function detectArTopDebtorConcentration(db: D1Database, tenantId: string, 
   const concentrationRisk = top5Total * 0.05;
 
   const sample: SampleRecord[] = top5.map(([name, v]) => ({
-    ref: name,
-    description: `${v.count} invoices, ${((v.outstanding_zar / totalAr) * 100).toFixed(1)}% of total AR`,
+    ref: v.sample_id,
+    description: `${name}: ${v.count} invoices, ${((v.outstanding_zar / totalAr) * 100).toFixed(1)}% of total AR`,
     amount_zar: v.outstanding_zar,
     currency: 'ZAR',
-    metadata: { invoices: v.count },
+    metadata: { invoices: v.count, customer: name },
   }));
 
   return makeFinding({
@@ -1113,8 +1150,8 @@ async function detectGlSuspenseBalance(db: D1Database, tenantId: string, ctx: Fi
   }
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: `${r.account_code} — ${r.account_name}`,
-    description: `Class: ${r.account_class || 'unspecified'}, type: ${r.account_type || 'unspecified'}`,
+    ref: r.id,
+    description: `${r.account_code} — ${r.account_name} (class: ${r.account_class || 'unspecified'}, type: ${r.account_type || 'unspecified'})`,
     amount_native: r.balance,
     currency: r.currency || 'ZAR',
     amount_zar: toZAR(r.balance, r.currency || undefined, ctx),
@@ -1401,7 +1438,7 @@ async function detectProcDuplicateSuppliers(db: D1Database, tenantId: string, ct
   const df = datasetFilter(ctx);
   // Duplicates by (vat_number) or (registration_number) where both are non-empty.
   const rows = (await db.prepare(
-    `SELECT vat_number, registration_number, COUNT(*) as dup_count, GROUP_CONCAT(name, ' | ') as names
+    `SELECT vat_number, registration_number, COUNT(*) as dup_count, GROUP_CONCAT(name, ' | ') as names, MAX(id) as sample_id
        FROM erp_suppliers
       WHERE tenant_id = ?
         AND status = 'active'
@@ -1412,15 +1449,15 @@ async function detectProcDuplicateSuppliers(db: D1Database, tenantId: string, ct
      ORDER BY dup_count DESC
      LIMIT 50`,
   ).bind(tenantId, ...df.binds).all<{
-    vat_number: string | null; registration_number: string | null; dup_count: number; names: string;
+    vat_number: string | null; registration_number: string | null; dup_count: number; names: string; sample_id: string;
   }>()).results || [];
   if (rows.length === 0) return null;
 
   const affected = rows.reduce((s, r) => s + r.dup_count, 0);
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: r.vat_number || r.registration_number || 'unknown',
-    description: `${r.dup_count} suppliers share this identifier: ${r.names}`,
-    metadata: { dup_count: r.dup_count },
+    ref: r.sample_id,
+    description: `Shared identifier ${r.vat_number || r.registration_number || 'unknown'}: ${r.dup_count} suppliers share this identifier: ${r.names}`,
+    metadata: { dup_count: r.dup_count, shared_identifier: r.vat_number || r.registration_number || 'unknown' },
   }));
 
   // Duplicate suppliers cost ~R3k/each in vendor master maintenance + payment risk.
@@ -1449,7 +1486,7 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
   const pf = periodFilter(ctx, 'order_date');
   const df = datasetFilter(ctx);
   const rows = (await db.prepare(
-    `SELECT supplier_name, COUNT(*) as po_count, SUM(total) as spend, currency
+    `SELECT supplier_name, COUNT(*) as po_count, SUM(total) as spend, currency, MAX(id) as sample_id
        FROM erp_purchase_orders
       WHERE tenant_id = ?
         AND date(order_date) >= date('now', '-12 months')
@@ -1459,15 +1496,16 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
       GROUP BY supplier_name, currency
       ORDER BY spend DESC`,
   ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
-    supplier_name: string; po_count: number; spend: number; currency: string | null;
+    supplier_name: string; po_count: number; spend: number; currency: string | null; sample_id: string;
   }>()).results || [];
   if (rows.length < 5) return null;
 
-  const aggregated: Record<string, { po_count: number; spend_zar: number }> = {};
+  const aggregated: Record<string, { po_count: number; spend_zar: number; sample_id: string }> = {};
   let totalSpend = 0;
   for (const r of rows) {
     const z = toZAR(r.spend, r.currency || undefined, ctx);
-    if (!aggregated[r.supplier_name]) aggregated[r.supplier_name] = { po_count: 0, spend_zar: 0 };
+    // First sample_id per supplier (rows ordered by spend DESC) is a real erp_purchase_orders row id.
+    if (!aggregated[r.supplier_name]) aggregated[r.supplier_name] = { po_count: 0, spend_zar: 0, sample_id: r.sample_id };
     aggregated[r.supplier_name].po_count += r.po_count;
     aggregated[r.supplier_name].spend_zar += z;
     totalSpend += z;
@@ -1485,11 +1523,11 @@ async function detectProcSupplierConcentration(db: D1Database, tenantId: string,
   const disruptionRisk = top5Total * 0.02;
 
   const sample: SampleRecord[] = top5.map(([name, v]) => ({
-    ref: name,
-    description: `${v.po_count} POs, ${((v.spend_zar / totalSpend) * 100).toFixed(1)}% of 12-month spend`,
+    ref: v.sample_id,
+    description: `${name}: ${v.po_count} POs, ${((v.spend_zar / totalSpend) * 100).toFixed(1)}% of 12-month spend`,
     amount_zar: v.spend_zar,
     currency: 'ZAR',
-    metadata: { pos: v.po_count },
+    metadata: { pos: v.po_count, supplier: name },
   }));
 
   return makeFinding({
@@ -1911,7 +1949,7 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
   const pf = periodFilter(ctx, 'invoice_date');
   const df = datasetFilter(ctx);
   const rows = (await db.prepare(
-    `SELECT customer_name, SUM(total) as revenue, currency, COUNT(*) as inv_count
+    `SELECT customer_name, SUM(total) as revenue, currency, COUNT(*) as inv_count, MAX(id) as sample_id
        FROM erp_invoices
       WHERE tenant_id = ?
         AND date(invoice_date) >= date('now', '-12 months')
@@ -1922,14 +1960,14 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
       GROUP BY customer_name, currency
       ORDER BY revenue DESC`,
   ).bind(tenantId, ...cf.binds, ...pf.binds, ...df.binds).all<{
-    customer_name: string; revenue: number; currency: string | null; inv_count: number;
+    customer_name: string; revenue: number; currency: string | null; inv_count: number; sample_id: string;
   }>()).results || [];
   if (rows.length < 5) return null;
 
-  const aggregated: Record<string, { rev_zar: number; invs: number }> = {};
+  const aggregated: Record<string, { rev_zar: number; invs: number; sample_id: string }> = {};
   let totalRev = 0;
   for (const r of rows) {
-    if (!aggregated[r.customer_name]) aggregated[r.customer_name] = { rev_zar: 0, invs: 0 };
+    if (!aggregated[r.customer_name]) aggregated[r.customer_name] = { rev_zar: 0, invs: 0, sample_id: r.sample_id };
     const z = toZAR(r.revenue, r.currency || undefined, ctx);
     aggregated[r.customer_name].rev_zar += z;
     aggregated[r.customer_name].invs += r.inv_count;
@@ -1948,11 +1986,11 @@ async function detectSalesCustomerConcentration(db: D1Database, tenantId: string
   const lossRisk = top5Total * 0.05;
 
   const sample: SampleRecord[] = top5.map(([name, v]) => ({
-    ref: name,
-    description: `${v.invs} invoices, ${((v.rev_zar / totalRev) * 100).toFixed(1)}% of 12-month revenue`,
+    ref: v.sample_id,
+    description: `${name}: ${v.invs} invoices, ${((v.rev_zar / totalRev) * 100).toFixed(1)}% of 12-month revenue`,
     amount_zar: v.rev_zar,
     currency: 'ZAR',
-    metadata: { invoices: v.invs },
+    metadata: { invoices: v.invs, customer: name },
   }));
 
   return makeFinding({
@@ -2071,8 +2109,8 @@ async function detectSalesCreditNoCheck(db: D1Database, tenantId: string, ctx: F
   }
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: r.name,
-    description: `Active customer with credit balance but no limit set (created ${r.created_at})`,
+    ref: r.id,
+    description: `${r.name}: active customer with credit balance but no limit set (created ${r.created_at})`,
     amount_native: r.credit_balance,
     currency: r.currency || 'ZAR',
     amount_zar: toZAR(r.credit_balance, r.currency || undefined, ctx),
@@ -2227,8 +2265,8 @@ async function detectTaxOverdueSubmission(db: D1Database, tenantId: string, ctx:
 
   const totalNetVat = rows.reduce((s, r) => s + Math.abs(r.net_vat || 0), 0);
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: `${r.tax_type} ${r.tax_period}`,
-    description: `Output VAT ${formatZAR(r.output_vat)}, Input VAT ${formatZAR(r.input_vat)} (status: ${r.status})`,
+    ref: r.id,
+    description: `${r.tax_type} ${r.tax_period}: Output VAT ${formatZAR(r.output_vat)}, Input VAT ${formatZAR(r.input_vat)} (status: ${r.status})`,
     amount_zar: r.net_vat,
     currency: 'ZAR',
     date: r.created_at || undefined,
@@ -2259,16 +2297,16 @@ async function detectTaxMissingVatNumbers(db: D1Database, tenantId: string, ctx:
   const df = datasetFilter(ctx);
   // Customers with significant balances but no VAT number (B2B exposure)
   const cusRow = await db.prepare(
-    `SELECT COUNT(*) as cnt, SUM(credit_balance) as total_bal
+    `SELECT COUNT(*) as cnt, SUM(credit_balance) as total_bal, MAX(id) as sample_id
        FROM erp_customers
       WHERE tenant_id = ? AND status = 'active'
         AND (vat_number IS NULL OR vat_number = '')
         AND credit_balance > 10000
         ${df.clause}`,
-  ).bind(tenantId, ...df.binds).first<{ cnt: number; total_bal: number }>();
+  ).bind(tenantId, ...df.binds).first<{ cnt: number; total_bal: number; sample_id: string | null }>();
   const supRow = await db.prepare(
-    `SELECT COUNT(*) as cnt FROM erp_suppliers WHERE tenant_id = ? AND status = 'active' AND (vat_number IS NULL OR vat_number = '') ${df.clause}`,
-  ).bind(tenantId, ...df.binds).first<{ cnt: number }>();
+    `SELECT COUNT(*) as cnt, MAX(id) as sample_id FROM erp_suppliers WHERE tenant_id = ? AND status = 'active' AND (vat_number IS NULL OR vat_number = '') ${df.clause}`,
+  ).bind(tenantId, ...df.binds).first<{ cnt: number; sample_id: string | null }>();
   const cusCount = cusRow?.cnt || 0;
   const supCount = supRow?.cnt || 0;
   const total = cusCount + supCount;
@@ -2278,8 +2316,10 @@ async function detectTaxMissingVatNumbers(db: D1Database, tenantId: string, ctx:
   const disallowedClaims = supCount * 5000;
 
   const samples: SampleRecord[] = [];
-  if (cusCount > 0) samples.push({ ref: 'customers_missing_vat', description: `${cusCount} active customers with balance > R10k and no VAT number`, amount_zar: cusRow?.total_bal || 0, currency: 'ZAR' });
-  if (supCount > 0) samples.push({ ref: 'suppliers_missing_vat', description: `${supCount} active suppliers with no VAT number`, currency: 'ZAR' });
+  // ref carries a representative real row id (MAX(id)) so the traceback resolves;
+  // the human-readable summary stays in the description.
+  if (cusCount > 0 && cusRow?.sample_id) samples.push({ ref: cusRow.sample_id, description: `${cusCount} active customers with balance > R10k and no VAT number`, amount_zar: cusRow?.total_bal || 0, currency: 'ZAR' });
+  if (supCount > 0 && supRow?.sample_id) samples.push({ ref: supRow.sample_id, description: `${supCount} active suppliers with no VAT number`, currency: 'ZAR' });
 
   return makeFinding({
     code: 'tax_missing_vat_numbers',
@@ -2361,7 +2401,7 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
   const cf = companyFilter(ctx, 'company_id');
   const df = datasetFilter(ctx);
   const rows = (await db.prepare(
-    `SELECT currency, COUNT(*) as cnt, SUM(amount_due) as outstanding
+    `SELECT currency, COUNT(*) as cnt, SUM(amount_due) as outstanding, MAX(id) as sample_id
        FROM erp_invoices
       WHERE tenant_id = ?
         AND payment_status != 'paid'
@@ -2371,7 +2411,7 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
         ${df.clause}
       GROUP BY currency
       HAVING SUM(amount_due) > 0`,
-  ).bind(tenantId, ...cf.binds, ...df.binds).all<{ currency: string; cnt: number; outstanding: number }>()).results || [];
+  ).bind(tenantId, ...cf.binds, ...df.binds).all<{ currency: string; cnt: number; outstanding: number; sample_id: string }>()).results || [];
   if (rows.length === 0) return null;
 
   let totalZarExposure = 0;
@@ -2385,12 +2425,12 @@ async function detectFxCurrencyExposure(db: D1Database, tenantId: string, ctx: F
   const volatility = totalZarExposure * 0.10;
 
   const sample: SampleRecord[] = rows.map(r => ({
-    ref: r.currency,
-    description: `${r.cnt} open invoices, ${formatZAR(toZAR(r.outstanding, r.currency, ctx))} ZAR-equivalent`,
+    ref: r.sample_id,
+    description: `${r.currency}: ${r.cnt} open invoices, ${formatZAR(toZAR(r.outstanding, r.currency, ctx))} ZAR-equivalent`,
     amount_native: r.outstanding,
     currency: r.currency,
     amount_zar: toZAR(r.outstanding, r.currency, ctx),
-    metadata: { invoices: r.cnt },
+    metadata: { invoices: r.cnt, currency: r.currency },
   }));
 
   return makeFinding({
@@ -2421,7 +2461,7 @@ async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: Fi
   const df = datasetFilter(ctx);
   // A supplier billed in 2+ currencies in the last 12 months.
   const rows = (await db.prepare(
-    `SELECT supplier_name, COUNT(DISTINCT currency) as cur_count, GROUP_CONCAT(DISTINCT currency) as currencies
+    `SELECT supplier_name, COUNT(DISTINCT currency) as cur_count, GROUP_CONCAT(DISTINCT currency) as currencies, MAX(id) as sample_id
        FROM erp_purchase_orders
       WHERE tenant_id = ?
         AND date(order_date) >= date('now', '-12 months')
@@ -2431,13 +2471,13 @@ async function detectFxDualUseCurrency(db: D1Database, tenantId: string, ctx: Fi
      HAVING cur_count > 1
       ORDER BY cur_count DESC
       LIMIT 50`,
-  ).bind(tenantId, ...pf.binds, ...df.binds).all<{ supplier_name: string; cur_count: number; currencies: string }>()).results || [];
+  ).bind(tenantId, ...pf.binds, ...df.binds).all<{ supplier_name: string; cur_count: number; currencies: string; sample_id: string }>()).results || [];
   if (rows.length === 0) return null;
 
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: r.supplier_name,
-    description: `Billed in ${r.cur_count} currencies: ${r.currencies}`,
-    metadata: { currencies: r.currencies },
+    ref: r.sample_id,
+    description: `${r.supplier_name}: billed in ${r.cur_count} currencies: ${r.currencies}`,
+    metadata: { currencies: r.currencies, supplier: r.supplier_name },
   }));
 
   return makeFinding({
@@ -2623,8 +2663,8 @@ async function detectSvcUnbilledTimeAging(db: D1Database, tenantId: string, ctx:
     totalZar += toZAR(v, cur, ctx);
   }
   const sample: SampleRecord[] = rows.slice(0, 10).map(r => ({
-    ref: `${r.project_code || 'no-project'} / ${r.employee_number || 'unknown'}`,
-    description: r.description || `${r.hours}h @ ${r.billable_rate}/h`,
+    ref: r.id,
+    description: `${r.project_code || 'no-project'} / ${r.employee_number || 'unknown'}: ${r.description || `${r.hours}h @ ${r.billable_rate}/h`}`,
     amount_native: r.hours * r.billable_rate,
     currency: r.currency || 'ZAR',
     amount_zar: toZAR(r.hours * r.billable_rate, r.currency || undefined, ctx),

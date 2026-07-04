@@ -14,7 +14,7 @@ import {
   type ValueAssessmentConfig,
 } from '../services/value-assessment-engine';
 import { INGEST_MANIFEST } from '../lib/ingest-manifest';
-import { validateDomainRows } from '../lib/ingest-validate';
+import { ingestDomains } from '../lib/ingest-write';
 
 const assessments = new Hono<AppBindings>();
 
@@ -160,59 +160,40 @@ assessments.post('/:id/dataset', async (c) => {
   const body = await c.req.json<{ domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> }>().catch(() => null);
   if (!body?.domains || typeof body.domains !== 'object') return c.json({ error: 'domains required' }, 400);
 
-  const validated: Record<string, Array<Record<string, unknown>>> = {};
-  const allErrors: Array<{ domain: string; row: number; column: string; message: string }> = [];
-  for (const [domain, payload] of Object.entries(body.domains)) {
-    const def = INGEST_MANIFEST.find(d => d.domain === domain);
-    if (!def) { allErrors.push({ domain, row: 0, column: '', message: `unknown domain ${domain}` }); continue; }
-    const { rows, errors } = validateDomainRows(domain, payload.header || [], payload.rows || []);
-    if (errors.length) { for (const e of errors) allErrors.push({ domain, ...e }); }
-    else validated[domain] = rows;
-  }
-
   const datasetId = `ds_${assessmentId}_${tenantId}`.replace(/[^a-zA-Z0-9_]/g, '_');
 
-  if (allErrors.length) {
+  let result: { row_counts: Record<string, number>; errors: Array<{ domain: string; row: number; column: string; message: string }> };
+  try {
+    // maxRowsPerDomain is a no-op ceiling for the authenticated route; the trial
+    // funnel passes a real cap.
+    result = await ingestDomains(c.env.DB, tenantId, datasetId, body.domains, { maxRowsPerDomain: 100000 });
+  } catch {
+    // A mid-batch throw is non-atomic — mark failed so the dataset is never left
+    // neither ready nor failed.
     await c.env.DB.prepare(
       `INSERT INTO assessment_datasets (id, assessment_id, tenant_id, status, row_counts, error)
        VALUES (?, ?, ?, 'failed', '{}', ?)
        ON CONFLICT(assessment_id) DO UPDATE SET status='failed', error=excluded.error`
-    ).bind(datasetId, assessmentId, tenantId, JSON.stringify(allErrors.slice(0, 200))).run();
-    return c.json({ error: 'validation failed', errors: allErrors.slice(0, 200) }, 422);
+    ).bind(datasetId, assessmentId, tenantId, JSON.stringify([{ domain: '', row: 0, column: '', message: 'ingest write failed' }])).run();
+    return c.json({ error: 'ingest write failed' }, 500);
   }
 
-  const rowCounts: Record<string, number> = {};
-  const stmts: D1PreparedStatement[] = [];
-  for (const [domain, rows] of Object.entries(validated)) {
-    const def = INGEST_MANIFEST.find(d => d.domain === domain)!;
-    stmts.push(c.env.DB.prepare(`DELETE FROM ${def.table} WHERE tenant_id = ? AND dataset_id = ?`).bind(tenantId, datasetId));
-    let n = 0;
-    for (const row of rows) {
-      // Only emit columns we actually have a value for. erp_* tables carry
-      // NOT NULL DEFAULT constraints on several numeric/status fields, so
-      // inserting an explicit NULL for an absent optional column violates the
-      // constraint — omit it and let the DB default apply instead.
-      const dataCols = def.columns.filter(col => row[col.name] != null);
-      const cols = ['id', 'tenant_id', 'dataset_id', 'source_system', ...dataCols.map(col => col.name)];
-      const vals = [`${datasetId}_${domain}_${n}`, tenantId, datasetId, 'upload', ...dataCols.map(col => row[col.name])];
-      const placeholders = cols.map(() => '?').join(', ');
-      stmts.push(c.env.DB.prepare(`INSERT INTO ${def.table} (${cols.join(', ')}) VALUES (${placeholders})`).bind(...vals));
-      n++;
-    }
-    rowCounts[domain] = n;
-  }
-
-  for (let i = 0; i < stmts.length; i += 50) {
-    await c.env.DB.batch(stmts.slice(i, i + 50));
+  if (result.errors.length) {
+    await c.env.DB.prepare(
+      `INSERT INTO assessment_datasets (id, assessment_id, tenant_id, status, row_counts, error)
+       VALUES (?, ?, ?, 'failed', '{}', ?)
+       ON CONFLICT(assessment_id) DO UPDATE SET status='failed', error=excluded.error`
+    ).bind(datasetId, assessmentId, tenantId, JSON.stringify(result.errors)).run();
+    return c.json({ error: 'validation failed', errors: result.errors }, 422);
   }
 
   await c.env.DB.prepare(
     `INSERT INTO assessment_datasets (id, assessment_id, tenant_id, status, row_counts, error)
      VALUES (?, ?, ?, 'ready', ?, NULL)
      ON CONFLICT(assessment_id) DO UPDATE SET status='ready', row_counts=excluded.row_counts, error=NULL`
-  ).bind(datasetId, assessmentId, tenantId, JSON.stringify(rowCounts)).run();
+  ).bind(datasetId, assessmentId, tenantId, JSON.stringify(result.row_counts)).run();
 
-  return c.json({ dataset_id: datasetId, status: 'ready', row_counts: rowCounts });
+  return c.json({ dataset_id: datasetId, status: 'ready', row_counts: result.row_counts });
 });
 
 // ── POST /api/assessments/:id/run ─────────────────────────────────────────

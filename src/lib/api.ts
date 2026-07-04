@@ -1965,8 +1965,8 @@ export const api = {
   trial: {
     start: (data: { company_name: string; industry: string; contact_name: string; contact_email: string }) =>
       request<{ id: string; tenantId: string; status: string }>('/api/trial/start', { method: 'POST', body: JSON.stringify(data) }),
-    upload: (id: string, data: { filename: string; row_count: number; columns: string[] }) =>
-      request<{ received: boolean }>(`/api/trial/${id}/upload`, { method: 'POST', body: JSON.stringify(data) }),
+    upload: (id: string, data: { domains: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> }) =>
+      request<{ row_counts: Record<string, number> }>(`/api/trial/${id}/upload`, { method: 'POST', body: JSON.stringify(data) }),
     run: (id: string) =>
       request<{ status: string }>(`/api/trial/${id}/run`, { method: 'POST' }),
     status: (id: string) =>
@@ -4576,17 +4576,26 @@ export interface AtheonScoreResponse {
 }
 
 // §11.1 Trial Assessment
+export interface TrialFinding {
+  title: string;
+  value_at_risk_zar: number;
+  confidence: number;
+  confidence_gate_passed: boolean;
+  severity: string;
+  affected_count: number;
+}
 export interface TrialResultsResponse {
   id: string;
   companyName: string;
   industry: string;
   status: string;
-  healthScore: number | null;
-  issuesFound: number | null;
+  /** Confidence-gated confirmed exposure (ZAR). NULL ⇒ insufficient_data. */
   estimatedExposure: number | null;
+  issuesFound: number | null;
+  insufficientData: boolean;
   topRisks: { title: string; description: string; impact: number }[];
-  topOpportunities: { title: string; description: string; value: number }[];
-  projectedRoi: number | null;
+  findings: TrialFinding[];
+  findingsSummary: { total_count?: number; total_value_at_risk_zar?: number } | Record<string, never>;
   completedAt: string | null;
 }
 export interface TrialReportResponse {

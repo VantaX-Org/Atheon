@@ -6,6 +6,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { ingestDomains } from '../lib/ingest-write';
 
 type TrialBindings = { Bindings: Env };
 
@@ -67,166 +68,101 @@ app.post('/start', async (c) => {
   return c.json({ id: assessmentId, tenantId, status: 'pending' });
 });
 
-// POST /:id/upload — Accept CSV upload (simulated — stores metadata)
+// POST /:id/upload — REAL ingest of the prospect's uploaded CSV data into an
+// isolated trial dataset (ds_trial_<id>). Same {domains} shape and validation
+// as the authenticated /api/assessments/:id/dataset route. No fabrication: the
+// detectors in /run read exactly these rows.
 app.post('/:id/upload', async (c) => {
   const db = c.env.DB;
   const id = c.req.param('id');
 
-  const assessment = await db.prepare('SELECT * FROM trial_assessments WHERE id = ?').bind(id).first();
+  const assessment = await db.prepare('SELECT tenant_id FROM trial_assessments WHERE id = ?')
+    .bind(id).first<{ tenant_id: string }>();
   if (!assessment) return c.json({ error: 'Assessment not found' }, 404);
 
-  // In production, this would parse the CSV from multipart form data
-  // For now, accept JSON with file metadata
-  let body: { fileName?: string; rowCount?: number; columns?: string[] };
+  const body = await c.req.json<{ domains?: Record<string, { header: string[]; rows: Array<Record<string, unknown>> }> }>().catch(() => null);
+  if (!body?.domains || typeof body.domains !== 'object') return c.json({ error: 'domains required' }, 400);
+
+  const datasetId = `ds_trial_${id}`;
+  let result: { row_counts: Record<string, number>; errors: Array<{ domain: string; row: number; column: string; message: string }> };
   try {
-    body = await c.req.json();
+    // 50k/domain cap guards the public write surface (abuse); the /start
+    // 3-per-IP-per-day limit already bounds how many trial datasets exist.
+    result = await ingestDomains(db, assessment.tenant_id, datasetId, body.domains, { maxRowsPerDomain: 50000 });
   } catch {
-    body = {};
+    return c.json({ error: 'ingest write failed' }, 500);
   }
 
-  const fileName = body.fileName || 'uploaded-data.csv';
-  const rowCount = body.rowCount || 0;
-  const columns = body.columns || [];
+  if (result.errors.length) {
+    return c.json({ error: 'validation failed', errors: result.errors }, 422);
+  }
 
   await db.prepare(
     "UPDATE trial_assessments SET status = 'uploaded', current_step = 'Data uploaded' WHERE id = ?"
   ).bind(id).run();
 
-  return c.json({
-    fileName,
-    rowCount,
-    detectedColumns: columns,
-    suggestedMapping: columns.map((col: string) => ({ source: col, target: col.toLowerCase().replace(/\s+/g, '_') })),
-  });
+  return c.json({ row_counts: result.row_counts });
 });
 
-// POST /:id/run — Trigger assessment (uses Value Assessment Engine in quick mode)
+// POST /:id/run — REAL detectors only. Runs the 39-detector engine scoped to
+// the trial's ingested dataset and reports the confidence-gated exposure. No
+// randomised fabrication: zero gate-passed findings → honest insufficient_data.
 app.post('/:id/run', async (c) => {
   const db = c.env.DB;
   const id = c.req.param('id');
 
-  const assessment = await db.prepare('SELECT * FROM trial_assessments WHERE id = ?').bind(id).first();
+  const assessment = await db.prepare('SELECT tenant_id FROM trial_assessments WHERE id = ?')
+    .bind(id).first<{ tenant_id: string }>();
   if (!assessment) return c.json({ error: 'Assessment not found' }, 404);
 
-  // Start assessment processing
   await db.prepare(
-    "UPDATE trial_assessments SET status = 'running', progress = 10, current_step = 'Auditing data quality...' WHERE id = ?"
+    "UPDATE trial_assessments SET status = 'running', progress = 20, current_step = 'Detecting exposure...' WHERE id = ?"
   ).bind(id).run();
 
-  const tenantId = assessment.tenant_id as string;
-  const industry = assessment.industry as string;
-  const companyName = assessment.company_name as string;
+  const datasetId = `ds_trial_${id}`;
+  const { detectAllFindings, summariseFindings } = await import('../services/assessment-findings');
+  const findings = await detectAllFindings(db, assessment.tenant_id, {
+    baseCurrency: 'ZAR',
+    exchangeRates: { ZAR: 1, USD: 18.5, EUR: 20, GBP: 23 },
+    monthsOfData: 6, // trial = ≤ 6 months of CSV data typically
+    datasetId,        // scope every erp_* query to this trial's uploaded rows
+  });
+  const summary = summariseFindings(findings);
 
-  // Try to run value assessment engine in quick mode (DQ + timing only, no full catalyst runs)
-  // If the tenant has ERP data, the engine will produce real findings.
-  // Fall back to estimation if no data is available.
-  try {
-    const { runValueAssessment, DEFAULT_VALUE_ASSESSMENT_CONFIG } = await import('../services/value-assessment-engine');
+  // Exposure = the CONFIDENCE-GATED confirmed total only (summariseFindings
+  // sums it from findings that cleared the ≥25-record gate). Every Rand traces
+  // to a real erp_* row. Zero gate-passed findings → honest insufficient_data
+  // with a NULL exposure — never a fabricated or zero-dressed-as-real number.
+  const gatePassedCount = summary.total_count - summary.unverified_count;
+  const insufficient = gatePassedCount === 0;
+  const exposure = insufficient ? null : summary.total_value_at_risk_zar;
 
-    // Create a temporary assessment record for the engine to write to
-    const assessmentRecordId = `trial-va-${id.slice(0, 8)}`;
-    try {
-      await db.prepare(
-        `INSERT INTO assessments (id, tenant_id, prospect_name, prospect_industry, status, config, created_by)
-         VALUES (?, ?, ?, ?, 'pending', '{}', 'trial-system')`
-      ).bind(assessmentRecordId, tenantId, companyName, industry).run();
-    } catch { /* may already exist */ }
-
-    await runValueAssessment(
-      db, c.env.AI, c.env.STORAGE,
-      tenantId, assessmentRecordId, '',
-      { ...DEFAULT_VALUE_ASSESSMENT_CONFIG, mode: 'quick' },
-      industry, companyName,
-    );
-
-    // Read back the value summary
-    const summary = await db.prepare(
-      'SELECT * FROM assessment_value_summary WHERE assessment_id = ? LIMIT 1'
-    ).bind(assessmentRecordId).first();
-
-    const findingsCount = await db.prepare(
-      'SELECT COUNT(*) as cnt FROM assessment_findings WHERE assessment_id = ?'
-    ).bind(assessmentRecordId).first<{ cnt: number }>();
-
-    if (summary) {
-      const totalFindings = findingsCount?.cnt || 0;
-      const immediateValue = (summary.total_immediate_value as number) || 0;
-      const ongoingAnnual = (summary.total_ongoing_annual_value as number) || 0;
-      const healthScore = Math.max(20, 100 - Math.round(totalFindings * 3));
-      const projectedRoi = ongoingAnnual > 0 ? Math.round((ongoingAnnual / Math.max((summary.outcome_based_monthly_fee as number) * 12, 1)) * 10) / 10 : 3.5;
-
-      const topRisks = [
-        { title: 'Data Quality Issues', description: `${summary.total_data_quality_issues || 0} data quality issues across ERP tables`, impact: Math.round(immediateValue * 0.4) },
-        { title: 'Process Delays', description: `${summary.total_process_delays || 0} processes exceeding industry benchmarks`, impact: Math.round(immediateValue * 0.3) },
-        { title: 'Financial Exposure', description: `${summary.total_critical_findings || 0} critical findings requiring immediate attention`, impact: Math.round(immediateValue * 0.3) },
-      ];
-      const topOpportunities = [
-        { title: 'Immediate Recovery', description: `R${Math.round(immediateValue / 1000)}k recoverable through data cleanup and process fixes`, value: immediateValue },
-        { title: 'Ongoing Prevention', description: `R${Math.round(ongoingAnnual / 1000)}k annual value through continuous monitoring`, value: ongoingAnnual },
-      ];
-
-      // PR H: also run the new assessment-findings engine. The value
-      // assessment above is the legacy data-quality / process-timing
-      // analysis; this new engine produces the structured Finding objects
-      // the AssessmentsPage Findings tab consumes. They are complementary,
-      // not redundant.
-      let findingsJson = '[]';
-      let findingsSummaryJson = '{}';
-      try {
-        const { detectAllFindings, summariseFindings } = await import('../services/assessment-findings');
-        const findings = await detectAllFindings(db, tenantId, {
-          baseCurrency: 'ZAR',
-          exchangeRates: { ZAR: 1, USD: 18.5, EUR: 20, GBP: 23 },
-          monthsOfData: 6, // trial = ≤ 6 months of CSV data typically
-        });
-        findingsJson = JSON.stringify(findings);
-        findingsSummaryJson = JSON.stringify(summariseFindings(findings));
-      } catch (findingsErr) {
-        console.error('detectAllFindings failed in trial path (non-fatal):', findingsErr);
-      }
-
-      await db.prepare(
-        `UPDATE trial_assessments SET status = 'complete', progress = 100, current_step = 'Assessment complete',
-         health_score = ?, issues_found = ?, estimated_exposure = ?, projected_roi = ?,
-         top_risks = ?, top_opportunities = ?,
-         findings_json = ?, findings_summary_json = ?,
-         completed_at = datetime('now') WHERE id = ?`
-      ).bind(
-        healthScore, totalFindings, immediateValue + ongoingAnnual, projectedRoi,
-        JSON.stringify(topRisks), JSON.stringify(topOpportunities),
-        findingsJson, findingsSummaryJson,
-        id,
-      ).run();
-
-      return c.json({ status: 'complete', mode: 'value_assessment' });
-    }
-  } catch (err) {
-    console.error('Value assessment engine failed for trial, falling back to estimation:', err);
-  }
-
-  // Fallback: estimation-based assessment (when no ERP data available)
-  const healthScore = Math.round(45 + Math.random() * 30);
-  const issuesFound = Math.round(5 + Math.random() * 15);
-  const estimatedExposure = Math.round((100000 + Math.random() * 900000) / 1000) * 1000;
-  const projectedRoi = Math.round((2 + Math.random() * 8) * 10) / 10;
-
-  const topRisks = [
-    { title: 'Data Quality Gaps', description: `${issuesFound} discrepancies detected in financial reconciliation`, impact: Math.round(estimatedExposure * 0.4) },
-    { title: 'Process Conformance', description: 'Key processes operating below industry benchmark', impact: Math.round(estimatedExposure * 0.3) },
-    { title: 'Regulatory Exposure', description: `${industry} compliance gaps identified`, impact: Math.round(estimatedExposure * 0.3) },
-  ];
-  const topOpportunities = [
-    { title: 'Automation Potential', description: 'Identified processes suitable for catalyst automation', value: Math.round(estimatedExposure * 0.5) },
-    { title: 'Recovery Pipeline', description: 'Discrepancies with high recovery probability', value: Math.round(estimatedExposure * 0.3) },
-  ];
+  // topRisks derive from the real per-category value-at-risk breakdown — never
+  // an invented 40/30/30 split.
+  const topRisks = Object.entries(summary.by_category)
+    .filter(([, v]) => v.value_at_risk_zar > 0)
+    .sort((a, b) => b[1].value_at_risk_zar - a[1].value_at_risk_zar)
+    .slice(0, 3)
+    .map(([category, v]) => ({
+      title: category.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()),
+      description: `${v.count} finding${v.count === 1 ? '' : 's'}`,
+      impact: v.value_at_risk_zar,
+    }));
 
   await db.prepare(
     `UPDATE trial_assessments SET status = 'complete', progress = 100, current_step = 'Assessment complete',
-     health_score = ?, issues_found = ?, estimated_exposure = ?, projected_roi = ?,
-     top_risks = ?, top_opportunities = ?, completed_at = datetime('now') WHERE id = ?`
-  ).bind(healthScore, issuesFound, estimatedExposure, projectedRoi, JSON.stringify(topRisks), JSON.stringify(topOpportunities), id).run();
+       health_score = NULL, issues_found = ?, estimated_exposure = ?, projected_roi = NULL,
+       top_risks = ?, top_opportunities = '[]',
+       findings_json = ?, findings_summary_json = ?,
+       completed_at = datetime('now') WHERE id = ?`
+  ).bind(
+    summary.total_count, exposure,
+    JSON.stringify(topRisks),
+    JSON.stringify(findings), JSON.stringify(summary),
+    id,
+  ).run();
 
-  return c.json({ status: 'complete', mode: 'estimation' });
+  return c.json({ status: 'complete', insufficient_data: insufficient });
 });
 
 // GET /:id/status — Poll assessment status
@@ -262,15 +198,18 @@ app.get('/:id/results', async (c) => {
   try { findings = JSON.parse((assessment.findings_json as string) || '[]'); } catch { /* corrupt → empty */ }
   try { findingsSummary = JSON.parse((assessment.findings_summary_json as string) || '{}'); } catch { /* corrupt → empty */ }
 
+  // insufficient_data is a property of the RESULT, not the run lifecycle: the
+  // run always completes, but exposure is NULL when no finding cleared the gate.
+  // A NULL exposure IS the honest insufficient-data signal.
   return c.json({
+    id: assessment.id,
     companyName: assessment.company_name,
     industry: assessment.industry,
-    healthScore: assessment.health_score,
-    issuesFound: assessment.issues_found,
+    status: assessment.status,
     estimatedExposure: assessment.estimated_exposure,
+    issuesFound: assessment.issues_found,
+    insufficientData: assessment.estimated_exposure == null,
     topRisks: JSON.parse((assessment.top_risks as string) || '[]'),
-    topOpportunities: JSON.parse((assessment.top_opportunities as string) || '[]'),
-    projectedRoi: assessment.projected_roi,
     completedAt: assessment.completed_at,
     findings,
     findingsSummary,
