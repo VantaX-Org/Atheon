@@ -40,6 +40,23 @@ function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
+/**
+ * The single headline savings figure for every report. It is the gated,
+ * confidence-passed, per-record-traceable total from the detector engine
+ * (`findings_summary.total_value_at_risk_zar`) — the same number the app shows
+ * on screen. Falls back to the catalyst volume-projection sum only for legacy
+ * assessments that ran before findings_summary existed, so old reports don't
+ * break. Per-catalyst rows keep their own projection as modelled detail; only
+ * the headline is unified on the confirmed number.
+ */
+export function reportHeadlineTotal(
+  results: AssessmentResults | null,
+  scores: Array<{ estimated_annual_saving_zar: number }>,
+): number {
+  const gated = results?.findings_summary?.total_value_at_risk_zar;
+  return gated != null ? gated : scores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+}
+
 // Colour palette shared across all reports
 const NAVY  = [27, 58, 107] as const;
 const TEAL  = [0, 150, 136] as const;
@@ -72,7 +89,7 @@ export async function generateBusinessPDF(assessment: Assessment): Promise<void>
   const pageH = doc.internal.pageSize.getHeight();
   const prospectName = assessment.prospectName || 'Prospect';
 
-  const totalSaving = scores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+  const totalSaving = reportHeadlineTotal(results, scores);
   const deploymentModel = str(config.deployment_model, 'saas');
   const annualLicence = sizing
     ? (deploymentModel === 'saas'
@@ -458,7 +475,7 @@ export async function generateTechnicalPDF(assessment: Assessment): Promise<void
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
 
-  const totalSaving = scores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+  const totalSaving = reportHeadlineTotal(results, scores);
   const deploymentModel = str(config.deployment_model, 'saas');
   const annualLicence = deploymentModel === 'saas'
     ? sizing.annual_licence_revenue
@@ -1170,7 +1187,7 @@ export async function generateExcelReport(assessment: Assessment, findings?: Val
   }
 
   const wb = XLSX.utils.book_new();
-  const totalSaving = scores.reduce((s, c) => s + c.estimated_annual_saving_zar, 0);
+  const totalSaving = reportHeadlineTotal(results, scores);
   const deploymentModel = str(config.deployment_model, 'saas');
   const annualLicence = sizing
     ? (deploymentModel === 'saas'
