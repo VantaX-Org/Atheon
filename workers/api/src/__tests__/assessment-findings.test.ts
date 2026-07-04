@@ -807,4 +807,103 @@ describe('Assessment Findings — multi-currency normalisation', () => {
     // Recovery uplift = R20,000 × 12% = R2,400
     expect(aging!.value_at_risk_zar).toBe(2_400);
   });
+
+  it('flags an unknown currency as a data-quality issue instead of silently trusting 1:1', async () => {
+    const tenantId = nextTenantId('unknowncur');
+    await seedTenant(tenantId);
+    // 'XYZ' has no rate in CTX.exchangeRates → toZAR keeps 1:1 but must record it.
+    await env.DB.prepare(
+      `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, due_date, total, amount_due, currency, payment_status, status)
+       VALUES (?, ?, 'INV-XYZ-1', 'Mystery Customer', date('now', '-100 days'), date('now', '-100 days'), 5000, 5000, 'XYZ', 'unpaid', 'sent')`,
+    ).bind(`inv-xyz-${tenantId}-1`, tenantId).run();
+
+    const unknownCurrencies = new Set<string>();
+    await detectAllFindings(env.DB, tenantId, { ...CTX, unknownCurrencies });
+    expect(unknownCurrencies.has('XYZ')).toBe(true);
+    // The value is NOT zeroed out — the 1:1 fallback is preserved (rule: no silent zero).
+    const findings = await detectAllFindings(env.DB, tenantId, { ...CTX, unknownCurrencies });
+    const fx = findings.find(f => f.code === 'fx_currency_exposure');
+    expect(fx!.currency_breakdown.XYZ).toBe(5000);
+  });
+});
+
+describe('Assessment Findings — traceback ids resolve to real erp rows', () => {
+  beforeAll(async () => { await migrate(); });
+
+  it('aggregate concentration + FX findings carry a real erp_invoices id, not a name/currency', async () => {
+    const tenantId = nextTenantId('trace');
+    await seedTenant(tenantId);
+    // 5 unpaid ZAR debtors (concentration) + 3 unpaid USD invoices (FX).
+    for (let i = 0; i < 5; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-30 days'), ?, ?, 'ZAR', 'unpaid', 'sent')`,
+      ).bind(`inv-tr-${tenantId}-${i}`, tenantId, `INV-TR-${i}`, `Debtor ${i}`, 1_000_000, 1_000_000).run();
+    }
+    for (let i = 0; i < 3; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-30 days'), ?, ?, 'USD', 'unpaid', 'sent')`,
+      ).bind(`inv-fx-${tenantId}-${i}`, tenantId, `INV-FX-${i}`, `US Customer ${i}`, 50_000, 50_000).run();
+    }
+
+    const findings = await detectAllFindings(env.DB, tenantId, CTX);
+    const idExists = async (id: string) =>
+      !!(await env.DB.prepare(`SELECT 1 FROM erp_invoices WHERE tenant_id = ? AND id = ?`).bind(tenantId, id).first());
+
+    for (const code of ['ar_top_debtor_concentration', 'fx_currency_exposure'] as FindingCode[]) {
+      const f = findings.find(x => x.code === code);
+      expect(f, code).toBeTruthy();
+      // erp_record_id (first sample ref) resolves to a live erp_invoices row.
+      expect(await idExists(f!.erp_record_id!), `${code} erp_record_id`).toBe(true);
+      // EVERY sample ref resolves too — none is a bare name/currency.
+      for (const s of f!.sample_records) {
+        expect(await idExists(s.ref), `${code} sample ref ${s.ref}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('Assessment Findings — conservative-cap labeling (LIMIT 200)', () => {
+  beforeAll(async () => { await migrate(); });
+
+  it('counts the true population and labels the sample as top 200 by value when capped', async () => {
+    const tenantId = nextTenantId('cap');
+    await seedTenant(tenantId);
+    // 201 invoices in the 90+ bucket — one past the LIMIT 200 cap.
+    const stmts = [];
+    for (let i = 0; i < 201; i++) {
+      stmts.push(env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, due_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-160 days'), date('now', '-120 days'), ?, ?, 'ZAR', 'unpaid', 'sent')`,
+      ).bind(`inv-cap-${tenantId}-${i}`, tenantId, `INV-CAP-${i}`, `Customer ${i}`, 10_000 + i, 10_000 + i));
+    }
+    await env.DB.batch(stmts);
+
+    const f = await findingByCode(tenantId, 'ar_aging_overdue_90_plus');
+    expect(f).not.toBeNull();
+    // affected_count reflects the TRUE population, not the 200-row sample.
+    expect(f!.affected_count).toBe(201);
+    expect(f!.title).toContain('201 invoices');
+    expect(f!.title).toContain('top 200 by value');
+    expect(f!.narrative).toContain('top 200 by value');
+    // Sample stays capped at 10; value stays based on the top-200 (conservative).
+    expect(f!.sample_records.length).toBeLessThanOrEqual(10);
+    expect(f!.value_at_risk_zar).toBeGreaterThan(0);
+  });
+
+  it('does not add the cap label when the bucket is under 200', async () => {
+    const tenantId = nextTenantId('nocap');
+    await seedTenant(tenantId);
+    for (let i = 0; i < 3; i++) {
+      await env.DB.prepare(
+        `INSERT INTO erp_invoices (id, tenant_id, invoice_number, customer_name, invoice_date, due_date, total, amount_due, currency, payment_status, status)
+         VALUES (?, ?, ?, ?, date('now', '-160 days'), date('now', '-120 days'), 50000, 50000, 'ZAR', 'unpaid', 'sent')`,
+      ).bind(`inv-nocap-${tenantId}-${i}`, tenantId, `INV-NC-${i}`, `Customer ${i}`).run();
+    }
+    const f = await findingByCode(tenantId, 'ar_aging_overdue_90_plus');
+    expect(f!.affected_count).toBe(3);
+    expect(f!.title).not.toContain('top 200');
+    expect(f!.title).toContain('outstanding');
+  });
 });
