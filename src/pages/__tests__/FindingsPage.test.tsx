@@ -38,7 +38,7 @@ describe('FindingsPage', () => {
 
   it('names the unverified remainder separately', async () => {
     render(<MemoryRouter><FindingsPage /></MemoryRouter>);
-    expect(await screen.findByText(/below the confidence gate/i)).toBeInTheDocument();
+    expect(await screen.findByText(/need review before we count them/i)).toBeInTheDocument();
   });
 
   it('shows an honest error state when the assessments list rejects', async () => {

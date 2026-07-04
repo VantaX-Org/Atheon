@@ -111,9 +111,9 @@ export default function ROIDashboardPage(): JSX.Element {
   return (
     <div className="p-6 space-y-6">
       <PageHeader
-        eyebrow="Value · ROI"
-        title="ROI Dashboard"
-        dek="Financial Proof & Inference Calibration"
+        eyebrow="Journey · 04 Recover"
+        title="Savings"
+        dek="Recovered value, financial proof & inference calibration"
       />
       <JourneyStageBar current="recover" />
 

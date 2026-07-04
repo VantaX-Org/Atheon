@@ -145,6 +145,22 @@ export function JourneyHome() {
         </div>
       )}
 
+      {/* First-run: a brand-new tenant has no data yet — give it one obvious
+          door into the guided setup instead of leaving it to hunt the nav. */}
+      {input?.connections?.total === 0 && (
+        <Link to="/onboarding" className="block group mb-6">
+          <Card className="p-4 flex items-center justify-between gap-4" style={{ background: 'var(--accent-subtle)' }}>
+            <div>
+              <p className="t-primary font-medium">New here? Let's get your first numbers.</p>
+              <p className="text-caption t-muted">Connect your data and Atheon walks you through the whole loop.</p>
+            </div>
+            <span className="text-caption font-medium text-accent inline-flex items-center gap-1 shrink-0">
+              Get started <ArrowRight size={12} aria-hidden="true" />
+            </span>
+          </Card>
+        </Link>
+      )}
+
       <JourneySpine stages={stages} />
 
       <section aria-label="Needs you now" className="mt-8">

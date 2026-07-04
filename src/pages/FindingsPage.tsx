@@ -63,9 +63,9 @@ export default function FindingsPage() {
               {formatCompactCurrency(summary.total_value_at_risk_zar, currency)}
             </p>
             <p className="mt-1 text-caption t-muted">
-              across {summary.total_count} confidence-gated finding{summary.total_count === 1 ? '' : 's'}
+              across {summary.total_count} verified finding{summary.total_count === 1 ? '' : 's'}
               {summary.unverified_count && summary.unverified_count > 0
-                ? ` · ${summary.unverified_count} more fell below the confidence gate and are excluded`
+                ? ` · ${summary.unverified_count} more need review before we count them`
                 : ''}
             </p>
             <Link to="/catalysts" className="mt-4 inline-flex items-center gap-1 text-caption font-medium text-accent hover:underline">

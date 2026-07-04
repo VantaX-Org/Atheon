@@ -29,13 +29,16 @@ import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import type { OnboardingStep } from "@/lib/api";
 
+// Deep-link each onboarding step to its journey stage (Connect→Detect→Fix→
+// Recover→Report), not the old product-noun pages. Keeps the guided path and
+// the sidebar speaking the same plain language.
 const STEP_TARGETS: Record<string, { route: string; cta: string }> = {
-  connect_erp:      { route: '/integrations',                      cta: 'Open Integrations' },
-  deploy_catalyst:  { route: '/catalysts',                          cta: 'Open Catalysts' },
-  run_catalyst:     { route: '/catalysts',                          cta: 'Open Catalysts' },
-  review_action:    { route: '/catalysts',                          cta: 'Open Exceptions queue' },
-  view_diagnostics: { route: '/pulse',                              cta: 'Open Pulse · Diagnostics' },
-  generate_report:  { route: '/apex',                               cta: 'Open Apex · Briefing' },
+  connect_erp:      { route: '/data',                               cta: 'Connect your data' },
+  deploy_catalyst:  { route: '/catalysts',                          cta: 'Open Fixes' },
+  run_catalyst:     { route: '/catalysts',                          cta: 'Open Fixes' },
+  review_action:    { route: '/findings',                           cta: 'Review findings' },
+  view_diagnostics: { route: '/findings',                           cta: 'Review findings' },
+  generate_report:  { route: '/executive-summary',                  cta: 'Open Reports' },
   invite_user:      { route: '/iam',                                cta: 'Open IAM · Users' },
 };
 

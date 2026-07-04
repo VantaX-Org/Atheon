@@ -179,10 +179,9 @@ export default function App() {
             <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
             <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
             <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
-            {/* Guided onboarding wizard — full-screen version of the
-                Dashboard's OnboardingChecklist, walks the user through the
-                7 week-1 stop-gates with deep-link CTAs. Open to all auth users
-                (the checklist itself is per-user, not per-tenant). */}
+            {/* Guided onboarding wizard — walks a new user through the week-1
+                stop-gates with deep-link CTAs into the journey stages. Linked
+                from JourneyHome's first-run banner. Open to all auth users. */}
             <Route path="/onboarding" element={<OnboardingWizardPage />} />
             <Route path="/apex" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ApexPage /></ProtectedRoute>} />
             {/* Phase 10-23: ROI / Insights dashboard surfacing billing,
