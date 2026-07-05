@@ -333,11 +333,11 @@ export function LoginPage() {
           className="uppercase tracking-[0.34em] text-caption"
           style={{ fontFamily: "'Space Mono', ui-monospace, monospace", color: 'var(--accent)' }}
         >
-          Atheon · Enterprise Assurance
+          Atheon · Connect · Detect · Fix · Recover · Report
         </p>
 
-        <h1 className="text-5xl xl:text-6xl font-bold t-primary tracking-tight leading-[1.05] max-w-[14ch]">
-          Securing the foundation of global finance with quiet capital.
+        <h1 className="text-5xl xl:text-6xl font-bold t-primary tracking-tight leading-[1.05] max-w-[15ch]">
+          The money is already in your ERP. Recover it.
         </h1>
 
         <div className="space-y-2 max-w-md">
@@ -345,10 +345,10 @@ export function LoginPage() {
             className="uppercase tracking-[0.28em] text-caption t-muted"
             style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
           >
-            Provenance · Assurance · Shared savings
+            Detect · Fix · Recover
           </p>
           <p className="text-body-sm t-secondary leading-relaxed">
-            Every claimed dollar traced to its source record. Every finding evidenced, ranked, and ready for the board.
+            Every claimed Rand traced to its source record. Every finding evidenced, ranked, and ready for the board.
           </p>
         </div>
       </aside>

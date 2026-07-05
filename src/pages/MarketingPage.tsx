@@ -341,6 +341,41 @@ const marketingCSS = `
 }
 
 /* MANIFESTO */
+.mk5-product {
+  padding: 7rem 3rem 8rem;
+  max-width: 84rem; margin: 0 auto;
+  border-bottom: 1px solid var(--rule);
+}
+.mk5-product-intro { max-width: 46rem; }
+.mk5-product-eyebrow {
+  font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-3); display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.5rem;
+}
+.mk5-product-eyebrow::before { content: ""; width: 2rem; height: 1px; background: var(--rule-strong); }
+.mk5-product-intro h2 {
+  font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.05; letter-spacing: -0.02em;
+  font-weight: 400; color: var(--ink); margin-bottom: 1.25rem;
+}
+.mk5-product-intro p { font-size: 1.05rem; line-height: 1.6; color: var(--ink-2); max-width: 34rem; }
+.mk5-product figure { margin: 0; }
+.mk5-product figure img {
+  display: block; width: 100%; height: auto; border-radius: 10px;
+  border: 1px solid var(--rule); box-shadow: 0 24px 60px -28px rgba(15, 17, 21, 0.28);
+  background: var(--paper);
+}
+.mk5-product figcaption {
+  margin-top: 0.85rem; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mk5-product-hero { margin-top: 3rem; }
+.mk5-product-grid {
+  margin-top: 1.75rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.75rem;
+}
+@media (max-width: 820px) {
+  .mk5-product { padding: 4.5rem 1.5rem 5rem; }
+  .mk5-product-grid { grid-template-columns: 1fr; }
+}
+
 .mk5-manifesto {
   padding: 9rem 3rem;
   max-width: 80rem; margin: 0 auto;
@@ -1261,10 +1296,10 @@ export function MarketingPage() {
   ];
 
   const proofRows = [
-    { area: "Standard cost variance", source: "SAP S/4HANA · CKMLCR / ACDOCA", field: "vprs_cogm × menge", amount: "$1,820,400", confidence: "High" },
-    { area: "Duplicate remittances", source: "Oracle Fusion AP · ap_invoices_all", field: "invoice_num + supplier + amount", amount: "$412,180", confidence: "High" },
-    { area: "Trade promotion leakage", source: "NetSuite + Salesforce", field: "promo_lift vs baseline_units", amount: "$268,540", confidence: "Medium" },
-    { area: "Payroll overtime drift", source: "Workday · hours / rate / cost_center", field: "ot_hours × burdened_rate", amount: "$134,260", confidence: "Medium" },
+    { area: "Standard cost variance", source: "SAP S/4HANA · CKMLCR / ACDOCA", field: "vprs_cogm × menge", amount: "R1,820,400", confidence: "High" },
+    { area: "Duplicate remittances", source: "Oracle Fusion AP · ap_invoices_all", field: "invoice_num + supplier + amount", amount: "R412,180", confidence: "High" },
+    { area: "Trade promotion leakage", source: "NetSuite + Salesforce", field: "promo_lift vs baseline_units", amount: "R268,540", confidence: "Medium" },
+    { area: "Payroll overtime drift", source: "Workday · hours / rate / cost_center", field: "ot_hours × burdened_rate", amount: "R134,260", confidence: "Medium" },
   ];
 
   return (
@@ -1316,23 +1351,23 @@ export function MarketingPage() {
       {/* HERO */}
       <section className="mk5-hero">
         <div className="mk5-hero-left">
-          <div className="mk5-hero-eyebrow">01 &mdash; The Catalyst Platform</div>
+          <div className="mk5-hero-eyebrow">01 &mdash; Connect &middot; Detect &middot; Fix &middot; Recover &middot; Report</div>
           <h1>
-            <span className="thin">Agents evolve.</span><br />
-            <i>Catalysts</i> <span className="thin">emerge.</span>
+            <span className="thin">The money is already</span><br />
+            <span className="thin">in your ERP.</span> <i>We recover it.</i>
           </h1>
           <p className="mk5-hero-desc">
-            Agents automate tasks. Copilots assist individuals. A Catalyst does what neither
-            can&nbsp;&mdash; it governs, correlates, and synthesises across your entire
-            organisation. Atheon is the world&rsquo;s first Catalyst platform. Three layers of
-            intelligence. One living truth, ledgered against your ERP.
+            Atheon connects to your ERP, detects the exposure hiding in the records&nbsp;&mdash;
+            duplicate payments, GR/IR mismatches, aged receivables&nbsp;&mdash; and drives the
+            fixes that recover it. Every Rand traces back to the source record it came from.
+            One loop, ledgered against your ERP: connect, detect, fix, recover, report.
           </p>
           <div className="mk5-hero-actions">
             <button className="mk5-btn-main" onClick={() => document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" })}>
               Request Access
             </button>
-            <button className="mk5-hero-textlink" onClick={() => document.getElementById("layers")?.scrollIntoView({ behavior: "smooth" })}>
-              See the architecture &#8599;
+            <button className="mk5-hero-textlink" onClick={() => document.getElementById("product")?.scrollIntoView({ behavior: "smooth" })}>
+              See it in action &#8599;
             </button>
           </div>
         </div>
@@ -1340,7 +1375,7 @@ export function MarketingPage() {
         <div className="mk5-hero-right">
           {/* Hero metric — realised shared-savings, the figure the CFO bills against */}
           <div className="mk5-hero-metric">
-            <div className="mk5-hero-metric-num mk5-mono">$6.1m</div>
+            <div className="mk5-hero-metric-num mk5-mono">R6.1m</div>
             <div className="mk5-hero-metric-caption">
               <span>Realised &middot; trailing 90 days</span>
               <span className="up">&#8599; Ledgered to ERP</span>
@@ -1356,11 +1391,11 @@ export function MarketingPage() {
             <div className="mk5-hero-panel-body">
               <div className="mk5-hero-panel-cell">
                 <span className="k">Identified</span>
-                <span className="v mk5-mono">$12.4m</span>
+                <span className="v mk5-mono">R12.4m</span>
               </div>
               <div className="mk5-hero-panel-cell">
                 <span className="k">Approved</span>
-                <span className="v mk5-mono">$8.6m</span>
+                <span className="v mk5-mono">R8.6m</span>
               </div>
               <div className="mk5-hero-panel-cell chart">
                 <span className="k">Realised, by month</span>
@@ -1391,18 +1426,18 @@ export function MarketingPage() {
           <div className="mk5-ss-meta mk5-mono">Trailing 90 days &middot; Q2 2026</div>
         </div>
         <div className="mk5-ss-meta mk5-mono" style={{ alignSelf: "end" }}>
-          Every claimed dollar traces to ERP record &middot; field &middot; confidence band.
+          Every claimed Rand traces to ERP record &middot; field &middot; confidence band.
         </div>
         <div className="mk5-ss-figure">
-          <div className="mk5-ss-amount mk5-mono">$12.4m</div>
+          <div className="mk5-ss-amount mk5-mono">R12.4m</div>
           <div className="mk5-ss-tag">Identified</div>
         </div>
         <div className="mk5-ss-figure">
-          <div className="mk5-ss-amount mk5-mono">$8.6m</div>
+          <div className="mk5-ss-amount mk5-mono">R8.6m</div>
           <div className="mk5-ss-tag">Approved</div>
         </div>
         <div className="mk5-ss-figure">
-          <div className="mk5-ss-amount mk5-mono accent">$6.1m</div>
+          <div className="mk5-ss-amount mk5-mono accent">R6.1m</div>
           <div className="mk5-ss-tag">Realised</div>
         </div>
       </div>
@@ -1421,6 +1456,33 @@ export function MarketingPage() {
           ))}
         </div>
       </div>
+
+      {/* PRODUCT — real screenshots of the shipped app */}
+      <section className="mk5-product" id="product">
+        <div className="mk5-product-intro">
+          <div className="mk5-product-eyebrow mk5-mono">02 &mdash; The product</div>
+          <h2 className="mk5-reveal">One screen shows you<br />where the money is.</h2>
+          <p className="mk5-reveal">
+            The home screen is the loop&nbsp;&mdash; sources connected, exposure detected, fixes
+            awaiting approval, value recovered, reports ready. Every number links to the record
+            behind it.
+          </p>
+        </div>
+        <figure className="mk5-product-hero mk5-reveal">
+          <img src="/marketing/home.png" alt="Atheon home — the connect, detect, fix, recover, report journey with live figures in Rand" loading="lazy" />
+          <figcaption className="mk5-mono">Home &middot; the value loop at a glance</figcaption>
+        </figure>
+        <div className="mk5-product-grid">
+          <figure className="mk5-reveal">
+            <img src="/marketing/findings.png" alt="Findings — detected exposure, every Rand drillable to its ERP record" loading="lazy" />
+            <figcaption className="mk5-mono">Findings &middot; confidence-gated exposure</figcaption>
+          </figure>
+          <figure className="mk5-reveal mk5-rd1">
+            <img src="/marketing/fixes.png" alt="Fixes — approve the automated remediations that recover the money" loading="lazy" />
+            <figcaption className="mk5-mono">Fixes &middot; approve &amp; recover</figcaption>
+          </figure>
+        </div>
+      </section>
 
       {/* MANIFESTO */}
       <section className="mk5-manifesto">
