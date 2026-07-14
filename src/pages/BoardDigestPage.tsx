@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/appStore';
 import { useToast } from '@/components/ui/toast';
 import { TrendingUp, ShieldCheck, Activity, FileDown } from 'lucide-react';
+import { PersonaRail } from '@/components/journey/PersonaRail';
 
 function formatCurrency(value: number, currency = 'ZAR'): string {
   try {
@@ -42,7 +43,8 @@ function formatCurrency(value: number, currency = 'ZAR'): string {
 
 export default function BoardDigestPage(): JSX.Element {
   const toast = useToast();
-  const currentRole = useAppStore((s) => s.user)?.role || 'viewer';
+  const currentUser = useAppStore((s) => s.user);
+  const currentRole = currentUser?.role || 'viewer';
   const canExportDigest = ['superadmin', 'support_admin', 'admin', 'executive'].includes(currentRole);
   const canExportFullPack = ['superadmin', 'support_admin', 'admin'].includes(currentRole);
 
@@ -181,6 +183,9 @@ export default function BoardDigestPage(): JSX.Element {
           </Button>
         )}
       </div>
+
+      {/* Read-only CEO lens for the board — picker hidden (spec 2026-07-14 §4.7). */}
+      <PersonaRail user={currentUser} fixedPersona="ceo" />
 
       <header
         className="card-hero p-7 md:p-9 mb-6"

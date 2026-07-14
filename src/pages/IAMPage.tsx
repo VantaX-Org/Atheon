@@ -18,6 +18,8 @@ import {
  UploadCloud,
 } from "lucide-react";
 import { ScimTokenManager } from "@/components/iam/ScimTokenManager";
+import { PERSONA_LABELS } from "@/components/journey/PersonaRail";
+import type { Persona } from "@/types";
 import { SamlConfigPanel } from "@/components/iam/SamlConfigPanel";
 
 /** Per-role permission map */
@@ -54,6 +56,7 @@ export function IAMPage() {
  const [editingUserId, setEditingUserId] = useState<string | null>(null);
  const [editRole, setEditRole] = useState('');
  const [editStatus, setEditStatus] = useState('');
+ const [editPersona, setEditPersona] = useState<Persona | ''>('');
  const [savingUser, setSavingUser] = useState(false);
  const [creatingPolicy, setCreatingPolicy] = useState(false);
  const [inviting, setInviting] = useState(false);
@@ -552,10 +555,22 @@ export function IAMPage() {
                            <option value="active">Active</option>
                            <option value="suspended">Suspended</option>
                          </select>
+                         <select
+                           value={editPersona}
+                           onChange={(e) => setEditPersona(e.target.value as Persona | '')}
+                           aria-label="Default view"
+                           className="px-2 py-1 rounded-md border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+                         >
+                           <option value="">View: role default</option>
+                           {(Object.keys(PERSONA_LABELS) as Persona[]).map((p) => (
+                             <option key={p} value={p}>View: {PERSONA_LABELS[p]}</option>
+                           ))}
+                         </select>
                          <Button variant="primary" size="sm" disabled={savingUser} onClick={() => {
                            const updates: Record<string, unknown> = {};
                            if (editRole !== user.role) updates.role = editRole;
                            if (editStatus !== user.status) updates.status = editStatus;
+                           if (editPersona !== (user.persona ?? '')) updates.persona = editPersona || null;
                            if (Object.keys(updates).length > 0) {
                              handleUpdateUser(user.id, updates);
                            } else {
@@ -577,7 +592,7 @@ export function IAMPage() {
 
                          {manageable && (
                            <>
-                             <Button variant="secondary" size="sm" onClick={() => { setEditingUserId(user.id); setEditRole(user.role || 'viewer'); setEditStatus(user.status || 'active'); }} title="Edit user">
+                             <Button variant="secondary" size="sm" onClick={() => { setEditingUserId(user.id); setEditRole(user.role || 'viewer'); setEditStatus(user.status || 'active'); setEditPersona(user.persona ?? ''); }} title="Edit user">
                                <Pencil size={12} />
                              </Button>
                              <Button variant="secondary" size="sm" onClick={() => handleToggleStatus(user)} title={user.status === 'active' ? 'Suspend user' : 'Reactivate user'}>

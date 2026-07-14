@@ -16,6 +16,7 @@ import { encrypt, decrypt, isEncrypted } from '../services/encryption';
 import { sendOrQueueEmail, getPasswordResetEmailTemplate } from '../services/email';
 import { logInfo, logWarn } from '../services/logger';
 import { withStorageRetry } from '../services/storage-retry';
+import { PERSONAS, type Persona } from '../services/persona-insights';
 
 // ── Backup Code helpers (v40) ──
 //
@@ -801,6 +802,7 @@ auth.get('/me', async (c) => {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       tenantSlug: user.tenant_slug,
+      persona: user.persona ?? null,
       permissions: JSON.parse(user.permissions as string || '[]'),
       notificationPrefs,
       brand: {
@@ -830,7 +832,7 @@ auth.patch('/me', async (c) => {
   if (!payload) return c.json({ error: 'Invalid token' }, 401);
   const userId = String(payload.sub);
 
-  let body: { name?: unknown; email?: unknown; notificationPrefs?: unknown };
+  let body: { name?: unknown; email?: unknown; persona?: unknown; notificationPrefs?: unknown };
   try {
     body = await c.req.json();
   } catch {
@@ -869,6 +871,15 @@ auth.patch('/me', async (c) => {
     }
   }
 
+  // Persona insight lens (persona-insight-dashboards spec §3) — union-validated; null clears.
+  if (body.persona !== undefined) {
+    if (body.persona !== null && !PERSONAS.includes(body.persona as Persona)) {
+      return c.json({ error: `Invalid persona. Valid: ${PERSONAS.join(', ')}` }, 400);
+    }
+    updates.push('persona = ?');
+    binds.push(body.persona);
+  }
+
   if (updates.length > 0) {
     binds.push(userId);
     await c.env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...binds).run();
@@ -888,7 +899,7 @@ auth.patch('/me', async (c) => {
   }
 
   // Return the refreshed profile (same shape as GET /me, minus brand which is unchanged).
-  const updated = await c.env.DB.prepare('SELECT id, email, name, role, tenant_id, permissions FROM users WHERE id = ?')
+  const updated = await c.env.DB.prepare('SELECT id, email, name, role, tenant_id, persona, permissions FROM users WHERE id = ?')
     .bind(userId).first();
   const notificationPrefs = await readNotificationPrefs(c.env.DB, userId);
   return c.json({
@@ -897,6 +908,7 @@ auth.patch('/me', async (c) => {
     name: updated?.name,
     role: updated?.role,
     tenantId: updated?.tenant_id,
+    persona: updated?.persona ?? null,
     permissions: JSON.parse((updated?.permissions as string) || '[]'),
     notificationPrefs,
   });

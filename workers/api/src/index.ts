@@ -49,6 +49,7 @@ import billingRoutes from './routes/billing';
 import dsarRoutes from './routes/dsar';
 import orchestrationRoutes from './routes/orchestration';
 import insightsStatsRoutes from './routes/insights-stats';
+import insightsRoutes from './routes/insights';
 import catalystIntelligence from './routes/catalyst-intelligence';
 import roi from './routes/roi';
 import boardReport from './routes/board-report';
@@ -546,6 +547,13 @@ for (const p of ['/api/board-report/*', '/api/v1/board-report/*']) {
 for (const p of ['/api/board-digest/*', '/api/v1/board-digest/*']) {
   app.use(p, requireRole('superadmin', 'support_admin', 'admin', 'executive'));
 }
+// Persona insight dashboards: executive roles + manager. The bare path is
+// included because GET /api/insights?persona=… has no trailing segment, so
+// the `/api/insights/*` wildcard alone would not run the middleware.
+for (const p of ['/api/insights', '/api/insights/*', '/api/v1/insights', '/api/v1/insights/*']) {
+  app.use(p, tenantIsolation());
+  app.use(p, requireRole('superadmin', 'support_admin', 'admin', 'executive', 'board_member', 'manager'));
+}
 // v45-alerts: system-alerts (admin+) — CRUD/silence/test on alert rules
 for (const p of ['/api/system-alerts/*', '/api/v1/system-alerts/*']) {
   app.use(p, requireRole('superadmin', 'support_admin', 'admin'));
@@ -568,6 +576,7 @@ const routeModules: [string, typeof auth][] = [
   ['dsar', dsarRoutes],
   ['orchestration', orchestrationRoutes],
   ['insights-stats', insightsStatsRoutes],
+  ['insights', insightsRoutes],
   ['catalyst-intelligence', catalystIntelligence],
   ['roi', roi], ['board-report', boardReport], ['board-digest', boardDigest],
   ['onboarding', onboarding], ['freshness', freshness],

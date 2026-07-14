@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Folder, ChevronRight, Plus } from "lucide-react";
 import type { ClusterItem } from "@/lib/api";
+import { useAppStore } from "@/stores/appStore";
+import { sortClustersForDeploy } from "@/lib/cluster-sort";
 
 interface ClusterListProps {
   clusters: ClusterItem[];
@@ -10,6 +12,15 @@ interface ClusterListProps {
 }
 
 export function ClusterList({ clusters, selectedCluster, onSelect, onCreate }: ClusterListProps) {
+  const industry = useAppStore((s) => s.industry);
+  const sorted = sortClustersForDeploy(clusters, industry);
+  // Group by domain, preserving the industry-first order from the sort.
+  const groups: Array<{ domain: string; items: ClusterItem[] }> = [];
+  for (const cluster of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.domain === cluster.domain) last.items.push(cluster);
+    else groups.push({ domain: cluster.domain, items: [cluster] });
+  }
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between mb-3">
@@ -24,24 +35,29 @@ export function ClusterList({ clusters, selectedCluster, onSelect, onCreate }: C
       {clusters.length === 0 ? (
         <p className="text-sm t-muted text-center py-8">No clusters yet. Create one to get started.</p>
       ) : (
-        clusters.map((cluster) => (
-          <button
-            key={cluster.id}
-            onClick={() => onSelect(cluster.id)}
-            className={`w-full flex items-center gap-3 p-3 rounded-md active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] text-left ${
-              selectedCluster === cluster.id
-                ? 'bg-accent/10 border border-accent/20'
-                : 'hover:bg-[var(--bg-secondary)] border border-transparent'
-            }`}
-          >
-            <Folder size={16} className="text-accent flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium t-primary truncate">{cluster.name}</p>
-              <p className="text-caption t-muted">{cluster.subCatalysts?.length || 0} sub-catalysts</p>
-            </div>
-            <Badge variant={cluster.status === 'active' ? 'success' : 'default'} size="sm">{cluster.status}</Badge>
-            <ChevronRight size={14} className="t-muted" />
-          </button>
+        groups.map((group) => (
+          <div key={group.domain} className="space-y-2">
+            <p className="text-caption t-muted uppercase tracking-wide pt-2">{group.domain}</p>
+            {group.items.map((cluster) => (
+              <button
+                key={cluster.id}
+                onClick={() => onSelect(cluster.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-md active:scale-[0.98] transition-[background-color,color,box-shadow,transform,border-color] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] text-left ${
+                  selectedCluster === cluster.id
+                    ? 'bg-accent/10 border border-accent/20'
+                    : 'hover:bg-[var(--bg-secondary)] border border-transparent'
+                }`}
+              >
+                <Folder size={16} className="text-accent flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium t-primary truncate">{cluster.name}</p>
+                  <p className="text-caption t-muted">{cluster.subCatalysts?.length || 0} sub-catalysts</p>
+                </div>
+                <Badge variant={cluster.status === 'active' ? 'success' : 'default'} size="sm">{cluster.status}</Badge>
+                <ChevronRight size={14} className="t-muted" />
+              </button>
+            ))}
+          </div>
         ))
       )}
     </div>

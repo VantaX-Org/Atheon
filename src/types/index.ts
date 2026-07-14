@@ -26,9 +26,14 @@ export interface User {
   notificationPrefs?: Record<string, boolean>;
   /** Per-tenant whitelabel — populated by /api/auth/me. */
   brand?: TenantBrandConfig;
+  /** Saved default insight lens ("Your view"). Null = role-derived default. */
+  persona?: Persona | null;
 }
 
 export type UserRole = 'superadmin' | 'support_admin' | 'admin' | 'executive' | 'manager' | 'analyst' | 'operator' | 'auditor' | 'board_member' | 'viewer';
+
+/** Insight lens, orthogonal to role (lens, not privilege) — spec 2026-07-14 §3.1. */
+export type Persona = 'ceo' | 'cfo' | 'coo' | 'cpo' | 'cmo' | 'chro' | 'cio';
 
 export interface Tenant {
   id: string;
