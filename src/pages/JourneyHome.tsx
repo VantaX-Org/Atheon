@@ -14,6 +14,7 @@ import { formatCompactCurrency } from '@/lib/format-currency';
 import { buildJourneyStages, type StageInput } from '@/lib/journey';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import { JourneySpine } from '@/components/journey/JourneySpine';
+import { PersonaRail } from '@/components/journey/PersonaRail';
 import { ActionQueuePanel } from '@/components/dashboard/ActionQueuePanel';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -162,6 +163,8 @@ export function JourneyHome() {
       )}
 
       <JourneySpine stages={stages} />
+
+      <PersonaRail user={user} />
 
       <section aria-label="Needs you now" className="mt-8">
         {pending && (

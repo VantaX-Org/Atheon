@@ -1008,6 +1008,9 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'anomalies', column: 'resolution_notes', definition: 'TEXT' },
     { table: 'mind_queries', column: 'feedback_rating', definition: 'INTEGER' },
     { table: 'users', column: 'avatar_url', definition: 'TEXT' },
+    // Persona insight dashboards — self-declared executive lens (ceo/cfo/coo/cpo/cmo/chro/cio).
+    // Orthogonal to `role` (permissions); validated against the Persona union in routes.
+    { table: 'users', column: 'persona', definition: 'TEXT' },
     { table: 'tenants', column: 'logo_url', definition: 'TEXT' },
     { table: 'tenants', column: 'billing_email', definition: 'TEXT' },
     { table: 'tenants', column: 'max_storage_gb', definition: 'INTEGER NOT NULL DEFAULT 10' },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import {
  Brain, TrendingUp, TrendingDown, GitBranch, RefreshCw, Target, MoreHorizontal, Wallet, ShieldCheck,
  SlidersHorizontal
 } from "lucide-react";
+import { sortClustersForDeploy } from "@/lib/cluster-sort";
 import { ValueLedgerPanel } from "@/pages/catalysts/ValueLedgerPanel";
 import { ApprovalQueuePanel } from "@/pages/catalysts/ApprovalQueuePanel";
 import { ConfidenceThresholdsPanel } from "@/pages/catalysts/ConfidenceThresholdsPanel";
@@ -81,8 +82,12 @@ export function CatalystsPage() {
  // every role is guaranteed to have).
  const { activeTab, setActiveTab } = useTabState('approvals');
  const currency = useTenantCurrency();
+ const tenantIndustry = useAppStore((s) => s.industry);
  const [expandedAction, setExpandedAction] = useState<string | null>(null);
  const [clusters, setClusters] = useState<ClusterItem[]>([]);
+ // Deploy view ordering (spec §7): tenant-industry domains first, then
+ // domain, then name — sorting only, cards unchanged.
+ const sortedClusters = useMemo(() => sortClustersForDeploy(clusters, tenantIndustry), [clusters, tenantIndustry]);
  const [actions, setActions] = useState<ActionItem[]>([]);
  const [governance, setGovernance] = useState<GovernanceData | null>(null);
  const [loading, setLoading] = useState(true);
@@ -1326,7 +1331,7 @@ export function CatalystsPage() {
      use (e.g. a dedicated /pages/catalysts/list page) — they aren't
      deleted, just unrendered here. */}
  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
- {clusters.map((cluster) => {
+ {sortedClusters.map((cluster) => {
  const tier = tierConfig[cluster.autonomyTier as AutonomyTier] || tierConfig['read-only'];
  const TierIcon = tier.icon;
  return (

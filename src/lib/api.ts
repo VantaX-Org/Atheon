@@ -1,5 +1,6 @@
 // M5 fix: Use env variable with production fallback (not personal Workers subdomain)
 import { generateRequestId } from './request-id';
+import type { Persona } from '@/types';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://atheon-api.vantax.co.za';
 
@@ -316,6 +317,9 @@ export const api = {
     /** Update own profile (name/email) and/or notification prefs; returns refreshed profile. */
     updateMe: (data: { name?: string; email?: string; notificationPrefs?: Record<string, boolean> }) =>
       request<AuthUser>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(data) }),
+    /** Persist the user's default insight lens ("Your view") — spec 2026-07-14 §3.1. */
+    setPersona: (persona: Persona | null) =>
+      request<AuthUser>('/api/auth/me', { method: 'PATCH', body: JSON.stringify({ persona }) }),
     ssoLogin: (provider: string) =>
       request<{ token: string; user: AuthUser }>('/api/auth/sso', {
         method: 'POST',
@@ -1867,6 +1871,12 @@ export const api = {
       ),
   },
 
+  // ── Persona insight rail (spec 2026-07-14 §5.2) ─────────────────────────
+  insights: {
+    get: (persona: Persona) =>
+      request<PersonaInsightsResponse>(`/api/insights?persona=${persona}`),
+  },
+
   roi: {
     summary: () =>
       request<ROISummary>('/api/roi'),
@@ -2462,6 +2472,8 @@ export interface AuthUser {
   notificationPrefs?: Record<string, boolean>;
   /** Per-tenant whitelabel — populated by /api/auth/me. */
   brand?: TenantBrand;
+  /** Saved default insight lens ("Your view"). Null = role-derived default. */
+  persona?: Persona | null;
 }
 
 export interface Tenant {
@@ -2521,6 +2533,8 @@ export interface IAMUser {
   role: string;
   permissions: string[];
   status: string;
+  /** Saved default insight lens ("Your view"). Null = role-derived default. */
+  persona?: Persona | null;
   lastLogin: string | null;
   createdAt: string;
 }
@@ -3578,6 +3592,46 @@ export interface AssessmentCompany {
   currency: string;
   country: string;
   is_primary: number;
+}
+
+// ── Persona Insight Types (spec 2026-07-14 §5.1) ────────────────────────
+// Every ZAR obeys the traceability law: value_zar is the finding's
+// gate-passed confirmed value only; external signals are context, never ZAR.
+export interface PersonaInsight {
+  id: string;
+  persona: Persona;
+  severity: AssessmentFindingSeverity;
+  headline: string;
+  detail: string;
+  /** ONLY gate-passed confirmed value; null when context-only. */
+  value_zar: number | null;
+  value_kind: 'confirmed' | 'potential_unverified' | 'context';
+  source: { finding_code?: string; external_signal_id?: string; assessment_id: string };
+  external_context?: { signal: string; value: string; direction: 'up' | 'down' | 'flat'; note: string };
+  recommended_catalyst?: { cluster: string; sub_catalyst: string };
+  cta: { label: string; route: string };
+}
+
+/** One channel of the header pulse strip — context only, no ZAR attached. */
+export interface ExternalPulseChannel {
+  signal_id: string;
+  signal_key: string;
+  value: number;
+  unit: string;
+  direction: 'up' | 'down' | 'flat';
+  change_pct: number | null;
+  as_of: string;
+}
+
+export interface PersonaInsightsResponse {
+  persona: Persona;
+  generated_from_assessment_id: string | null;
+  insights: PersonaInsight[];
+  external_pulse: {
+    fx: ExternalPulseChannel | null;
+    brent: ExternalPulseChannel | null;
+    regulatory_latest: { id: string; title: string; jurisdiction: string | null; effective_date: string | null } | null;
+  } | null;
 }
 
 // ── Catalyst Simulator types (PR N) ───────────────────────────────────────

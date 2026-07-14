@@ -8,7 +8,11 @@ import {
   CATALYST_CATALOG,
   getTemplateForIndustry,
   getStarterClusters,
+  getClustersByTag,
+  getClusterByName,
+  STARTER_CLUSTER_NAMES,
 } from '../services/catalyst-templates';
+import type { CatalystTemplate } from '../services/catalyst-templates';
 import { getApprovalEmailTemplate, getEscalationEmailTemplate, getRunResultsEmailTemplate, sendOrQueueEmail } from '../services/email';
 import { recordRun, recalculateKpis, getRuns, getRunDetail, getKpis, getRunItems, compareRuns, getKpiDefinitions, updateKpiDefinition } from '../services/sub-catalyst-ops';
 import { hasWord } from '../services/catalyst-match-utils';
@@ -935,14 +939,42 @@ catalysts.post('/deploy-template', async (c) => {
     }));
     deploymentSource = `industry:${body.industry}`;
   } else {
-    clustersToCreate = getStarterClusters().map(cl => ({
+    // Default enablement (spec §7.2): starter bundle + clusters recommended
+    // by the tenant's gate-passed assessment findings + clusters tagged with
+    // the tenant's industry. tenants.industry was dropped from the live
+    // schema, so the latest complete assessment's prospect_industry is the
+    // tenant-industry source of truth.
+    const byName = new Map<string, CatalystTemplate>();
+    for (const cl of getStarterClusters()) byName.set(cl.name, cl);
+
+    const latest = await c.env.DB.prepare(
+      "SELECT prospect_industry, results FROM assessments WHERE tenant_id = ? AND status = 'complete' ORDER BY completed_at DESC LIMIT 1"
+    ).bind(body.tenant_id).first<{ prospect_industry: string; results: string }>();
+
+    if (latest) {
+      try {
+        const results = JSON.parse(latest.results || '{}') as {
+          findings?: Array<{ confidence_gate_passed?: boolean; recommended_catalyst?: { catalyst?: string } }>;
+        };
+        for (const f of results.findings || []) {
+          if (f.confidence_gate_passed === false) continue;
+          const cl = f.recommended_catalyst?.catalyst ? getClusterByName(f.recommended_catalyst.catalyst) : undefined;
+          if (cl) byName.set(cl.name, cl);
+        }
+      } catch {
+        // Malformed results JSON — starter + industry tags still apply.
+      }
+      for (const cl of getClustersByTag(latest.prospect_industry || 'general')) byName.set(cl.name, cl);
+    }
+
+    clustersToCreate = [...byName.values()].map(cl => ({
       name: cl.name,
       domain: cl.domain,
       description: cl.description,
       autonomy_tier: cl.autonomy_tier,
       sub_catalysts: cl.sub_catalysts,
     }));
-    deploymentSource = 'starter';
+    deploymentSource = 'default';
   }
 
   // Check for existing clusters for this tenant — skip duplicates by name
@@ -960,11 +992,16 @@ catalysts.post('/deploy-template', async (c) => {
       continue;
     }
     const id = crypto.randomUUID();
+    // Rollout guard (spec §7.3): non-starter clusters start 'paused' so a
+    // catalog-wide enablement never spawns a burst of scheduled tasks — the
+    // scheduler only picks up status='active' clusters. They flip to
+    // 'active' on first manual execute or explicit schedule opt-in.
+    const initialStatus = STARTER_CLUSTER_NAMES.includes(cl.name) ? 'active' : 'paused';
     await c.env.DB.prepare(
       'INSERT INTO catalyst_clusters (id, tenant_id, name, domain, description, status, agent_count, tasks_completed, tasks_in_progress, success_rate, trust_score, autonomy_tier, sub_catalysts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       id, body.tenant_id, cl.name, cl.domain, cl.description,
-      'active', 0, 0, 0, 0, 0, cl.autonomy_tier,
+      initialStatus, 0, 0, 0, 0, 0, cl.autonomy_tier,
       JSON.stringify(cl.sub_catalysts)
     ).run();
     createdIds.push(id);
@@ -1648,6 +1685,13 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
 
   const sources = sub.data_sources || [];
   if (sources.length < 1) return c.json({ error: 'No data sources configured' }, 400);
+
+  // Rollout guard opt-in (spec §7.3): first manual run activates a paused
+  // cluster so the scheduler can pick it up from here on.
+  if (cluster.status === 'paused') {
+    await c.env.DB.prepare("UPDATE catalyst_clusters SET status = 'active' WHERE id = ? AND tenant_id = ?")
+      .bind(clusterId, targetTenant).run();
+  }
 
   const mappings = sub.field_mappings || [];
   const execConfig = sub.execution_config || { mode: 'reconciliation' };
@@ -3489,7 +3533,7 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/schedule', async (c) 
 
   const targetTenant = canCrossTenant(auth.role) ? (c.req.query('tenant_id') || auth.tenantId) : auth.tenantId;
 
-  const cluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
+  const cluster = await c.env.DB.prepare('SELECT status, sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?').bind(clusterId, targetTenant).first<{ status: string; sub_catalysts: string }>();
   if (!cluster) return c.json({ error: 'Cluster not found' }, 404);
 
   const subs = JSON.parse(cluster.sub_catalysts || '[]') as Array<Record<string, unknown>>;
@@ -3507,7 +3551,11 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/schedule', async (c) 
     next_run: nextRun,
   };
 
-  await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+  // Rollout guard opt-in (spec §7.3): scheduling a recurring run activates a
+  // paused cluster so the scheduler picks it up. 'inactive' (deliberate
+  // disable) is left alone.
+  const activateSql = body.frequency !== 'manual' && cluster.status === 'paused' ? ", status = 'active'" : '';
+  await c.env.DB.prepare(`UPDATE catalyst_clusters SET sub_catalysts = ?${activateSql} WHERE id = ? AND tenant_id = ?`)
     .bind(JSON.stringify(subs), clusterId, targetTenant).run();
 
   // Audit log

@@ -3,6 +3,7 @@ import type { AppBindings, AuthContext } from '../types';
 import { getValidatedJsonBody } from '../middleware/validation';
 import { hashPassword } from '../middleware/auth';
 import { getWelcomeEmailTemplate, sendOrQueueEmail } from '../services/email';
+import { PERSONAS, type Persona } from '../services/persona-insights';
 
 const iam = new Hono<AppBindings>();
 
@@ -225,12 +226,13 @@ iam.put('/users/:id', async (c) => {
   const callerLevel = ROLE_LEVELS[auth?.role || ''] ?? 0;
 
   const { data: body, errors } = await getValidatedJsonBody<{
-    role?: string; status?: string; name?: string; permissions?: string[];
+    role?: string; status?: string; name?: string; persona?: string; permissions?: string[];
   }>(c, [
     // `custom:<uuid>` is up to 43 chars; allow 64 to be safe
     { field: 'role', type: 'string', required: false, maxLength: 64 },
     { field: 'status', type: 'string', required: false, maxLength: 32 },
     { field: 'name', type: 'string', required: false, maxLength: 100 },
+    { field: 'persona', type: 'string', required: false, maxLength: 8 },
   ]);
   if (!body || errors.length > 0) return c.json({ error: 'Invalid input', details: errors }, 400);
 
@@ -290,12 +292,18 @@ iam.put('/users/:id', async (c) => {
     return c.json({ error: 'Invalid status', message: 'Status must be active, suspended, or inactive' }, 400);
   }
 
+  // Validate persona if provided — empty string clears the lens.
+  if (body.persona !== undefined && body.persona !== '' && !PERSONAS.includes(body.persona as Persona)) {
+    return c.json({ error: 'Invalid persona', message: `Persona must be one of: ${PERSONAS.join(', ')}` }, 400);
+  }
+
   // Build dynamic UPDATE
   const updates: string[] = [];
   const values: (string | null)[] = [];
   if (body.role) { updates.push('role = ?'); values.push(body.role); }
   if (body.status) { updates.push('status = ?'); values.push(body.status); }
   if (body.name) { updates.push('name = ?'); values.push(body.name); }
+  if (body.persona !== undefined) { updates.push('persona = ?'); values.push(body.persona === '' ? null : body.persona); }
   if (body.permissions) { updates.push('permissions = ?'); values.push(JSON.stringify(body.permissions)); }
 
   if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);

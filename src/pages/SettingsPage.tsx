@@ -10,6 +10,8 @@ import type { AccentColor } from "@/stores/appStore";
 import { api, ApiError } from "@/lib/api";
 import type { LlmConfigResponse } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { PERSONA_LABELS } from "@/components/journey/PersonaRail";
+import type { Persona } from "@/types";
 import { FormError } from "@/components/ui/state";
 import {
  User, Bell, Palette, Cpu, Loader2, Check, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle, HelpCircle
@@ -37,6 +39,7 @@ export function SettingsPage() {
  const { user, setUser, accentColor, setAccentColor } = useAppStore();
  const [displayName, setDisplayName] = useState(user?.name || '');
  const [email, setEmail] = useState(user?.email || '');
+ const [persona, setPersona] = useState<Persona | ''>(user?.persona ?? '');
  const [saving, setSaving] = useState(false);
  const [saved, setSaved] = useState(false);
  const [saveError, setSaveError] = useState<string | null>(null);
@@ -82,8 +85,12 @@ export function SettingsPage() {
  setSaveError(null);
  try {
  const updated = await api.auth.updateMe({ name: displayName, email });
+ // Persona has its own endpoint (spec 2026-07-14 §3.1); '' means role default.
+ if ((user?.persona ?? '') !== persona) {
+ await api.auth.setPersona(persona || null);
+ }
  if (user) {
- setUser({ ...user, name: updated.name, email: updated.email });
+ setUser({ ...user, name: updated.name, email: updated.email, persona: persona || null });
  }
  setSaved(true);
  setTimeout(() => setSaved(false), 3000);
@@ -310,6 +317,21 @@ export function SettingsPage() {
  </div>
  <Input label="Display Name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
  <Input label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+ <div>
+ <label className="block text-xs font-medium t-secondary mb-1" htmlFor="settings-persona">Your view</label>
+ <select
+   id="settings-persona"
+   value={persona}
+   onChange={(e) => setPersona(e.target.value as Persona | '')}
+   className="w-full px-3 py-2 rounded-md border border-[var(--border-card)] text-sm bg-[var(--bg-secondary)] t-primary"
+ >
+   <option value="">Default for my role</option>
+   {(Object.keys(PERSONA_LABELS) as Persona[]).map((p) => (
+     <option key={p} value={p}>{PERSONA_LABELS[p]}</option>
+   ))}
+ </select>
+ <p className="text-caption t-muted mt-1">Which lens your home insights use.</p>
+ </div>
  <div className="flex items-center gap-3">
  <Button variant="primary" size="sm" onClick={handleSaveProfile} disabled={saving} title="Save profile changes">
  {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}

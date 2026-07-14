@@ -32,35 +32,35 @@ interface Rule {
  * Anomaly metric → catalyst rules. Keywords are matched against the
  * lowercased metric string. First rule with any matching keyword wins.
  */
-const ANOMALY_RULES: Rule[] = [
+export const ANOMALY_RULES: Rule[] = [
   // Safety / incident — operational handlers
-  { keywords: ['safety', 'incident', 'injury', 'ppe', 'fatality'], rec: { catalyst: 'Safety Compliance Catalyst', subCatalyst: 'Safety Incident Trend' } },
+  { keywords: ['safety', 'incident', 'injury', 'ppe', 'fatality'], rec: { catalyst: 'Safety Compliance Catalyst', subCatalyst: 'Incident Prediction' } },
   // Manufacturing
-  { keywords: ['production', 'throughput', 'oee', 'defect', 'quality'], rec: { catalyst: 'Operational Excellence Catalyst', subCatalyst: 'Production Quality' } },
-  { keywords: ['downtime', 'maintenance', 'equipment'], rec: { catalyst: 'Operational Excellence Catalyst', subCatalyst: 'Machine Downtime' } },
+  { keywords: ['production', 'throughput', 'oee', 'defect', 'quality'], rec: { catalyst: 'General Operations Excellence Catalyst', subCatalyst: 'Quality Assurance' } },
+  { keywords: ['downtime', 'maintenance', 'equipment'], rec: { catalyst: 'Maintenance Catalyst', subCatalyst: 'Predictive Maintenance' } },
   // Tech / SLO
-  { keywords: ['api', 'latency', 'uptime', 'error rate', 'p95', 'p99', 'slo'], rec: { catalyst: 'Operations Catalyst', subCatalyst: 'Operational KPI Anomaly' } },
+  { keywords: ['api', 'latency', 'uptime', 'error rate', 'p95', 'p99', 'slo'], rec: { catalyst: 'DevOps Intelligence Catalyst', subCatalyst: 'Service Level Compliance' } },
   // Sales
-  { keywords: ['sales', 'revenue', 'conversion', 'pipeline'], rec: { catalyst: 'Sales Intelligence Catalyst', subCatalyst: 'Sales Pipeline Risk' } },
+  { keywords: ['sales', 'revenue', 'conversion', 'pipeline'], rec: { catalyst: 'Sales Catalyst', subCatalyst: 'Pipeline Management' } },
   // Inventory / stock
-  { keywords: ['inventory', 'stock', 'oos', 'out-of-stock', 'reorder'], rec: { catalyst: 'Supply Chain Catalyst', subCatalyst: 'Inventory Optimisation' } },
+  { keywords: ['inventory', 'stock', 'oos', 'out-of-stock', 'reorder'], rec: { catalyst: 'Supply Chain Catalyst', subCatalyst: 'Inventory Optimization' } },
   // Finance / AR / cash
   { keywords: ['invoice', 'payment', 'receivable', 'overdue', 'cash flow', 'ar '], rec: { catalyst: 'Finance Catalyst', subCatalyst: 'AR Collection' } },
   { keywords: ['ap ', 'payable', 'three-way', 'duplicate-pay'], rec: { catalyst: 'Finance Catalyst', subCatalyst: 'AP Processing' } },
   { keywords: ['fx', 'foreign exchange', 'currency'], rec: { catalyst: 'Finance Catalyst', subCatalyst: 'FX Hedge Advisory' } },
   // HR
-  { keywords: ['turnover', 'attrition', 'headcount', 'churn', 'retention'], rec: { catalyst: 'HR Catalyst', subCatalyst: 'HR Turnover' } },
-  { keywords: ['ghost', 'payroll'], rec: { catalyst: 'HR Catalyst', subCatalyst: 'Payroll Audit' } },
+  { keywords: ['turnover', 'attrition', 'headcount', 'churn', 'retention'], rec: { catalyst: 'HR & Workforce Catalyst', subCatalyst: 'Compensation Analysis' } },
+  { keywords: ['ghost', 'payroll'], rec: { catalyst: 'HR & Workforce Catalyst', subCatalyst: 'Payroll Audit' } },
   // Customer experience
-  { keywords: ['nps', 'csat', 'customer satisfaction', 'voice-of-customer'], rec: { catalyst: 'Customer Experience Catalyst', subCatalyst: 'Customer Experience NPS' } },
+  { keywords: ['nps', 'csat', 'customer satisfaction', 'voice-of-customer'], rec: { catalyst: 'Customer Success Catalyst', subCatalyst: 'Health Scoring' } },
   // Compliance
-  { keywords: ['popia', 'gdpr', 'compliance', 'regulatory', 'audit gap'], rec: { catalyst: 'Compliance & Regulatory Catalyst', subCatalyst: 'Compliance Risk' } },
+  { keywords: ['popia', 'gdpr', 'compliance', 'regulatory', 'audit gap'], rec: { catalyst: 'Compliance & Regulatory Catalyst', subCatalyst: 'Compliance Risk Dashboard' } },
   // Supply / vendor
   { keywords: ['supplier', 'vendor'], rec: { catalyst: 'Procurement Catalyst', subCatalyst: 'Vendor Master Cleanup' } },
   // Logistics / fleet / delivery
-  { keywords: ['fleet', 'delivery', 'route', 'shipment', 'carrier'], rec: { catalyst: 'Logistics Catalyst', subCatalyst: 'Delivery Compliance' } },
+  { keywords: ['fleet', 'delivery', 'route', 'shipment', 'carrier'], rec: { catalyst: 'Route Optimization Catalyst', subCatalyst: 'Route Planning' } },
   // Healthcare
-  { keywords: ['readmission', 'patient', 'staffing'], rec: { catalyst: 'Healthcare Operations Catalyst', subCatalyst: 'Staffing Coverage' } },
+  { keywords: ['readmission', 'patient', 'staffing'], rec: { catalyst: 'Patient Flow Catalyst', subCatalyst: 'Readmission Prediction' } },
 ];
 
 /**
@@ -68,16 +68,16 @@ const ANOMALY_RULES: Rule[] = [
  * categories (compliance-popia, sales-pipeline, incident-safety) so this
  * map is more deterministic than the anomaly one.
  */
-const RISK_RULES: Rule[] = [
-  { keywords: ['safety', 'incident', 'fatality'], rec: { catalyst: 'Safety Compliance Catalyst', subCatalyst: 'Safety Incident Trend' } },
-  { keywords: ['popia', 'compliance', 'regulatory', 'audit', 'legal', 'hpcsa'], rec: { catalyst: 'Compliance & Regulatory Catalyst', subCatalyst: 'Compliance Risk' } },
-  { keywords: ['security', 'cve', 'vuln', 'breach'], rec: { catalyst: 'Operations Catalyst', subCatalyst: 'Operational KPI Anomaly' } },
-  { keywords: ['sales', 'pipeline', 'revenue'], rec: { catalyst: 'Sales Intelligence Catalyst', subCatalyst: 'Sales Pipeline Risk' } },
+export const RISK_RULES: Rule[] = [
+  { keywords: ['safety', 'incident', 'fatality'], rec: { catalyst: 'Safety Compliance Catalyst', subCatalyst: 'Incident Prediction' } },
+  { keywords: ['popia', 'compliance', 'regulatory', 'audit', 'legal', 'hpcsa'], rec: { catalyst: 'Compliance & Regulatory Catalyst', subCatalyst: 'Compliance Risk Dashboard' } },
+  { keywords: ['security', 'cve', 'vuln', 'breach'], rec: { catalyst: 'Security Operations Catalyst', subCatalyst: 'Vulnerability Scanning' } },
+  { keywords: ['sales', 'pipeline', 'revenue'], rec: { catalyst: 'Sales Catalyst', subCatalyst: 'Pipeline Management' } },
   { keywords: ['credit', 'concentration', 'portfolio', 'counterparty'], rec: { catalyst: 'Finance Catalyst', subCatalyst: 'Credit Vetting' } },
   { keywords: ['cash flow', 'liquidity'], rec: { catalyst: 'Finance Catalyst', subCatalyst: 'Cash Flow Forecast' } },
   { keywords: ['supplier', 'vendor', 'sourcing'], rec: { catalyst: 'Procurement Catalyst', subCatalyst: 'Vendor Master Cleanup' } },
-  { keywords: ['turnover', 'attrition', 'workforce'], rec: { catalyst: 'HR Catalyst', subCatalyst: 'HR Turnover' } },
-  { keywords: ['inventory', 'stockout', 'oos'], rec: { catalyst: 'Supply Chain Catalyst', subCatalyst: 'Inventory Optimisation' } },
+  { keywords: ['turnover', 'attrition', 'workforce'], rec: { catalyst: 'HR & Workforce Catalyst', subCatalyst: 'Compensation Analysis' } },
+  { keywords: ['inventory', 'stockout', 'oos'], rec: { catalyst: 'Supply Chain Catalyst', subCatalyst: 'Inventory Optimization' } },
 ];
 
 function matchRules(rules: Rule[], haystack: string): CatalystRecommendation | null {

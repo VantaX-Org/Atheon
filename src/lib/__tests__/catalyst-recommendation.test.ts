@@ -18,14 +18,14 @@ describe('recommendForAnomaly', () => {
   it('routes safety incidents to Safety Compliance Catalyst', () => {
     expect(recommendForAnomaly('PPE compliance incident')).toEqual({
       catalyst: 'Safety Compliance Catalyst',
-      subCatalyst: 'Safety Incident Trend',
+      subCatalyst: 'Incident Prediction',
     });
     expect(recommendForAnomaly('On-site injury rate')?.catalyst).toBe('Safety Compliance Catalyst');
   });
 
-  it('routes API/SLO breaches to Operations Catalyst', () => {
-    expect(recommendForAnomaly('API p99 latency')?.subCatalyst).toBe('Operational KPI Anomaly');
-    expect(recommendForAnomaly('uptime SLO breach')?.catalyst).toBe('Operations Catalyst');
+  it('routes API/SLO breaches to DevOps Intelligence Catalyst', () => {
+    expect(recommendForAnomaly('API p99 latency')?.subCatalyst).toBe('Service Level Compliance');
+    expect(recommendForAnomaly('uptime SLO breach')?.catalyst).toBe('DevOps Intelligence Catalyst');
   });
 
   it('routes finance signals to Finance Catalyst with the right sub', () => {
@@ -35,7 +35,7 @@ describe('recommendForAnomaly', () => {
   });
 
   it('routes HR signals correctly', () => {
-    expect(recommendForAnomaly('Employee attrition rate')?.subCatalyst).toBe('HR Turnover');
+    expect(recommendForAnomaly('Employee attrition rate')?.subCatalyst).toBe('Compensation Analysis');
     expect(recommendForAnomaly('Ghost payroll detected')?.subCatalyst).toBe('Payroll Audit');
   });
 
@@ -45,8 +45,8 @@ describe('recommendForAnomaly', () => {
   });
 
   it('is case-insensitive', () => {
-    expect(recommendForAnomaly('NPS Score Drop')?.subCatalyst).toBe('Customer Experience NPS');
-    expect(recommendForAnomaly('nps score drop')?.subCatalyst).toBe('Customer Experience NPS');
+    expect(recommendForAnomaly('NPS Score Drop')?.subCatalyst).toBe('Health Scoring');
+    expect(recommendForAnomaly('nps score drop')?.subCatalyst).toBe('Health Scoring');
   });
 
   it('first matching rule wins (specificity ordering)', () => {
@@ -86,7 +86,7 @@ describe('recommendForDimension', () => {
   });
 
   it('falls back to anomaly rules', () => {
-    expect(recommendForDimension('Inventory')?.subCatalyst).toBe('Inventory Optimisation');
+    expect(recommendForDimension('Inventory')?.subCatalyst).toBe('Inventory Optimization');
   });
 
   it('returns null on empty input', () => {
