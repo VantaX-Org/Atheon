@@ -169,6 +169,99 @@
     --bg-page-light: var(--bg-primary);
     --text-primary-light: var(--text-primary);
     --text-secondary-light: var(--text-secondary);
+
+    color-scheme: light;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+   * DARK — Luminous Editorial after dark. Same royal-blue brand,
+   * same RAG status hues (nudged for contrast on a dark field);
+   * warm-black field / warm-white ink. Every surface/text/border
+   * token here shadows its light value, so components (which read
+   * only the vars) flip with zero component changes.
+   *
+   * Applied via data-theme="dark" on <html> — set by the store's
+   * theme controller. 'auto' resolves to this via matchMedia.
+   * ═══════════════════════════════════════════════════════════ */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Field */
+    --bg-primary: #0f1115;
+    --bg-secondary: #14161c;
+    --field-gradient: none;
+    --bg-pattern: none;
+
+    /* Surfaces */
+    --bg-card: #191c23;
+    --bg-card-solid: #191c23;
+    --bg-card-hover: #20242d;
+    --bg-elevated: #20242d;
+    --bg-sidebar: #14161c;
+    --bg-header: rgba(20, 22, 28, 0.88);
+    --bg-input: #1c1f27;
+    --bg-input-focus: #20242d;
+    --bg-modal: #191c23;
+
+    /* Glass (legacy → flat dark card) */
+    --glass-bg: #191c23;
+    --glass-bg-strong: #20242d;
+    --glass-border: #262a34;
+    --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
+    --glass-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.5);
+
+    /* Borders / rules */
+    --border-primary: #262a34;
+    --border-card: #262a34;
+    --border-subtle: #1f232b;
+    --divider: #1f232b;
+    --line-strong: #f2f3f6;
+
+    /* Text */
+    --text-primary: #f2f3f6;
+    --text-secondary: #b6bac6;
+    --text-muted: #858b99;
+    --text-on-accent: #ffffff;
+
+    /* Brand accent — royal blue, brightened for a dark field */
+    --accent: #5b82ff;
+    --accent-rgb: 91, 130, 255;
+    --accent-hover: #7595ff;
+    --accent-glow: rgba(91, 130, 255, 0.22);
+    --accent-subtle: #182036;
+    --accent-dark: #14309e;
+    --sage: #5b82ff;
+    --sage-b: #7595ff;
+
+    /* RAG — nudged brighter so status reads on dark */
+    --rag-healthy: #37c47f;
+    --rag-healthy-rgb: 55, 196, 127;
+    --rag-watch: #e0a53a;
+    --rag-watch-rgb: 224, 165, 58;
+    --rag-risk: #f26b7a;
+    --rag-risk-rgb: 242, 107, 122;
+    --neg: #f26b7a;
+    --neg-rgb: 242, 107, 122;
+
+    /* Elevation — deeper shadows on dark */
+    --elev-1: 0 8px 32px rgba(0, 0, 0, 0.45);
+    --elev-2: 0 14px 44px rgba(0, 0, 0, 0.55);
+    --elev-3: 0 12px 32px rgba(0, 0, 0, 0.6);
+    --elev-4: 0 28px 64px rgba(0, 0, 0, 0.7);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+    /* Form & interaction */
+    --placeholder: #6a6f7e;
+    --option-bg: #191c23;
+    --scrollbar-thumb: rgba(242, 243, 246, 0.18);
+    --scrollbar-thumb-hover: rgba(242, 243, 246, 0.32);
+    --toggle-bg: #2a2f3a;
+    --ring-focus: rgba(91, 130, 255, 0.55);
+
+    /* Charts */
+    --chart-grid: rgba(242, 243, 246, 0.08);
+    --chart-tooltip-bg: rgba(25, 28, 35, 0.95);
+    --teal-light: rgba(91, 130, 255, 0.12);
   }
 
   * { border-color: var(--divider); }
@@ -514,18 +607,9 @@
 }
 @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
 @keyframes shimmer { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
-@keyframes orbit { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@keyframes orbit-reverse { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
 @keyframes pulse-glow { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.04); } }
-@keyframes particle-drift { 0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.6; } 50% { transform: translateY(-10px) translateX(4px); opacity: 1; } }
-@keyframes hero-rotate { 0% { transform: rotate3d(0.2, 1, 0.1, 0deg); } 100% { transform: rotate3d(0.2, 1, 0.1, 360deg); } }
-@keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 16px var(--accent-glow); } 50% { box-shadow: 0 0 32px var(--accent-glow); } }
-@keyframes float-3d {
-  0%, 100% { transform: translateY(0px) rotateX(0deg) rotateY(0deg); }
-  25% { transform: translateY(-6px) rotateX(2deg) rotateY(-2deg); }
-  50% { transform: translateY(-10px) rotateX(0deg) rotateY(0deg); }
-  75% { transform: translateY(-6px) rotateX(-2deg) rotateY(2deg); }
-}
+/* v2 §8.2: decorative keyframes (orbit, orbit-reverse, particle-drift, hero-rotate,
+   glow-pulse, float-3d) deleted — animated money/chrome outlawed by the money law. */
 .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
 .animate-slideIn { animation: slideIn 0.3s ease-out forwards; }
 .animate-modalIn { animation: modalIn var(--dur-medium, 260ms) var(--ease-out) forwards; transform-origin: center; }
@@ -546,19 +630,12 @@
 .stagger > *:nth-child(8)  { animation-delay: 280ms; }
 @media (prefers-reduced-motion: reduce) {
   .animate-fadeIn, .animate-slideIn, .animate-modalIn, .animate-backdropIn, .animate-riseIn, .animate-toastIn,
-  .animate-float, .animate-shimmer, .animate-orbit, .animate-orbit-reverse, .animate-pulse-glow,
-  .animate-particle-drift, .animate-hero-rotate, .animate-glow-pulse, .animate-float-3d,
+  .animate-float, .animate-shimmer, .animate-pulse-glow,
   .stagger > * { animation: none !important; }
 }
 .animate-float { animation: float 6s ease-in-out infinite; }
 .animate-shimmer { animation: shimmer 3s ease-in-out infinite; }
-.animate-orbit { animation: orbit 20s linear infinite; }
-.animate-orbit-reverse { animation: orbit-reverse 25s linear infinite; }
 .animate-pulse-glow { animation: pulse-glow 4s ease-in-out infinite; }
-.animate-particle-drift { animation: particle-drift 6s ease-in-out infinite; }
-.animate-hero-rotate { animation: hero-rotate 30s linear infinite; }
-.animate-glow-pulse { animation: glow-pulse 3s ease-in-out infinite; }
-.animate-float-3d { animation: float-3d 8s ease-in-out infinite; }
 
 /* Tailwind gray-* utilities sprinkled across legacy screens are
    remapped to the Swiss Calm Authority token system so type stays

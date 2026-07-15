@@ -31,9 +31,28 @@ describe('Sidebar journey nav', () => {
     }
   });
 
-  it('operator sees Fixes (not Catalysts)', () => {
+  it('executive sees the v2 Brief; analyst does not', () => {
+    renderAs('executive');
+    expect(screen.getAllByText('Brief').length).toBeGreaterThan(0);
+  });
+
+  it('analyst does not see the Brief (exec-scoped)', () => {
+    renderAs('analyst');
+    expect(screen.queryByText('Brief')).toBeNull();
+  });
+
+  it('operator sees Fixes and Decisions (not Catalysts)', () => {
     renderAs('operator');
     expect(screen.getAllByText('Fixes').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Decisions').length).toBeGreaterThan(0);
     expect(screen.queryByText('Catalysts')).toBeNull();
+  });
+
+  it('executive sees the C-suite Outlook; analyst does not', () => {
+    renderAs('executive');
+    expect(screen.getAllByText('Outlook').length).toBeGreaterThan(0);
+    useAppStore.setState({ user: null as never });
+    renderAs('analyst');
+    expect(screen.queryByText('Outlook')).toBeNull();
   });
 });

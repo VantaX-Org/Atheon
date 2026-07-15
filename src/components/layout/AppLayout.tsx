@@ -6,6 +6,7 @@ import { DemoEnvironmentBanner } from "./DemoEnvironmentBanner";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { JourneyStageBar } from "@/components/journey/JourneyStageBar";
 import { HelpButton } from "@/components/common/HelpButton";
+import { JeffLauncher } from "@/components/common/JeffLauncher";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { api, getToken, setToken } from "@/lib/api";
@@ -122,6 +123,7 @@ export function AppLayout() {
       </main>
 
       <HelpButton />
+      <JeffLauncher />
     </div>
   );
 }

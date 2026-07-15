@@ -25,6 +25,9 @@ import type { UserRole } from "@/types";
 // dependencies (heavy chart / table libs) blow up the main chunk if loaded
 // up-front. The named-to-default adapter is needed because most pages use
 // named exports.
+const BriefPage = lazyWithRetry(() => import("@/pages/BriefPage").then(m => ({ default: m.BriefPage })));
+const OutlookPage = lazyWithRetry(() => import("@/pages/OutlookPage").then(m => ({ default: m.OutlookPage })));
+const DecisionsPage = lazyWithRetry(() => import("@/pages/DecisionsPage").then(m => ({ default: m.DecisionsPage })));
 const ApexPage = lazyWithRetry(() => import("@/pages/ApexPage").then(m => ({ default: m.ApexPage })));
 const ROIDashboardPage = lazyWithRetry(() => import("@/pages/ROIDashboardPage"));
 const BoardDigestPage = lazyWithRetry(() => import("@/pages/BoardDigestPage"));
@@ -177,6 +180,18 @@ export default function App() {
                 redirected to their own landing page instead of seeing
                 operational data they shouldn't have access to. */}
             <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
+            {/* v2 §10 step 1: the Brief — editorial exec landing that folds the
+                five summary screens into one honest column. Opt-in by route;
+                /dashboard keeps the classic JourneyHome. Exec+admin scope. */}
+            <Route path="/brief" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><BriefPage /></ProtectedRoute>} />
+            {/* C-suite external demand signals + their modelled impact + a
+                what-if simulation. Graphical, hero-grade. All modelled/context,
+                never counted in the confirmed money column (honesty §3.7). */}
+            <Route path="/outlook" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><OutlookPage /></ProtectedRoute>} />
+            {/* v2 §10 step 2: Decisions — the full DoA queue with inline
+                approve/reject. Same population that can already act on catalyst
+                approvals (OPERATOR_ROLES). Brief's "Review" links here. */}
+            <Route path="/decisions" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><DecisionsPage /></ProtectedRoute>} />
             <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
             <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
             {/* Guided onboarding wizard — walks a new user through the week-1

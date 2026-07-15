@@ -37,7 +37,7 @@ import {
   Gem, Activity, LayoutGrid, MemoryStick, Brain,
   Network, Webhook, Inbox, Cable, PlugZap, BadgeCheck, KeyRound, UserCog,
   UserPlus, Building2, LifeBuoy, Cpu, Rocket, ClipboardList, HeartPulse, Bell,
-  AlertTriangle, Flag, CreditCard, Headset, ListFilter, UserSearch,
+  AlertTriangle, Flag, CreditCard, Headset, ListFilter, UserSearch, Newspaper, Gavel, Radar,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/types";
@@ -78,10 +78,15 @@ interface NavGroup {
 // The journey rail — the five-stage value loop in plain language, in loop
 // order: CONNECT → DETECT → FIX → RECOVER → REPORT (spec 2026-07-03).
 const PRIMARY: NavItem[] = [
+  // v2 §10: the Brief — exec editorial landing. Sits above Home; execs read the
+  // day here first. Non-exec roles don't see it and keep Home as their start.
+  { path: '/brief',             label: 'Brief',    icon: Newspaper,       roles: EXECUTIVE_ROLES },
   { path: '/dashboard',         label: 'Home',     icon: LayoutDashboard, roles: STANDARD_ROLES },
   { path: '/data',              label: 'Data',     icon: Cable,           roles: STANDARD_ROLES },
   { path: '/findings',          label: 'Findings', icon: ClipboardList,   roles: STANDARD_ROLES },
+  { path: '/decisions',         label: 'Decisions', icon: Gavel,          roles: OPERATOR_ROLES },
   { path: '/catalysts',         label: 'Fixes',    icon: ClipboardCheck,  roles: OPERATOR_ROLES },
+  { path: '/outlook',           label: 'Outlook',  icon: Radar,           roles: EXECUTIVE_ROLES },
   { path: '/roi-dashboard',     label: 'Savings',  icon: PiggyBank,       roles: EXECUTIVE_ROLES },
   { path: '/executive-summary', label: 'Reports',  icon: FileText,        roles: EXECUTIVE_ROLES },
 ];

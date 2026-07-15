@@ -43,7 +43,7 @@ const sizeClass: Record<NonNullable<CardProps['size']>, string> = {
 };
 
 export function Card({
-  children, className, hover, glow,
+  children, className, hover,
   variant = 'default', size = 'default',
   onClick, style,
 }: CardProps) {
@@ -53,7 +53,7 @@ export function Card({
         variantClass[variant] || 'card-swiss',
         sizeClass[size],
         hover && 'cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]',
-        glow && 'animate-glow-pulse',
+        // v2 §8.2: glow-pulse keyframe deleted (animated chrome outlawed); `glow` prop kept inert for callers.
         className
       )}
       onClick={onClick}
