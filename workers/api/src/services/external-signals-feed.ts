@@ -33,8 +33,15 @@ const HISTORY_DAYS = 30;
 
 // ── Source contract ────────────────────────────────────────────────────
 
+export interface NewsArticle {
+  title: string;
+  url: string;
+  date: string;
+  domain: string;
+}
+
 export interface ExternalSignalReading {
-  category: 'fx' | 'commodity' | 'macro';
+  category: 'fx' | 'commodity' | 'macro' | 'news';
   source_name: string;
   /** Stable handle for this metric — e.g. 'fx.usd_zar', 'oil.brent_spot'. */
   signal_key: string;
@@ -46,6 +53,9 @@ export interface ExternalSignalReading {
   source_url?: string;
   /** Optional reliability score from the upstream provider [0,1]. */
   reliability_score?: number;
+  /** News readings carry the real articles (title + URL) for audit — we never
+   *  paraphrase news into claims, we link to the source. */
+  articles?: NewsArticle[];
 }
 
 export interface ExternalSignalSource {
@@ -66,6 +76,8 @@ export interface SourceEnv {
   FRANKFURTER_BASE?: string;
   EIA_BASE?: string;
   OPEN_METEO_BASE?: string;
+  WORLD_BANK_BASE?: string;
+  GDELT_BASE?: string;
 }
 
 // ── Frankfurter FX source ──────────────────────────────────────────────
@@ -234,6 +246,102 @@ export const openMeteoWeatherSource: ExternalSignalSource = {
   },
 };
 
+// ── World Bank macro source (SA CPI inflation + GDP growth) ────────────
+
+const WORLD_BANK_DEFAULT = 'https://api.worldbank.org/v2';
+// ponytail: World Bank is annual/laggy but keyless and real — the honest
+// baseline. Swap to SARB/StatsSA per-series feeds when monthly cadence matters.
+const WB_INDICATORS = [
+  { code: 'FP.CPI.TOTL.ZG', signal_key: 'macro.za_cpi_inflation', title: 'South Africa CPI inflation', unit: '% y/y' },
+  { code: 'NY.GDP.MKTP.KD.ZG', signal_key: 'macro.za_gdp_growth', title: 'South Africa GDP growth', unit: '% y/y' },
+];
+
+export const worldBankMacroSource: ExternalSignalSource = {
+  name: 'worldbank.macro',
+  // Inflation and growth touch every tenant's cost base and demand.
+  async fetchLatest(env): Promise<ExternalSignalReading[] | null> {
+    const base = env.WORLD_BANK_BASE || WORLD_BANK_DEFAULT;
+    const out: ExternalSignalReading[] = [];
+    for (const ind of WB_INDICATORS) {
+      const url = `${base}/country/ZAF/indicator/${ind.code}?format=json&mrnev=1&per_page=1`;
+      try {
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!res.ok) {
+          logError('external_signals.worldbank.http_error', new Error(`HTTP ${res.status}`),
+            { tenantId: 'global' }, { indicator: ind.code });
+          continue;
+        }
+        const body = await res.json() as [unknown, Array<{ date?: string; value?: number | null }>?];
+        const point = body?.[1]?.[0];
+        if (!point || typeof point.value !== 'number') continue;
+        out.push({
+          category: 'macro',
+          source_name: 'World Bank',
+          signal_key: ind.signal_key,
+          title: ind.title,
+          summary: `${ind.title} ${point.value.toFixed(1)}% (${point.date ?? 'latest'})`,
+          value: point.value,
+          unit: ind.unit,
+          source_url: url,
+          reliability_score: 0.9,
+        });
+      } catch (err) {
+        logError('external_signals.worldbank.fetch_failed', err, { tenantId: 'global' }, { indicator: ind.code });
+      }
+    }
+    return out.length ? out : null;
+  },
+};
+
+// ── GDELT news source (real SA economy headlines) ──────────────────────
+
+const GDELT_DEFAULT = 'https://api.gdeltproject.org/api/v2';
+
+export const gdeltNewsSource: ExternalSignalSource = {
+  name: 'gdelt.news',
+  async fetchLatest(env): Promise<ExternalSignalReading[] | null> {
+    const base = env.GDELT_BASE || GDELT_DEFAULT;
+    const url = `${base}/doc/doc?query=${encodeURIComponent('"south africa" economy sourcecountry:southafrica')}` +
+      `&mode=ArtList&format=json&maxrecords=5&timespan=3d&sort=datedesc`;
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) {
+        logError('external_signals.gdelt.http_error', new Error(`HTTP ${res.status}`), { tenantId: 'global' }, {});
+        return null;
+      }
+      const body = await res.json() as { articles?: Array<{ title?: string; url?: string; seendate?: string; domain?: string }> };
+      const articles: NewsArticle[] = (body.articles || [])
+        .filter((a) => a.title && a.url)
+        .slice(0, 5)
+        .map((a) => ({
+          title: a.title!,
+          url: a.url!,
+          // GDELT seendate: '20260714T120000Z' → '2026-07-14'
+          date: a.seendate && a.seendate.length >= 8
+            ? `${a.seendate.slice(0, 4)}-${a.seendate.slice(4, 6)}-${a.seendate.slice(6, 8)}`
+            : '',
+          domain: a.domain ?? '',
+        }));
+      if (articles.length === 0) return null;
+      return [{
+        category: 'news',
+        source_name: 'GDELT',
+        signal_key: 'news.za_economy',
+        title: 'South Africa economy headlines',
+        summary: articles[0].title,
+        value: articles.length,
+        unit: 'articles',
+        source_url: url,
+        reliability_score: 0.7,
+        articles,
+      }];
+    } catch (err) {
+      logError('external_signals.gdelt.fetch_failed', err, { tenantId: 'global' }, {});
+      return null;
+    }
+  },
+};
+
 // ── Persistence ────────────────────────────────────────────────────────
 
 interface StoredHistoryPoint { date: string; value: number }
@@ -300,7 +408,7 @@ async function persistReading(
   const today = new Date().toISOString().slice(0, 10);
   const existing = await findExistingSignal(db, tenantId, reading.signal_key);
 
-  let rawData: { signal_key: string; latest_value: number; latest_date: string; unit: string; history: StoredHistoryPoint[] };
+  let rawData: { signal_key: string; latest_value: number; latest_date: string; unit: string; history: StoredHistoryPoint[]; articles?: NewsArticle[] };
   if (existing) {
     try {
       rawData = JSON.parse(existing.raw_data || '{}');
@@ -323,6 +431,7 @@ async function persistReading(
     rawData.latest_date = today;
     rawData.signal_key = reading.signal_key;
     rawData.unit = reading.unit;
+    if (reading.articles) rawData.articles = reading.articles;
 
     try {
       await db.prepare(
@@ -347,6 +456,7 @@ async function persistReading(
     latest_date: today,
     unit: reading.unit,
     history: [{ date: today, value: reading.value }],
+    ...(reading.articles ? { articles: reading.articles } : {}),
   };
   try {
     await db.prepare(
@@ -385,6 +495,8 @@ export const DEFAULT_SOURCES: ExternalSignalSource[] = [
   frankfurterFxSource,
   eiaOilSource,
   openMeteoWeatherSource,
+  worldBankMacroSource,
+  gdeltNewsSource,
 ];
 
 /** True if `source` is applicable to a tenant whose industry profile

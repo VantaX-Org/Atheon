@@ -3630,6 +3630,11 @@ export interface PersonaInsightsResponse {
   external_pulse: {
     fx: ExternalPulseChannel | null;
     brent: ExternalPulseChannel | null;
+    /** Macro indicators (World Bank) — context only. */
+    cpi?: ExternalPulseChannel | null;
+    gdp?: ExternalPulseChannel | null;
+    /** Latest real headline (GDELT) — linked to source, never a claim. */
+    news_latest?: { signal_id: string; title: string; url: string; date: string; domain: string } | null;
     regulatory_latest: { id: string; title: string; jurisdiction: string | null; effective_date: string | null } | null;
   } | null;
 }
