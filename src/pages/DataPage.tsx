@@ -14,7 +14,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
 import { useToast } from '@/components/ui/toast';
-import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 
 function syncKind(status: string): StatusKind {
@@ -99,7 +98,6 @@ export default function DataPage() {
           </Link>
         ) : undefined}
       />
-      <JourneyStageBar current="connect" />
 
       {conns && conns.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

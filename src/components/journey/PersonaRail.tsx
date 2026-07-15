@@ -38,8 +38,12 @@ export const PERSONA_LABELS: Record<Persona, string> = {
 export function defaultPersona(user: User | null): Persona | null {
   if (!user) return null;
   if (user.persona) return user.persona;
-  if (user.role === 'executive' || user.role === 'board_member') return 'ceo';
   if (user.role === 'manager') return 'coo';
+  // admin/executive/board_member + platform staff (who view tenants) land on
+  // the CEO lens by default so the C-suite view is reachable without first
+  // saving a persona. Non-C-suite operational roles (analyst/operator) get no
+  // rail — they work the loop pages, not the executive lens.
+  if (RAIL_ROLES.includes(user.role)) return 'ceo';
   return null;
 }
 
