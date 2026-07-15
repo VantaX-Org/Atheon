@@ -236,6 +236,38 @@ export interface FindingsContext {
    * trusting a mistyped currency at face value. Opt-in — pass a Set to collect.
    */
   unknownCurrencies?: Set<string>;
+  /**
+   * True when exchangeRates contains hardcoded FALLBACK_FX_RATES values
+   * because the external FX feed had no reading for one or more pairs
+   * (Tier-B, spec §6.2) — surface as a data-quality note, never hide.
+   */
+  staleRates?: boolean;
+}
+
+/**
+ * Hardcoded fallback rates, used only when the external FX feed (frankfurter
+ * sweep → external_signals) has no reading for a pair. Any fallback use sets
+ * ctx.staleRates so reports can disclose it.
+ */
+export const FALLBACK_FX_RATES: Record<string, number> = { ZAR: 1.0, USD: 18.5, EUR: 20.0, GBP: 23.0 };
+
+const LIVE_FX_CURRENCIES = ['USD', 'EUR', 'GBP'] as const;
+
+/** Merge live feed rates over the fallback table; ZAR stays 1.0 always. */
+export function resolveFxRates(live: { rates: Record<string, number>; as_of: string | null } | null): {
+  exchangeRates: Record<string, number>;
+  staleRates: boolean;
+  source: 'live' | 'fallback' | 'mixed';
+  as_of: string | null;
+} {
+  const exchangeRates = { ...FALLBACK_FX_RATES, ...(live?.rates ?? {}), ZAR: 1.0 };
+  const liveCount = live ? LIVE_FX_CURRENCIES.filter((c) => live.rates[c] !== undefined).length : 0;
+  return {
+    exchangeRates,
+    staleRates: liveCount < LIVE_FX_CURRENCIES.length,
+    source: liveCount === LIVE_FX_CURRENCIES.length ? 'live' : liveCount === 0 ? 'fallback' : 'mixed',
+    as_of: live?.as_of ?? null,
+  };
 }
 
 // ── Catalyst mapping ──────────────────────────────────────────────────────
