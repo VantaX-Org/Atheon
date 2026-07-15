@@ -62,7 +62,7 @@ describe('PersonaRail', () => {
   it('collapses to a quiet line on fetch error', async () => {
     vi.mocked(api.insights.get).mockRejectedValue(new Error('boom'));
     render(<MemoryRouter><PersonaRail user={user()} /></MemoryRouter>);
-    expect(await screen.findByText('Insights unavailable — data connection issue')).toBeInTheDocument();
+    expect(await screen.findByText("Insights couldn't be loaded right now.")).toBeInTheDocument();
   });
 
   it('renders nothing for a viewer', () => {

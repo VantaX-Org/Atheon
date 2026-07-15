@@ -14,7 +14,9 @@ import { formatCompactCurrency } from '@/lib/format-currency';
 import { buildJourneyStages, type StageInput } from '@/lib/journey';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import { JourneySpine } from '@/components/journey/JourneySpine';
-import { PersonaRail } from '@/components/journey/PersonaRail';
+import { PersonaRail, defaultPersona, PERSONA_LABELS } from '@/components/journey/PersonaRail';
+import type { Persona } from '@/types';
+import { useToast } from '@/components/ui/toast';
 import { ActionQueuePanel } from '@/components/dashboard/ActionQueuePanel';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -29,10 +31,31 @@ function getGreeting(name?: string): string {
 
 export function JourneyHome() {
   const user = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
   const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
   const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
+  const toast = useToast();
   const [input, setInput] = useState<StageInput | null>(null);
+
+  // Board lens (spec 2026-07-15): the C-suite viewer picks which lens the board
+  // shows and the PersonaRail follows it live. Starts on the saved default (or
+  // role default for reachability); nothing persists until "Set as default".
+  const [lens, setLens] = useState<Persona | null>(null);
+  const [savingLens, setSavingLens] = useState(false);
+  useEffect(() => { setLens((cur) => cur ?? defaultPersona(user)); }, [user]);
+
+  const setLensDefault = async () => {
+    if (!user || !lens) return;
+    setSavingLens(true);
+    try {
+      await api.auth.setPersona(lens);
+      setUser({ ...user, persona: lens });
+    } catch {
+      toast.error('Failed to save your default view');
+    }
+    setSavingLens(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +132,32 @@ export function JourneyHome() {
         eyebrow="Atheon · Your journey"
         title={getGreeting(user?.name?.split(' ')[0])}
         dek={dek}
+        actions={lens ? (
+          <div className="flex items-center gap-2">
+            <label htmlFor="board-lens" className="text-label t-muted uppercase hidden sm:inline">Viewing as</label>
+            <select
+              id="board-lens"
+              aria-label="Board lens"
+              value={lens}
+              onChange={(e) => setLens(e.target.value as Persona)}
+              className="px-2 py-1 rounded-md border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
+            >
+              {(Object.keys(PERSONA_LABELS) as Persona[]).map((p) => (
+                <option key={p} value={p}>{PERSONA_LABELS[p]}</option>
+              ))}
+            </select>
+            {lens !== (user?.persona ?? null) && (
+              <button
+                type="button"
+                disabled={savingLens}
+                onClick={() => { void setLensDefault(); }}
+                className="text-caption font-medium text-accent hover:underline disabled:opacity-50"
+              >
+                Set as default
+              </button>
+            )}
+          </div>
+        ) : undefined}
       />
 
       {/* Security banner — preserved verbatim from the retired Dashboard:
@@ -185,7 +234,7 @@ export function JourneyHome() {
         <ActionQueuePanel variant="executive" limit={6} />
       </section>
 
-      <PersonaRail user={user} />
+      <PersonaRail user={user} fixedPersona={lens ?? undefined} />
     </div>
   );
 }

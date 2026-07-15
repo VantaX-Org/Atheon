@@ -102,12 +102,16 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
   const setUser = useAppStore((s) => s.setUser);
   const currency = useTenantCurrency();
   const resolved = fixedPersona ?? defaultPersona(user);
-  const [persona, setPersona] = useState<Persona | null>(resolved);
+  // Controlled when the page owns the picker (fixedPersona) — the rail just
+  // follows it. Self-managed otherwise (own <select>, adopts default on hydrate).
+  const controlled = fixedPersona !== undefined;
+  const [selfPersona, setSelfPersona] = useState<Persona | null>(resolved);
+  const persona = controlled ? fixedPersona : selfPersona;
   const [data, setData] = useState<PersonaInsightsResponse | 'loading' | 'error'>('loading');
   const [savingDefault, setSavingDefault] = useState(false);
 
   // Store user can hydrate after first render — adopt the default once known.
-  useEffect(() => { if (!persona && resolved) setPersona(resolved); }, [persona, resolved]);
+  useEffect(() => { if (!controlled && !selfPersona && resolved) setSelfPersona(resolved); }, [controlled, selfPersona, resolved]);
 
   // Rail renders only for the executive/manager cohort with a resolvable
   // persona; fixedPersona (board digest) trusts the page's own route gate.
@@ -163,7 +167,7 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
               <select
                 aria-label="Your view"
                 value={persona}
-                onChange={(e) => setPersona(e.target.value as Persona)}
+                onChange={(e) => setSelfPersona(e.target.value as Persona)}
                 className="px-2 py-1 rounded-md border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
               >
                 {(Object.keys(PERSONA_LABELS) as Persona[]).map((p) => (
