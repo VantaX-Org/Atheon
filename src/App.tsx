@@ -46,7 +46,7 @@ const CatalystsPage = lazyWithRetry(() => import("@/pages/CatalystsPage").then(m
 const CatalystRunDetailPage = lazyWithRetry(() => import("@/pages/CatalystRunDetailPage").then(m => ({ default: m.CatalystRunDetailPage })));
 const MindPage = lazyWithRetry(() => import("@/pages/MindPage").then(m => ({ default: m.MindPage })));
 const MemoryPage = lazyWithRetry(() => import("@/pages/MemoryPage").then(m => ({ default: m.MemoryPage })));
-const ConnectivityPage = lazyWithRetry(() => import("@/pages/ConnectivityPage").then(m => ({ default: m.ConnectivityPage })));
+const OperationsPage = lazyWithRetry(() => import("@/pages/OperationsPage").then(m => ({ default: m.OperationsPage })));
 // AuditPage no longer lazy-loaded here — CompliancePage imports it directly
 // and renders it inside the "Audit Log" tab (May 2026 merge).
 const TenantsPage = lazyWithRetry(() => import("@/pages/TenantsPage").then(m => ({ default: m.TenantsPage })));
@@ -70,7 +70,6 @@ const RevenueUsagePage = lazyWithRetry(() => import("@/pages/RevenueUsagePage").
 const FeatureFlagsPage = lazyWithRetry(() => import("@/pages/FeatureFlagsPage").then(m => ({ default: m.FeatureFlagsPage })));
 // DataGovernancePage no longer lazy-loaded here — CompliancePage imports it
 // directly and renders it inside the "Governance" tab (May 2026 merge).
-const IntegrationHealthPage = lazyWithRetry(() => import("@/pages/IntegrationHealthPage").then(m => ({ default: m.IntegrationHealthPage })));
 const SystemAlertsPage = lazyWithRetry(() => import("@/pages/SystemAlertsPage").then(m => ({ default: m.SystemAlertsPage })));
 const WebhooksPage = lazyWithRetry(() => import("@/pages/WebhooksPage").then(m => ({ default: m.WebhooksPage })));
 const SupportPage = lazyWithRetry(() => import("@/pages/SupportPage").then(m => ({ default: m.SupportPage })));
@@ -224,7 +223,9 @@ export default function App() {
             {/* Backend gates /api/v1/connectivity to superadmin + support_admin + admin
                 (workers/api/src/index.ts platformAdminRoutePrefixes); aligning the
                 frontend guard so support_admin can reach the page. */}
-            <Route path="/connectivity" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
+            {/* v2 §6.3: connection status folded into Operations · Sources. */}
+            <Route path="/connectivity" element={<Navigate to="/operations" replace />} />
+            <Route path="/operations" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><OperationsPage /></ProtectedRoute>} />
             {/* /audit retired 2026-05-12 — now lives under /compliance Audit Log tab */}
             <Route path="/audit" element={<Navigate to="/compliance" replace />} />
             {/* SOC 2 control evidence pack — read-only aggregation over
@@ -277,7 +278,8 @@ export default function App() {
             <Route path="/feature-flags" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><FeatureFlagsPage /></ProtectedRoute>} />
             {/* /data-governance retired 2026-05-12 — now lives under /compliance Governance tab */}
             <Route path="/data-governance" element={<Navigate to="/compliance" replace />} />
-            <Route path="/integration-health" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IntegrationHealthPage /></ProtectedRoute>} />
+            {/* v2 §6.3: integration health folded into Operations · Sources. */}
+            <Route path="/integration-health" element={<Navigate to="/operations" replace />} />
             <Route path="/system-alerts" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SystemAlertsPage /></ProtectedRoute>} />
             {/* Phase BC: incident manager for the public /status page.
                 Superadmin/support_admin gated inside the page; ProtectedRoute

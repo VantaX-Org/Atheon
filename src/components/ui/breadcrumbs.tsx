@@ -18,6 +18,7 @@ const ROUTE_LABELS: Record<string, string> = {
   memory: 'Memory',
   chat: 'Chat',
   connectivity: 'Connectivity',
+  operations: 'Operations',
   connectors: 'Connectors',
   audit: 'Audit',
   settings: 'Settings',

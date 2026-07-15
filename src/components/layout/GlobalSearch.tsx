@@ -21,7 +21,7 @@ import type { UserRole } from '@/types';
 import {
   Search, ArrowRight,
   LayoutDashboard, Gem, Activity, Zap, Brain, MemoryStick, ShieldCheck, FileText, TrendingUp,
-  Network, Webhook, Inbox, Cable, PlugZap, BadgeCheck,
+  Network, Webhook, Inbox, Cable, BadgeCheck,
   KeyRound, UserCog, UserPlus, Building2, LifeBuoy, Settings,
   Cpu, Rocket, ClipboardList, HeartPulse, Bell, Flag,
   CreditCard, Headset, ListFilter, UserSearch,
@@ -65,8 +65,7 @@ const ROUTES: RouteHit[] = [
   { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Webhooks',           path: '/webhooks',            haystack: 'webhooks event subscriptions hmac', Icon: Webhook, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Operator Queue',     path: '/action-layer',        haystack: 'operator queue action layer dispatch erp approve reject', Icon: Inbox, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Connectivity',       path: '/connectivity',        haystack: 'connectivity live protocols sync', Icon: Cable, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Integration Health', path: '/integration-health',  haystack: 'integration health sync monitoring circuit breakers', Icon: PlugZap, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Data',         label: 'Operations · Sources', path: '/operations',        haystack: 'operations sources connectivity live protocols sync integration health monitoring circuit breakers', Icon: Cable, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Compliance',         path: '/compliance',          haystack: 'compliance soc2 evidence audit governance dsar', Icon: BadgeCheck, roles: PLATFORM_ADMIN_ROLES },
   // Administration
   { section: 'Administration', label: 'IAM',          path: '/iam',             haystack: 'iam users roles policies access', Icon: KeyRound, roles: PLATFORM_ADMIN_ROLES },
