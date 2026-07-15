@@ -51,7 +51,7 @@ interface RouteHit {
 const ROUTES: RouteHit[] = [
   // Intelligence — the journey rail (Home · Data · Findings · Fixes · Savings · Reports)
   { section: 'Intelligence', label: 'Home',          path: '/dashboard',         haystack: 'home dashboard overview journey', Icon: LayoutDashboard },
-  { section: 'Intelligence', label: 'Data',          path: '/data',              haystack: 'data connect sources erp sync connections freshness', Icon: Cable, roles: STANDARD_ROLES },
+  { section: 'Intelligence', label: 'Data',          path: '/operations',        haystack: 'data connect sources erp sync connections freshness integration health', Icon: Cable, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Findings',      path: '/findings',          haystack: 'findings detect exposure value at risk discrepancies', Icon: ClipboardList, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Executive',     path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', Icon: Gem, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'Live Monitor',  path: '/pulse',             haystack: 'pulse live monitor process intelligence anomalies metrics', Icon: Activity, roles: STANDARD_ROLES },
@@ -65,7 +65,6 @@ const ROUTES: RouteHit[] = [
   { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Webhooks',           path: '/webhooks',            haystack: 'webhooks event subscriptions hmac', Icon: Webhook, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Operator Queue',     path: '/action-layer',        haystack: 'operator queue action layer dispatch erp approve reject', Icon: Inbox, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Operations · Sources', path: '/operations',        haystack: 'operations sources connectivity live protocols sync integration health monitoring circuit breakers', Icon: Cable, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Data',         label: 'Compliance',         path: '/compliance',          haystack: 'compliance soc2 evidence audit governance dsar', Icon: BadgeCheck, roles: PLATFORM_ADMIN_ROLES },
   // Administration
   { section: 'Administration', label: 'IAM',          path: '/iam',             haystack: 'iam users roles policies access', Icon: KeyRound, roles: PLATFORM_ADMIN_ROLES },

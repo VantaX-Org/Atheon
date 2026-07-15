@@ -82,7 +82,7 @@ const PRIMARY: NavItem[] = [
   // day here first. Non-exec roles don't see it and keep Home as their start.
   { path: '/brief',             label: 'Brief',    icon: Newspaper,       roles: EXECUTIVE_ROLES },
   { path: '/dashboard',         label: 'Home',     icon: LayoutDashboard, roles: STANDARD_ROLES },
-  { path: '/data',              label: 'Data',     icon: Cable,           roles: STANDARD_ROLES },
+  { path: '/operations',        label: 'Data',     icon: Cable,           roles: STANDARD_ROLES },
   { path: '/findings',          label: 'Findings', icon: ClipboardList,   roles: STANDARD_ROLES },
   { path: '/decisions',         label: 'Decisions', icon: Gavel,          roles: OPERATOR_ROLES },
   { path: '/catalysts',         label: 'Fixes',    icon: ClipboardCheck,  roles: OPERATOR_ROLES },
@@ -116,7 +116,6 @@ const ADMIN: NavGroup = {
     { path: '/integrations',       label: 'Integrations',       icon: Network,        roles: PLATFORM_ADMIN_ROLES },
     { path: '/webhooks',           label: 'Webhooks',           icon: Webhook,        roles: PLATFORM_ADMIN_ROLES },
     { path: '/action-layer',       label: 'Operator Queue',     icon: Inbox,          roles: PLATFORM_ADMIN_ROLES },
-    { path: '/operations',         label: 'Sources',            icon: Cable,          roles: PLATFORM_ADMIN_ROLES },
     { path: '/compliance',         label: 'Compliance',         icon: BadgeCheck,     roles: PLATFORM_ADMIN_ROLES },
     { path: '/iam',                label: 'IAM',                icon: KeyRound,       roles: PLATFORM_ADMIN_ROLES },
     { path: '/custom-roles',       label: 'Custom Roles',       icon: UserCog,        roles: PLATFORM_ADMIN_ROLES },

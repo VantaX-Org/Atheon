@@ -39,7 +39,6 @@ const AuditSharePage = lazyWithRetry(() => import("@/pages/AuditSharePage"));
 const StatusIncidentsAdminPage = lazyWithRetry(() => import("@/pages/admin/StatusIncidentsAdminPage"));
 // ApexBriefPage retired 2026-05-12 — duplicated ExecutiveSummaryPage with
 // a slimmer LLM-only layout. /apex/brief now redirects to /executive-summary.
-const DataPage = lazyWithRetry(() => import("@/pages/DataPage"));
 const FindingsPage = lazyWithRetry(() => import("@/pages/FindingsPage"));
 const PulsePage = lazyWithRetry(() => import("@/pages/PulsePage").then(m => ({ default: m.PulsePage })));
 const CatalystsPage = lazyWithRetry(() => import("@/pages/CatalystsPage").then(m => ({ default: m.CatalystsPage })));
@@ -194,7 +193,8 @@ export default function App() {
                 approve/reject. Same population that can already act on catalyst
                 approvals (OPERATOR_ROLES). Brief's "Review" links here. */}
             <Route path="/decisions" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><DecisionsPage /></ProtectedRoute>} />
-            <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
+            {/* /data folded into Operations Overview (v2 §6.3) — the CONNECT stage now lives at /operations, everyone-gated, admin tabs narrow client-side. */}
+            <Route path="/data" element={<Navigate to="/operations" replace />} />
             <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
             {/* Guided onboarding wizard — walks a new user through the week-1
                 stop-gates with deep-link CTAs into the journey stages. Linked
@@ -225,7 +225,7 @@ export default function App() {
                 frontend guard so support_admin can reach the page. */}
             {/* v2 §6.3: connection status folded into Operations · Sources. */}
             <Route path="/connectivity" element={<Navigate to="/operations" replace />} />
-            <Route path="/operations" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><OperationsPage /></ProtectedRoute>} />
+            <Route path="/operations" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><OperationsPage /></ProtectedRoute>} />
             {/* /audit retired 2026-05-12 — now lives under /compliance Audit Log tab */}
             <Route path="/audit" element={<Navigate to="/compliance" replace />} />
             {/* SOC 2 control evidence pack — read-only aggregation over

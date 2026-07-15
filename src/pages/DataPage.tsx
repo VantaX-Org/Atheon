@@ -186,15 +186,17 @@ export default function DataPage() {
                   {syncLabel(c.lastSync)}
                 </p>
                 <StatusPill status={syncKind(c.status)} />
-                <button
-                  type="button"
-                  onClick={() => handleSync(c.id)}
-                  disabled={syncing !== null}
-                  className="text-caption font-medium text-accent hover:underline inline-flex items-center gap-1 disabled:opacity-50"
-                >
-                  <RefreshCw size={11} className={syncing === c.id ? 'animate-spin' : ''} aria-hidden="true" />
-                  Re-sync
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleSync(c.id)}
+                    disabled={syncing !== null}
+                    className="text-caption font-medium text-accent hover:underline inline-flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <RefreshCw size={11} className={syncing === c.id ? 'animate-spin' : ''} aria-hidden="true" />
+                    Re-sync
+                  </button>
+                )}
               </Card>
             </li>
           ))}

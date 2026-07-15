@@ -24,11 +24,12 @@ describe('Sidebar journey nav', () => {
     expect(screen.queryByText('Catalysts')).toBeNull(); // renamed
   });
 
-  it('executive sees all six journey items labeled plainly', () => {
+  it('executive sees the journey items labeled plainly (Reports folded into Brief, v2 step 3)', () => {
     renderAs('executive');
-    for (const label of ['Home', 'Data', 'Findings', 'Savings', 'Reports']) {
+    for (const label of ['Home', 'Data', 'Findings', 'Savings']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
+    expect(screen.queryByText('Reports')).toBeNull();
   });
 
   it('executive sees the v2 Brief; analyst does not', () => {
