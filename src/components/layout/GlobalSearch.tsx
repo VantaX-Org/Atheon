@@ -59,7 +59,7 @@ const ROUTES: RouteHit[] = [
   { section: 'Intelligence', label: 'Mind',          path: '/mind',              haystack: 'mind ai model governance configuration', Icon: Brain, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Intelligence', label: 'Memory',        path: '/memory',            haystack: 'memory knowledge graph entities relationships', Icon: MemoryStick, roles: MANAGER_ROLES },
   { section: 'Intelligence', label: 'Trust',         path: '/trust',             haystack: 'trust calibration provenance peers', Icon: ShieldCheck, roles: STANDARD_ROLES },
-  { section: 'Intelligence', label: 'Exec Briefing', path: '/executive-summary', haystack: 'executive summary one page briefing', Icon: FileText, roles: EXECUTIVE_ROLES },
+  { section: 'Intelligence', label: 'Exec Briefing', path: '/brief', haystack: 'executive summary one page briefing brief', Icon: FileText, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'ROI Dashboard', path: '/roi-dashboard',     haystack: 'roi financial proof savings shared', Icon: TrendingUp, roles: EXECUTIVE_ROLES },
   // Data
   { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },

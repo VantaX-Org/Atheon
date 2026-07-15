@@ -49,7 +49,7 @@ const STEP_TARGETS: Record<string, { route: string; cta: string; roles: UserRole
   run_catalyst:     { route: '/catalysts',         cta: 'Open Fixes',        roles: OPERATOR_ROLES, needs: 'operator access or higher' },
   review_action:    { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
   view_diagnostics: { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
-  generate_report:  { route: '/executive-summary', cta: 'Open Reports',      roles: EXEC_ROLES,     needs: 'executive access or higher' },
+  generate_report:  { route: '/brief',             cta: 'Open Brief',        roles: EXEC_ROLES,     needs: 'executive access or higher' },
   invite_user:      { route: '/iam',               cta: 'Open IAM · Users',  roles: ADMIN_ROLES,    needs: 'admin access' },
 };
 

@@ -34,7 +34,7 @@ export const STAGE_ROUTES: Record<StageKey, string> = {
   detect: '/findings',
   fix: '/catalysts',
   recover: '/roi-dashboard',
-  report: '/executive-summary',
+  report: '/brief',
 };
 
 /**

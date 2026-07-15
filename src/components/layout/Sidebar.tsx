@@ -88,7 +88,7 @@ const PRIMARY: NavItem[] = [
   { path: '/catalysts',         label: 'Fixes',    icon: ClipboardCheck,  roles: OPERATOR_ROLES },
   { path: '/outlook',           label: 'Outlook',  icon: Radar,           roles: EXECUTIVE_ROLES },
   { path: '/roi-dashboard',     label: 'Savings',  icon: PiggyBank,       roles: EXECUTIVE_ROLES },
-  { path: '/executive-summary', label: 'Reports',  icon: FileText,        roles: EXECUTIVE_ROLES },
+  // Reports (/executive-summary) folded into /brief (v2 step 3) — same source, dropped to avoid a duplicate rail item.
 ];
 
 // Product pages beyond the core six — collapsed by default so the rail stays
@@ -100,7 +100,7 @@ const WORKSPACE: NavGroup = {
     { path: '/trust',        label: 'Trust',        icon: ShieldCheck, roles: STANDARD_ROLES },
     { path: '/apex',         label: 'Executive',    icon: Gem,         roles: EXECUTIVE_ROLES },
     { path: '/pulse',        label: 'Live Monitor', icon: Activity,    roles: STANDARD_ROLES },
-    { path: '/board-digest', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
+    { path: '/board', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
     { path: '/memory',       label: 'Memory',       icon: MemoryStick, roles: MANAGER_ROLES },
     { path: '/mind',         label: 'Mind',         icon: Brain,       roles: PLATFORM_ADMIN_ROLES },
   ],
@@ -256,13 +256,13 @@ export function Sidebar() {
   const primaryItems = useMemo<NavItem[]>(() => {
     if (userRole === 'auditor') {
       return [
-        { path: '/compliance', label: 'Assurance', icon: ShieldCheck },
+        { path: '/assurance', label: 'Assurance', icon: ShieldCheck },
         { path: '/support-tickets', label: 'Support', icon: LifeBuoy },
       ];
     }
     if (userRole === 'board_member') {
       return [
-        { path: '/board-digest', label: 'Reports', icon: FileText },
+        { path: '/board', label: 'Reports', icon: FileText },
         { path: '/support-tickets', label: 'Support', icon: LifeBuoy },
       ];
     }
@@ -275,8 +275,8 @@ export function Sidebar() {
 
   // Logo target is role-aware — scoped roles land on their own home.
   const homeTarget =
-    userRole === 'auditor' ? '/compliance'
-    : userRole === 'board_member' ? '/board-digest'
+    userRole === 'auditor' ? '/assurance'
+    : userRole === 'board_member' ? '/board'
     : '/dashboard';
 
   const sidebarBody = (

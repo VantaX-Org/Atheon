@@ -44,8 +44,8 @@ const COPY: Record<'403' | '404', { Icon: LucideIcon; title: string; code: strin
  */
 function homeFor(role: string | undefined): { to: string; label: string } {
   if (!role) return { to: '/', label: 'Back to home' };
-  if (role === 'auditor') return { to: '/compliance', label: 'Back to Compliance' };
-  if (role === 'board_member') return { to: '/board-digest', label: 'Back to Board Digest' };
+  if (role === 'auditor') return { to: '/assurance', label: 'Back to Assurance' };
+  if (role === 'board_member') return { to: '/board', label: 'Back to Board Digest' };
   return { to: '/dashboard', label: 'Back to Dashboard' };
 }
 

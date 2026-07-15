@@ -59,7 +59,6 @@ const DeploymentsPage = lazyWithRetry(() => import("@/pages/DeploymentsPage").th
 const AssessmentsPage = lazyWithRetry(() => import("@/pages/AssessmentsPage").then(m => ({ default: m.AssessmentsPage })));
 const TenantManagementPage = lazyWithRetry(() => import("@/pages/TenantManagementPage").then(m => ({ default: m.TenantManagementPage })));
 const TenantLlmBudgetPage = lazyWithRetry(() => import("@/pages/admin/TenantLlmBudgetPage").then(m => ({ default: m.TenantLlmBudgetPage })));
-const ExecutiveSummaryPage = lazyWithRetry(() => import("@/pages/ExecutiveSummaryPage").then(m => ({ default: m.ExecutiveSummaryPage })));
 const PlatformHealthPage = lazyWithRetry(() => import("@/pages/PlatformHealthPage").then(m => ({ default: m.PlatformHealthPage })));
 const SupportConsolePage = lazyWithRetry(() => import("@/pages/SupportConsolePage").then(m => ({ default: m.SupportConsolePage })));
 // CompanyHealthPage no longer lazy-loaded here — PlatformHealthPage imports
@@ -208,14 +207,15 @@ export default function App() {
             <Route path="/roi-dashboard" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ROIDashboardPage /></ProtectedRoute>} />
             {/* Phase AU: Quarterly digest for Board Members + Audit Committee.
                 Open to executives so they can preview what the board sees. */}
-            <Route path="/board-digest" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
+            {/* v2 step 3: /board-digest folded into the scoped /board landing —
+                same BoardDigestPage surface, one canonical URL. */}
+            <Route path="/board-digest" element={<Navigate to="/board" replace />} />
             {/* v2 board edition — board_member scoped landing (step 2.5). Renders the
-                board digest surface; /board-digest 301s here in step 3. */}
+                board digest surface; /board-digest 301s here. */}
             <Route path="/board" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
-            {/* ApexBriefPage retired (see commit 2026-05-12 frontend
-                consolidation). Same data lives on /executive-summary
-                which uses a single backend endpoint + cleaner layout. */}
-            <Route path="/apex/brief" element={<Navigate to="/executive-summary" replace />} />
+            {/* /apex/brief + /executive-summary both fold into the v2 Brief (same
+                api.executiveSummary source — Brief is the canonical exec read). */}
+            <Route path="/apex/brief" element={<Navigate to="/brief" replace />} />
             <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
             <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
             <Route path="/catalysts/runs/:runId" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystRunDetailPage /></ProtectedRoute>} />
@@ -257,7 +257,9 @@ export default function App() {
                 into the responsive ApexPage (mobile KPI strip, pull-to-refresh,
                 and tight 3-card above-fold layout). Redirect preserves old links. */}
             <Route path="/executive" element={<Navigate to="/apex" replace />} />
-            <Route path="/executive-summary" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveSummaryPage /></ProtectedRoute>} />
+            {/* v2 step 3: ExecutiveSummaryPage was a pure duplicate of the Brief
+                (same api.executiveSummary.get() source) — folded into /brief. */}
+            <Route path="/executive-summary" element={<Navigate to="/brief" replace />} />
             {/* Admin Tooling Routes (ADMIN-001 to ADMIN-012) */}
             {/* /platform-health is the canonical "Operations Health" URL —
                 role-conditional inside the component: superadmin sees

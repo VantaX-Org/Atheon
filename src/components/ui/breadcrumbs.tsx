@@ -26,6 +26,8 @@ const ROUTE_LABELS: Record<string, string> = {
   onboarding: 'Onboarding',
   'roi-dashboard': 'ROI',
   'board-digest': 'Board Digest',
+  board: 'Board Digest',
+  assurance: 'Assurance',
   assessments: 'Assessments',
   admin: 'Admin',
   tenants: 'Tenants',
