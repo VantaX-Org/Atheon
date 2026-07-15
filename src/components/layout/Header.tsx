@@ -10,7 +10,6 @@ import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { ActionQueueWidget } from "@/components/layout/ActionQueueWidget";
 import { CalibrationChip } from "@/components/layout/CalibrationChip";
 import { PlatformTotalsChip } from "@/components/layout/PlatformTotalsChip";
-import { ModuleSwitcher } from "@/components/layout/ModuleSwitcher";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
@@ -290,9 +289,6 @@ export function Header() {
         <div className="hidden sm:block">
           <CompanySwitcher />
         </div>
-
-        {/* Intelligence-module quick switch (Stitch top bar pattern) */}
-        <ModuleSwitcher />
 
         {/* Global route search (Stitch top bar pattern; Cmd/Ctrl+K to focus) */}
         <GlobalSearch />
