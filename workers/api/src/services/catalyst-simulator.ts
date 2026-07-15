@@ -74,9 +74,11 @@
 import {
   detectAllFindings,
   FINDING_CATALYST_MAP,
+  resolveFxRates,
   type Finding,
   type FindingsContext,
 } from './assessment-findings';
+import { loadLatestFxRates } from './external-signals-feed';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -281,9 +283,13 @@ export async function simulateCatalyst(
   // Build a findings context. The simulator uses the SAME detector engine
   // the assessment uses — there is no separate prediction model. The
   // value-at-risk numbers are the prediction.
+  // Same live-feed-with-fallback rates the assessment engine uses (§6.2) —
+  // predictions and assessments must revalue FX identically.
+  const fx = resolveFxRates(opts.exchangeRates ? null : await loadLatestFxRates(db, tenantId));
   const ctx: FindingsContext = {
     baseCurrency: 'ZAR',
-    exchangeRates: opts.exchangeRates ?? { ZAR: 1, USD: 18.5, EUR: 20, GBP: 23 },
+    exchangeRates: opts.exchangeRates ?? fx.exchangeRates,
+    staleRates: opts.exchangeRates ? undefined : fx.staleRates,
     monthsOfData: opts.monthsOfData,
   };
   const allFindings = await detectAllFindings(db, tenantId, ctx);

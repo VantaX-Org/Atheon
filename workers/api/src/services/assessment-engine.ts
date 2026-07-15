@@ -6,11 +6,13 @@ import {
   detectAllFindingsByCompany,
   detectCompanyProfile,
   summariseFindings,
+  resolveFxRates,
   type Finding,
   type FindingsContext,
   type CompanyContext,
   type CompanyProfile,
 } from './assessment-findings';
+import { loadLatestFxRates } from './external-signals-feed';
 import { loadProcessContextForTenant } from './erp-process-profile';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -175,6 +177,17 @@ export interface AssessmentResults {
     product_count: number;
     project_count: number;
     time_entry_count: number;
+  };
+  /**
+   * FX rates used for ZAR normalisation this run (Tier-B, spec §6.2):
+   * live feed readings, hardcoded fallback, or a per-pair mix. Traceability
+   * for every FX-converted Rand in the report. Optional — absent on
+   * assessments run before this field existed.
+   */
+  fx_rates?: {
+    rates: Record<string, number>;
+    source: 'live' | 'fallback' | 'mixed';
+    as_of: string | null;
   };
 }
 
@@ -2455,9 +2468,17 @@ export async function runAssessment(
     // Findings are the value-evidence the report hangs on — each maps to the
     // catalyst that resolves it. For multinational tenants with multiple
     // erp_companies registered, we also produce per-entity findings.
+    // FX for ZAR normalisation: live feed readings (frankfurter sweep →
+    // external_signals) with the old hardcoded table as per-pair fallback.
+    // Tier-B (spec §6.2): this moves billable numbers with the market, so the
+    // rates used + their source are recorded on results.fx_rates.
+    cp('5.fx.begin');
+    const fx = resolveFxRates(await loadLatestFxRates(db, tenantId));
+    cp(`5.fx.done source=${fx.source}`);
     const findingsContext: FindingsContext = {
       baseCurrency: 'ZAR',
-      exchangeRates: { ZAR: 1.0, USD: 18.5, EUR: 20.0, GBP: 23.0 },
+      exchangeRates: fx.exchangeRates,
+      staleRates: fx.staleRates,
       monthsOfData: snapshot.months_of_data,
       periodStart,
       periodEnd,
@@ -2536,6 +2557,7 @@ export async function runAssessment(
       findings_summary: findingsSummary,
       findings_by_company,
       company_profile,
+      fx_rates: { rates: fx.exchangeRates, source: fx.source, as_of: fx.as_of },
     };
 
     // 6–7. Generate reports (each wrapped independently — failures are non-fatal)

@@ -259,6 +259,36 @@ async function findExistingSignal(
   }
 }
 
+// ── Assessment FX lookup (Tier-B, spec §6.2) ────────────────────────────
+
+export interface LiveFxRates {
+  /** from-currency → ZAR (e.g. { USD: 18.72 }); only pairs with a stored reading. */
+  rates: Record<string, number>;
+  /** Oldest latest_date across the pairs used — the honest "as of". */
+  as_of: string | null;
+}
+
+/**
+ * Latest stored frankfurter readings for the assessment engine's ZAR
+ * normalisation. Null when the tenant has no FX signals yet — caller falls
+ * back to FALLBACK_FX_RATES and flags staleRates.
+ */
+export async function loadLatestFxRates(db: D1Database, tenantId: string): Promise<LiveFxRates | null> {
+  const rates: Record<string, number> = {};
+  let asOf: string | null = null;
+  for (const pair of FX_PAIRS) {
+    const row = await findExistingSignal(db, tenantId, `fx.${pair.from.toLowerCase()}_${pair.to.toLowerCase()}`);
+    if (!row?.raw_data) continue;
+    try {
+      const raw = JSON.parse(row.raw_data) as { latest_value?: number; latest_date?: string };
+      if (typeof raw.latest_value !== 'number' || !(raw.latest_value > 0)) continue;
+      rates[pair.from] = raw.latest_value;
+      if (raw.latest_date && (!asOf || raw.latest_date < asOf)) asOf = raw.latest_date;
+    } catch { /* bad JSON → skip pair, fallback covers it */ }
+  }
+  return Object.keys(rates).length ? { rates, as_of: asOf } : null;
+}
+
 function pruneHistory(history: StoredHistoryPoint[]): StoredHistoryPoint[] {
   const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
   return history.filter((h) => new Date(h.date).getTime() >= cutoff);
