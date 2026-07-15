@@ -71,7 +71,7 @@ function PersonaInsightCard({ insight, currency }: { insight: PersonaInsight; cu
         {unverified && <span className="text-caption t-muted">Potential (unverified)</span>}
       </div>
       {insight.value_zar !== null && (
-        <p className={`mt-2 text-xl font-bold tabular-nums ${unverified ? 't-muted' : 't-primary'}`}>
+        <p className={`mt-2 text-headline-xl tnum ${unverified ? 't-muted' : 't-primary'}`}>
           {formatCompactCurrency(insight.value_zar, currency)}
         </p>
       )}
@@ -124,7 +124,8 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
   // Fetch failure collapses the rail to one quiet line — never a fake-empty
   // dashboard (spec §8.1).
   if (data === 'error') {
-    return <p className="mt-6 text-caption t-muted">Insights unavailable — data connection issue</p>;
+    // Honesty: we only know the fetch failed, not why — claim no cause.
+    return <p className="mt-6 text-caption t-muted">Insights couldn't be loaded right now.</p>;
   }
 
   const saveDefault = async () => {
@@ -185,14 +186,16 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
 
       {!loaded ? (
         <div className={grid} aria-hidden="true">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="card" height={140} />)}
+          {Array.from({ length: persona === 'ceo' ? 5 : 4 }).map((_, i) => <Skeleton key={i} variant="card" height={140} />)}
         </div>
       ) : !loaded.generated_from_assessment_id ? (
         <Link to="/onboarding" className="block group">
           <Card className="p-4 flex items-center justify-between gap-4" style={{ background: 'var(--accent-subtle)' }}>
             <div>
               <p className="t-primary font-medium">No analysis yet — your view starts with your data.</p>
-              <p className="text-caption t-muted">Connect your data and Atheon builds your {PERSONA_LABELS[persona]} insights from it.</p>
+              {/* Copy can't assume connection state — this renders both before
+                  connect and after connect / before the first analysis. */}
+              <p className="text-caption t-muted">Atheon builds your {PERSONA_LABELS[persona]} insights from your first completed analysis.</p>
             </div>
             <span className="text-caption font-medium text-accent inline-flex items-center gap-1 shrink-0">
               Get started <ArrowRight size={12} aria-hidden="true" />

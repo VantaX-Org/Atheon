@@ -27,7 +27,7 @@ import { AnomalyDetectionControls, type AnomalySensitivity } from "@/components/
 import { CorrelationMatrix } from "@/components/CorrelationMatrix";
 import {
   Activity, AlertTriangle, GitBranch, Link2, ArrowRight, Loader2,
-  TrendingUp, TrendingDown, Minus, Shield, Lightbulb, ChevronDown,
+  TrendingDown, Shield, Lightbulb, ChevronDown,
   ChevronUp, Clock, Zap, Target, Eye, CheckCircle2, XCircle,
   BarChart3, Gauge, Filter, AlertCircle, Workflow, Play,
   UserCheck, FileWarning, RefreshCw, List, Stethoscope, ChevronRight, Wrench, X, DollarSign, Timer,
@@ -43,12 +43,6 @@ import { MetricSubscribeButton } from "@/components/pulse/MetricSubscribeButton"
 // FlipCard removed per UI cleanup spec
 
 /* ── helpers ──────────────────────────────────────────────── */
-const trendIcon = (trend: string, size = 14) => {
-  if (trend === 'up' || trend === 'improving') return <TrendingUp size={size} style={{ color: 'var(--positive)' }} />;
-  if (trend === 'down' || trend === 'declining') return <TrendingDown size={size} style={{ color: 'var(--neg)' }} />;
-  return <Minus size={size} className="t-muted" />;
-};
-
 const CURRENCY_UNITS = new Set(['ZAR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'NGN', 'KES']);
 const formatMetricValue = (value: unknown, unit?: string | null): string => {
   if (typeof value !== 'number' || !isFinite(value)) return String(value ?? '');
@@ -366,6 +360,11 @@ function generateNarrative(metrics: Metric[], anomalies: AnomalyItem[], processe
    ════════════════════════════════════════════════════════════ */
 export function PulsePage() {
   const industry = useAppStore((s) => s.industry);
+  const role = useAppStore((s) => s.user?.role);
+  // /catalysts is OPERATOR_ROLES-gated (see src/App.tsx) — of the roles that can
+  // reach Pulse, only analyst is excluded. Hide catalyst deep-links for analysts
+  // so they never land on a 403.
+  const canOpenCatalysts = role !== 'analyst';
   const companyId = useSelectedCompanyId();
   const toast = useToast();
   const { activeTab, setActiveTab } = useTabState('dashboard');
@@ -803,10 +802,7 @@ export function PulsePage() {
   const insights = generateInsights(metrics, anomalies, processes, summary);
   const narrative = generateNarrative(metrics, anomalies, processes, summary);
   const dimensions = Object.entries(health.dimensions).map(([key, val]) => ({
-    key, name: key,
-    score: val.score, trend: val.trend,
-    change: val.delta,
-    sparkline: [],
+    key, name: key, score: val.score,
   }));
 
   // Derive available categories from metrics.sourceSystem for the in-tab category filter.
@@ -867,7 +863,15 @@ export function PulsePage() {
         const data = await api.pulse.catalystRuns(undefined, filterParam, companyId || undefined);
         setCatalystRuns(data.runs);
         setCatalystSummary(data.summary);
-      } catch (err) { console.error('Failed to load catalyst runs', err); }
+      } catch (err) {
+        console.error('Failed to load catalyst runs', err);
+        // Surface the failure — a silent catch renders "No catalyst runs found",
+        // which is a false claim when the fetch errored.
+        toast.error('Failed to load catalyst runs', {
+          message: err instanceof Error ? err.message : undefined,
+          requestId: err instanceof ApiError ? err.requestId : null,
+        });
+      }
       setRunsLoading(false);
     }
     loadRuns();
@@ -913,6 +917,9 @@ export function PulsePage() {
     { id: 'diagnostics', label: 'Diagnostics', icon: <Stethoscope size={14} />, count: diagSummary?.criticalFindings || undefined },
     { id: 'anomalies', label: 'Anomalies', icon: <AlertTriangle size={14} />, count: anomalies.filter(a => a.severity === 'critical' || a.severity === 'high').length || undefined },
     { id: 'processes', label: 'Processes', icon: <GitBranch size={14} /> },
+    // Re-linked: the panel + loader existed but the tab entry was missing, making
+    // run-level evidence unreachable. Analyst-safe (in-page, no /catalysts links).
+    { id: 'catalyst-runs', label: 'Catalyst Runs', icon: <List size={14} /> },
     { id: 'sla', label: 'SLA Adherence', icon: <Timer size={14} /> },
     { id: 'correlations', label: 'Correlations', icon: <Link2 size={14} /> },
     { id: 'cost-of-inaction', label: 'Cost of Inaction', icon: <DollarSign size={14} /> },
@@ -1139,50 +1146,35 @@ export function PulsePage() {
             const amber = summary?.statusBreakdown?.amber ?? metrics.filter(m => m.status === 'amber').length;
             const red = summary?.statusBreakdown?.red ?? metrics.filter(m => m.status === 'red').length;
             const total = green + amber + red || 1;
-            const trendLabel = health.trend === 'improving' ? 'Improving' : health.trend === 'declining' ? 'Needs attention' : 'Stable';
-            const trendColor = health.trend === 'improving' ? 'var(--positive)' : health.trend === 'declining' ? 'var(--neg)' : 'var(--text-muted)';
-            const headline = health.trend === 'improving' ? 'Recovery Momentum' : health.trend === 'declining' ? 'Pressure Building' : 'Operational Health';
-            // Momentum sparkline derived purely from the existing status mix —
-            // no fabricated data; it visualises the green-weighted health ramp.
-            const momentum = [Math.max(0, health.score - 22), Math.max(0, health.score - 14), Math.max(0, health.score - 16), Math.max(0, health.score - 6), Math.max(0, health.score - 9), health.score];
+            // Level labels, not trend labels — health.trend is derived from the
+            // current score alone (no history exists), so "Improving"/"Declining"
+            // would be a fabricated temporal claim.
+            const levelLabel = health.trend === 'improving' ? 'Healthy' : health.trend === 'declining' ? 'Needs attention' : 'Stable';
+            const levelColor = health.trend === 'improving' ? 'var(--positive)' : health.trend === 'declining' ? 'var(--neg)' : 'var(--text-muted)';
             return (
               <div className="card-hero p-7 md:p-9 mb-6 overflow-hidden" data-testid="pulse-hero">
                 <p className="hero-eyebrow flex items-center gap-2 mb-5">
                   <Gauge size={11} aria-hidden="true" />
                   Operational Health · Pulse
                 </p>
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-8 lg:gap-10 items-center">
-                  {/* Editorial headline + dominant score */}
-                  <div className="min-w-0">
-                    <h2 className="font-semibold tracking-tight t-primary leading-[0.95] text-[2.5rem] md:text-[3.25rem] uppercase">
-                      {headline}
-                    </h2>
-                    <div className="flex items-baseline gap-3 mt-6">
-                      <span className="text-hero t-primary">{health.score}</span>
-                      <span className="text-body-sm t-muted">/100</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      {trendIcon(health.trend, 14)}
-                      <span className="text-label" style={{ color: trendColor }}>{trendLabel}</span>
-                      <span className="text-label t-muted">· {heroTotal} metrics monitored</span>
-                    </div>
-                    {health.score === 0 && (
-                      <p className="text-xs t-muted mt-3">No health data yet. Run a catalyst to populate metrics.</p>
-                    )}
+                {/* Editorial headline + dominant score. The former "Health Momentum"
+                    sparkline was removed: it plotted invented offsets from the current
+                    score — no snapshot-history endpoint exists to back it. */}
+                <div className="min-w-0">
+                  <h2 className="font-semibold tracking-tight t-primary leading-[0.95] text-[2.5rem] md:text-[3.25rem] uppercase">
+                    Operational Health
+                  </h2>
+                  <div className="flex items-baseline gap-3 mt-6">
+                    <span className="text-hero t-primary">{health.score}</span>
+                    <span className="text-body-sm t-muted">/100</span>
                   </div>
-                  {/* Momentum visual */}
-                  <div className="w-full">
-                    <div className="rounded-md bg-[var(--bg-card-solid)]/40 p-5 border border-[var(--border-card)]">
-                      <p className="text-label mb-4">Health Momentum · Last Snapshots</p>
-                      <Sparkline
-                        data={momentum}
-                        width={420}
-                        height={120}
-                        color={trendColor}
-                        className="w-full h-auto"
-                      />
-                    </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-label" style={{ color: levelColor }}>{levelLabel}</span>
+                    <span className="text-label t-muted">· {heroTotal} metrics monitored</span>
                   </div>
+                  {health.score === 0 && (
+                    <p className="text-xs t-muted mt-3">No health data yet. Run a catalyst to populate metrics.</p>
+                  )}
                 </div>
 
                 {/* Domain Activity Monitor — status ledger across the hero base */}
@@ -1255,13 +1247,9 @@ export function PulsePage() {
                         <div className="w-12 text-right">
                           <span className="text-sm font-bold t-primary">{dim.score}</span>
                         </div>
-                        <div className="flex items-center gap-1 w-20">
-                          {trendIcon(dim.trend, 12)}
-                          <span className="text-xs" style={dim.trend === 'improving' ? { color: 'var(--positive)' } : dim.trend === 'declining' ? { color: 'var(--neg)' } : {}}>
-                            {dim.trend === 'improving' ? 'Up' : dim.trend === 'declining' ? 'Down' : 'Stable'}
-                          </span>
-                        </div>
-                        <Sparkline data={dim.sparkline} width={60} height={20} color={dim.trend === 'improving' ? 'var(--positive)' : dim.trend === 'declining' ? 'var(--neg)' : 'var(--text-muted)'} />
+                        {/* Trend arrows + sparkline removed: dim.trend was derived from
+                            the current score threshold (no history) and dim.sparkline
+                            was always [] — both fabricated temporal signals. */}
                         <button
                           onClick={() => handleOpenDimensionTrace(dim.key)}
                           className="opacity-0 group-hover:opacity-100 text-caption text-accent hover:text-accent/80 flex items-center gap-0.5 transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] ml-2"
@@ -1476,9 +1464,13 @@ export function PulsePage() {
                 {metrics.length === 0 ? (
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <p className="text-sm t-muted">No metrics available yet.</p>
-                    <Link to="/catalysts" className="text-sm text-accent hover:underline inline-flex items-center gap-1">
-                      Deploy a catalyst <ArrowRight size={12} />
-                    </Link>
+                    {canOpenCatalysts ? (
+                      <Link to="/catalysts" className="text-sm text-accent hover:underline inline-flex items-center gap-1">
+                        Deploy a catalyst <ArrowRight size={12} />
+                      </Link>
+                    ) : (
+                      <p className="text-sm t-muted">Ask an operator to deploy a catalyst.</p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm t-muted">No metrics match the current filters</p>
@@ -1611,15 +1603,24 @@ export function PulsePage() {
                         {/* P1-3 / A4-2: Source Attribution — clickable link to CatalystsPage ops panel */}
                         {metric.subCatalystName && metric.clusterId && (
                           <div className="mt-3 pt-3 border-t border-[var(--border-card)]">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); window.location.href = `/catalysts?cluster=${metric.clusterId}&sub=${encodeURIComponent(metric.subCatalystName!)}&ops=1`; }}
-                              className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 transition-colors"
-                            >
-                              <Link2 size={12} />
-                              <span>Source: <span className="font-medium">{metric.subCatalystName}</span></span>
-                              {metric.sourceRunId && <span className="t-muted">· Run {metric.sourceRunId.slice(0, 8)}</span>}
-                              <ArrowRight size={10} />
-                            </button>
+                            {canOpenCatalysts ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); window.location.href = `/catalysts?cluster=${metric.clusterId}&sub=${encodeURIComponent(metric.subCatalystName!)}&ops=1`; }}
+                                className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 transition-colors"
+                              >
+                                <Link2 size={12} />
+                                <span>Source: <span className="font-medium">{metric.subCatalystName}</span></span>
+                                {metric.sourceRunId && <span className="t-muted">· Run {metric.sourceRunId.slice(0, 8)}</span>}
+                                <ArrowRight size={10} />
+                              </button>
+                            ) : (
+                              /* Analyst: /catalysts is operator-gated — show the attribution, skip the 403 link */
+                              <div className="flex items-center gap-2 text-xs t-secondary">
+                                <Link2 size={12} />
+                                <span>Source: <span className="font-medium">{metric.subCatalystName}</span></span>
+                                {metric.sourceRunId && <span className="t-muted">· Run {metric.sourceRunId.slice(0, 8)}</span>}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1722,6 +1723,8 @@ export function PulsePage() {
             {filteredAnomalies.map((anom) => {
               const isExpanded = expandedAnomaly === anom.id;
               const deviationPct = Math.abs(anom.deviation);
+              // Real sign from the API — a below-expected anomaly must not render as "+".
+              const deviationDisplay = `${anom.deviation > 0 ? '+' : ''}${anom.deviation}%`;
               return (
                 <Card
                   key={anom.id}
@@ -1745,7 +1748,7 @@ export function PulsePage() {
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <StatusPill status={anom.severity} size="sm" />
                           <Badge variant={deviationPct >= 50 ? 'danger' : deviationPct >= 25 ? 'warning' : 'info'}>
-                            +{deviationPct}% deviation
+                            {deviationDisplay} deviation
                           </Badge>
                           {isExpanded ? <ChevronUp size={14} className="t-muted" /> : <ChevronDown size={14} className="t-muted" />}
                         </div>
@@ -1781,7 +1784,7 @@ export function PulsePage() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                               <div className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
                                 <span className="text-label">Deviation</span>
-                                <p className="text-lg font-bold mt-0.5" style={deviationPct >= 50 ? { color: 'var(--neg)' } : deviationPct >= 25 ? { color: 'var(--warning)' } : { color: 'var(--accent)' }}>+{deviationPct}%</p>
+                                <p className="text-lg font-bold mt-0.5" style={deviationPct >= 50 ? { color: 'var(--neg)' } : deviationPct >= 25 ? { color: 'var(--warning)' } : { color: 'var(--accent)' }}>{deviationDisplay}</p>
                               </div>
                               <div className="p-2.5 rounded-md bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
                                 <span className="text-label">Severity</span>

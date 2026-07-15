@@ -91,8 +91,12 @@ export function SupportConsolePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [filteredTenants, setFilteredTenants] = useState<Tenant[]>([]);
-  const [activities, setActivities] = useState<AuditEntry[]>([]);
+  // null = never loaded / last fetch failed — render em-dash, never a fake 0
+  const [activities, setActivities] = useState<AuditEntry[] | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  // null = detail fetch pending/failed — render em-dash
+  const [tenantUserCount, setTenantUserCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -133,15 +137,19 @@ export function SupportConsolePage() {
   // Activity tab is opened with no selection (caller's own tenant).
   const loadActivity = useCallback(async (tenantId?: string) => {
     setActivityLoading(true);
+    setActivityError(null);
     try {
       const res = await api.audit.log(tenantId);
       setActivities(res.entries.slice(0, 50));
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not load audit entries';
+      // Honesty: a failed fetch must not render as "no activity" — keep null
+      setActivities(null);
+      setActivityError(message);
       toast.error('Failed to load activity', {
-        message: err instanceof Error ? err.message : 'Could not load audit entries',
+        message,
         requestId: err instanceof ApiError ? err.requestId : null,
       });
-      setActivities([]);
     } finally {
       setActivityLoading(false);
     }
@@ -208,6 +216,21 @@ export function SupportConsolePage() {
     }
   }, [openTicketId, loadTicketDetail]);
 
+  // Fetch tenant detail (user count) when the detail modal opens
+  useEffect(() => {
+    setTenantUserCount(null);
+    if (!selectedTenant) return;
+    let cancelled = false;
+    api.adminTooling.supportTenantDetail(selectedTenant.id)
+      .then((res) => {
+        if (cancelled) return;
+        const n = Number((res as { userCount?: unknown }).userCount);
+        setTenantUserCount(Number.isFinite(n) ? n : null);
+      })
+      .catch(() => { /* honest em-dash — no claim on failure */ });
+    return () => { cancelled = true; };
+  }, [selectedTenant]);
+
   useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredTenants(tenants);
@@ -245,7 +268,11 @@ export function SupportConsolePage() {
     { id: 'audit', icon: <FileText size={16} />, title: 'Audit Log', desc: 'View detailed audit trail for a tenant', to: '/audit' },
     { id: 'systemAlerts', icon: <AlertTriangle size={16} />, title: 'System Alerts', desc: 'Review active alerts and alert rules', to: '/system-alerts' },
     { id: 'dataGovernance', icon: <Shield size={16} />, title: 'Data Governance', desc: 'DSAR + retention controls', to: '/data-governance' },
-    { id: 'featureFlags', icon: <Settings size={16} />, title: 'Feature Flags', desc: 'Toggle platform features per tenant', to: '/feature-flags' },
+    // /feature-flags is superadmin-only (App.tsx SUPERADMIN_ROLES) — showing it
+    // to support_admin would be a dead-end CTA.
+    ...(currentUser?.role === 'superadmin'
+      ? [{ id: 'featureFlags' as ActionId, icon: <Settings size={16} />, title: 'Feature Flags', desc: 'Toggle platform features per tenant', to: '/feature-flags' }]
+      : []),
   ];
 
   const outcomeColor = (outcome: string) => outcome === 'success' ? 'text-accent' : outcome === 'denied' ? 'text-neg' : 'text-[var(--warning)]';
@@ -307,7 +334,8 @@ export function SupportConsolePage() {
         </Card>
         <Card variant="prominent" size="relaxed" className="flex flex-col gap-3">
           <p className="text-label">Recent Events</p>
-          <p className="font-mono tnum text-[44px] leading-none font-bold t-primary">{activities.length}</p>
+          {/* em-dash until the activity feed has actually loaded — never a fake 0 */}
+          <p className="font-mono tnum text-[44px] leading-none font-bold t-primary">{activities === null ? '—' : activities.length}</p>
         </Card>
       </div>
 
@@ -476,6 +504,11 @@ export function SupportConsolePage() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-5 h-5 text-accent animate-spin" />
           </div>
+        ) : activities === null ? (
+          <ErrorState
+            error={activityError ?? 'Activity has not loaded yet.'}
+            onRetry={() => loadActivity(selectedTenant?.id)}
+          />
         ) : activities.length === 0 ? (
           <Card className="p-6 text-center">
             <p className="text-sm t-muted">No recent activity.</p>
@@ -544,6 +577,7 @@ export function SupportConsolePage() {
                 <div><span className="t-muted text-xs">Plan:</span><Badge variant="info">{selectedTenant.plan}</Badge></div>
                 <div><span className="t-muted text-xs">Status:</span><Badge variant={selectedTenant.status === 'active' ? 'success' : 'warning'}>{selectedTenant.status}</Badge></div>
                 <div><span className="t-muted text-xs">Region:</span><p className="t-primary">{selectedTenant.region}</p></div>
+                <div><span className="t-muted text-xs">Users:</span><p className="t-primary font-mono tnum">{tenantUserCount ?? '—'}</p></div>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">

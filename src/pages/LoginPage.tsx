@@ -482,16 +482,16 @@ export function LoginPage() {
             {mode === 'register' && (
               <div className="space-y-1.5">
                 <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Full Name</label>
-                <Input type="text" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} data-testid="name" />
+                <Input type="text" placeholder="Your name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} data-testid="name" />
               </div>
             )}
             <div className="space-y-1.5">
               <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Email Address</label>
-              <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="email" />
+              <Input type="email" placeholder="you@company.com" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="email" />
             </div>
             <div className="space-y-1.5">
               <label className="block uppercase tracking-[0.18em] text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>Password</label>
-              <Input type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} value={password} onChange={(e) => setPassword(e.target.value)} data-testid="password" />
+              <Input type="password" placeholder={mode === 'register' ? 'Min 10 characters' : '••••••••'} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="password" />
             </div>
             {mode === 'login' && (
               <div className="flex items-center justify-between">
@@ -548,7 +548,7 @@ export function LoginPage() {
           )}
           {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
             <div className="text-center mt-4">
-              <button type="button" onClick={() => setShowForgotPw(true)} className="text-caption font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
+              <button type="button" onClick={() => { setError(null); setShowForgotPw(true); }} className="text-caption font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
             </div>
           )}
           {/* Set-new-password modal — uses the canonical Modal primitive.
@@ -556,12 +556,15 @@ export function LoginPage() {
               reset POST is in flight so the user can't dismiss mid-submit. */}
           <Modal
             open={showResetPw}
-            onClose={() => { setShowResetPw(false); setResetToken(null); setResetNewPassword(''); navigate('/login', { replace: true }); }}
+            onClose={() => { setShowResetPw(false); setResetToken(null); setResetNewPassword(''); setError(null); navigate('/login', { replace: true }); }}
             size="sm"
             dismissible={!loading}
           >
             <Modal.Header title="Set a new password" />
             <Modal.Body>
+              {/* Errors must render inside the modal — the page-level FormError
+                  sits behind the overlay and is invisible while this is open. */}
+              <FormError error={error} className="mb-3" />
               {resetDone ? (
                 <p className="text-body-sm t-secondary">
                   Your password has been reset. You can now sign in with your new password.
@@ -573,6 +576,7 @@ export function LoginPage() {
                     className="w-full px-3 py-2 rounded-md text-body"
                     style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
                     type="password"
+                    autoComplete="new-password"
                     placeholder="Min 10 characters"
                     value={resetNewPassword}
                     onChange={e => setResetNewPassword(e.target.value)}
@@ -582,12 +586,12 @@ export function LoginPage() {
             </Modal.Body>
             <Modal.Footer>
               {resetDone ? (
-                <Button variant="primary" size="sm" onClick={() => { setShowResetPw(false); setResetDone(false); setResetToken(null); setResetNewPassword(''); navigate('/login', { replace: true }); }}>
+                <Button variant="primary" size="sm" onClick={() => { setShowResetPw(false); setResetDone(false); setResetToken(null); setResetNewPassword(''); setError(null); navigate('/login', { replace: true }); }}>
                   Back to Login
                 </Button>
               ) : (
                 <>
-                  <Button variant="secondary" size="sm" onClick={() => { setShowResetPw(false); setResetToken(null); setResetNewPassword(''); navigate('/login', { replace: true }); }}>Cancel</Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setShowResetPw(false); setResetToken(null); setResetNewPassword(''); setError(null); navigate('/login', { replace: true }); }}>Cancel</Button>
                   <Button variant="primary" size="sm" onClick={handleResetPassword} disabled={loading || resetNewPassword.length < 10}>
                     {loading ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
                     Reset Password
@@ -600,11 +604,12 @@ export function LoginPage() {
           {/* Forgot-password modal — same Modal pattern. */}
           <Modal
             open={showForgotPw}
-            onClose={() => { setShowForgotPw(false); setForgotEmail(''); }}
+            onClose={() => { setShowForgotPw(false); setForgotEmail(''); setError(null); }}
             size="sm"
           >
             <Modal.Header title="Reset password" />
             <Modal.Body>
+              <FormError error={error} className="mb-3" />
               {forgotSent ? (
                 <p className="text-body-sm t-secondary">
                   If an account exists for <strong className="t-primary">{forgotEmail}</strong>, a reset link has been sent.
@@ -616,6 +621,7 @@ export function LoginPage() {
                     className="w-full px-3 py-2 rounded-md text-body"
                     style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)', color: 'var(--text-primary)' }}
                     type="email"
+                    autoComplete="email"
                     placeholder="you@company.com"
                     value={forgotEmail}
                     onChange={e => setForgotEmail(e.target.value)}
@@ -630,8 +636,11 @@ export function LoginPage() {
                 </Button>
               ) : (
                 <>
-                  <Button variant="secondary" size="sm" onClick={() => { setShowForgotPw(false); setForgotEmail(''); }}>Cancel</Button>
-                  <Button variant="primary" size="sm" onClick={handleForgotPassword} disabled={!forgotEmail.trim()}>Send Reset Link</Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setShowForgotPw(false); setForgotEmail(''); setError(null); }}>Cancel</Button>
+                  <Button variant="primary" size="sm" onClick={handleForgotPassword} disabled={loading || !forgotEmail.trim()}>
+                    {loading ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
+                    Send Reset Link
+                  </Button>
                 </>
               )}
             </Modal.Footer>
@@ -641,7 +650,7 @@ export function LoginPage() {
               className="text-center uppercase tracking-[0.22em] text-caption t-muted"
               style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
             >
-              Trusted by global leaders · Audited · Secure · Encrypted
+              POPIA-aligned · Encrypted · Tenant-isolated
             </p>
             <p className="text-caption t-muted text-center mt-3">
               {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Sign in</button></>}

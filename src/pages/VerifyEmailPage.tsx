@@ -135,7 +135,8 @@ export function VerifyEmailPage() {
           </Link>
         )}
 
-        {state === 'expired' && !resendSuccess && (
+        {/* Invalid links are as recoverable as expired ones — offer resend for both. */}
+        {(state === 'expired' || state === 'error') && !resendSuccess && (
           <div className="mt-7 w-full space-y-3">
             <p className="text-label">Enter your email to receive a new link</p>
             <input

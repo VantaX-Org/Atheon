@@ -126,7 +126,7 @@ export default function AuditSharePage(): JSX.Element {
     minHeight: '100vh',
     background: 'var(--bg-primary)',
     backgroundImage: 'var(--bg-pattern)',
-    fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    fontFamily: '"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
     color: 'var(--text-primary)',
   };
 
@@ -253,7 +253,7 @@ export default function AuditSharePage(): JSX.Element {
             color: 'var(--text-muted)',
           }}>
             <Clock size={13} aria-hidden="true" />
-            Expires in {expiresIn} day{expiresIn === 1 ? '' : 's'}
+            {expiresIn === 0 ? 'Expires today' : `Expires in ${expiresIn} day${expiresIn === 1 ? '' : 's'}`}
           </div>
         </div>
 
@@ -264,7 +264,7 @@ export default function AuditSharePage(): JSX.Element {
           textTransform: 'uppercase', letterSpacing: '0.08em',
           color: 'var(--text-muted)',
         }}>
-          Generated {new Date(pack.generatedAt).toLocaleString()} · Read-only · Aggregated evidence
+          Generated {new Date(pack.generatedAt).toLocaleString()} · Read-only · Aggregated evidence · Access logged
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>

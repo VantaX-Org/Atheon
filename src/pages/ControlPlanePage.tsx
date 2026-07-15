@@ -60,6 +60,7 @@ export function ControlPlanePage() {
   const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
   const [health, setHealth] = useState<ControlPlaneHealth | null>(null);
   const [loading, setLoading] = useState(true);
+  const [depsError, setDepsError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showDeploy, setShowDeploy] = useState(false);
   const [deployForm, setDeployForm] = useState({ name: '', agent_type: 'catalyst', deployment_model: 'saas', version: '1.0.0', cluster_id: '' });
@@ -87,7 +88,9 @@ export function ControlPlanePage() {
     ]);
     if (d.status === 'fulfilled') {
       setDeployments(d.value.deployments);
+      setDepsError(false);
     } else {
+      setDepsError(true);
       reportError('Failed to load deployments', d.reason);
     }
     if (h.status === 'fulfilled') {
@@ -136,11 +139,12 @@ export function ControlPlanePage() {
     if (updatingDeployment) return;
     setUpdatingDeployment(deploymentId);
     try {
+      // The control plane restart is a status cycle: 'deploying' (audit-logged
+      // as agent.restarting) then 'running'. The agent picks the change up on
+      // its next heartbeat — do not claim more than that.
       await api.controlplane.updateDeployment(deploymentId, { status: 'deploying' });
-      // Brief delay to reflect restart state in the UI before flipping back to running.
-      await new Promise(r => setTimeout(r, 800));
       await api.controlplane.updateDeployment(deploymentId, { status: 'running' });
-      toast.success('Deployment restarted');
+      toast.success('Restart signalled', 'Status cycled via control plane; the agent applies it on next heartbeat.');
       await refresh();
     } catch (err) {
       reportError('Restart failed', err);
@@ -248,11 +252,9 @@ export function ControlPlanePage() {
     }, 0);
     const avgUptime = deployments.length
       ? deployments.reduce((s, d) => s + (d.uptime || 0), 0) / deployments.length
-      : 0;
-    const avgHealth = deployments.length
-      ? deployments.reduce((s, d) => s + (d.healthScore || 0), 0) / deployments.length
-      : 0;
-    return { running, totalReplicas, avgUptime, avgHealth };
+      : null;
+    const healthy = deployments.filter(d => d.healthScore >= 80).length;
+    return { running, totalReplicas, avgUptime, healthy };
   }, [deployments]);
 
   const status = statusFrom({ loading, error: null, isEmpty: false });
@@ -497,7 +499,7 @@ export function ControlPlanePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Hero: active services */}
           <div className="flex items-baseline gap-3">
-            <span className="text-display font-bold t-primary tabular-nums font-mono leading-none">{computed.running}</span>
+            <span className="text-display font-bold t-primary tabular-nums font-mono leading-none">{depsError ? <span aria-label="Unavailable">—</span> : computed.running}</span>
             <span className="text-label leading-tight max-w-[7rem]">Active<br />Services</span>
           </div>
 
@@ -506,19 +508,19 @@ export function ControlPlanePage() {
             <div className="flex items-center justify-between gap-4">
               <span className="text-label" style={{ color: 'var(--rag-healthy)' }}>Healthy</span>
               <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--rag-healthy)' }}>
-                {Math.round(computed.avgHealth)}%
+                {depsError ? '—' : computed.healthy}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-label" style={{ color: 'var(--warning)' }}>Watch</span>
               <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--warning)' }}>
-                {deployments.filter(d => d.healthScore >= 60 && d.healthScore < 80).length}
+                {depsError ? '—' : deployments.filter(d => d.healthScore >= 60 && d.healthScore < 80).length}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-label" style={{ color: 'var(--neg)' }}>At-Risk</span>
               <span className="text-headline-md font-bold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>
-                {deployments.filter(d => d.healthScore < 60).length}
+                {depsError ? '—' : deployments.filter(d => d.healthScore < 60).length}
               </span>
             </div>
           </div>
@@ -527,11 +529,11 @@ export function ControlPlanePage() {
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 lg:border-l lg:pl-6" style={{ borderColor: 'var(--border-card)' }}>
             <div>
               <span className="text-label block">Total Replicas</span>
-              <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{computed.totalReplicas}</p>
+              <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{depsError ? '—' : computed.totalReplicas}</p>
             </div>
             <div>
               <span className="text-label block">Avg Uptime</span>
-              <p className="text-headline-md font-bold text-accent tabular-nums font-mono mt-0.5">{computed.avgUptime.toFixed(2)}%</p>
+              <p className="text-headline-md font-bold text-accent tabular-nums font-mono mt-0.5">{depsError || computed.avgUptime === null ? '—' : `${computed.avgUptime.toFixed(2)}%`}</p>
             </div>
             {health && (
               <>
@@ -548,7 +550,7 @@ export function ControlPlanePage() {
             {!health && (
               <div>
                 <span className="text-label block">Deployments</span>
-                <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{deployments.length}</p>
+                <p className="text-headline-md font-bold t-primary tabular-nums font-mono mt-0.5">{depsError ? '—' : deployments.length}</p>
               </div>
             )}
           </div>
@@ -565,7 +567,17 @@ export function ControlPlanePage() {
       </Card>
 
       {/* Deployments List */}
-      {deployments.length === 0 ? (
+      {depsError && deployments.length === 0 ? (
+        <Card size="relaxed" className="text-center">
+          <XCircle size={24} className="mx-auto t-muted mb-3" />
+          <p className="text-label mb-1">Deployments Unavailable</p>
+          <p className="text-headline-sm font-semibold t-primary">Couldn&apos;t load deployments</p>
+          <p className="text-body-sm t-muted mt-1">The request failed — this is not an empty list.</p>
+          <Button variant="secondary" size="sm" className="mt-4" onClick={manualRefresh} disabled={refreshing}>
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Retry
+          </Button>
+        </Card>
+      ) : deployments.length === 0 ? (
         <Card size="relaxed" className="text-center">
           <Bot size={24} className="mx-auto t-muted mb-3" />
           <p className="text-label mb-1">No Service Instances</p>

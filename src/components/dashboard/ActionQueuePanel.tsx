@@ -21,6 +21,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
@@ -124,6 +125,9 @@ export function ActionQueuePanel({
 
   // Column visibility — every column is gated on "at least one row has data".
   // Empty columns waste the operator's eye. This is the heart of the §A.2 fix.
+  // Executive is server-filtered to pending_approval, so a Status column
+  // would be N identical "Pending" pills — same rule, drop it.
+  const showStatus = variant !== 'executive';
   const columns = useMemo(() => {
     const hasValue = actions.some(a => Number.isFinite(a.value_zar) && (a.value_zar as number) > 0);
     const hasMode = actions.some(a => {
@@ -158,6 +162,12 @@ export function ActionQueuePanel({
               </p>
             )}
           </div>
+          {/* Pending work must never be a dead end — always a route to act. */}
+          {!loading && pending > 0 && (
+            <Link to="/catalysts" className="text-caption font-medium text-accent inline-flex items-center gap-1 shrink-0 hover:underline">
+              Review <ChevronRight size={12} aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </Card>
     );
@@ -182,9 +192,18 @@ export function ActionQueuePanel({
             </p>
           )}
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? <Loader2 size={12} className="animate-spin" /> : 'Refresh'}
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Executive rows carry no inline approve — link out to where the
+              approval actually happens instead of dead-ending the reader. */}
+          {variant === 'executive' && !allowApprove && (
+            <Link to="/catalysts" className="text-caption font-medium text-accent inline-flex items-center gap-1 hover:underline">
+              Review &amp; approve <ChevronRight size={12} aria-hidden="true" />
+            </Link>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
+            {loading ? <Loader2 size={12} className="animate-spin" /> : 'Refresh'}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -207,7 +226,7 @@ export function ActionQueuePanel({
                 {columns.hasValue && (
                   <th className="py-1 pr-3 font-medium text-label text-right">Value</th>
                 )}
-                <th className="py-1 pr-3 font-medium text-label">Status</th>
+                {showStatus && <th className="py-1 pr-3 font-medium text-label">Status</th>}
                 <th className="py-1 pr-3 font-medium text-label">Created</th>
                 {allowApprove && (
                   <th className="py-1 pr-3 font-medium text-label">Actions</th>
@@ -254,22 +273,24 @@ export function ActionQueuePanel({
                         />
                       </td>
                     )}
-                    <td className="py-1.5 pr-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <StatusPill status={statusToKind(a.status)} size="sm" />
-                        {/* v64 — execution mode (live vs stub) only renders when
-                            present. Stops "completed" + bare row when mode is unset. */}
-                        {columns.hasMode && out?.mode && (
-                          <StatusPill
-                            status={out.mode === 'live' ? 'verified' : out.mode === 'stub' ? 'pending' : 'info'}
-                            label={out.mode}
-                            size="sm"
-                            density="outline"
-                            noGlyph
-                          />
-                        )}
-                      </div>
-                    </td>
+                    {showStatus && (
+                      <td className="py-1.5 pr-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <StatusPill status={statusToKind(a.status)} size="sm" />
+                          {/* v64 — execution mode (live vs stub) only renders when
+                              present. Stops "completed" + bare row when mode is unset. */}
+                          {columns.hasMode && out?.mode && (
+                            <StatusPill
+                              status={out.mode === 'live' ? 'verified' : out.mode === 'stub' ? 'pending' : 'info'}
+                              label={out.mode}
+                              size="sm"
+                              density="outline"
+                              noGlyph
+                            />
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="py-1.5 pr-3 t-muted tabular-nums" title={a.created_at ?? ''}>
                       {relTime(a.created_at)}
                     </td>
@@ -295,7 +316,7 @@ export function ActionQueuePanel({
                   </tr>
                   {hasDetail && isExpanded && (
                     <tr className="border-b border-[var(--border-card)]/50 bg-[var(--bg-secondary)]/40">
-                      <td colSpan={2 + (columns.hasValue ? 1 : 0) + 2 + (allowApprove ? 1 : 0)} className="px-3 py-3">
+                      <td colSpan={2 + (columns.hasValue ? 1 : 0) + (showStatus ? 1 : 0) + 1 + (allowApprove ? 1 : 0)} className="px-3 py-3">
                         <div className="grid gap-3 md:grid-cols-2">
                           {a.reasoning && (
                             <div>

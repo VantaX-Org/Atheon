@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 /* ============================================================
-   ATHEON DESIGN SYSTEM — Luminous Editorial
-   Warm-white field with faint blue gradient-mesh blooms, frosted-
-   glass panels, warm near-black ink, royal-blue brand accent.
-   Inter (display + oversized tabular numerals) + Space Mono
-   (uppercase letterspaced micro-labels). Depth via translucent
-   glass + soft elevation — never decoration. RAG (green/amber/red)
-   is reserved for STATUS & HEALTH ONLY, never brand. Light.
+   ATHEON DESIGN SYSTEM — Daylight
+   Cool paper field (#f6f7f9), flat white cards on soft diffuse
+   shadow, cool near-black ink, vivid blue brand (#2453ff).
+   Schibsted Grotesk (display + amounts) + IBM Plex Sans (body)
+   + Space Mono (uppercase letterspaced micro-labels). Depth via
+   soft elevation only — no frosted glass, no field blooms.
+   RAG (green/amber/red) is STATUS & HEALTH ONLY, never brand.
    ============================================================ */
 
 /* L6: Font imports consolidated in index.html with font-display:swap for better performance */
@@ -40,74 +40,71 @@
      * mix. Soft elevation on glass; hairline rules carry structure.
      * Tabular figures everywhere data appears.
      * ─────────────────────────────────────────────────────────── */
-    --radius: 0.625rem;        /* 10px — glass cards/panels */
-    --radius-control: 0.25rem; /* 4px — buttons, inputs, chips */
+    --radius: 0.875rem;        /* 14px — cards/panels */
+    --radius-control: 0.5rem;  /* 8px — buttons, inputs, chips */
 
     /* ── Field ─────────────────────────────────────────── */
-    --bg-primary: #faf9f5;     /* warm white */
-    --bg-secondary: #f1efe8;
-    /* Faint blue gradient-mesh blooms — top-left + far-right, very
-       low alpha so glass panels read as floating over light. */
-    --field-gradient:
-      radial-gradient(58rem 42rem at 8% -8%, rgba(36, 86, 214, 0.07), transparent 62%),
-      radial-gradient(48rem 40rem at 104% 6%, rgba(36, 86, 214, 0.05), transparent 60%);
-    --bg-pattern: var(--field-gradient);
+    --bg-primary: #f6f7f9;     /* cool paper */
+    --bg-secondary: #f2f3f6;
+    /* Daylight is a flat field — no gradient blooms. */
+    --field-gradient: none;
+    --bg-pattern: none;
 
-    /* ── Surfaces — frosted glass over the field ───────── */
+    /* ── Surfaces — flat white cards on soft shadow ────── */
     --bg-card: #ffffff;
     --bg-card-solid: #ffffff;
-    --bg-card-hover: #f7f5ee;
+    --bg-card-hover: #f2f3f6;
     --bg-elevated: #ffffff;
-    --bg-sidebar: rgba(250, 249, 245, 0.72);
-    --bg-header: rgba(250, 249, 245, 0.78);
+    --bg-sidebar: #ffffff;
+    --bg-header: rgba(255, 255, 255, 0.88);
     --bg-input: #ffffff;
     --bg-input-focus: #ffffff;
-    --bg-modal: rgba(255, 255, 255, 0.86);
+    --bg-modal: #ffffff;
 
-    /* ── Glass — translucent frosted surfaces ──────────── */
-    --glass-bg: rgba(255, 255, 255, 0.72);
-    --glass-bg-strong: rgba(255, 255, 255, 0.86);
-    --glass-border: rgba(26, 26, 23, 0.08);
-    --glass-blur: 16px;
-    --glass-shadow: 0 8px 32px rgba(26, 26, 23, 0.08);
-    --glass-shadow-hover: 0 14px 44px rgba(26, 26, 23, 0.12);
+    /* ── Glass (legacy) — resolves to flat Daylight card ─ */
+    --glass-bg: #ffffff;
+    --glass-bg-strong: #ffffff;
+    --glass-border: #eef0f4;
+    --glass-blur: 0px;
+    --glass-shadow: 0 1px 2px rgba(23, 25, 33, 0.05), 0 8px 24px rgba(23, 25, 33, 0.06);
+    --glass-shadow-hover: 0 2px 6px rgba(23, 25, 33, 0.08), 0 10px 24px rgba(23, 25, 33, 0.08);
 
     /* ── Borders / rules ───────────────────────────────── */
-    --border-primary: #e6e3da;
-    --border-card: #e6e3da;
-    --border-subtle: #efece3;
-    --divider: #e6e3da;
-    --line-strong: #1a1a17;     /* 1.5px section/header rule — ink */
+    --border-primary: #e5e8ef;
+    --border-card: #e5e8ef;
+    --border-subtle: #eef0f4;
+    --divider: #eef0f4;
+    --line-strong: #101322;     /* 1.5px section/header rule — ink */
 
     /* ── Text ──────────────────────────────────────────── */
-    --text-primary: #1a1a17;    /* warm near-black ink */
-    --text-secondary: #5c5f63;  /* muted */
-    --text-muted: #9498a0;      /* faint — eyebrow/label/scale */
+    --text-primary: #101322;    /* cool near-black ink */
+    --text-secondary: #40434e;  /* body */
+    --text-muted: #6a6f7e;      /* muted — eyebrow/label/scale */
     --text-on-accent: #ffffff;
 
-    /* ── Brand accent: royal blue (NOT a status colour) ── */
-    --accent: #2456d6;
-    --accent-rgb: 36, 86, 214;
-    --accent-hover: #1c46ad;
-    --accent-glow: rgba(36, 86, 214, 0.14);
-    --accent-subtle: rgba(36, 86, 214, 0.07);
-    --accent-dark: #16357f;
-    --sage: #2456d6;            /* legacy alias → blue brand */
-    --sage-b: #16357f;          /* legacy alias → blue brand dark */
-    --bronze: #9a6b1f;          /* chart tertiary / warning family */
+    /* ── Brand accent: Daylight blue (NOT a status colour) ── */
+    --accent: #2453ff;
+    --accent-rgb: 36, 83, 255;
+    --accent-hover: #1c46e0;
+    --accent-glow: rgba(36, 83, 255, 0.14);
+    --accent-subtle: #eef2ff;
+    --accent-dark: #14309e;
+    --sage: #2453ff;            /* legacy alias → blue brand */
+    --sage-b: #14309e;          /* legacy alias → blue brand dark */
+    --bronze: #9a6200;          /* chart tertiary / warning family */
     --sky: #6c7a8e;             /* chart secondary / slate */
 
     /* ── RAG status semantics (status & health ONLY) ───── */
-    --rag-healthy: #1a7d4f;
-    --rag-healthy-rgb: 26, 125, 79;
-    --rag-watch: #d98a00;
-    --rag-watch-rgb: 217, 138, 0;
-    --rag-risk: #c0392b;
-    --rag-risk-rgb: 192, 57, 43;
+    --rag-healthy: #0f8a4d;
+    --rag-healthy-rgb: 15, 138, 77;
+    --rag-watch: #9a6200;
+    --rag-watch-rgb: 154, 98, 0;
+    --rag-risk: #d33b4e;
+    --rag-risk-rgb: 211, 59, 78;
 
     /* ── Reserved negative (= RAG risk) ────────────────── */
-    --neg: #c0392b;
-    --neg-rgb: 192, 57, 43;
+    --neg: #d33b4e;
+    --neg-rgb: 211, 59, 78;
 
     /* ── Elevation — Luminous Editorial uses soft glass lift.
        Cards/panels float on faint shadow + hairline border.
@@ -142,7 +139,7 @@
     --option-bg: #ffffff;
     --scrollbar-thumb: rgba(26, 26, 23, 0.18);
     --scrollbar-thumb-hover: rgba(26, 26, 23, 0.32);
-    --toggle-bg: #e6e3da;
+    --toggle-bg: #e5e8ef;
     --ring-focus: rgba(36, 86, 214, 0.45);
 
     /* ── Semantic — status only (RAG, never brand) ─────── */
@@ -151,7 +148,7 @@
     --warning-rgb: var(--rag-watch-rgb);
     --critical: var(--rag-risk);
     --info: #6c7a8e;
-    --teal: #2456d6;            /* legacy alias → blue brand */
+    --teal: #2453ff;            /* legacy alias → blue brand */
     --teal-light: rgba(36, 86, 214, 0.07);
     --teal-dark: #16357f;
 
@@ -177,17 +174,15 @@
   * { border-color: var(--divider); }
 
   body {
-    /* Inter is the single grotesk for body + display (weight + optical
-       sizing do the work). Space Mono is the data/micro-label face,
-       applied via .font-mono / Tailwind's mono family on numerals and
-       uppercase letterspaced labels. */
-    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    /* IBM Plex Sans carries body copy; Schibsted Grotesk is the display
+       face for headlines + amounts (via .font-display / Tailwind display
+       family). Space Mono is the data/micro-label face, applied via
+       .font-mono on numerals and uppercase letterspaced labels. */
+    font-family: "IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-primary);
-    background-image: var(--bg-pattern);
-    background-attachment: fixed;
     color: var(--text-primary);
     min-height: 100vh;
-    font-feature-settings: "tnum" 1, "cv05" 1, "ss01" 1;
+    font-feature-settings: "tnum" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -262,6 +257,18 @@
      for default body, `.text-caption` for sublabels + axis ticks.
      Reserves the small end (11px) for genuinely tertiary text —
      anything smaller is illegible at the platform's target DPI. */
+  /* Display faces — every display/headline/figure scale class carries
+     Schibsted Grotesk so amounts and headlines get the Daylight face
+     without per-page font-display classes. */
+  .text-hero, .text-display, .text-figure, .text-figure-lg,
+  .text-h1, .text-headline-xl, .text-headline-lg, .text-headline-md, .text-headline-sm {
+    font-family: "Schibsted Grotesk", system-ui, sans-serif;
+    /* Body sets "tnum" globally for aligned columns; in Schibsted it also
+       gives commas/periods tabular width ("Good evening ,") — reset here,
+       amounts re-opt-in via .tnum. */
+    font-feature-settings: normal;
+  }
+
   .text-display { font-size: 32px; line-height: 1.1; font-weight: 600; letter-spacing: -0.01em; }
   .text-h1      { font-size: 22px; line-height: 1.25; font-weight: 600; letter-spacing: -0.005em; }
   .text-h2      { font-size: 16px; line-height: 1.35; font-weight: 600; }
@@ -375,19 +382,15 @@
   }
   .card-accent:hover { border-color: rgb(var(--accent-rgb) / 0.5); }
 
-  /* `.card-hero` — the one anchor card per screen. Blue gradient-mesh wash,
-     taller padding, accent left-rule, larger interior breathing room. Reserve
-     for the page's dominant metric (e.g. Shared Savings on Dashboard, Recovered
-     $ on BoardDigest, Health Score on Apex). Never render two on a single screen. */
+  /* `.card-hero` — the one anchor card per screen. Brand-soft wash on white,
+     taller padding, larger interior breathing room. Reserve for the page's
+     dominant metric (e.g. Shared Savings on Dashboard, Recovered R on
+     BoardDigest, Health Score on Apex). Never render two on a single screen. */
   .card-hero {
     background:
-      radial-gradient(36rem 24rem at 0% 0%, rgb(var(--accent-rgb) / 0.12), transparent 70%),
-      linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08) 0%, rgb(var(--accent-rgb) / 0.02) 60%, transparent 100%),
-      var(--glass-bg-strong);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid rgb(var(--accent-rgb) / 0.22);
-    border-left: 3px solid var(--accent);
+      linear-gradient(135deg, var(--accent-subtle) 0%, rgb(var(--accent-rgb) / 0.02) 55%, transparent 100%),
+      var(--bg-card);
+    border: 1px solid rgb(var(--accent-rgb) / 0.18);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
     transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);

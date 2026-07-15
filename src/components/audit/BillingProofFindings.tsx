@@ -15,10 +15,11 @@
  * Honesty: no fabricated confidence %. The ASSURANCE column shows the
  * finding's real `severity` band, consistent with the dashboard table.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
 import type { ValueAssessmentFinding } from '@/lib/api';
-import { useLatestFindings } from '@/lib/use-latest-findings';
+import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import { formatCurrency } from '@/lib/format-currency';
 
 type Severity = ValueAssessmentFinding['severity'];
@@ -34,10 +35,43 @@ const TITLE = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const cell = (v: string | number | undefined) => (v === undefined || v === '' ? '—' : String(v));
 
 export function BillingProofFindings() {
-  const findings = useLatestFindings(12);
+  // Inline fetch instead of the shared useLatestFindings hook: that hook
+  // collapses every failure to [] (fine for the dashboard, dishonest here —
+  // "No billing-proof findings yet" from a 403/failed fetch is a false claim
+  // on an audit surface). The assessments list API is superadmin-only, so
+  // admins and auditors always 403; they must see "not available", not "none".
+  const [findings, setFindings] = useState<ValueAssessmentFinding[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState<string | null>(null);
   const currency = 'ZAR';
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { assessments } = await api.assessments.list();
+        const latest = latestCompleteAssessment(assessments);
+        if (!latest) { if (!cancelled) setFindings([]); return; }
+        const { findings } = await api.assessments.findings(latest.id);
+        if (cancelled) return;
+        setFindings([...findings].sort((a, b) => b.financial_impact - a.financial_impact).slice(0, 12));
+      } catch (err) {
+        if (!cancelled) setError(err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error) {
+    const forbidden = error instanceof ApiError && error.status === 403;
+    return (
+      <p className="text-caption t-muted py-6">
+        {forbidden
+          ? 'Billing-proof findings are not available for your role.'
+          : 'Billing-proof findings could not be loaded — the assessment service did not respond.'}
+      </p>
+    );
+  }
   if (findings === null) {
     return (
       <div className="space-y-2" aria-hidden="true">

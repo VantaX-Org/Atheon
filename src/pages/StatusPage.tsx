@@ -42,6 +42,7 @@ const SEVERITY_LABEL: Record<string, string> = {
   degraded: 'Degraded performance',
   partial_outage: 'Partial outage',
   major_outage: 'Major outage',
+  unknown: 'Status unknown',
 };
 
 const SEVERITY_TONE: Record<string, { bg: string; border: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -49,14 +50,17 @@ const SEVERITY_TONE: Record<string, { bg: string; border: string; color: string;
   degraded: { bg: 'rgb(var(--warning-rgb) / 0.07)', border: 'rgb(var(--warning-rgb) / 0.30)', color: 'var(--warning)', icon: AlertTriangle },
   partial_outage: { bg: 'rgb(var(--warning-rgb) / 0.07)', border: 'rgb(var(--warning-rgb) / 0.30)', color: 'var(--warning)', icon: AlertTriangle },
   major_outage: { bg: 'rgb(var(--neg-rgb) / 0.07)', border: 'rgb(var(--neg-rgb) / 0.30)', color: 'var(--neg)', icon: XCircle },
+  // Honesty: an unrecognized or missing status must never render green.
+  unknown: { bg: 'rgba(120, 120, 140, 0.08)', border: 'rgba(120, 120, 140, 0.30)', color: 'var(--text-muted)', icon: AlertTriangle },
 };
 
-function componentPillVariant(s: ComponentStatus): { label: string; variant: 'success' | 'warning' | 'danger' } {
+function componentPillVariant(s: ComponentStatus): { label: string; variant: 'success' | 'warning' | 'danger' | 'default' } {
   if (s === 'operational') return { label: 'Healthy', variant: 'success' };
   if (s === 'degraded') return { label: 'Watch', variant: 'warning' };
   if (s === 'partial_outage') return { label: 'Watch', variant: 'warning' };
   if (s === 'major_outage') return { label: 'At Risk', variant: 'danger' };
-  return { label: s, variant: 'warning' };
+  // Missing/unrecognized status renders honestly, never green.
+  return { label: s === 'unknown' ? 'Unknown' : s, variant: 'default' };
 }
 
 function ComponentRow({ label, icon: Icon, status, hint }: { label: string; icon: typeof CheckCircle2; status: ComponentStatus; hint?: string }) {
@@ -118,8 +122,8 @@ export default function StatusPage(): JSX.Element {
     );
   }
 
-  const overall = data?.status ?? 'operational';
-  const tone = SEVERITY_TONE[overall] ?? SEVERITY_TONE.operational;
+  const overall = data?.status ?? 'unknown';
+  const tone = SEVERITY_TONE[overall] ?? SEVERITY_TONE.unknown;
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
@@ -140,6 +144,15 @@ export default function StatusPage(): JSX.Element {
             <span>Updated {data ? new Date(data.checkedAt).toLocaleTimeString() : '—'}</span>
           </button>
         </header>
+
+        {/* Stale-data disclosure — a failing background poll must not silently
+            present the last good result as current. */}
+        {error && data && (
+          <p className="mt-4 text-caption" style={{ color: 'var(--warning)' }} role="status">
+            Live refresh is currently failing — showing the last successful check from{' '}
+            {new Date(data.checkedAt).toLocaleString()}.
+          </p>
+        )}
 
         {/* Hero — overall status */}
         <section className="mt-10 sm:mt-12">
@@ -198,20 +211,25 @@ export default function StatusPage(): JSX.Element {
           </div>
           <Card className="mt-3 overflow-hidden p-0">
             <div className="divide-y" style={{ borderColor: 'var(--border-card)' }}>
-              <ComponentRow label="API" icon={Globe} status={data?.components.api ?? 'operational'} hint="Cloudflare Workers" />
+              <ComponentRow label="API" icon={Globe} status={data?.components.api ?? 'unknown'} hint="Cloudflare Workers" />
               <ComponentRow
                 label="Database"
                 icon={Database}
-                status={data?.components.database ?? 'operational'}
+                status={data?.components.database ?? 'unknown'}
                 hint={data ? `D1 · ${data.probes.database_ms}ms probe` : 'D1'}
               />
-              <ComponentRow label="Cache" icon={Activity} status={data?.components.cache ?? 'operational'} hint="Cloudflare KV" />
-              <ComponentRow label="Object Storage" icon={Shield} status={data?.components.storage ?? 'operational'} hint="Cloudflare R2" />
+              <ComponentRow label="Cache" icon={Activity} status={data?.components.cache ?? 'unknown'} hint="Cloudflare KV" />
+              <ComponentRow label="Object Storage" icon={Shield} status={data?.components.storage ?? 'unknown'} hint="Cloudflare R2" />
             </div>
           </Card>
           <p className="mt-3 font-mono text-caption uppercase tracking-wide t-muted">
             Auto-refreshes every {POLL_INTERVAL_MS / 1000}s · subscribe against{' '}
             <code className="font-mono normal-case">https://atheon-api.vantax.co.za/api/status</code>
+          </p>
+          <p className="mt-1 text-caption t-muted">
+            API and database are probed live on every check. Cache and object storage are not
+            actively probed on this public path — they report operational unless an incident is
+            declared against them.
           </p>
         </section>
 

@@ -1,17 +1,19 @@
 /**
  * DataPage (/data) — canonical CONNECT stage. One question: is my data
- * flowing? Sources + freshness + the door to ingest. Read-only for
- * analysts; admin doors (Integrations) shown by role.
+ * flowing? KPIs (sources, broken, freshness, volume) + one-click re-sync +
+ * the door to ingest. Broken connections are loud; healthy data points
+ * forward to Findings. Admin doors (Integrations) shown by role.
  */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { Database, ArrowRight } from 'lucide-react';
+import { Database, ArrowRight, RefreshCw } from 'lucide-react';
 import { api, type ERPConnection, type Assessment } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusPill, type StatusKind } from '@/components/ui/status-pill';
+import { useToast } from '@/components/ui/toast';
 import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 
@@ -21,6 +23,10 @@ function syncKind(status: string): StatusKind {
   return 'pending';
 }
 
+function isBroken(c: ERPConnection): boolean {
+  return c.status === 'error' || c.status === 'failed';
+}
+
 function syncLabel(lastSync: string | null): string {
   if (!lastSync) return 'never synced';
   const d = new Date(lastSync);
@@ -28,10 +34,24 @@ function syncLabel(lastSync: string | null): string {
   return `synced ${formatDistanceToNow(d, { addSuffix: true })}`;
 }
 
+/** Most recent valid lastSync across all connections; null if none ever synced. */
+function newestSync(conns: ERPConnection[]): Date | null {
+  let latest: Date | null = null;
+  for (const c of conns) {
+    if (!c.lastSync) continue;
+    const d = new Date(c.lastSync);
+    if (Number.isNaN(d.getTime())) continue;
+    if (!latest || d > latest) latest = d;
+  }
+  return latest;
+}
+
 export default function DataPage() {
   const role = useAppStore((s) => s.user?.role);
+  const toast = useToast();
   const [connections, setConnections] = useState<ERPConnection[] | null | 'error'>(null);
   const [latestAssessment, setLatestAssessment] = useState<Assessment | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +66,26 @@ export default function DataPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const handleSync = async (id: string) => {
+    setSyncing(id);
+    try {
+      const r = await api.erp.sync(id);
+      toast.success('Sync complete', `${r.recordsSynced.toLocaleString()} records synced`);
+      const refreshed = await api.erp.connections();
+      setConnections(refreshed.connections);
+    } catch (err) {
+      toast.error('Sync failed', { message: err instanceof Error ? err.message : undefined });
+    }
+    setSyncing(null);
+  };
+
   const isAdmin = role === 'superadmin' || role === 'support_admin' || role === 'admin';
+
+  const conns = Array.isArray(connections) ? connections : null;
+  const brokenCount = conns ? conns.filter(isBroken).length : 0;
+  const totalRecords = conns ? conns.reduce((s, c) => s + (c.recordsSynced || 0), 0) : 0;
+  const lastSync = conns ? newestSync(conns) : null;
+  const healthy = conns !== null && conns.length > 0 && brokenCount === 0;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -61,6 +100,52 @@ export default function DataPage() {
         ) : undefined}
       />
       <JourneyStageBar current="connect" />
+
+      {conns && conns.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <Card className="p-4">
+            <p className="text-figure font-mono tnum t-primary leading-none">{conns.length}</p>
+            <p className="text-label mt-1.5">Sources connected</p>
+          </Card>
+          <Card className="p-4">
+            <p
+              className="text-figure font-mono tnum leading-none"
+              style={{ color: brokenCount > 0 ? 'var(--neg)' : 'var(--rag-healthy)' }}
+            >
+              {brokenCount}
+            </p>
+            <p className="text-label mt-1.5">Broken connections</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-figure font-mono tnum t-primary leading-none">
+              {lastSync ? formatDistanceToNow(lastSync, { addSuffix: true }) : '—'}
+            </p>
+            <p className="text-label mt-1.5">Last successful sync</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-figure font-mono tnum t-primary leading-none">{totalRecords.toLocaleString()}</p>
+            <p className="text-label mt-1.5">Records ingested</p>
+          </Card>
+        </div>
+      )}
+
+      {brokenCount > 0 && conns && (
+        <Card className="p-4 mb-6 border-l-2 flex flex-wrap items-center gap-3" style={{ borderLeftColor: 'var(--neg)' }}>
+          <div className="flex-1 min-w-0">
+            <p className="t-primary font-medium">
+              {brokenCount} source{brokenCount === 1 ? ' is' : 's are'} not syncing.
+            </p>
+            <p className="text-caption t-muted">
+              Findings go stale without fresh records — re-sync below{isAdmin ? ' or check credentials in Integrations' : ', or ask your administrator to check credentials'}.
+            </p>
+          </div>
+          {isAdmin && (
+            <Link to="/integrations" className="text-caption font-medium text-accent hover:underline inline-flex items-center gap-1">
+              Fix in Integrations <ArrowRight size={11} aria-hidden="true" />
+            </Link>
+          )}
+        </Card>
+      )}
 
       {connections === null ? (
         <div className="space-y-2" aria-hidden="true">
@@ -88,7 +173,10 @@ export default function DataPage() {
         <ul className="space-y-2" aria-label="Connected sources">
           {connections.map((c) => (
             <li key={c.id}>
-              <Card className="p-4 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Card
+                className={`p-4 flex flex-wrap items-center gap-x-4 gap-y-1${isBroken(c) ? ' border-l-2' : ''}`}
+                style={isBroken(c) ? { borderLeftColor: 'var(--neg)' } : undefined}
+              >
                 <div className="min-w-0 flex-1">
                   <p className="t-primary font-medium truncate">{c.name}</p>
                   <p className="text-caption t-muted truncate">{c.adapterName}</p>
@@ -100,13 +188,36 @@ export default function DataPage() {
                   {syncLabel(c.lastSync)}
                 </p>
                 <StatusPill status={syncKind(c.status)} />
+                <button
+                  type="button"
+                  onClick={() => handleSync(c.id)}
+                  disabled={syncing !== null}
+                  className="text-caption font-medium text-accent hover:underline inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={syncing === c.id ? 'animate-spin' : ''} aria-hidden="true" />
+                  Re-sync
+                </button>
               </Card>
             </li>
           ))}
         </ul>
       )}
 
-      {latestAssessment && (
+      {healthy ? (
+        <Card className="mt-6 p-4 border-l-2 flex flex-wrap items-center gap-3" style={{ borderLeftColor: 'var(--rag-healthy)' }}>
+          <div className="flex-1 min-w-0">
+            <p className="t-primary font-medium">Your data is flowing.</p>
+            <p className="text-caption t-muted">
+              {latestAssessment
+                ? `Latest analysis ${(latestAssessment.completedAt ? new Date(latestAssessment.completedAt) : new Date(latestAssessment.createdAt)).toLocaleDateString()} — see what it found in these records.`
+                : 'Next step: review what Atheon found in these records.'}
+            </p>
+          </div>
+          <Link to="/findings" className="text-caption font-medium text-accent hover:underline inline-flex items-center gap-1">
+            Review findings <ArrowRight size={11} aria-hidden="true" />
+          </Link>
+        </Card>
+      ) : latestAssessment && (
         <p className="mt-6 text-caption t-muted">
           Latest analysis: {latestAssessment.completedAt ? new Date(latestAssessment.completedAt).toLocaleDateString() : new Date(latestAssessment.createdAt).toLocaleDateString()} ·{' '}
           <Link to="/findings" className="text-accent hover:underline">see what it found</Link>

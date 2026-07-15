@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,28 @@ export function ERPOAuthCallbackPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing ERP authorization...');
   const [provider, setProvider] = useState<string>('');
+  // OAuth codes are single-use: guard against the exchange firing twice
+  // (React StrictMode re-runs effects in dev; the second call would fail
+  // and overwrite a real success with an error).
+  const exchangedRef = useRef(false);
 
   useEffect(() => {
+    if (exchangedRef.current) return;
+    exchangedRef.current = true;
+
     const code = searchParams.get('code');
     const state = searchParams.get('state');
     const providerParam = searchParams.get('provider') || searchParams.get('erp') || '';
 
     setProvider(providerParam);
+
+    // Providers report denial/failure via error params — surface them honestly.
+    const oauthError = searchParams.get('error');
+    if (oauthError) {
+      setStatus('error');
+      setMessage(searchParams.get('error_description') || `Authorization was not granted (${oauthError}).`);
+      return;
+    }
 
     if (!code) {
       setStatus('error');
@@ -131,33 +146,25 @@ export function ERPOAuthCallbackPage() {
                 variant="primary"
                 size="lg"
                 className="w-full font-mono uppercase tracking-wide"
-                onClick={() => navigate('/erp-adapters')}
+                onClick={() => navigate('/integrations')}
                 title="Go to ERP connections page"
               >
                 View Connections
               </Button>
             )}
             {status === 'error' && (
-              <>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full font-mono uppercase tracking-wide"
-                  onClick={() => window.location.reload()}
-                  title="Retry the OAuth authorization"
-                >
-                  Try Again
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  className="w-full"
-                  onClick={() => navigate('/erp-adapters')}
-                  title="Go back to ERP adapters page"
-                >
-                  Back to ERP
-                </Button>
-              </>
+              // Authorization codes are single-use — reloading this page would
+              // replay a consumed code and fail every time. The honest retry
+              // is to restart the connect flow from Integrations.
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full font-mono uppercase tracking-wide"
+                onClick={() => navigate('/integrations')}
+                title="Restart the connection from the Integrations page"
+              >
+                Try Again from Integrations
+              </Button>
             )}
             {status !== 'loading' && (
               <Button

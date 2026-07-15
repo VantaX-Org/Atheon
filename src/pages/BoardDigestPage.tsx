@@ -10,7 +10,7 @@
  * Surfaces, top-to-bottom:
  *   1. Shared-savings hero — Atheon recovered RX • billed RY • multiple Zx
  *   2. Atheon health score (overall + QoQ delta)
- *   3. Critical risks + active anomalies summary
+ *   3. Open risks + active anomalies summary
  *   4. Forecast accuracy headline (within-band rate)
  *   5. Compliance posture (MFA coverage + CC6.1 status)
  *
@@ -19,7 +19,6 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { StatusPill } from '@/components/ui/status-pill';
 import { Numeric } from '@/components/ui/numeric';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
@@ -51,8 +50,9 @@ export default function BoardDigestPage(): JSX.Element {
   const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [forecast, setForecast] = useState<ForecastAccuracyResp | null>(null);
   const [health, setHealth] = useState<HealthScore | null>(null);
-  const [risksCount, setRisksCount] = useState<number>(0);
-  const [anomaliesCount, setAnomaliesCount] = useState<number>(0);
+  // null = fetch failed → render em-dash, make no claim (a false "0 risks" reads green).
+  const [risksCount, setRisksCount] = useState<number | null>(null);
+  const [anomaliesCount, setAnomaliesCount] = useState<number | null>(null);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,11 +135,12 @@ export default function BoardDigestPage(): JSX.Element {
     );
   }
 
-  const recovered = billing?.total_realised_savings ?? 0;
-  const billed = billing?.total_atheon_revenue ?? 0;
-  const multiple = billed > 0 ? recovered / billed : 0;
+  // null = endpoint failed → em-dash, no claim. 0 from the API is a real 0.
+  const recovered = billing ? billing.total_realised_savings : null;
+  const billed = billing ? billing.total_atheon_revenue : null;
+  const multiple = recovered != null && billed != null && billed > 0 ? recovered / billed : null;
   const currency = billing?.currency ?? 'ZAR';
-  const overallScore = Math.round(health?.overall ?? 0);
+  const overallScore = health ? Math.round(health.overall) : null;
   const withinBand = forecast?.within_band_rate;
 
   const baseProvenance: Partial<MetricProvenance> = {
@@ -197,10 +198,9 @@ export default function BoardDigestPage(): JSX.Element {
               <h1 className="font-mono font-bold tracking-tight t-primary text-2xl md:text-[2.1rem] leading-none uppercase">
                 Board Digest
               </h1>
-              <StatusPill status="verified" size="sm" />
             </div>
             <p className="text-label text-[11px] tracking-[0.18em]">
-              Financial Assurance · Confidential · Atheon Luminous
+              Financial Assurance · Confidential · Atheon
             </p>
           </div>
 
@@ -210,18 +210,18 @@ export default function BoardDigestPage(): JSX.Element {
               Shared Savings · Lifetime
             </p>
             <div className="flex items-baseline lg:justify-end gap-2">
-              <p className="text-hero t-primary">{formatCurrency(recovered, currency)}</p>
+              <p className="text-hero t-primary">{recovered != null ? formatCurrency(recovered, currency) : '—'}</p>
               <MetricSource source={{
                 ...baseProvenance,
                 label: 'Total realised savings',
-                definition: 'Cumulative operator-confirmed savings across every closed billing period. Each Rand traces to a catalyst action and a source ERP record.',
+                definition: 'Cumulative operator-confirmed savings across every closed billing period. Each Rand traces to an executed fix and a source ERP record.',
                 table: 'billable_periods',
                 endpoint: 'GET /api/insights-stats/billing/summary',
                 query: 'SUM(realised_savings_zar) FROM billable_periods',
                 notes: [{ label: 'Currency', value: currency }],
               }} />
             </div>
-            <p className="text-body-sm t-muted mt-1">Total verified savings &amp; recovery — since first sync</p>
+            <p className="text-body-sm t-muted mt-1">Operator-confirmed savings across closed billing periods — since first sync</p>
           </div>
         </div>
       </header>
@@ -235,8 +235,7 @@ export default function BoardDigestPage(): JSX.Element {
         {/* ── Narrative column ─────────────────────────────────────── */}
         <Card className="p-6 md:p-7">
           <div className="flex items-center gap-2 pb-4 mb-5 border-b border-theme-subtle">
-            <span className="text-label">Executive Narrative</span>
-            <span className="text-label text-[10px] tracking-[0.14em] t-muted">· Shared-Savings Ledger</span>
+            <span className="text-label">Shared-Savings Ledger</span>
           </div>
 
           <h2 className="text-headline-lg font-semibold t-primary mb-4">
@@ -260,7 +259,7 @@ export default function BoardDigestPage(): JSX.Element {
                 </div>
                 <p className="text-body-sm t-muted mt-0.5">Invoiced under shared-savings (no upfront fee)</p>
               </div>
-              <p className="text-headline-md font-semibold t-primary tabular-nums font-mono shrink-0">{formatCurrency(billed, currency)}</p>
+              <p className="text-headline-md font-semibold t-primary tabular-nums font-mono shrink-0">{billed != null ? formatCurrency(billed, currency) : '—'}</p>
             </div>
 
             <div className="flex items-start justify-between gap-4">
@@ -276,7 +275,7 @@ export default function BoardDigestPage(): JSX.Element {
                 </div>
                 <p className="text-body-sm t-muted mt-0.5">Recovered ÷ billed — the audit-committee headline</p>
               </div>
-              <p className="text-headline-md font-semibold text-accent tabular-nums font-mono shrink-0">{multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}</p>
+              <p className="text-headline-md font-semibold text-accent tabular-nums font-mono shrink-0">{multiple != null && multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}</p>
             </div>
           </div>
 
@@ -312,7 +311,7 @@ export default function BoardDigestPage(): JSX.Element {
           {/* KPI strip */}
           <Card className="p-6">
             <div className="flex items-center gap-2 pb-4 mb-5 border-b border-theme-subtle">
-              <span className="text-label">KPI Strip</span>
+              <span className="text-label">At a Glance</span>
               <span className="text-label text-[10px] tracking-[0.14em] t-muted">· Health · Risk · Anomalies</span>
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -329,23 +328,23 @@ export default function BoardDigestPage(): JSX.Element {
                   }} />
                 </div>
                 <p className="text-headline-xl font-bold t-primary tabular-nums font-mono leading-none">
-                  {overallScore}<span className="text-body-sm font-normal t-muted ml-0.5">/100</span>
+                  {overallScore ?? '—'}<span className="text-body-sm font-normal t-muted ml-0.5">/100</span>
                 </p>
               </div>
               <div>
                 <div className="flex items-center gap-1 mb-2">
-                  <span className="text-label text-[10px]">Critical Risks</span>
+                  <span className="text-label text-[10px]">Open Risks</span>
                   <MetricSource source={{
                     ...baseProvenance,
-                    label: 'Critical risks',
-                    definition: 'Open business risks flagged by Apex still requiring action.',
+                    label: 'Open risks',
+                    definition: 'Open business risks (all severities) still requiring action.',
                     table: 'apex_risks',
                     endpoint: 'GET /api/apex/risks',
                     query: "COUNT(*) FROM apex_risks WHERE status IN ('open','monitoring')",
-                    sample: risksCount,
+                    sample: risksCount ?? undefined,
                   }} />
                 </div>
-                <p className="text-headline-xl font-bold tabular-nums font-mono leading-none" style={{ color: risksCount === 0 ? 'var(--positive)' : risksCount > 3 ? 'var(--neg)' : 'var(--warning)' }}>{risksCount}</p>
+                <p className="text-headline-xl font-bold tabular-nums font-mono leading-none" style={{ color: risksCount == null ? undefined : risksCount === 0 ? 'var(--positive)' : risksCount > 3 ? 'var(--neg)' : 'var(--warning)' }}>{risksCount ?? '—'}</p>
               </div>
               <div>
                 <div className="flex items-center gap-1 mb-2">
@@ -353,14 +352,14 @@ export default function BoardDigestPage(): JSX.Element {
                   <MetricSource source={{
                     ...baseProvenance,
                     label: 'Active anomalies',
-                    definition: 'Statistical anomalies detected by Pulse that have not yet been acknowledged.',
+                    definition: 'Statistical anomalies detected by continuous monitoring that have not yet been acknowledged.',
                     table: 'pulse_anomalies',
                     endpoint: 'GET /api/pulse/anomalies',
                     query: "COUNT(*) FROM pulse_anomalies WHERE status = 'active'",
-                    sample: anomaliesCount,
+                    sample: anomaliesCount ?? undefined,
                   }} />
                 </div>
-                <p className="text-headline-xl font-bold tabular-nums font-mono leading-none" style={{ color: anomaliesCount === 0 ? 'var(--positive)' : 'var(--warning)' }}>{anomaliesCount}</p>
+                <p className="text-headline-xl font-bold tabular-nums font-mono leading-none" style={{ color: anomaliesCount == null ? undefined : anomaliesCount === 0 ? 'var(--positive)' : 'var(--warning)' }}>{anomaliesCount ?? '—'}</p>
               </div>
             </div>
           </Card>

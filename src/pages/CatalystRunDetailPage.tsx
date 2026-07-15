@@ -15,6 +15,7 @@ import type {
   SubCatalystRunItemsResponse,
   RunComment,
   SubCatalystRun,
+  SubCatalystRunDetail,
   SubCatalystRunComparison,
 } from "@/lib/api";
 import { useToast, type ToastApi } from "@/components/ui/toast";
@@ -52,6 +53,11 @@ interface RunDetail {
   kpis: Array<{ name: string; value: number; status: string; unit: string; target: number }>;
   metrics: Array<{ id: string; name: string; value: number; unit: string; status: string }>;
   sourceData: Array<{ id: string; sourceSystem: string; recordType: string; value: number; status: string }>;
+}
+
+// Rand formatter that never fabricates: non-numeric API values render as em-dash.
+function zar(n: unknown): string {
+  return typeof n === 'number' ? `R ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—';
 }
 
 // CSV-safe cell (mirrors AuditPage.csvSafe: prevents formula injection).
@@ -173,6 +179,7 @@ export function CatalystRunDetailPage() {
 
   // Retry / compare / lineage / insights — production hardening
   const [runMeta, setRunMeta] = useState<SubCatalystRun | null>(null);
+  const [runSteps, setRunSteps] = useState<SubCatalystRunDetail['steps']>([]);
   const [retrying, setRetrying] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [comparison, setComparison] = useState<SubCatalystRunComparison | null>(null);
@@ -241,6 +248,7 @@ export function CatalystRunDetailPage() {
     try {
       const detail = await api.catalysts.getSubCatalystRunDetail(clusterId, subName, currentRunId);
       setRunMeta(detail.run);
+      setRunSteps(detail.steps ?? []);
 
       // Walk parent_run_id backward, max 5 ancestors.
       const chain: SubCatalystRun[] = [];
@@ -551,7 +559,7 @@ export function CatalystRunDetailPage() {
       <AsyncPageContent
         status={status}
         onRetry={() => void loadRun()}
-        errorTitle="Couldn't load catalyst run"
+        errorTitle="Couldn't load fix run"
         loadingVariant="cards"
         loadingCount={4}
       >
@@ -567,7 +575,7 @@ export function CatalystRunDetailPage() {
           <AlertCircle className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--warning)' }} />
           <h2 className="text-xl font-semibold t-primary mb-2">Run Not Found</h2>
           <p className="text-sm t-muted mb-4">
-            {loadError?.message || "The catalyst run you're looking for doesn't exist or you don't have access to it."}
+            {loadError?.message || "The fix run you're looking for doesn't exist or you don't have access to it."}
           </p>
           {loadError?.requestId && (
             <p className="text-caption t-muted font-mono mb-4">Request ID: {loadError.requestId}</p>
@@ -588,12 +596,7 @@ export function CatalystRunDetailPage() {
     (items?.items ?? []).find((it) => it.id === id)?.review_status === 'pending'
   ).length;
 
-  // ─ Stage pipeline (presentational) — mirrors the catalyst execution
-  //   phases. Completion is derived purely from the existing run.status;
-  //   no per-stage data is fabricated. ─
-  const isComplete = run.status === 'success' || run.status === 'completed';
-  const isRunning = run.status === 'running';
-  const stages = ['Ingest', 'Map', 'Detect', 'Score', 'Confirm'];
+  const isFailed = run.status === 'failed';
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -613,7 +616,7 @@ export function CatalystRunDetailPage() {
               className="text-[10px] uppercase tracking-[0.18em] t-muted"
               style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
             >
-              Catalyst Run Detail
+              Fix Run Detail
             </span>
           </div>
 
@@ -634,54 +637,66 @@ export function CatalystRunDetailPage() {
                 className="text-[10px] uppercase tracking-[0.18em] t-muted mt-1"
                 style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
               >
-                Total Recovered
+                Total Value in Run
               </div>
             </div>
           </div>
 
-          {/* Stage pipeline */}
-          <div className="mt-6 flex items-center gap-0 overflow-x-auto pb-1">
-            {stages.map((stage, i) => {
-              const done = isComplete || (isRunning && i === 0);
-              return (
-                <div key={stage} className="flex items-center shrink-0">
-                  <div className="flex flex-col items-center gap-2 px-1">
+          {/* Execution steps — real per-step status/duration/detail from the
+              API (SubCatalystRunDetail.steps). Hidden entirely when the API
+              returns no step data; never inferred from run.status. */}
+          {runSteps.length > 0 && (
+            <div className="mt-6 flex items-center gap-0 overflow-x-auto pb-1">
+              {runSteps.map((step, i) => {
+                const done = step.status === 'success' || step.status === 'completed';
+                const failed = step.status === 'failed' || step.status === 'error';
+                return (
+                  <div key={step.step} className="flex items-center shrink-0">
                     <div
-                      className="flex items-center justify-center w-7 h-7 rounded-full border-2 transition-colors"
-                      style={
-                        done
-                          ? { background: 'var(--accent)', borderColor: 'var(--accent)' }
-                          : { background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }
-                      }
-                      aria-hidden
+                      className="flex flex-col items-center gap-2 px-1"
+                      title={[step.detail, typeof step.duration_ms === 'number' ? `${step.duration_ms.toLocaleString()} ms` : null].filter(Boolean).join(' • ') || step.name}
                     >
-                      {done ? (
-                        <CheckCircle2 size={14} style={{ color: 'var(--bg-card-solid)' }} />
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--text-muted)' }} />
-                      )}
+                      <div
+                        className="flex items-center justify-center w-7 h-7 rounded-full border-2 transition-colors"
+                        style={
+                          done
+                            ? { background: 'var(--accent)', borderColor: 'var(--accent)' }
+                            : failed
+                              ? { background: 'var(--neg)', borderColor: 'var(--neg)' }
+                              : { background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }
+                        }
+                        aria-hidden
+                      >
+                        {done ? (
+                          <CheckCircle2 size={14} style={{ color: 'var(--bg-card-solid)' }} />
+                        ) : failed ? (
+                          <XCircle size={14} style={{ color: 'var(--bg-card-solid)' }} />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--text-muted)' }} />
+                        )}
+                      </div>
+                      <span
+                        className="text-[10px] uppercase tracking-[0.14em]"
+                        style={{
+                          fontFamily: "'Space Mono', ui-monospace, monospace",
+                          color: done ? 'var(--accent)' : failed ? 'var(--neg)' : 'var(--text-muted)',
+                        }}
+                      >
+                        {step.name}
+                      </span>
                     </div>
-                    <span
-                      className="text-[10px] uppercase tracking-[0.14em]"
-                      style={{
-                        fontFamily: "'Space Mono', ui-monospace, monospace",
-                        color: done ? 'var(--accent)' : 'var(--text-muted)',
-                      }}
-                    >
-                      {stage}
-                    </span>
+                    {i < runSteps.length - 1 && (
+                      <div
+                        className="h-0.5 w-16 sm:w-24 lg:w-32 -mt-5"
+                        style={{ background: done ? 'var(--accent)' : 'var(--border-card)' }}
+                        aria-hidden
+                      />
+                    )}
                   </div>
-                  {i < stages.length - 1 && (
-                    <div
-                      className="h-0.5 w-16 sm:w-24 lg:w-32 -mt-5"
-                      style={{ background: isComplete ? 'var(--accent)' : 'var(--border-card)' }}
-                      aria-hidden
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Action bar */}
           <div className="mt-5 flex items-center gap-2 flex-wrap">
@@ -691,6 +706,11 @@ export function CatalystRunDetailPage() {
             >
               <Clock size={13} />
               <span>{new Date(run.startedAt).toLocaleString()}</span>
+              {typeof runMeta?.source_record_count === 'number' && typeof runMeta?.target_record_count === 'number' && (
+                <span title="ERP records this run read, from the source and target systems">
+                  • {runMeta.source_record_count.toLocaleString()} source / {runMeta.target_record_count.toLocaleString()} target records
+                </span>
+              )}
             </div>
             <div className="ml-auto flex items-center gap-2 flex-wrap">
               <Button
@@ -724,6 +744,25 @@ export function CatalystRunDetailPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Failed-run callout — status straight from the API; failure detail
+            only shown when the API supplies it (runMeta.reasoning). */}
+        {isFailed && (
+          <Card className="p-4 mb-6" style={{ borderRadius: '2px', borderColor: 'rgb(var(--neg-rgb) / 0.4)' }}>
+            <div className="flex items-start gap-2">
+              <XCircle size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--neg)' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold t-primary">This fix run failed</p>
+                <p className="text-sm t-muted mt-1 whitespace-pre-wrap">
+                  {runMeta?.reasoning || 'The system did not return a failure reason for this run.'}
+                </p>
+                <p className="text-xs t-muted mt-2">
+                  Use "Retry run" above to spawn a new run — this one stays linked to it via run lineage.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Run comparison — expanded after clicking "Compare to previous" */}
         {compareExpanded && (
           <Card className="p-5 mb-6" style={{ borderRadius: '2px' }}>
@@ -900,7 +939,7 @@ export function CatalystRunDetailPage() {
             emerald success / amber discrepancy / red exception / sky value. */}
         {(() => {
           const runProvenance: Partial<MetricProvenance> = {
-            endpoint: `GET /api/catalysts/runs/${runId}`,
+            endpoint: `GET /api/catalysts/runs/${runId}/detail`,
             table: 'sub_catalyst_runs',
             window: `Run started ${run.startedAt ?? ''}`,
             refreshedAt: run.completedAt ?? run.startedAt ?? null,
@@ -999,6 +1038,19 @@ export function CatalystRunDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Rand breakdown of the value this run touched — straight from
+              items.totals; missing fields render as em-dash, never 0. */}
+          {items?.totals && (
+            <div
+              className="flex gap-4 flex-wrap text-xs font-mono tnum mb-3"
+              style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}
+            >
+              <span style={{ color: 'var(--positive)' }}>Matched value {zar(items.totals.total_matched_value)}</span>
+              <span style={{ color: 'var(--warning)' }}>Discrepancy value {zar(items.totals.total_discrepancy_value)}</span>
+              <span style={{ color: 'var(--neg)' }}>Exception value {zar(items.totals.total_exception_value)}</span>
+            </div>
+          )}
 
           <RunItemsFilterBar
             searchQuery={searchQuery}
@@ -1175,6 +1227,15 @@ export function CatalystRunDetailPage() {
                           )}
                           {item.discrepancy_reason && (
                             <div className="text-xs t-muted truncate max-w-[200px]" title={item.discrepancy_reason}>{item.discrepancy_reason}</div>
+                          )}
+                          {/* Before/after on the disputed ERP field, straight from the run item row. */}
+                          {item.discrepancy_field && (item.discrepancy_source_value != null || item.discrepancy_target_value != null) && (
+                            <div
+                              className="text-xs t-muted font-mono truncate max-w-[220px]"
+                              title={`${item.discrepancy_field} — source: ${item.discrepancy_source_value ?? '—'}, target: ${item.discrepancy_target_value ?? '—'}`}
+                            >
+                              {item.discrepancy_field}: {item.discrepancy_source_value ?? '—'} → {item.discrepancy_target_value ?? '—'}
+                            </div>
                           )}
                         </td>
                         <td className="py-2 px-2">
@@ -1493,7 +1554,7 @@ export function CatalystRunDetailPage() {
                     }}
                   />
                   <div className="flex-1">
-                    <p className="text-sm font-medium t-primary">Run Completed</p>
+                    <p className="text-sm font-medium t-primary">{isFailed ? 'Run Failed' : 'Run Completed'}</p>
                     <p className="text-xs t-muted">{new Date(run.completedAt).toLocaleString()}</p>
                     <p className="text-xs t-muted mt-1">
                       Duration: {Math.round((new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000 / 60)} minutes
@@ -1501,20 +1562,8 @@ export function CatalystRunDetailPage() {
                   </div>
                 </div>
               )}
-              <div className="flex items-start gap-3">
-                <div className="w-3 h-3 rounded-full bg-accent mt-1.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium t-primary">Health Scores Updated</p>
-                  <p className="text-xs t-muted">Apex health dimensions recalculated with new data</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-3 h-3 rounded-full bg-accent mt-1.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium t-primary">Pulse Metrics Refreshed</p>
-                  <p className="text-xs t-muted">{run.metrics?.length || 0} operational metrics updated</p>
-                </div>
-              </div>
+              {/* Downstream events (health recalcs, Pulse refreshes) are not
+                  reported by this API — only API-backed events are listed. */}
             </div>
           </Card>
         </div>

@@ -294,12 +294,13 @@ export function TenantLlmBudgetPage() {
               >
                 <div className="flex items-center gap-2">
                   <Calendar size={13} className="t-muted" aria-hidden />
-                  <span className="text-label">Resets</span>
+                  <span className="text-label">Counter last reset</span>
                   <span className="text-sm font-medium t-primary font-mono tnum">
                     {budget.tokensResetAt
                       ? format(new Date(budget.tokensResetAt), 'PPP')
-                      : 'Start of next month'}
+                      : '—'}
                   </span>
+                  <span className="text-xs t-muted">(resets each calendar month)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-label">Redaction</span>

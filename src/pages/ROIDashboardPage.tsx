@@ -8,28 +8,27 @@
  *     revenue at the configured share %)
  *   - Forecast accuracy (within-band rate + median absolute error %,
  *     overall + per horizon)
- *   - Inference calibration (per-gate true/false positive counts +
- *     'tighten' / 'loosen' / 'hold' recommendation)
- *   - DSAR request summary (counts by type + status)
  *
- * Lean by intent: a single read-only page so customers can see the
- * Phase 10 outputs and verify they're getting value. Charts /
- * drill-down are explicitly future work.
+ * CFO pass (2026-07): this screen answers exactly three questions —
+ * how much did we get back, what did it cost, can I defend this number.
+ * Inference calibration + DSAR tables were cut as engine/compliance
+ * noise (re-home them on Trust/Compliance pages). Fee is always shown
+ * explicitly next to recovered — never netted silently.
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { JourneyStageBar } from '@/components/journey/JourneyStageBar';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
 import { SavingsPipeline } from '@/components/roi/SavingsPipeline';
-import { TrendingUp, Shield, Activity, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
+import { TrendingUp, Activity, CheckCircle2, Download, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
-import type {
-  BillingSummary, ForecastAccuracyResp, CalibrationGate, DsarSummary,
-} from '@/lib/api';
+import type { BillingSummary, ForecastAccuracyResp } from '@/lib/api';
 
 function formatCurrency(value: number, currency: string): string {
   try {
@@ -41,17 +40,11 @@ function formatCurrency(value: number, currency: string): string {
   }
 }
 
-function recBadge(rec: CalibrationGate['recommendation']): JSX.Element {
-  if (rec === 'tighten') return <Badge variant="danger">Tighten</Badge>;
-  if (rec === 'loosen') return <Badge variant="warning">Loosen</Badge>;
-  return <Badge variant="outline">Hold</Badge>;
-}
-
 export default function ROIDashboardPage(): JSX.Element {
+  const toast = useToast();
   const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [forecast, setForecast] = useState<ForecastAccuracyResp | null>(null);
-  const [calibration, setCalibration] = useState<{ gates: CalibrationGate[] } | null>(null);
-  const [dsar, setDsar] = useState<DsarSummary | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Freshness marker for MetricSource popovers on every billing/forecast tile.
@@ -66,16 +59,12 @@ export default function ROIDashboardPage(): JSX.Element {
       // SDK-only — raw api.get('/path') is banned per UI_POLISH_PRINCIPLES §6.1.
       // Adding a new endpoint? Add it to api.insightsStats first, then
       // consume the typed method here.
-      const [b, f, c, d] = await Promise.all([
+      const [b, f] = await Promise.all([
         api.insightsStats.billingSummary(),
         api.insightsStats.forecastAccuracy(),
-        api.insightsStats.calibration(),
-        api.insightsStats.dsarSummary(),
       ]);
       setBilling(b);
       setForecast(f);
-      setCalibration(c);
-      setDsar(d);
       setLoadedAt(new Date().toISOString());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
@@ -85,6 +74,35 @@ export default function ROIDashboardPage(): JSX.Element {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auditor-grade proof export: per-period rows straight from the typed
+  // /api/roi/export contract (no client-side invention — every cell is a
+  // real API field), serialised to CSV in the browser.
+  const exportProof = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { export: rows, currency } = await api.roi.exportCsv();
+      if (rows.length === 0) {
+        toast.info('Nothing to export', 'No ROI periods recorded yet.');
+        return;
+      }
+      const cols = Object.keys(rows[0]);
+      const csv = [
+        [...cols, 'currency'].join(','),
+        ...rows.map((r) => [...cols.map((k) => String(r[k] ?? '')), currency].join(',')),
+      ].join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `atheon-savings-proof-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error('Export failed', e instanceof Error ? e.message : undefined);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Canonical render-state contract (UI_POLISH_PRINCIPLES §6.1):
   //   1. loading → LoadingState
@@ -100,7 +118,7 @@ export default function ROIDashboardPage(): JSX.Element {
           onRetry={() => void load()}
           errorTitle="Couldn't load ROI dashboard"
           loadingVariant="cards"
-          loadingCount={4}
+          loadingCount={3}
         >
           {null}
         </AsyncPageContent>
@@ -113,7 +131,18 @@ export default function ROIDashboardPage(): JSX.Element {
       <PageHeader
         eyebrow="Journey · 04 Recover"
         title="Savings"
-        dek="Recovered value, financial proof & inference calibration"
+        dek="What was recovered, what Atheon billed, and the proof behind every Rand"
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            leading={<Download size={13} />}
+            loading={exporting}
+            onClick={() => void exportProof()}
+          >
+            Export proof (CSV)
+          </Button>
+        }
       />
       <JourneyStageBar current="recover" />
 
@@ -132,6 +161,7 @@ export default function ROIDashboardPage(): JSX.Element {
         const multiple = billing.total_atheon_revenue > 0
           ? billing.total_realised_savings / billing.total_atheon_revenue
           : 0;
+        const netBenefit = billing.total_realised_savings - billing.total_atheon_revenue;
         return (
           <div className="card-hero p-7 md:p-8" data-testid="roi-hero">
             <p className="hero-eyebrow flex items-center gap-2 mb-3">
@@ -158,27 +188,16 @@ export default function ROIDashboardPage(): JSX.Element {
                 </div>
                 <p className="text-body-sm t-muted">Recovered for the business across every elapsed billing period</p>
               </div>
-              <div className="md:text-right shrink-0 grid grid-cols-3 md:grid-cols-1 gap-3 md:gap-2">
+              {/* Shared-savings transparency: the fee sits right next to the
+                  recovered figure, never netted silently. Net benefit and the
+                  ROI multiple are pure arithmetic on the same two API fields. */}
+              <div className="md:text-right shrink-0 grid grid-cols-2 md:grid-cols-1 gap-3 md:gap-2">
                 <div>
                   <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-label">Periods</span>
+                    <span className="text-label">Atheon fee billed</span>
                     <MetricSource source={{
                       ...billingBase,
-                      label: 'Periods invoiced',
-                      definition: 'Number of distinct billing periods that have completed and produced an invoice line.',
-                      table: 'billable_periods',
-                      query: 'COUNT(*) FROM billable_periods WHERE tenant_id = ? AND status IN (graded, invoiced)',
-                      sample: billing.periods_count,
-                    }} />
-                  </div>
-                  <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">{billing.periods_count}</p>
-                </div>
-                <div>
-                  <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-label">Atheon share</span>
-                    <MetricSource source={{
-                      ...billingBase,
-                      label: 'Atheon revenue (shared-savings share)',
+                      label: 'Atheon fee billed (shared-savings share)',
                       definition: 'Atheon revenue from the shared-savings billing model: contracted share % × realised savings. Every Rand here is a Rand the customer banked in their ERP first.',
                       table: 'billable_periods',
                       query: 'SUM(atheon_revenue_zar) FROM billable_periods WHERE tenant_id = ?',
@@ -194,7 +213,22 @@ export default function ROIDashboardPage(): JSX.Element {
                 </div>
                 <div>
                   <div className="flex items-center md:justify-end gap-1.5">
-                    <span className="text-label">Multiple</span>
+                    <span className="text-label">Net benefit</span>
+                    <MetricSource source={{
+                      ...billingBase,
+                      label: 'Net benefit',
+                      definition: 'Realised savings minus the Atheon fee — what the business keeps after Atheon is paid.',
+                      table: 'billable_periods',
+                      query: 'SUM(realised_savings_zar) - SUM(atheon_revenue_zar) FROM billable_periods WHERE tenant_id = ?',
+                    }} />
+                  </div>
+                  <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">
+                    {formatCurrency(netBenefit, billing.currency)}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center md:justify-end gap-1.5">
+                    <span className="text-label">ROI multiple</span>
                     <MetricSource source={{
                       ...billingBase,
                       label: 'ROI multiple',
@@ -206,7 +240,32 @@ export default function ROIDashboardPage(): JSX.Element {
                     {multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
                   </p>
                 </div>
+                <div>
+                  <div className="flex items-center md:justify-end gap-1.5">
+                    <span className="text-label">Periods billed</span>
+                    <MetricSource source={{
+                      ...billingBase,
+                      label: 'Periods invoiced',
+                      definition: 'Number of distinct billing periods that have completed and produced an invoice line.',
+                      table: 'billable_periods',
+                      query: 'COUNT(*) FROM billable_periods WHERE tenant_id = ? AND status IN (graded, invoiced)',
+                      sample: billing.periods_count,
+                    }} />
+                  </div>
+                  <p className="text-headline-md font-semibold t-primary tabular-nums font-mono mt-0.5">{billing.periods_count}</p>
+                </div>
               </div>
+            </div>
+            {/* Defend-the-number tools + forward motion to stage 05 Reports. */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-6 pt-4" style={{ borderTop: '1px solid var(--border-card)' }}>
+              <Link to="/catalysts?tab=value-ledger" className="inline-flex items-center gap-1 text-caption font-medium text-accent hover:underline">
+                Open recovery ledger — every period, line item & audit pack <ArrowRight size={12} aria-hidden="true" />
+              </Link>
+              {billing.total_realised_savings > 0 && (
+                <Link to="/executive-summary" className="inline-flex items-center gap-1 text-caption font-medium text-accent hover:underline">
+                  Take it to the board — executive summary <ArrowRight size={12} aria-hidden="true" />
+                </Link>
+              )}
             </div>
           </div>
         );
@@ -216,7 +275,11 @@ export default function ROIDashboardPage(): JSX.Element {
             <TrendingUp size={18} style={{ color: 'var(--accent)' }} />
             <h2 className="text-headline-md font-semibold t-primary">Shared-savings billing</h2>
           </div>
-          <div className="text-sm t-muted">No billing data yet.</div>
+          <div className="text-sm t-muted">
+            No completed billing periods yet. Under shared savings you are only billed after value is
+            recovered — <Link to="/catalysts" className="text-accent hover:underline">approve fixes</Link> to
+            start recovering.
+          </div>
         </Card>
       )}
 
@@ -318,72 +381,6 @@ export default function ROIDashboardPage(): JSX.Element {
           </>
           );
         })() : <div className="text-sm t-muted">No forecasts have elapsed yet.</div>}
-      </Card>
-
-      {/* Calibration */}
-      <Card className="p-6 md:p-7">
-        <div className="flex items-center gap-2 mb-1">
-          <AlertCircle size={13} style={{ color: 'var(--warning)' }} aria-hidden="true" />
-          <h2 className="text-label">Inference Calibration</h2>
-        </div>
-        <p className="text-body-sm t-muted mb-5">Per-gate false-positive rate and tuning recommendation</p>
-        {calibration && calibration.gates.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-label">
-                <th className="pb-2 font-medium">Gate</th>
-                <th className="pb-2 font-medium text-right">TP</th>
-                <th className="pb-2 font-medium text-right">FP</th>
-                <th className="pb-2 font-medium text-right">TN</th>
-                <th className="pb-2 font-medium text-right">FN</th>
-                <th className="pb-2 font-medium text-right">FP rate</th>
-                <th className="pb-2 font-medium text-right">Rec</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calibration.gates.map((g) => (
-                <tr key={g.gate} className="border-t border-[var(--divider)]">
-                  <td className="py-2 font-mono text-xs t-primary">{g.gate}</td>
-                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.true_positives}</td>
-                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.false_positives}</td>
-                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.true_negatives}</td>
-                  <td className="py-2 font-mono tabular-nums t-secondary text-right">{g.false_negatives}</td>
-                  <td className="py-2 font-mono tabular-nums t-primary text-right">{g.false_positive_rate != null ? `${(g.false_positive_rate * 100).toFixed(1)}%` : '—'}</td>
-                  <td className="py-2 text-right">{recBadge(g.recommendation)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <div className="text-sm t-muted">No calibration data.</div>}
-      </Card>
-
-      {/* DSAR */}
-      <Card className="p-6 md:p-7">
-        <div className="flex items-center gap-2 mb-1">
-          <Shield size={13} style={{ color: 'var(--info)' }} aria-hidden="true" />
-          <h2 className="text-label">DSAR Requests · POPIA / GDPR</h2>
-        </div>
-        <p className="text-body-sm t-muted mb-5">Data-subject access requests by type and status</p>
-        {dsar && dsar.by_type_and_status.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-label">
-                <th className="pb-2 font-medium">Type</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 font-medium text-right">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dsar.by_type_and_status.map((r, i) => (
-                <tr key={i} className="border-t border-[var(--divider)]">
-                  <td className="py-2 t-secondary">{r.request_type}</td>
-                  <td className="py-2 t-secondary">{r.status}</td>
-                  <td className="py-2 font-mono tabular-nums t-primary text-right">{r.n}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <div className="text-sm t-muted">No DSAR requests recorded.</div>}
       </Card>
     </div>
   );

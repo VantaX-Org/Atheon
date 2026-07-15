@@ -45,24 +45,18 @@ export function JourneyHome() {
       ]);
 
       // Exposure needs a second hop: latest complete assessment → findings_summary.
+      // Honesty law: exposure stays null (em-dash, no claim) until a complete
+      // assessment with a findings_summary exists — "R0" before detection has
+      // run would read as a false all-clear.
       let exposure: StageInput['exposure'] = null;
       if (assessList.status === 'fulfilled') {
-        const assessments = assessList.value.assessments;
-        if (assessments.length === 0) {
-          // No assessments at all: truly zero exposure.
-          exposure = { openValueZar: 0, findingCount: 0 };
-        } else {
-          const latest = latestCompleteAssessment(assessments);
-          if (!latest) {
-            // Assessments exist but none complete: exposure is unknown (e.g. still running).
-            exposure = null;
-          } else {
-            try {
-              const detail = await api.assessments.get(latest.id);
-              const s = detail.results?.findings_summary;
-              exposure = s ? { openValueZar: s.total_value_at_risk_zar, findingCount: s.total_count } : { openValueZar: 0, findingCount: 0 };
-            } catch { exposure = null; }
-          }
+        const latest = latestCompleteAssessment(assessList.value.assessments);
+        if (latest) {
+          try {
+            const detail = await api.assessments.get(latest.id);
+            const s = detail.results?.findings_summary;
+            if (s) exposure = { openValueZar: s.total_value_at_risk_zar, findingCount: s.total_count };
+          } catch { /* exposure stays null */ }
         }
       }
 
@@ -91,12 +85,21 @@ export function JourneyHome() {
     currency,
   );
 
-  // One plain sentence locating the user in the loop.
+  // One plain sentence locating the user in the loop. Each clause is gated on
+  // its fetch succeeding — a failed fetch makes no claim, not a zero claim.
   const parts: string[] = [];
-  if (input?.connections) parts.push(`${input.connections.total} source${input.connections.total === 1 ? '' : 's'} connected`);
+  if (input?.connections && input.connections.total > 0) {
+    parts.push(`${input.connections.total} source${input.connections.total === 1 ? '' : 's'} connected`);
+    if (input.connections.broken > 0) parts.push(`${input.connections.broken} need${input.connections.broken === 1 ? 's' : ''} attention`);
+  }
   if (input?.exposure) parts.push(`${formatCompactCurrency(input.exposure.openValueZar, currency)} open exposure`);
   if (input?.savings) parts.push(`${formatCompactCurrency(input.savings.recoveredZar, currency)} recovered to date`);
   const locator = parts.join(' · ');
+  // No dek while loading or when every fetch failed; the first-run line only
+  // when we KNOW there are zero connections (not when the fetch failed).
+  const dek = !input
+    ? undefined
+    : locator || (input.connections?.total === 0 ? 'Connect your data to start the loop.' : undefined);
 
   const pending = input?.fixes && input.fixes.pendingCount > 0 ? input.fixes : null;
 
@@ -105,7 +108,7 @@ export function JourneyHome() {
       <PageHeader
         eyebrow="Atheon · Your journey"
         title={getGreeting(user?.name?.split(' ')[0])}
-        dek={locator || 'Connect your data to start the loop.'}
+        dek={dek}
       />
 
       {/* Security banner — preserved verbatim from the retired Dashboard:
@@ -164,9 +167,9 @@ export function JourneyHome() {
 
       <JourneySpine stages={stages} />
 
-      <PersonaRail user={user} />
-
-      <section aria-label="Needs you now" className="mt-8">
+      {/* "What needs me now" outranks contextual insights — approvals are
+          money stopped in the loop, so they sit directly under the spine. */}
+      <section aria-label="Needs you now" className="mt-6">
         {pending && (
           <Link to="/catalysts" className="block group mb-4">
             <Card className="p-4 flex items-center justify-between gap-4" style={{ background: 'var(--accent-subtle)' }}>
@@ -181,6 +184,8 @@ export function JourneyHome() {
         )}
         <ActionQueuePanel variant="executive" limit={6} />
       </section>
+
+      <PersonaRail user={user} />
     </div>
   );
 }

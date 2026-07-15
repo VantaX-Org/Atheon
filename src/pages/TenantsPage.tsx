@@ -52,6 +52,7 @@ export function TenantsPage() {
  const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
  const [tenants, setTenants] = useState<Tenant[]>([]);
  const [loading, setLoading] = useState(true);
+ const [loadError, setLoadError] = useState<string | null>(null);
  const [showOnboard, setShowOnboard] = useState(false);
  const [onboardForm, setOnboardForm] = useState({ name: '', slug: '', industry: 'general', plan: 'starter', deploymentModel: 'saas', region: 'af-south-1' });
  const [onboarding, setOnboarding] = useState(false);
@@ -300,7 +301,7 @@ export function TenantsPage() {
  try {
  await api.catalysts.deleteCluster(clusterId, showDeployCatalyst);
  await loadTenantClusters(showDeployCatalyst);
-  } catch (err) { console.error('Failed to delete cluster', err); }
+  } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to delete cluster'); }
   };
 
   // Company Reset handler
@@ -312,7 +313,7 @@ export function TenantsPage() {
   try {
    const res = await api.tenants.reset(showResetConfirm);
    setResetResult({ deletedRows: res.deletedRows, tablesCleared: res.tablesCleared });
-   } catch (err) { console.error('Failed to reset company', err); }
+   } catch (err) { setActionError(err instanceof Error ? err.message : 'Failed to reset company'); }
    setResetting(false);
  };
 
@@ -398,7 +399,8 @@ export function TenantsPage() {
  try {
  const res = await api.tenants.list();
  setTenants(res.tenants);
-  } catch (err) { console.error('Failed to load tenants', err); }
+ setLoadError(null);
+  } catch (err) { setLoadError(err instanceof Error ? err.message : 'Failed to load tenants'); }
   setLoading(false);
   }
   load();
@@ -410,10 +412,10 @@ export function TenantsPage() {
  { id: 'infrastructure', label: 'Infrastructure', icon: <Server size={14} /> },
  ];
 
- const status = statusFrom({ loading, error: null, isEmpty: false });
+ const status = statusFrom({ loading, error: loadError, isEmpty: false });
  if (status !== 'success') {
    return (
-     <AsyncPageContent status={status} loadingVariant="cards" loadingCount={4}>
+     <AsyncPageContent status={status} errorTitle="Couldn't load tenants" loadingVariant="cards" loadingCount={4}>
        {null}
      </AsyncPageContent>
    );
@@ -506,7 +508,7 @@ export function TenantsPage() {
  <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Plan</th>
  <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Industry</th>
  <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Region</th>
- <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Health</th>
+ <th className="text-left font-mono text-label !text-[10px] py-3 px-2">Status</th>
  <th className="py-3 px-5 w-8"></th>
  </tr>
  </thead>
@@ -1174,7 +1176,7 @@ export function TenantsPage() {
  <Button
  variant="secondary"
  size="sm"
- onClick={() => { if (confirm('Delete this catalyst cluster?')) handleDeleteCluster(cluster.id); }}
+ onClick={() => { if (confirm(`Remove cluster "${cluster.name}" and its ${(cluster.subCatalysts || []).length} sub-catalyst(s) from this tenant? This cannot be undone.`)) handleDeleteCluster(cluster.id); }}
  >
  <Trash2 size={12} /> Remove Cluster
  </Button>

@@ -42,6 +42,7 @@ export function DeploymentsPage() {
   const [selectedDeployment, setSelectedDeployment] = useState<ManagedDeployment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [installModal, setInstallModal] = useState<CreateDeploymentResponse | null>(null);
 
   const reportError = useCallback((title: string, err: unknown) => {
@@ -56,7 +57,9 @@ export function DeploymentsPage() {
       setLoading(true);
       const data = await api.deployments.list();
       setDeployments(data.deployments);
+      setListError(null);
     } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Failed to load deployments');
       reportError('Failed to load deployments', err);
     } finally {
       setLoading(false);
@@ -166,7 +169,7 @@ export function DeploymentsPage() {
       )}
 
       {/* Views */}
-      {view === 'overview' && <OverviewView deployments={deployments} loading={loading} statusColor={statusColor} openDetail={openDetail} openLogs={openLogs} />}
+      {view === 'overview' && <OverviewView deployments={deployments} loading={loading} error={listError} statusColor={statusColor} openDetail={openDetail} openLogs={openLogs} />}
       {view === 'provision' && <ProvisionView onCreated={(resp) => setInstallModal(resp)} onError={reportError} />}
       {view === 'detail' && selectedId && <DetailView deployment={selectedDeployment} id={selectedId} onRefresh={() => loadDetail(selectedId)} onError={reportError} onBack={() => { setView('overview'); setSelectedId(null); setSelectedDeployment(null); loadDeployments(); }} />}
       {view === 'logs' && selectedId && <LogsView id={selectedId} onError={reportError} />}
@@ -175,18 +178,20 @@ export function DeploymentsPage() {
 }
 
 // ── Overview View ─────────────────────────────────────────────────────────
-function OverviewView({ deployments, loading, statusColor, openDetail, openLogs }: {
+function OverviewView({ deployments, loading, error, statusColor, openDetail, openLogs }: {
   deployments: ManagedDeployment[];
   loading: boolean;
+  error: string | null;
   statusColor: (s: string) => string;
   openDetail: (id: string) => void;
   openLogs: (id: string) => void;
 }) {
-  const status = statusFrom({ loading, error: null, isEmpty: false });
+  const status = statusFrom({ loading, error, isEmpty: false });
   if (status !== 'success') {
     return (
       <AsyncPageContent
         status={status}
+        errorTitle="Couldn't load deployments"
         loadingVariant="cards"
         loadingCount={3}
       >

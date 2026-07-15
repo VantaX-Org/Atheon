@@ -37,6 +37,24 @@ export const STAGE_ROUTES: Record<StageKey, string> = {
   report: '/executive-summary',
 };
 
+/**
+ * Roles allowed through each stage route's gate (mirror of App.tsx route guards —
+ * keep in sync). null = STANDARD, any role that can see a journey page at all.
+ */
+const STAGE_ROLES: Record<StageKey, string[] | null> = {
+  connect: null,
+  detect: null,
+  fix: ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'], // OPERATOR_ROLES
+  recover: ['superadmin', 'support_admin', 'admin', 'executive'], // EXECUTIVE_ROLES
+  report: ['superadmin', 'support_admin', 'admin', 'executive'], // EXECUTIVE_ROLES
+};
+
+/** Can this role click through to the stage's page without hitting a 403? */
+export function stageAccessible(key: StageKey, role: string | undefined): boolean {
+  const allowed = STAGE_ROLES[key];
+  return !allowed || (!!role && allowed.includes(role));
+}
+
 export const STAGE_LABELS: Record<StageKey, string> = {
   connect: 'Data',
   detect: 'Findings',
@@ -50,6 +68,9 @@ function currentStage(i: StageInput): StageKey {
   if (!i.connections || i.connections.total === 0) return 'connect';
   if (!i.exposure || i.exposure.findingCount === 0) return 'detect';
   if (i.fixes && i.fixes.pendingCount > 0) return 'fix';
+  // Open exposure, empty approval queue, nothing recovered yet: the work is
+  // deploying fixes — pointing at RECOVER (zero savings) is a dead end.
+  if (i.exposure.openValueZar > 0 && (!i.savings || i.savings.recoveredZar === 0)) return 'fix';
   if (!i.savings || i.savings.recoveredZar === 0) return 'recover';
   return 'report';
 }
@@ -76,7 +97,8 @@ export function buildJourneyStages(input: StageInput, currency: string): Journey
       headline: exposure ? money(exposure.openValueZar) : null,
       sub: exposure ? `${exposure.findingCount} open finding${exposure.findingCount === 1 ? '' : 's'}` : null,
       rag: !exposure ? 'none' : exposure.openValueZar > 0 ? 'amber' : 'green',
-      cta: 'Review findings',
+      // "Review findings" promises work that isn't there when nothing is open.
+      cta: exposure && exposure.findingCount > 0 ? 'Review findings' : 'View findings',
     },
     {
       key: 'fix',

@@ -58,11 +58,14 @@ export function CustomRoleBuilderPage() {
   const activeTenantId = useAppStore((s) => s.activeTenantId);
   const userTenantId = useAppStore((s) => s.user?.tenantId);
   const tenantId = activeTenantId || userTenantId || undefined;
+  const currentRole = useAppStore((s) => s.user?.role) || 'viewer';
 
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [allPermissions, setAllPermissions] = useState<string[]>([]);
   const [baseRoles, setBaseRoles] = useState<BaseRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [showForm, setShowForm] = useState(false);
   const [editingRole, setEditingRole] = useState<CustomRole | null>(null);
@@ -101,15 +104,19 @@ export function CustomRoleBuilderPage() {
           setRoles(rolesRes.roles);
           setAllPermissions(permsRes.permissions);
           setBaseRoles(permsRes.baseRoles);
+          setLoadError(false);
         }
       } catch (err) {
-        if (!cancelled) showError('Failed to load custom roles', err, 'Network error');
+        if (!cancelled) {
+          setLoadError(true);
+          showError('Failed to load custom roles', err, 'Network error');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [tenantId, showError]);
+  }, [tenantId, showError, reloadKey]);
 
   /** Inherited permission set for the currently-selected base role. */
   const inheritedPerms = useMemo(() => {
@@ -117,6 +124,22 @@ export function CustomRoleBuilderPage() {
     const base = baseRoles.find(b => b.id === form.inheritsFrom);
     return new Set(base?.permissions || []);
   }, [form.inheritsFrom, baseRoles]);
+
+  /**
+   * Permission ceiling: a tenant admin cannot grant permissions beyond their
+   * own base role. Cross-tenant platform staff have no ceiling (null).
+   * Fail-safe: unknown base role → empty ceiling (nothing grantable).
+   */
+  const isPlatformStaff = currentRole === 'superadmin' || currentRole === 'support_admin';
+  const ceiling = useMemo(() => {
+    if (isPlatformStaff) return null;
+    const own = baseRoles.find(b => b.id === currentRole);
+    return new Set(own?.permissions || []);
+  }, [isPlatformStaff, baseRoles, currentRole]);
+  const isAboveCeiling = useCallback(
+    (p: string): boolean => ceiling !== null && !ceiling.has(p),
+    [ceiling],
+  );
 
   /** Permissions grouped by namespace for the matrix UI. */
   const permissionGroups = useMemo(() => groupPermissions(allPermissions), [allPermissions]);
@@ -129,6 +152,9 @@ export function CustomRoleBuilderPage() {
 
   const togglePermission = (p: string) => {
     if (isInherited(p)) return; // read-only
+    // Above the current user's own role: cannot be newly granted. Allow
+    // removal if it is already on the role (e.g. granted by a superadmin).
+    if (isAboveCeiling(p) && !form.permissions.includes(p)) return;
     setForm(prev => ({
       ...prev,
       permissions: prev.permissions.includes(p)
@@ -139,7 +165,7 @@ export function CustomRoleBuilderPage() {
 
   /** Toggle an entire group — if any child is unchecked, check all; else uncheck all. */
   const toggleGroup = (groupPerms: string[]) => {
-    const togglable = groupPerms.filter(p => !isInherited(p));
+    const togglable = groupPerms.filter(p => !isInherited(p) && (!isAboveCeiling(p) || form.permissions.includes(p)));
     const anyUnchecked = togglable.some(p => !form.permissions.includes(p));
     setForm(prev => {
       if (anyUnchecked) {
@@ -173,6 +199,17 @@ export function CustomRoleBuilderPage() {
 
   const saveRole = async () => {
     if (!form.name.trim()) return;
+    // Escalation guard: block NEWLY-added permissions above the current user's
+    // own role. Perms already on an edited role (e.g. granted by a superadmin)
+    // are preserved, not stripped.
+    const existing = new Set(editingRole?.permissions || []);
+    const escalating = form.permissions.filter(p => !existing.has(p) && isAboveCeiling(p));
+    if (escalating.length > 0) {
+      toast.error('Cannot grant permissions above your own role', {
+        message: escalating.join(', '),
+      });
+      return;
+    }
     setSaving(true);
     try {
       if (editingRole) {
@@ -248,21 +285,28 @@ export function CustomRoleBuilderPage() {
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-4">
           <p className="text-label">Custom Roles</p>
-          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{roles.length}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{loadError ? <span aria-label="Unavailable">—</span> : roles.length}</p>
         </Card>
         <Card className="p-4">
           <p className="text-label">Assigned Users</p>
-          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{roles.reduce((sum, r) => sum + r.userCount, 0)}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{loadError ? <span aria-label="Unavailable">—</span> : roles.reduce((sum, r) => sum + r.userCount, 0)}</p>
         </Card>
         <Card className="p-4">
           <p className="text-label">Permission Surface</p>
-          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{allPermissions.length}</p>
+          <p className="mt-1 text-3xl font-bold t-primary leading-none" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>{loadError ? <span aria-label="Unavailable">—</span> : allPermissions.length}</p>
         </Card>
       </div>
 
       {/* Roles list */}
       {loading ? (
         <LoadingState variant="list" count={3} />
+      ) : loadError ? (
+        <Card className="p-6 text-center">
+          <AlertCircle size={20} className="mx-auto t-muted" />
+          <p className="mt-2 text-sm font-semibold t-primary">Couldn't load custom roles</p>
+          <p className="mt-1 text-sm t-secondary">The request failed — this is not an empty list.</p>
+          <Button size="sm" variant="outline" className="mt-4" onClick={() => setReloadKey(k => k + 1)}>Retry</Button>
+        </Card>
       ) : roles.length === 0 ? (
         <EmptyState
           icon={Shield}
@@ -374,9 +418,15 @@ export function CustomRoleBuilderPage() {
                     onChange={(e) => setForm(p => ({ ...p, inheritsFrom: e.target.value }))}
                   >
                     <option value="">(none)</option>
-                    {baseRoles.map(b => (
-                      <option key={b.id} value={b.id}>{b.name} — {b.permissions.length} perms</option>
-                    ))}
+                    {baseRoles.map(b => {
+                      // Inheriting is also a grant path — same ceiling applies.
+                      const above = b.permissions.some(p => isAboveCeiling(p)) && form.inheritsFrom !== b.id;
+                      return (
+                        <option key={b.id} value={b.id} disabled={above}>
+                          {b.name} — {b.permissions.length} perms{above ? ' (above your role)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -411,19 +461,21 @@ export function CustomRoleBuilderPage() {
                             {perms.map(p => {
                               const granted = isGranted(p);
                               const inherited = isInherited(p);
+                              const locked = !inherited && !granted && isAboveCeiling(p);
                               return (
                                 <button
                                   key={p}
                                   type="button"
                                   role="switch"
                                   aria-checked={granted}
-                                  aria-label={p}
-                                  disabled={inherited}
+                                  aria-label={locked ? `${p} — above your role, cannot grant` : p}
+                                  disabled={inherited || locked}
                                   onClick={() => togglePermission(p)}
                                   className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-colors active:scale-[0.99] ${
-                                    inherited ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--bg-secondary)]'
+                                    inherited || locked ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--bg-secondary)]'
                                   }`}
-                                  style={inherited ? { background: 'var(--accent-subtle)' } : undefined}
+                                  style={inherited ? { background: 'var(--accent-subtle)' } : locked ? { opacity: 0.55 } : undefined}
+                                  title={locked ? 'Above your own role — only platform staff can grant this' : undefined}
                                 >
                                   <span className="flex items-center gap-2 min-w-0">
                                     <span
@@ -434,6 +486,9 @@ export function CustomRoleBuilderPage() {
                                     </span>
                                     {inherited && (
                                       <span className="text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>INHERITED</span>
+                                    )}
+                                    {locked && (
+                                      <span className="text-caption t-muted" style={{ fontFamily: "'Space Mono', ui-monospace, monospace" }}>ABOVE YOUR ROLE</span>
                                     )}
                                   </span>
                                   {/* Toggle track */}
@@ -495,7 +550,7 @@ export function CustomRoleBuilderPage() {
                         style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'rgb(var(--rag-healthy-rgb) / 0.10)', color: 'var(--rag-healthy)', borderColor: 'rgb(var(--rag-healthy-rgb) / 0.24)' }}
                       >
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--rag-healthy)' }} />
-                        HEALTHY CONFIGURATION
+                        PERMISSIONS SELECTED
                       </span>
                     ) : (
                       <span

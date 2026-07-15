@@ -42,7 +42,9 @@ function healthBadge(w: Webhook): { variant: 'success' | 'warning' | 'danger' | 
     return { variant: 'warning', label: 'Pending', icon: Clock };
   }
   if (w.last_delivery_status === 'delivered') {
-    const rate = w.success_rate ?? 1;
+    const rate = w.success_rate;
+    // Unknown aggregate rate ≠ 100% — only claim what we know: last delivery succeeded.
+    if (rate == null) return { variant: 'success', label: 'Delivered', icon: CheckCircle };
     if (rate >= 0.9) return { variant: 'success', label: 'Healthy', icon: CheckCircle };
     if (rate >= 0.5) return { variant: 'warning', label: 'Degraded', icon: AlertTriangle };
     return { variant: 'danger', label: 'Unhealthy', icon: AlertTriangle };
@@ -137,19 +139,25 @@ export function WebhooksPage() {
 
       {error && (
         <Card variant="outline" className="border border-[var(--neg)]" style={{ borderColor: 'rgb(var(--neg-rgb) / 0.3)' }}>
-          <p className="text-sm" style={{ color: 'var(--neg)' }}>{error}</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm" style={{ color: 'var(--neg)' }}>{error}</p>
+            <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }}>Retry</Button>
+          </div>
         </Card>
       )}
 
       {loading ? (
         <LoadingState variant="list" count={3} />
       ) : webhooks.length === 0 ? (
+        // Failed load ≠ "no webhooks yet" — error card above already tells the truth.
+        error ? null : (
         <EmptyState
           icon={WebhookIcon}
           title="No webhooks yet"
           description="Create a webhook to receive signed event callbacks from Atheon. You'll see the signing secret only once after creation — have your secret manager ready."
           action={{ label: 'Create your first webhook', onClick: () => setShowCreate(true) }}
         />
+        )
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
           {/* ── Master table ───────────────────────────────────────── */}
@@ -500,7 +508,8 @@ function WebhookDetail({ webhookId, initialData, onRevoke }: WebhookDetailProps)
             className="mt-1 p-2 rounded-md text-xs font-mono flex items-center justify-between gap-2"
             style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-card)' }}
           >
-            <span className="t-muted tracking-widest">{webhook.secret || '***'}</span>
+            {/* Show-once pattern: never render webhook.secret post-creation, even if the API leaked it. */}
+            <span className="t-muted tracking-widest">***</span>
             <span className="text-caption t-muted italic">shown once at creation · rotate by revoking + recreating</span>
           </div>
         </div>

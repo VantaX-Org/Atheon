@@ -13,14 +13,14 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { Numeric } from "@/components/ui/numeric";
 import { PageHeader } from "@/components/ui/page-header";
 import { MetricSource, type MetricProvenance } from "@/components/ui/metric-source";
-import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
 
 import { api } from "@/lib/api";
-import { ActionQueuePanel } from "@/components/dashboard/ActionQueuePanel";
+import { latestCompleteAssessment } from "@/lib/latest-assessment";
+import { formatCompactCurrency } from "@/lib/format-currency";
 import { useSelectedCompanyId } from "@/stores/appStore";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { cleanLlmText } from "@/lib/utils";
-import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse } from "@/lib/api";
+import type { HealthScore, Briefing, Risk, ScenarioItem, HealthHistoryResponse, HealthDimensionTraceResponse, RiskTraceResponse, ApexInsightsResponse, RadarContextResponse, BoardReportItem, PeerBenchmarksResponse, BillingSummary } from "@/lib/api";
 import { resolveScenarioVariableName } from "@/lib/api";
 import { PeerComparisonBar } from "@/components/ui/peer-comparison-bar";
 import { Portal } from "@/components/ui/portal";
@@ -221,7 +221,13 @@ function ExecutiveBriefHero({
             Overall Health
           </p>
           <div className="relative inline-flex items-center justify-center">
-            <ScoreRing score={Math.round(overall)} size="xl" className="[&_span]:!text-hero [&_span]:!t-primary" />
+            {/* Honesty law: no health payload = no score claim. A ring at 0
+                would read as a real (terrible) score, not missing data. */}
+            {health ? (
+              <ScoreRing score={Math.round(overall)} size="xl" className="[&_span]:!text-hero [&_span]:!t-primary" />
+            ) : (
+              <span className="text-hero t-muted" aria-label="Health score unavailable">—</span>
+            )}
             <span
               className="pointer-events-none absolute inset-0 -m-4 rounded-full blur-2xl opacity-40 -z-10 transition-opacity group-hover:opacity-60"
               style={{ background: 'radial-gradient(closest-side, rgb(var(--accent-rgb) / 0.35), transparent)' }}
@@ -281,7 +287,7 @@ function ExecutiveBriefHero({
         ) : (
           <div className="flex items-center gap-3 py-6 px-4 mt-6 rounded-lg bg-[var(--bg-card-solid)] border border-[var(--border-card)]">
             <Crown className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
-            <p className="text-sm t-muted">No business-health dimensions yet. Run a catalyst to populate.</p>
+            <p className="text-sm t-muted">No business-health dimensions yet. Run a fix to populate them.</p>
           </div>
         )}
       </div>
@@ -397,6 +403,13 @@ export function ApexPage() {
  const [actionError, setActionError] = useState<string | null>(null);
  // A1-4: Health history for sparkline + delta
  const [healthHistory, setHealthHistory] = useState<HealthHistoryResponse | null>(null);
+
+ // CFO trio — exposure / needs-your-approval / recovered-to-date. Each slot
+ // stays null (renders an em-dash) until its fetch succeeds: a failed fetch
+ // makes no claim, never a zero claim.
+ const [cfoExposure, setCfoExposure] = useState<{ valueZar: number; findingCount: number } | null>(null);
+ const [cfoApprovals, setCfoApprovals] = useState<{ count: number; valueZar: number } | null>(null);
+ const [cfoRecovered, setCfoRecovered] = useState<BillingSummary | null>(null);
  
  
  // FlipCard state removed alongside the duplicate health hero — see
@@ -526,7 +539,7 @@ export function ApexPage() {
    const data = await api.apex.healthDimension(dimension, undefined, companyId || undefined);
    if (!data || data.score === null) {
      console.warn('No traceability data available for dimension:', dimension);
-     setActionError('No traceability data available yet. Run a catalyst in this domain to generate health data.');
+     setActionError('No traceability data available yet. Run a fix in this domain to generate health data.');
      return;
    }
    setTraceabilityData(data);
@@ -534,7 +547,7 @@ export function ApexPage() {
    setShowTraceabilityModal(true);
   } catch (err) {
    console.error('Failed to load dimension traceability:', err);
-   setActionError('Failed to load traceability data. Please ensure catalysts have been run for this domain.');
+   setActionError('Failed to load traceability data. Please ensure fixes have been run for this domain.');
   }
  };
  
@@ -713,7 +726,7 @@ export function ApexPage() {
  const loadApexData = useCallback(async (opts: { showLoading?: boolean } = {}) => {
   if (opts.showLoading) setLoading(true);
   const co = companyId || undefined;
-  const [h, b, r, s, hh, br, rc] = await Promise.allSettled([
+  const [h, b, r, s, hh, br, rc, acts, bill, assess] = await Promise.allSettled([
    api.apex.health(undefined, undefined, co),
    api.apex.briefing(undefined, undefined, co),
    api.apex.risks(undefined, undefined, co),
@@ -721,6 +734,9 @@ export function ApexPage() {
    api.apex.healthHistory(undefined, undefined, co),
    api.boardReport.list(),
    api.radar.getContext(),
+   api.erp.actionsSummary(),
+   api.insightsStats.billingSummary(),
+   api.assessments.list(),
   ]);
   if (h.status === 'fulfilled') setHealth(h.value);
   if (b.status === 'fulfilled') setBriefing(b.value);
@@ -729,6 +745,27 @@ export function ApexPage() {
   if (hh.status === 'fulfilled') setHealthHistory(hh.value);
   if (br.status === 'fulfilled') setBoardReports(br.value.reports);
   if (rc.status === 'fulfilled') setRadarContext(rc.value);
+  if (acts.status === 'fulfilled') {
+   setCfoApprovals({
+    count: acts.value.summary.pending_approval_count,
+    valueZar: acts.value.summary.pending_approval_value_zar,
+   });
+  }
+  if (bill.status === 'fulfilled') setCfoRecovered(bill.value);
+  // Exposure needs a second hop: latest complete assessment → findings_summary.
+  // total_value_at_risk_zar is the gated CONFIRMED total (the defensible
+  // headline) — unverified potential is never headlined here. Same idiom as
+  // JourneyHome/FindingsPage.
+  if (assess.status === 'fulfilled') {
+   const latest = latestCompleteAssessment(assess.value.assessments);
+   if (latest) {
+    try {
+     const detail = await api.assessments.get(latest.id);
+     const fs = detail.results?.findings_summary;
+     if (fs) setCfoExposure({ valueZar: fs.total_value_at_risk_zar, findingCount: fs.total_count });
+    } catch { /* exposure stays null — em-dash, no claim */ }
+   }
+  }
   setApexLoadedAt(new Date().toISOString());
   if (opts.showLoading) setLoading(false);
  }, [companyId]);
@@ -767,16 +804,12 @@ export function ApexPage() {
   const heroCriticalDims = dimensions.filter(d => d.score < 60).length;
   const pageHeader = (
     <div className="space-y-3">
-      {/* CFO-facing shared-savings strip — slim banner above the
-          executive intelligence header. Hidden for tenants without
-          realised savings yet; dismissible per session. */}
-      <SharedSavingsStrip />
       <PageHeader
         eyebrow="Apex · Executive Intelligence"
         title="Executive intelligence"
         dek={dimensions.length > 0
           ? `${dimensions.length} business dimensions monitored — ${heroCriticalDims} critical · ${risks.length} active risk ${risks.length === 1 ? 'alert' : 'alerts'}.`
-          : 'No business-health data yet. Run a catalyst to populate executive dimensions.'}
+          : 'No business-health data yet. Run a fix to populate executive dimensions.'}
         live
         actions={
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -832,20 +865,65 @@ export function ApexPage() {
  )}
  {pageHeader}
 
- {/* Apex is the executive surface. Transaction-level resolutions live on Pulse;
-     here we expose only the summary so an exec sees the value-at-stake without
-     having to act on individual rows. The "Review in Pulse" link routes to the
-     full operational queue. */}
- <div className="flex items-center gap-3">
-   <div className="flex-1">
-     <ActionQueuePanel variant="compact" />
-   </div>
-   <Link
-     to="/pulse"
-     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-md text-sm font-medium bg-[var(--accent)] text-[var(--text-on-accent)] hover:opacity-90 transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] shadow-sm flex-shrink-0 active:scale-[0.97]"
-     aria-label="Open the operational action queue in Pulse"
-   >
-     Review in Pulse <ChevronRight size={14} />
+ {/* CFO trio — the first three cards on the page. In 10 seconds an exec sees:
+     what's at stake, what's waiting on their sign-off, what's been recovered.
+     Every figure traces to a real API field; a missing figure renders an
+     em-dash (via Numeric), never 0. Exposure is the gated CONFIRMED total —
+     unverified potential is never headlined. Recovered comes from billed
+     periods (same source as the ROI dashboard hero); the Atheon fee is shown
+     alongside, never netted off. Each card links where the exec can act. */}
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="apex-cfo-trio">
+   <Link to="/findings" className="block" aria-label="Open exposure — review findings">
+     <Card className="p-5 h-full hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]">
+       <div className="flex items-center justify-between mb-1">
+         <span className="text-label">Open Exposure</span>
+         <AlertTriangle className="w-4 h-4" style={{ color: 'var(--neg)' }} />
+       </div>
+       <Numeric value={cfoExposure?.valueZar ?? null} unit="currency" compact size="lg" className="t-primary font-bold" />
+       <p className="text-caption t-muted mt-1">
+         {cfoExposure
+           ? `${cfoExposure.findingCount} confirmed finding${cfoExposure.findingCount === 1 ? '' : 's'} — review`
+           : 'Awaiting a completed assessment'}
+       </p>
+     </Card>
+   </Link>
+   <Link to="/catalysts" aria-label="Fixes awaiting your approval — review and sign off" className="block">
+     <Card className="p-5 h-full hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]">
+       <div className="flex items-center justify-between mb-1">
+         <span className="text-label">Needs Your Approval</span>
+         <FileText className="w-4 h-4" style={{ color: 'var(--warning)' }} />
+       </div>
+       <Numeric value={cfoApprovals?.valueZar ?? null} unit="currency" compact size="lg" className="t-primary font-bold" />
+       <p className="text-caption t-muted mt-1">
+         {cfoApprovals
+           ? cfoApprovals.count > 0
+             ? `${cfoApprovals.count} fix${cfoApprovals.count === 1 ? '' : 'es'} awaiting your sign-off`
+             : 'Nothing waiting on you'
+           : 'Approval queue unavailable'}
+       </p>
+     </Card>
+   </Link>
+   <Link to="/roi-dashboard" aria-label="Recovered to date — see the proof" className="block">
+     <Card className="p-5 h-full hover:border-accent/40 hover:-translate-y-px active:scale-[0.98] transition-[background-color,box-shadow,transform,border-color] duration-[var(--dur-quick)] [transition-timing-function:var(--ease-out)]">
+       <div className="flex items-center justify-between mb-1">
+         <span className="text-label">Recovered to Date</span>
+         <TrendingUp className="w-4 h-4" style={{ color: 'var(--positive)' }} />
+       </div>
+       <Numeric
+         value={cfoRecovered ? cfoRecovered.total_realised_savings : null}
+         unit={cfoRecovered?.currency || 'currency'}
+         compact
+         size="lg"
+         className="t-primary font-bold"
+       />
+       <p className="text-caption t-muted mt-1">
+         {cfoRecovered
+           ? cfoRecovered.periods_count > 0
+             ? `Atheon fee ${formatCompactCurrency(cfoRecovered.total_atheon_revenue, cfoRecovered.currency)} billed separately — never deducted`
+             : 'No billed savings periods yet'
+           : 'Awaiting billing data'}
+       </p>
+     </Card>
    </Link>
  </div>
 
@@ -972,7 +1050,8 @@ export function ApexPage() {
   <div className="md:hidden space-y-4 mb-4">
    <div className="grid grid-cols-3 gap-2">
     <Card className="flex flex-col items-center justify-center py-3 px-2">
-     <ScoreRing score={overallScore} size="sm" />
+     {/* Honesty law: null health renders an em-dash, never a 0 ring. */}
+     {health ? <ScoreRing score={overallScore} size="sm" /> : <span className="text-headline-lg t-muted">—</span>}
      <p className="text-caption t-muted mt-1 text-center">Health</p>
     </Card>
     <Card className="flex flex-col items-center justify-center py-3 px-2">
@@ -1137,7 +1216,7 @@ export function ApexPage() {
       <div className="flex flex-col items-center justify-center py-6 text-center">
        <Shield className="w-8 h-8 t-muted mb-2 opacity-30" />
        <p className="text-sm t-muted">No active risks detected.</p>
-       <p className="text-xs t-muted mt-1">Run a catalyst to scan for organisational risks.</p>
+       <p className="text-xs t-muted mt-1">Run a fix to scan for organisational risks.</p>
       </div>
      ) : (
       risks.slice(0, 4).map((risk, i) => (

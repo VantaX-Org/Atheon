@@ -252,11 +252,16 @@ export function MindPage() {
               onChange={(e) => setSelectedTier(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg text-sm t-primary"
               style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-card)" }}
-              disabled={modelsLoading || testing}
+              disabled={modelsLoading || testing || !models?.tiers?.length}
             >
-              {(models?.tiers ?? [{ id: "tier-1", name: "Fast (Tier 1)" }, { id: "tier-2", name: "Standard (Tier 2)" }, { id: "tier-3", name: "Deep (Tier 3)" }]).map((t) => (
-                <option key={t.id} value={t.id}>{t.name} ({t.id})</option>
-              ))}
+              {/* Only real tiers from the catalog API — never fabricate options when the fetch failed. */}
+              {models?.tiers?.length ? (
+                models.tiers.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} ({t.id})</option>
+                ))
+              ) : (
+                <option value="">{modelsLoading ? "Loading tiers…" : "Model catalog unavailable"}</option>
+              )}
             </select>
           </div>
 
@@ -282,9 +287,9 @@ export function MindPage() {
 
           <button
             onClick={testPrompt}
-            disabled={testing || !prompt.trim()}
+            disabled={testing || !prompt.trim() || !models?.tiers?.length}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold text-[var(--text-on-accent)] flex items-center gap-2"
-            style={{ background: "var(--accent)", opacity: testing || !prompt.trim() ? 0.55 : 1 }}
+            style={{ background: "var(--accent)", opacity: testing || !prompt.trim() || !models?.tiers?.length ? 0.55 : 1 }}
             title="Run prompt against the selected tier"
           >
             {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}

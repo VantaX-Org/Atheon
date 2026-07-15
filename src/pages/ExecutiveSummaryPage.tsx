@@ -30,9 +30,10 @@ import { FindingsReviewTable } from '@/components/dashboard/FindingsReviewTable'
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import type { ExecutiveSummaryResponse } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import {
   AlertCircle, TrendingUp,
-  TrendingDown, Minus, RefreshCw, ArrowRight,
+  TrendingDown, Minus, RefreshCw, ArrowRight, FileDown,
 } from 'lucide-react';
 
 const targetStatusColor = (s: string): 'success' | 'warning' | 'danger' | 'info' => {
@@ -52,6 +53,8 @@ export function ExecutiveSummaryPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -59,6 +62,7 @@ export function ExecutiveSummaryPage() {
     try {
       const res = await api.executiveSummary.get();
       setData(res);
+      setLoadedAt(new Date());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load executive summary';
       setError(message);
@@ -73,6 +77,22 @@ export function ExecutiveSummaryPage() {
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Same generator as the board digest — one canonical PDF, no parallel export path.
+  const downloadPdf = useCallback(async () => {
+    setExporting(true);
+    try {
+      const { id, title } = await api.boardDigest.generate();
+      await api.boardDigest.downloadPdf(id, title);
+    } catch (err) {
+      toast.error('Failed to export PDF', {
+        message: err instanceof Error ? err.message : undefined,
+        requestId: err instanceof ApiError ? err.requestId : null,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [toast]);
 
   const status = statusFrom({ loading, error: error && !data ? error : null, isEmpty: false });
   if (status !== 'success') {
@@ -119,38 +139,54 @@ export function ExecutiveSummaryPage() {
       <PageHeader
         eyebrow="Journey · 05 Report"
         title="Reports"
-        dek={`One-page executive & board briefing for ${user?.name?.split(' ')[0] || 'executives'} — aggregated from health, savings, diagnostics & signals`}
+        dek={`One-page briefing for ${user?.name?.split(' ')[0] || 'executives'} — recovered value, business health, open risks and targets${loadedAt ? ` · data as of ${loadedAt.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}`}
         actions={
-          <button
-            onClick={() => load(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-[var(--bg-secondary)] text-xs t-muted hover:t-primary transition-colors"
-            aria-label="Refresh executive summary"
-          >
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => load(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-[var(--bg-secondary)] text-xs t-muted hover:t-primary transition-colors"
+              aria-label="Refresh executive summary"
+            >
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            </button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={exporting}
+              leading={<FileDown size={14} />}
+              onClick={() => { void downloadPdf(); }}
+              data-testid="exec-summary-download"
+            >
+              Download PDF
+            </Button>
+          </div>
         }
       />
       <JourneyStageBar current="report" />
 
       {/* Editorial two-rail briefing (Higgsfield render v4-02). Left rail
-          anchors the dollar story (hero savings + supporting stat cards);
-          right rail carries the narrative ("Key Outcomes") plus the value
-          realization trend and a prepared-for masthead. */}
+          anchors the money story (hero recovered + supporting stat cards);
+          right rail carries the risk narrative plus the health trend. */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* ── LEFT RAIL: the dollar anchor ─────────────────────────── */}
         <div className="lg:col-span-3 space-y-5">
-          {/* Hero — Verified Savings (YTD) */}
+          {/* Hero — Recovered to date. Backend: latest roi_tracking snapshot
+              (total_discrepancy_value_recovered) — labelled exactly that; no
+              "verified"/"YTD" claim the API doesn't make. Fees shown alongside,
+              never netted. */}
           <div className="card-hero p-7 md:p-8" data-testid="exec-summary-hero">
             <p className="hero-eyebrow flex items-center gap-2 mb-3">
               <TrendingUp size={11} aria-hidden="true" />
-              Verified Savings · YTD
+              Recovered to Date
             </p>
             <p className="text-hero t-primary leading-none">
-              {formatCompactCurrency(data.roi?.recovered ?? 0, currency)}
+              {data.roi ? formatCompactCurrency(data.roi.recovered, currency) : '—'}
             </p>
             <p className="text-body-sm t-muted mt-3">
-              {data.roi?.multiple ? `${data.roi.multiple.toFixed(1)}× ROI · traced to ERP records` : 'Awaiting first catalyst'}
+              {data.roi?.multiple
+                ? `${data.roi.multiple.toFixed(1)}× return${data.roi.cost > 0 ? ` on ${formatCompactCurrency(data.roi.cost, currency)} in fees (billed separately, never deducted)` : ''}`
+                : 'No recovered value confirmed yet'}
             </p>
           </div>
 
@@ -213,19 +249,19 @@ export function ExecutiveSummaryPage() {
           {/* Diagnostic KPIs */}
           <div className="grid grid-cols-3 gap-3">
             <Card className="p-4">
-              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.diagnostics?.activeRcas ?? 0}</p>
-              <p className="text-label mt-2">Active RCAs</p>
-              <p className="text-caption t-muted mt-1">Root-cause investigations</p>
+              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.diagnostics?.activeRcas ?? '—'}</p>
+              <p className="text-label mt-2">Investigations</p>
+              <p className="text-caption t-muted mt-1">Root-cause reviews in progress</p>
             </Card>
             <Card className="p-4">
-              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.diagnostics?.pendingPrescriptions ?? 0}</p>
-              <p className="text-label mt-2">Pending Rx</p>
-              <p className="text-caption t-muted mt-1">Awaiting action</p>
+              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.diagnostics?.pendingPrescriptions ?? '—'}</p>
+              <p className="text-label mt-2">Awaiting Approval</p>
+              <p className="text-caption t-muted mt-1">Recommended fixes pending sign-off</p>
             </Card>
             <Card className="p-4">
-              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.signals?.newThisWeek ?? 0}</p>
-              <p className="text-label mt-2">Signals · 7d</p>
-              <p className="text-caption t-muted mt-1">External radar</p>
+              <p className="text-headline-xl t-primary tabular-nums font-mono">{data.signals?.newThisWeek ?? '—'}</p>
+              <p className="text-label mt-2">New Alerts · 7d</p>
+              <p className="text-caption t-muted mt-1">Market &amp; external alerts</p>
             </Card>
           </div>
         </div>
@@ -235,7 +271,7 @@ export function ExecutiveSummaryPage() {
           {/* Key Outcomes & Strategic Insights — top risks as the briefing list */}
           <Card className="p-5 md:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-headline-sm t-primary">Key Outcomes &amp; Strategic Insights</h3>
+              <h3 className="text-headline-sm t-primary">Top Risks</h3>
               <button onClick={() => navigate('/apex')} className="text-caption text-accent hover:underline inline-flex items-center gap-1 shrink-0">
                 All risks <ArrowRight size={11} />
               </button>
@@ -263,26 +299,18 @@ export function ExecutiveSummaryPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-body-sm t-muted py-2">No active high-priority risks. Nice work.</p>
+              <p className="text-body-sm t-muted py-2">No open high-priority risks.</p>
             )}
           </Card>
 
-          {/* Value Realization Trend */}
+          {/* Health score trend (same series as the health-card sparkline, larger) */}
           {trendValues.length > 1 && (
             <Card className="p-5 md:p-6">
-              <p className="text-label mb-3">Value Realization Trend</p>
+              <p className="text-label mb-3">Health Score Trend</p>
               <Sparkline data={trendValues} width={260} height={72} className="w-full" />
               <p className="text-caption t-muted mt-2">Health composite · last {trendValues.length} points</p>
             </Card>
           )}
-
-          {/* Prepared-for masthead */}
-          <Card className="p-5">
-            <p className="text-label">Prepared For</p>
-            <p className="text-body-sm t-primary mt-1.5">
-              {user?.name || 'Executive Leadership Team'}
-            </p>
-          </Card>
         </div>
       </div>
 

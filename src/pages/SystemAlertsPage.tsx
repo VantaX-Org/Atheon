@@ -102,6 +102,7 @@ export function SystemAlertsPage() {
 
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   // Rule modal
@@ -126,10 +127,12 @@ export function SystemAlertsPage() {
 
   const loadRules = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.systemAlertRules.list();
       setRules((res.rules || []) as unknown as AlertRule[]);
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load rules');
       showError('Failed to load alert rules', err, 'Could not load rules');
     } finally {
       setLoading(false);
@@ -291,10 +294,12 @@ export function SystemAlertsPage() {
   const firingRules = useMemo(() => rules.filter(r => r.enabled && !r.silenced && r.last_triggered_at), [rules]);
   const silencedCount = rules.filter(r => r.silenced).length;
   const enabledCount = rules.filter(r => r.enabled).length;
+  // While loading or after a failed fetch, counts are unknown — show '—', not fake zeros.
+  const countsKnown = rules.length > 0 || (!loading && !error);
 
   const tabs = [
-    { id: 'rules', label: 'Alert Rules', icon: <Filter size={14} />, count: rules.length },
-    { id: 'active', label: 'Recently Triggered', icon: <AlertTriangle size={14} />, count: firingRules.length },
+    { id: 'rules', label: 'Alert Rules', icon: <Filter size={14} />, count: countsKnown ? rules.length : undefined },
+    { id: 'active', label: 'Recently Triggered', icon: <AlertTriangle size={14} />, count: countsKnown ? firingRules.length : undefined },
   ];
 
   return (
@@ -314,19 +319,19 @@ export function SystemAlertsPage() {
       <Card className="p-6 sm:p-8">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
           <div>
-            <p className="text-hero t-primary">{rules.length}</p>
+            <p className="text-hero t-primary">{countsKnown ? rules.length : '—'}</p>
             <p className="text-label mt-2">Total Rules</p>
           </div>
           <div>
-            <p className="text-hero text-accent">{enabledCount}</p>
+            <p className="text-hero text-accent">{countsKnown ? enabledCount : '—'}</p>
             <p className="text-label mt-2">Enabled</p>
           </div>
           <div>
-            <p className="text-hero" style={{ color: 'var(--warning)' }}>{silencedCount}</p>
+            <p className="text-hero" style={{ color: 'var(--warning)' }}>{countsKnown ? silencedCount : '—'}</p>
             <p className="text-label mt-2">Silenced</p>
           </div>
           <div>
-            <p className="text-hero text-neg">{firingRules.length}</p>
+            <p className="text-hero text-neg">{countsKnown ? firingRules.length : '—'}</p>
             <p className="text-label mt-2">Triggered</p>
           </div>
         </div>
@@ -337,6 +342,13 @@ export function SystemAlertsPage() {
       <TabPanel id="rules" activeTab={activeTab}>
         {loading ? (
           <LoadingState variant="list" count={3} />
+        ) : error && rules.length === 0 ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load alert rules"
+            description={error}
+            action={{ label: 'Retry', onClick: loadRules }}
+          />
         ) : rules.length === 0 ? (
           <EmptyState
             icon={Bell}
@@ -419,7 +431,14 @@ export function SystemAlertsPage() {
       </TabPanel>
 
       <TabPanel id="active" activeTab={activeTab}>
-        {firingRules.length === 0 ? (
+        {error && rules.length === 0 ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load alert rules"
+            description={error}
+            action={{ label: 'Retry', onClick: loadRules }}
+          />
+        ) : firingRules.length === 0 ? (
           <Card className="p-8 text-center">
             <CheckCircle size={24} className="mx-auto text-accent mb-2" />
             <p className="text-sm t-muted">No recently triggered rules</p>
@@ -430,7 +449,8 @@ export function SystemAlertsPage() {
               <Card key={r.id} className="p-5">
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   <StatusPill status={r.severity} size="sm" />
-                  <Badge variant="danger" className="text-caption flex items-center gap-1"><XCircle size={11} /> firing</Badge>
+                  {/* last_triggered_at means "has fired", not "is firing now" — don't claim a live incident. */}
+                  <Badge variant="warning" className="text-caption flex items-center gap-1"><AlertTriangle size={11} /> triggered</Badge>
                 </div>
                 <p className="text-base font-semibold t-primary leading-snug">{r.name}</p>
                 <p className="text-label mt-1.5" style={{ textTransform: 'none' }}>

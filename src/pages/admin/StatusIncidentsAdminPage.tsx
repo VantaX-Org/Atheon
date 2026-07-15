@@ -101,6 +101,7 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
 
   const create = async () => {
     if (!title.trim()) return;
+    if (!window.confirm(`Declare "${title.trim()}"? It becomes immediately visible to all customers on the public /status page.`)) return;
     setSubmitting(true);
     try {
       await api.iam.createStatusIncident({
@@ -126,6 +127,7 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
   const appendUpdate = async (incidentId: string) => {
     const draft = updateDraft[incidentId];
     if (!draft || !draft.message.trim()) return;
+    if (!window.confirm(`Post update "${draft.message.trim()}"? It becomes immediately visible to all customers on the public /status page.`)) return;
     setUpdateDraft((d) => ({ ...d, [incidentId]: { ...draft, busy: true } }));
     try {
       await api.iam.updateStatusIncident(incidentId, {
@@ -142,11 +144,12 @@ export default function StatusIncidentsAdminPage(): JSX.Element {
   };
 
   const resolve = async (incident: AdminIncident) => {
-    if (!window.confirm(`Mark "${incident.title}" as resolved? This stamps resolved_at and surfaces a "Resolved" badge on the public status page.`)) return;
+    const RESOLVE_MESSAGE = 'Incident resolved. Service has returned to normal operation.';
+    if (!window.confirm(`Mark "${incident.title}" as resolved? This stamps resolved_at and posts "${RESOLVE_MESSAGE}" to the public /status page, visible to all customers.`)) return;
     try {
       await api.iam.updateStatusIncident(incident.id, {
         status: 'resolved',
-        message: 'Incident resolved. Service has returned to normal operation.',
+        message: RESOLVE_MESSAGE,
       });
       toast.success(`Resolved ${incident.title}`);
       await load();

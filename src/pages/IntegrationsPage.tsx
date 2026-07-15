@@ -163,7 +163,7 @@ function CredentialInput({ field, value, onChange }: { field: CredField; value: 
         {isSecret && (
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+            className="absolute right-2 top-1/2 -translate-y-1/2 t-muted hover:t-primary"
             onClick={() => setShowSecret(!showSecret)}
             title={showSecret ? 'Hide' : 'Show'}
           >
@@ -185,6 +185,8 @@ export function IntegrationsPage() {
   // ISO timestamp of the last successful integration load — used by the
   // MetricSource popovers on each summary tile.
   const [integrationsLoadedAt, setIntegrationsLoadedAt] = useState<string | null>(null);
+  // Which sources failed to load — drives em-dash tiles/counts instead of false zeros.
+  const [loadFailed, setLoadFailed] = useState({ adapters: false, connections: false, canonical: false });
   const [endpoints, setEndpoints] = useState<CanonicalEndpoint[]>([]);
   const [circuitStates, setCircuitStates] = useState<Record<string, CircuitBreakerState>>({});
   const [loading, setLoading] = useState(true);
@@ -444,6 +446,7 @@ export function IntegrationsPage() {
     try {
       const c = await api.erp.connections();
       setConnections(c.connections);
+      setLoadFailed(prev => ({ ...prev, connections: false }));
       refreshCircuitStates(c.connections);
     } catch (err) {
       console.error('Failed to refresh connections', err);
@@ -635,6 +638,11 @@ export function IntegrationsPage() {
           requestId: err instanceof ApiError ? err.requestId : null,
         });
       }
+      setLoadFailed({
+        adapters: a.status === 'rejected',
+        connections: c.status === 'rejected',
+        canonical: e.status === 'rejected',
+      });
       setIntegrationsLoadedAt(new Date().toISOString());
       setLoading(false);
     }
@@ -657,9 +665,9 @@ export function IntegrationsPage() {
   }
 
   const tabs = [
-    { id: 'connections', label: 'Connected Systems', icon: <Database size={14} />, count: connections.length },
-    { id: 'adapters', label: 'Available Adapters', icon: <Plug size={14} />, count: adapters.length },
-    { id: 'schema', label: 'Canonical Data Schema', icon: <Layers size={14} />, count: endpoints.length },
+    { id: 'connections', label: 'Connected Systems', icon: <Database size={14} />, count: loadFailed.connections ? undefined : connections.length },
+    { id: 'adapters', label: 'Available Adapters', icon: <Plug size={14} />, count: loadFailed.adapters ? undefined : adapters.length },
+    { id: 'schema', label: 'Canonical Data Schema', icon: <Layers size={14} />, count: loadFailed.canonical ? undefined : endpoints.length },
   ];
 
   const connectCredFields = selectedAdapter && selectedAuth
@@ -887,7 +895,13 @@ export function IntegrationsPage() {
         <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div style={{ background: "var(--bg-modal)", border: "1px solid var(--border-card)" }} className="rounded-md p-6 w-full max-w-sm space-y-4">
             <h3 className="text-lg font-semibold t-primary">Delete Connection</h3>
-            <p className="text-sm t-muted">Are you sure you want to delete this connection? This will remove all configuration and sync history. This action cannot be undone.</p>
+            <p className="text-sm t-muted">
+              Are you sure you want to delete{' '}
+              <span className="font-semibold t-primary">
+                {connections.find(c => c.id === confirmDelete)?.name || 'this connection'}
+              </span>
+              ? This will remove all configuration and sync history. This action cannot be undone.
+            </p>
             <div className="flex gap-3 pt-2">
               <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
               <Button variant="primary" size="sm" style={{ background: 'var(--neg)' }} onClick={() => handleDelete(confirmDelete)} disabled={deleting === confirmDelete}>
@@ -924,7 +938,7 @@ export function IntegrationsPage() {
               sample: activeCount,
             }} />
           </div>
-          <p className="text-display font-bold tabular-nums font-mono mt-2" style={{ color: 'var(--accent)' }}>{activeCount}</p>
+          <p className="text-display font-bold tabular-nums font-mono mt-2" style={{ color: 'var(--accent)' }}>{loadFailed.connections ? <span aria-label="Unavailable">—</span> : activeCount}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
@@ -938,7 +952,7 @@ export function IntegrationsPage() {
               sample: adapters.length,
             }} />
           </div>
-          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{adapters.length}</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{loadFailed.adapters ? <span aria-label="Unavailable">—</span> : adapters.length}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
@@ -952,7 +966,7 @@ export function IntegrationsPage() {
               sample: endpoints.length,
             }} />
           </div>
-          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{endpoints.length}</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{loadFailed.canonical ? <span aria-label="Unavailable">—</span> : endpoints.length}</p>
         </Card>
         <Card>
           <div className="flex items-center justify-between">
@@ -967,7 +981,7 @@ export function IntegrationsPage() {
               notes: [{ label: 'Display unit', value: 'thousands (K) — divide by 1000' }],
             }} />
           </div>
-          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{(totalRecords / 1000).toFixed(1)}K</p>
+          <p className="text-display font-bold t-primary tabular-nums font-mono mt-2">{loadFailed.connections ? <span aria-label="Unavailable">—</span> : `${(totalRecords / 1000).toFixed(1)}K`}</p>
         </Card>
       </div>
         );
@@ -978,7 +992,18 @@ export function IntegrationsPage() {
       {/* Tab: Connected Systems */}
       {activeTab === 'connections' && (
         <TabPanel>
-          {connections.length === 0 ? (
+          {connections.length === 0 && loadFailed.connections ? (
+            <Card>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <AlertCircle className="w-10 h-10 t-muted mb-3 opacity-30" />
+                <p className="text-sm font-medium t-primary">Couldn&apos;t load connections</p>
+                <p className="text-xs t-muted mt-1">The request failed — this is not an empty list.</p>
+                <Button variant="secondary" size="sm" className="mt-4" onClick={() => void refreshConnections()}>
+                  <RefreshCw size={14} /> Retry
+                </Button>
+              </div>
+            </Card>
+          ) : connections.length === 0 ? (
             <Card>
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Database className="w-10 h-10 t-muted mb-3 opacity-30" />
@@ -1043,7 +1068,7 @@ export function IntegrationsPage() {
                     </div>
                     <div className="p-3 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                       <span className="text-caption t-muted">Last Sync</span>
-                      <p className="text-sm font-medium text-gray-400">{conn.lastSync ? new Date(conn.lastSync).toLocaleTimeString() : 'Never'}</p>
+                      <p className="text-sm font-medium t-secondary">{conn.lastSync ? new Date(conn.lastSync).toLocaleTimeString() : 'Never'}</p>
                     </div>
                   </div>
 
@@ -1075,8 +1100,8 @@ export function IntegrationsPage() {
                     <Button variant="secondary" size="sm" onClick={() => handleSync(conn.id)} disabled={syncing === conn.id} title="Trigger a manual data sync now">
                       {syncing === conn.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync Now
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setShowLogs(showLogs === conn.id ? null : conn.id)} title="View sync activity logs">
-                      <Activity size={12} /> {showLogs === conn.id ? 'Hide Logs' : 'View Logs'}
+                    <Button variant="ghost" size="sm" onClick={() => setShowLogs(showLogs === conn.id ? null : conn.id)} title="View current connection state">
+                      <Activity size={12} /> {showLogs === conn.id ? 'Hide Details' : 'Details'}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => toggleSchemas(conn.id)} title="View fields Atheon has discovered from your ERP records">
                       <Database size={12} /> {showSchemas === conn.id ? 'Hide Schema' : 'View Schema'}
@@ -1096,12 +1121,14 @@ export function IntegrationsPage() {
                   </div>
 
                   {showLogs === conn.id && (
+                    /* Connection state snapshot from the API record — not a
+                       server log stream (no per-event log endpoint exists). */
                     <div className="mt-3 p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] text-accent font-mono text-xs max-h-48 overflow-y-auto animate-fadeIn">
-                      <p>[{new Date().toISOString()}] Connection: {conn.name}</p>
-                      <p>[{new Date().toISOString()}] Adapter: {conn.adapterName} ({conn.adapterSystem})</p>
-                      <p>[{new Date().toISOString()}] Status: {conn.status}</p>
-                      <p>[{new Date().toISOString()}] Records synced: {(conn.recordsSynced || 0).toLocaleString()}</p>
-                      <p className="text-gray-500">[{new Date().toISOString()}] --- End of log ---</p>
+                      <p>Connection: {conn.name}</p>
+                      <p>Adapter: {conn.adapterName} ({conn.adapterSystem})</p>
+                      <p>Status: {conn.status}</p>
+                      <p>Records synced: {(conn.recordsSynced || 0).toLocaleString()}</p>
+                      <p>Last sync: {conn.lastSync ? new Date(conn.lastSync).toLocaleString() : 'Never'}</p>
                     </div>
                   )}
 
@@ -1621,7 +1648,7 @@ export function IntegrationsPage() {
                     {tryingEndpoint === ep.id && (
                       <div className="mt-3 space-y-2 animate-fadeIn">
                         {tryLoading ? (
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <div className="flex items-center gap-2 text-xs t-muted">
                             <Loader2 size={14} className="animate-spin" /> Calling endpoint...
                           </div>
                         ) : tryResult && tryResult.endpointId === ep.id ? (

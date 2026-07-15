@@ -8,22 +8,22 @@
  *   HOME · DATA · FINDINGS · FIXES · SAVINGS · REPORTS · SETTINGS
  *
  * Each row is a small outline icon + a Space-Mono UPPERCASE label. The active
- * row gets a 3px royal-blue left-rule and an accent-subtle wash (Luminous
+ * row gets a brand-soft pill wash (Daylight
  * Editorial brand-active state). The header is the ATHEON wordmark + triangle;
  * the footer is the signed-in identity ("EXECUTIVE USER" in the mockup).
  *
  * The app has ~50 routes the six-item mockup can't show. Rather than lose them,
  * the non-core pages live in two COLLAPSED disclosures below the primary rail:
  *
- *   WORKSPACE → Apex · Pulse · Board Digest · Memory · Mind   (product extras)
+ *   WORKSPACE → Executive · Live Monitor · Board Digest · Memory · Mind (extras)
  *   ADMIN     → integrations / IAM / platform-ops / tooling    (PLATFORM_ADMIN+)
  *
  * Executives see a clean six-item rail (+ Workspace where roled); admins get
  * the full surface, one disclosure deep, in the same flat mono language.
  *
  * Scoped read-only roles keep their narrow landing:
- *   auditor       → ASSURANCE (/compliance) + SETTINGS
- *   board_member  → REPORTS (/board-digest) + SETTINGS
+ *   auditor       → ASSURANCE (/compliance) + SUPPORT + SETTINGS
+ *   board_member  → REPORTS (/board-digest) + SUPPORT + SETTINGS
  *
  * Two layouts: desktop 240px sticky column, mobile drawer (Header burger).
  */
@@ -93,8 +93,8 @@ const WORKSPACE: NavGroup = {
   label: 'Workspace',
   children: [
     { path: '/trust',        label: 'Trust',        icon: ShieldCheck, roles: STANDARD_ROLES },
-    { path: '/apex',         label: 'Apex',         icon: Gem,         roles: EXECUTIVE_ROLES },
-    { path: '/pulse',        label: 'Pulse',        icon: Activity,    roles: STANDARD_ROLES },
+    { path: '/apex',         label: 'Executive',    icon: Gem,         roles: EXECUTIVE_ROLES },
+    { path: '/pulse',        label: 'Live Monitor', icon: Activity,    roles: STANDARD_ROLES },
     { path: '/board-digest', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
     { path: '/memory',       label: 'Memory',       icon: MemoryStick, roles: MANAGER_ROLES },
     { path: '/mind',         label: 'Mind',         icon: Brain,       roles: PLATFORM_ADMIN_ROLES },
@@ -163,7 +163,7 @@ function NavRow({ item, pathname, onNavigate }: { item: NavItem; pathname: strin
         to={item.path}
         onClick={onNavigate}
         className={cn(
-          'group relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-md',
+          'group relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-full',
           'transition-[background-color,color,transform] duration-[var(--dur-press)]',
           '[transition-timing-function:var(--ease-out)] active:scale-[0.98]',
           active ? '' : 't-secondary hover:t-primary hover:bg-[var(--bg-card-hover)]',
@@ -171,13 +171,6 @@ function NavRow({ item, pathname, onNavigate }: { item: NavItem; pathname: strin
         style={active ? { background: 'var(--accent-subtle)', color: 'var(--text-primary)' } : undefined}
         aria-current={active ? 'page' : undefined}
       >
-        {active && (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r"
-            style={{ background: 'var(--accent)' }}
-          />
-        )}
         <item.icon
           size={18}
           strokeWidth={active ? 2.25 : 1.75}
@@ -257,10 +250,16 @@ export function Sidebar() {
 
   const primaryItems = useMemo<NavItem[]>(() => {
     if (userRole === 'auditor') {
-      return [{ path: '/compliance', label: 'Assurance', icon: ShieldCheck }];
+      return [
+        { path: '/compliance', label: 'Assurance', icon: ShieldCheck },
+        { path: '/support-tickets', label: 'Support', icon: LifeBuoy },
+      ];
     }
     if (userRole === 'board_member') {
-      return [{ path: '/board-digest', label: 'Reports', icon: FileText }];
+      return [
+        { path: '/board-digest', label: 'Reports', icon: FileText },
+        { path: '/support-tickets', label: 'Support', icon: LifeBuoy },
+      ];
     }
     return visibleFor(PRIMARY, userRole);
   }, [userRole]);

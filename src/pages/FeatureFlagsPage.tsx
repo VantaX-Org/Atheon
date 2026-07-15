@@ -178,7 +178,11 @@ export function FeatureFlagsPage() {
   };
 
   const handleDelete = async (flag: FeatureFlag) => {
-    if (!window.confirm(`Delete feature flag "${flag.name}"? This cannot be undone.`)) return;
+    const isActive = flag.type === 'boolean' ? flag.defaultEnabled : flag.type === 'percent' ? flag.rolloutPercent > 0 : flag.tenantAllowlist.length > 0;
+    const scope = flag.type === 'boolean' ? `default ${flag.defaultEnabled ? 'ON' : 'OFF'}`
+      : flag.type === 'percent' ? `${flag.rolloutPercent}% rollout`
+      : `${flag.tenantAllowlist.length} allowlisted tenant${flag.tenantAllowlist.length === 1 ? '' : 's'}`;
+    if (!window.confirm(`Delete feature flag "${flag.name}" (${flag.type}, ${scope}, currently ${isActive ? 'ACTIVE' : 'inactive'})? Tenants evaluating it will no longer receive it. This cannot be undone.`)) return;
     setDeletingId(flag.id);
     try {
       await api.featureFlags.delete(flag.id);

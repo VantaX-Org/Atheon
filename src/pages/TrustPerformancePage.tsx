@@ -39,30 +39,34 @@ export function TrustPerformancePage(): JSX.Element {
   const [root, setRoot] = useState<ProvenanceRoot | null>(null);
   const [verifyResult, setVerifyResult] = useState<ProvenanceVerifyResult | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const [patterns, setPatterns] = useState<FederatedPattern[]>([]);
+  // null = fetch failed (distinct from [] = fetched, genuinely no patterns yet)
+  const [patterns, setPatterns] = useState<FederatedPattern[] | null>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   async function loadAll() {
     setLoading(true);
-    try {
-      const [cal, prov, peerRes] = await Promise.all([
-        api.catalysts.getCalibrationSummary(),
-        api.provenance.root(),
-        api.peerPatterns.list('general').catch(() => ({ industry_bucket: 'general', patterns: [], total: 0 })),
-      ]);
-      setCalibration(cal);
-      setRoot(prov);
-      setPatterns(peerRes.patterns);
-    } catch (err) {
+    // allSettled: one failed subsystem degrades to em-dashes instead of blanking all three cards.
+    const [cal, prov, peers] = await Promise.allSettled([
+      api.catalysts.getCalibrationSummary(),
+      api.provenance.root(),
+      api.peerPatterns.list('general'),
+    ]);
+    setCalibration(cal.status === 'fulfilled' ? cal.value : null);
+    setRoot(prov.status === 'fulfilled' ? prov.value : null);
+    setPatterns(peers.status === 'fulfilled' ? peers.value.patterns : null);
+    const failed = [cal, prov, peers].find(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+    if (failed) {
+      const err = failed.reason;
       console.error('Failed to load trust dashboard', err);
-      toast.error('Failed to load Trust & Performance', {
+      toast.error('Some Trust & Performance data failed to load', {
         message: err instanceof Error ? err.message : undefined,
         requestId: err instanceof ApiError ? err.requestId : null,
       });
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   // Initial load — once-on-mount; the refresh button drives subsequent reloads.
@@ -110,17 +114,19 @@ export function TrustPerformancePage(): JSX.Element {
     );
   }
 
-  const accuracyDisplay = calibration?.accuracyPct ?? 0;
+  // null = calibration fetch failed → render em-dash, never 0.0% / "Cold-start".
+  const accuracy = calibration ? calibration.accuracyPct : null;
   const chainEmpty = !root || root.seq === 0;
-  const peerActive = patterns.filter(p => (p.n_contributors || 0) >= 5).length;
+  const peerActive = patterns ? patterns.filter(p => (p.n_contributors || 0) >= 5).length : null;
 
   // RAG dot colour for the hero status indicator — green when calibrated,
   // amber while warming up, accent during cold-start.
   const heroStatusVar =
-    accuracyDisplay >= 80 ? '--rag-healthy' : accuracyDisplay >= 60 ? '--rag-watch' : '--accent';
+    accuracy == null ? '--text-muted' : accuracy >= 80 ? '--rag-healthy' : accuracy >= 60 ? '--rag-watch' : '--accent';
   const heroStatusRgb =
-    accuracyDisplay >= 80 ? '--rag-healthy-rgb' : accuracyDisplay >= 60 ? '--rag-watch-rgb' : '--accent-rgb';
-  const heroStatusLabel = accuracyDisplay >= 80 ? 'Calibrated' : accuracyDisplay >= 60 ? 'Warming up' : 'Cold-start';
+    accuracy != null && accuracy >= 80 ? '--rag-healthy-rgb' : accuracy != null && accuracy >= 60 ? '--rag-watch-rgb' : '--accent-rgb';
+  const heroStatusLabel =
+    accuracy == null ? 'Unavailable' : accuracy >= 80 ? 'Calibrated' : accuracy >= 60 ? 'Warming up' : 'Cold-start';
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8" data-testid="trust-performance-page">
@@ -155,12 +161,16 @@ export function TrustPerformancePage(): JSX.Element {
                 style={{ fontSize: '3.5rem', fontWeight: 700 }}
                 data-testid="trust-accuracy"
               >
-                {accuracyDisplay.toFixed(1)}<span className="text-2xl t-muted">%</span>
+                {accuracy != null
+                  ? <>{accuracy.toFixed(1)}<span className="text-2xl t-muted">%</span></>
+                  : <span className="t-muted">—</span>}
               </span>
             </div>
             <div className="text-label mt-2">Prediction accuracy (predicted vs actual)</div>
             <p className="text-body-sm t-secondary mt-3 max-w-md">
-              Mean residual deviation from 1.0 across {calibration?.simulationsWithOutcomes ?? 0} closed-loop observations.
+              {calibration
+                ? <>Mean residual deviation from 1.0 across {calibration.simulationsWithOutcomes} closed-loop observations.</>
+                : <>Calibration data could not be loaded — refresh to retry.</>}
             </p>
           </div>
 
@@ -169,13 +179,13 @@ export function TrustPerformancePage(): JSX.Element {
             <span
               aria-hidden
               className="inline-flex h-12 w-12 items-center justify-center rounded-full"
-              style={{
+              style={accuracy != null ? {
                 background: `rgb(var(${heroStatusRgb}) / 0.14)`,
                 boxShadow: `0 0 24px rgb(var(${heroStatusRgb}) / 0.45)`,
-              }}
+              } : { background: 'var(--surface-muted, transparent)', border: '1px solid var(--border-card)' }}
             >
               <span
-                className="h-4 w-4 rounded-full animate-pulse"
+                className={`h-4 w-4 rounded-full ${accuracy != null ? 'animate-pulse' : ''}`}
                 style={{ background: `var(${heroStatusVar})` }}
               />
             </span>
@@ -195,19 +205,19 @@ export function TrustPerformancePage(): JSX.Element {
         <div className="mt-7 grid grid-cols-2 gap-x-6 gap-y-5 border-t pt-6 md:grid-cols-4" style={{ borderColor: 'rgb(var(--accent-rgb) / 0.16)' }}>
           <div>
             <div className="text-label">Predictions</div>
-            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{(calibration?.totalSimulations ?? 0).toLocaleString()}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{calibration ? calibration.totalSimulations.toLocaleString() : '—'}</div>
           </div>
           <div>
             <div className="text-label">Outcomes recorded</div>
-            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{(calibration?.simulationsWithOutcomes ?? 0).toLocaleString()}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{calibration ? calibration.simulationsWithOutcomes.toLocaleString() : '—'}</div>
           </div>
           <div>
             <div className="text-label">Calibrated subs (n≥5)</div>
-            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{calibration?.calibratedSubCatalysts ?? 0}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{calibration ? calibration.calibratedSubCatalysts : '—'}</div>
           </div>
           <div>
             <div className="text-label">Predicted value</div>
-            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{formatZAR(calibration?.totalPredictedValueZar ?? 0)}</div>
+            <div className="mt-1 text-2xl font-semibold font-mono tabular-nums t-primary">{formatZAR(calibration?.totalPredictedValueZar)}</div>
           </div>
         </div>
       </Card>
@@ -234,7 +244,9 @@ export function TrustPerformancePage(): JSX.Element {
                 <div className="mt-3">
                   <div className="text-label mb-1">Current root</div>
                   <div className="font-mono text-xs t-primary break-all" data-testid="trust-root">
-                    {root?.root ? root.root.slice(0, 32) + '…' : <span className="t-muted">empty chain</span>}
+                    {root?.root
+                      ? root.root.slice(0, 32) + '…'
+                      : <span className="t-muted">{root ? 'empty chain' : '—'}</span>}
                   </div>
                 </div>
               </div>
@@ -243,7 +255,7 @@ export function TrustPerformancePage(): JSX.Element {
             <div className="grid grid-cols-2 gap-4 border-t pt-4" style={{ borderColor: 'var(--border-card)' }}>
               <div>
                 <div className="text-label">Sequence</div>
-                <div className="mt-1 text-xl font-semibold font-mono tabular-nums t-primary">{(root?.seq ?? 0).toLocaleString()}</div>
+                <div className="mt-1 text-xl font-semibold font-mono tabular-nums t-primary">{root ? root.seq.toLocaleString() : '—'}</div>
               </div>
               <div>
                 <div className="text-label">Last appended</div>
@@ -300,7 +312,7 @@ export function TrustPerformancePage(): JSX.Element {
                   <Badge variant="info" className="text-label shrink-0">DP ε = 1.0</Badge>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold font-mono tabular-nums t-primary">{peerActive}</span>
+                  <span className="text-3xl font-semibold font-mono tabular-nums t-primary">{peerActive ?? '—'}</span>
                   <span className="text-sm t-muted">active patterns</span>
                 </div>
                 <p className="text-xs t-muted mt-2">
@@ -311,7 +323,16 @@ export function TrustPerformancePage(): JSX.Element {
             </div>
 
             <div className="border-t pt-4 space-y-2.5" style={{ borderColor: 'var(--border-card)' }}>
-              {patterns.length === 0 ? (
+              {patterns !== null && patterns.length > 0 && (
+                <div className="text-xs t-muted">
+                  Federated aggregates across contributing tenants — not this tenant's data.
+                </div>
+              )}
+              {patterns === null ? (
+                <div className="text-xs t-muted">
+                  Peer benchmark data could not be loaded — refresh to retry.
+                </div>
+              ) : patterns.length === 0 ? (
                 <div className="text-xs t-muted">
                   No published patterns yet — federation activates after the first ε-private
                   aggregate clears the k=5 contributor floor.

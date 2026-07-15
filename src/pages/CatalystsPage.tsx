@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Portal } from "@/components/ui/portal";
 import { Card } from "@/components/ui/card";
 import { ErrorState, EmptyState } from "@/components/ui/state";
@@ -90,6 +90,10 @@ export function CatalystsPage() {
  const sortedClusters = useMemo(() => sortClustersForDeploy(clusters, tenantIndustry), [clusters, tenantIndustry]);
  const [actions, setActions] = useState<ActionItem[]>([]);
  const [governance, setGovernance] = useState<GovernanceData | null>(null);
+ // Tenant-wide action ledger (same catalyst_actions table the approval queue
+ // reads) — the only honest source for pending-approval Rand value. Null =
+ // fetch failed → hero renders em-dashes, makes no claims.
+ const [erpSummary, setErpSummary] = useState<Awaited<ReturnType<typeof api.erp.actionsSummary>>['summary'] | null>(null);
  const [loading, setLoading] = useState(true);
  const [updatingAction, setUpdatingAction] = useState<string | null>(null);
 
@@ -448,8 +452,8 @@ export function CatalystsPage() {
  setLoading(true);
  const ind = undefined; // Catalysts page shows all functional areas regardless of industry
  const co = companyId || undefined;
- const [c, a, g] = await Promise.allSettled([
- api.catalysts.clusters(undefined, ind, co), api.catalysts.actions(undefined, undefined, ind, co), api.catalysts.governance(undefined, ind, co),
+ const [c, a, g, es] = await Promise.allSettled([
+ api.catalysts.clusters(undefined, ind, co), api.catalysts.actions(undefined, undefined, ind, co), api.catalysts.governance(undefined, ind, co), api.erp.actionsSummary(),
  ]);
  if (c.status === 'fulfilled') {
   setClusters(c.value.clusters);
@@ -469,6 +473,7 @@ export function CatalystsPage() {
   });
  }
  if (g.status === 'fulfilled') setGovernance(g.value);
+ if (es.status === 'fulfilled') setErpSummary(es.value.summary); // rejected → stays null → em-dash
  setLoading(false);
  }
  load();
@@ -1146,28 +1151,26 @@ export function CatalystsPage() {
  <PageHeader
   eyebrow="Journey · 03 Fix"
   title="Fixes"
-  dek="Catalyst runs — automated remediations, approvals, and the value ledger behind every recovered Rand."
+  dek="Approve or reject automated remediations — with the evidence and Rand value behind each one."
   actions={
    <div className="flex items-center gap-2 flex-shrink-0">
     <SectionFreshness section="Catalyst Runs" />
-    <CSVExportButton endpoint="/api/catalyst-intelligence/patterns" filename="catalyst-patterns.csv" label="Export Patterns" />
-    <CSVExportButton endpoint="/api/roi" filename="roi-tracking.csv" label="Export ROI" />
+    {/* Analyst exports are noise for an approver clearing the queue. */}
+    {isPowerUser && <CSVExportButton endpoint="/api/catalyst-intelligence/patterns" filename="catalyst-patterns.csv" label="Export Patterns" />}
+    {isPowerUser && <CSVExportButton endpoint="/api/roi" filename="roi-tracking.csv" label="Export ROI" />}
    </div>
   }
  />
  <JourneyStageBar current="fix" />
 
- {/* Wave H-4 hero band — Catalysts anchor is autonomous-execution count.
-     Total tasks completed across all clusters reads at .text-hero scale;
-     active catalysts + exceptions awaiting review live as supporting
-     ledger on the right. */}
+ {/* Hero band — the approver's ledger. Pending sign-offs (count + Rand at
+     stake) dominate; completed count/value secondary; exceptions third.
+     Every figure is a real API field (erp actions summary / catalyst
+     actions); summary fetch failure renders em-dashes, no claims. */}
  {(() => {
-  const totalTasks = clusters.reduce((s, c) => s + (Number(c.tasksCompleted) || 0), 0);
-  const activeCount = clusters.filter(c => c.status === 'active').length;
-  const avgTrust = clusters.length > 0
-   ? clusters.reduce((s, c) => s + pct(c.trustScore), 0) / clusters.length
-   : 0;
-  // Pipeline health reads off exceptions awaiting review: clear ⇒ healthy,
+  const s = erpSummary;
+  const pendingCount = s ? s.pending_approval_count : null;
+  // Health reads off exceptions awaiting review: clear ⇒ healthy,
   // any open exception ⇒ watch. This is presentation of existing data only.
   const healthStatus = exceptionCount > 0 ? 'watch' : 'healthy';
   const healthLabel = exceptionCount > 0 ? 'Needs Review' : 'Stable';
@@ -1177,47 +1180,51 @@ export function CatalystsPage() {
     <div className="flex items-center justify-end mb-6">
      <StatusPill status={healthStatus} label={<><span className="hero-eyebrow mr-1.5" style={{ color: 'inherit' }}>System Health</span>{healthLabel}</>} density="dot" size="sm" />
     </div>
-    {/* Three-up pipeline ledger — big number, mono eyebrow beside it,
-        supporting sub-label below. Mirrors the approved mockup layout. */}
+    {/* Three-up ledger — big number, mono eyebrow beside it, supporting
+        sub-label below. Mirrors the approved mockup layout. */}
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-4">
      <div className="min-w-0">
       <div className="flex items-baseline gap-2.5 flex-wrap">
-       <p className="text-hero t-primary tabular-nums font-mono leading-none">
-        <Numeric value={totalTasks} compact size="lg" />
+       <p className="text-hero tabular-nums font-mono leading-none" style={{ color: pendingCount ? 'var(--warning)' : 'var(--text-primary)' }}>
+        {pendingCount === null ? '—' : <Numeric value={pendingCount} compact size="lg" />}
        </p>
-       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Completed</p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Awaiting Approval</p>
       </div>
       <p className="text-body-sm t-muted mt-2">
-       <strong className="t-secondary font-semibold">{activeCount} active</strong> catalyst{activeCount === 1 ? '' : 's'} running
-      </p>
-     </div>
-     <div className="min-w-0">
-      <div className="flex items-baseline gap-2.5 flex-wrap">
-       <p className="text-hero t-primary tabular-nums font-mono leading-none">
-        <Numeric value={actions.length} compact size="lg" />
-       </p>
-       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Actions</p>
-      </div>
-      <p className="text-body-sm t-muted mt-2">
-       {exceptionCount > 0 ? (
-        <>
-         <strong className="font-semibold tabular-nums font-mono" style={{ color: 'var(--neg)' }}>
-          {exceptionCount} exception{exceptionCount === 1 ? '' : 's'}
-         </strong>{' '}awaiting review
-        </>
+       {s === null ? (
+        <>—</>
+       ) : pendingCount ? (
+        <><strong className="t-secondary font-semibold font-mono tabular-nums">{formatCompactCurrency(s.pending_approval_value_zar, currency)}</strong> waiting on your sign-off</>
        ) : (
-        <>logged across the pipeline</>
+        <Link to="/roi-dashboard" className="text-accent hover:underline">Queue clear — see savings proof →</Link>
        )}
       </p>
      </div>
      <div className="min-w-0">
       <div className="flex items-baseline gap-2.5 flex-wrap">
-       <p className="text-hero tabular-nums font-mono leading-none" style={{ color: avgTrust >= 80 ? 'var(--positive)' : 'var(--text-primary)' }}>
-        {avgTrust.toFixed(0)}<span className="text-headline-lg font-semibold">%</span>
+       <p className="text-hero t-primary tabular-nums font-mono leading-none">
+        {s === null ? '—' : <Numeric value={s.completed_count} compact size="lg" />}
        </p>
-       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Avg Trust</p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Completed</p>
       </div>
-      <p className="text-body-sm t-muted mt-2">mean trust score across clusters</p>
+      <p className="text-body-sm t-muted mt-2">
+       {s === null ? '—' : <><strong className="t-secondary font-semibold font-mono tabular-nums">{formatCompactCurrency(s.completed_value_zar, currency)}</strong> across completed fixes</>}
+      </p>
+     </div>
+     <div className="min-w-0">
+      <div className="flex items-baseline gap-2.5 flex-wrap">
+       <p className="text-hero tabular-nums font-mono leading-none" style={{ color: exceptionCount > 0 ? 'var(--neg)' : 'var(--text-primary)' }}>
+        <Numeric value={exceptionCount} compact size="lg" />
+       </p>
+       <p className="hero-eyebrow" style={{ color: 'var(--text-secondary)' }}>Exceptions</p>
+      </div>
+      <p className="text-body-sm t-muted mt-2">
+       {exceptionCount > 0
+        ? 'need review before you approve'
+        : s && s.failed_count > 0
+        ? `none open · ${s.failed_count} failed action${s.failed_count === 1 ? '' : 's'} on record`
+        : 'nothing blocking approvals'}
+      </p>
      </div>
     </div>
    </div>

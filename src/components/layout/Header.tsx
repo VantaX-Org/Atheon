@@ -14,6 +14,9 @@ import { ModuleSwitcher } from "@/components/layout/ModuleSwitcher";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 const PLATFORM_ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
+// /audit redirects to /compliance, gated by COMPLIANCE_ROLES in App.tsx —
+// keep in sync so "View all activity" never links a role into a 403.
+const AUDIT_LOG_ROLES = ['superadmin', 'support_admin', 'admin', 'auditor'];
 
 const industries: { value: IndustryVertical; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -385,7 +388,7 @@ export function Header() {
                 )}
               </div>
 
-              {notifications.length > 0 && (
+              {notifications.length > 0 && user?.role && AUDIT_LOG_ROLES.includes(user.role) && (
                 <div className="px-3.5 py-2" style={{ borderTop: '1px solid var(--border-card)' }}>
                   <button
                     onClick={() => { navigate('/audit'); setShowNotifications(false); }}

@@ -94,7 +94,7 @@ export function AppLayout() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-primary)', backgroundImage: 'var(--field-gradient)', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       {/* TASK-006: Skip to content link */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-md focus:bg-[var(--accent)] focus:text-[var(--text-on-accent)] focus:text-sm">
         Skip to main content

@@ -90,8 +90,10 @@ export function PlatformHealthPage() {
   // embedded CompanyHealthPage. Both URLs (`/platform-health` and the
   // redirect from `/company-health`) land here so the sidebar has a single
   // "Operations Health" entry per UI_POLISH_PRINCIPLES §6.2.
+  // support_admin also gets CompanyHealth: /platform-health is superadmin-only
+  // server-side, so routing support_admin into the infra view just 403s.
   const userRole = useAppStore((s) => s.user?.role);
-  if (userRole && userRole !== 'superadmin' && userRole !== 'support_admin') {
+  if (userRole && userRole !== 'superadmin') {
     return <CompanyHealthPage />;
   }
 
@@ -107,6 +109,9 @@ function SuperadminPlatformHealth() {
   const [platformHealth, setPlatformHealth] = useState<PlatformHealthResponse | null>(null);
   const [tenants, setTenants] = useState<TenantReadRow[]>([]);
   const [alerts, setAlerts] = useState<SystemAlertRow[]>([]);
+  // A failed fetch is "unknown", never "0 alerts / 0 tenants" (honesty law).
+  const [tenantsFailed, setTenantsFailed] = useState(false);
+  const [alertsFailed, setAlertsFailed] = useState(false);
 
   const loadData = useCallback(async () => {
     const [ph, tr, al] = await Promise.allSettled([
@@ -129,8 +134,10 @@ function SuperadminPlatformHealth() {
     if (tr.status === 'fulfilled') {
       const rows = (tr.value?.tenants as unknown as TenantReadRow[] | undefined) ?? [];
       setTenants(rows);
+      setTenantsFailed(false);
     } else {
       setTenants([]);
+      setTenantsFailed(true);
       // Non-fatal — a superadmin on a fresh environment may see no tenants.
       // Only surface a toast on real errors (not silent 403s).
       const err = tr.reason;
@@ -145,8 +152,10 @@ function SuperadminPlatformHealth() {
     if (al.status === 'fulfilled') {
       const rows = (al.value?.alerts as unknown as SystemAlertRow[] | undefined) ?? [];
       setAlerts(rows);
+      setAlertsFailed(false);
     } else {
       setAlerts([]);
+      setAlertsFailed(true);
       const err = al.reason;
       if (err instanceof ApiError && err.status !== 403) {
         toast.error('Failed to load system alerts', {
@@ -178,8 +187,8 @@ function SuperadminPlatformHealth() {
   const tabs = [
     { id: 'infrastructure', label: 'Infrastructure', icon: <Server size={14} /> },
     { id: 'apm', label: 'APM', icon: <Gauge size={14} /> },
-    { id: 'tenants', label: 'Tenant Roster', icon: <Building2 size={14} />, count: tenants.length },
-    { id: 'alerts', label: 'System Alerts', icon: <AlertTriangle size={14} />, count: unacknowledgedAlerts.length },
+    { id: 'tenants', label: 'Tenant Roster', icon: <Building2 size={14} />, count: tenantsFailed ? undefined : tenants.length },
+    { id: 'alerts', label: 'System Alerts', icon: <AlertTriangle size={14} />, count: alertsFailed ? undefined : unacknowledgedAlerts.length },
   ];
 
   const status = statusFrom({ loading, error: null, isEmpty: false });
@@ -225,17 +234,22 @@ function SuperadminPlatformHealth() {
             <span
               aria-hidden
               className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: criticalAlerts.length ? 'var(--neg)' : 'var(--rag-healthy)' }}
+              style={{ background: alertsFailed ? 'var(--warning)' : criticalAlerts.length ? 'var(--neg)' : 'var(--rag-healthy)' }}
             />
           </div>
           <div className="flex items-end gap-3 mb-1">
             <p className="font-mono font-bold t-primary tabular-nums leading-none" style={{ fontSize: '3.25rem' }}>
-              {String(unacknowledgedAlerts.length).padStart(2, '0')}
+              {alertsFailed ? '—' : String(unacknowledgedAlerts.length).padStart(2, '0')}
             </p>
             <p className="text-label mb-2">Active<br />Incidents</p>
           </div>
           <div className="mt-4 space-y-2 flex-1">
-            {unacknowledgedAlerts.length === 0 ? (
+            {alertsFailed ? (
+              <p className="text-caption t-muted flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'var(--warning)' }} />
+                Couldn't load alerts — incident count unknown
+              </p>
+            ) : unacknowledgedAlerts.length === 0 ? (
               <p className="text-caption t-muted flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'var(--rag-healthy)' }} />
                 No active incidents
@@ -286,7 +300,7 @@ function SuperadminPlatformHealth() {
             </div>
             <span className="text-label mb-1">Platform Users</span>
             <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">{platformHealth?.users?.total ?? '—'}</p>
-            <p className="text-caption t-muted mt-1.5">Across {platformHealth?.tenants?.total ?? tenants.length} tenants</p>
+            <p className="text-caption t-muted mt-1.5">Across {platformHealth?.tenants?.total ?? '—'} tenants</p>
           </Card>
           <Card className="p-4 flex flex-col">
             <div className="flex items-center justify-between mb-2">
@@ -308,8 +322,8 @@ function SuperadminPlatformHealth() {
               )}
             </div>
             <span className="text-label mb-1">Active Alerts</span>
-            <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">{unacknowledgedAlerts.length}</p>
-            <p className="text-caption t-muted mt-1.5">{criticalAlerts.length} critical</p>
+            <p className="text-2xl font-bold t-primary font-mono tabular-nums leading-none mt-auto">{alertsFailed ? '—' : unacknowledgedAlerts.length}</p>
+            <p className="text-caption t-muted mt-1.5">{alertsFailed ? "couldn't load alerts" : `${criticalAlerts.length} critical`}</p>
           </Card>
         </div>
       </div>
@@ -411,13 +425,18 @@ function SuperadminPlatformHealth() {
       </TabPanel>
 
       <TabPanel id="tenants" activeTab={activeTab}>
-        {tenants.length === 0 ? (
+        {tenantsFailed ? (
+          <Card className="p-8 text-center">
+            <XCircle size={24} className="mx-auto text-neg mb-2" />
+            <p className="text-sm t-primary font-medium">Couldn't load tenants</p>
+            <p className="text-xs t-muted mt-1">
+              /api/v1/admin-tooling/tenants-read failed or was denied. Try refresh.
+            </p>
+          </Card>
+        ) : tenants.length === 0 ? (
           <Card className="p-8 text-center">
             <Building2 size={24} className="mx-auto t-muted mb-2" />
-            <p className="text-sm t-muted">No tenants visible.</p>
-            <p className="text-caption t-muted mt-1">
-              Requires support_admin or superadmin role.
-            </p>
+            <p className="text-sm t-muted">No tenants provisioned yet.</p>
           </Card>
         ) : (
           <div className="space-y-2">
@@ -453,7 +472,15 @@ function SuperadminPlatformHealth() {
 
       <TabPanel id="alerts" activeTab={activeTab}>
         <div className="space-y-2">
-          {alerts.length === 0 ? (
+          {alertsFailed ? (
+            <Card className="p-8 text-center">
+              <XCircle size={24} className="mx-auto text-neg mb-2" />
+              <p className="text-sm t-primary font-medium">Couldn't load system alerts</p>
+              <p className="text-xs t-muted mt-1">
+                /api/v1/admin-tooling/system-alerts failed or was denied. Alert state is unknown — try refresh.
+              </p>
+            </Card>
+          ) : alerts.length === 0 ? (
             <Card className="p-8 text-center">
               <CheckCircle size={24} className="mx-auto text-accent mb-2" />
               <p className="text-sm t-muted">No active alerts</p>

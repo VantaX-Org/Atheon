@@ -97,6 +97,10 @@ export function SavingsPipeline() {
             {multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
           </p>
           <p className="text-label mt-2" style={{ color: 'var(--text-muted)' }}>RETURN MULTIPLE</p>
+          {/* Recovery rate = recovered ÷ identified, both real ROI fields. */}
+          <p className="text-caption tnum t-muted mt-3">
+            {identified > 0 ? `${((recovered / identified) * 100).toFixed(0)}% of identified opportunity recovered` : '— recovery rate'}
+          </p>
         </div>
 
         {/* Savings by domain */}
