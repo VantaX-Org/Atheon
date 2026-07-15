@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { useAppStore } from '@/stores/appStore';
 import { useToast } from '@/components/ui/toast';
-import { api, ApiError, setTenantOverride } from '@/lib/api';
+import { api, ApiError, setTenantOverride, getToken, setToken } from '@/lib/api';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import {
   Eye, Search, Clock, Loader2, AlertTriangle,
@@ -59,18 +59,32 @@ const ROLE_LEVELS: Record<string, number> = {
 };
 
 const SESSION_STORAGE_KEY = 'atheon_impersonation_session';
+const ADMIN_TOKEN_STASH_KEY = 'atheon_admin_token_stash';
+
+/**
+ * Drop all impersonation client state: restore the stashed admin access token
+ * (if stale, the normal 401→refresh flow renews it on the next request) and
+ * clear any legacy tenant override left by pre-token impersonation sessions.
+ */
+function restoreAdminIdentity() {
+  const stash = localStorage.getItem(ADMIN_TOKEN_STASH_KEY);
+  if (stash) {
+    setToken(stash);
+    localStorage.removeItem(ADMIN_TOKEN_STASH_KEY);
+  }
+  setTenantOverride(null);
+}
 
 function loadSessionFromStorage(): ImpersonationSession | null {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ImpersonationSession;
-    // Discard if expired — and clear the tenant override too, otherwise the
-    // admin keeps silently seeing the impersonated tenant's data with no
-    // banner (the override is persisted in localStorage by api.ts).
+    // Discard if expired — and restore the admin token, otherwise the admin
+    // is left holding a dead impersonation token with no banner explaining why.
     if (new Date(parsed.expiresAt).getTime() < Date.now()) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
-      setTenantOverride(null);
+      restoreAdminIdentity();
       return null;
     }
     return parsed;
@@ -116,16 +130,16 @@ export function ImpersonationPage() {
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  // Auto-expire: when the 15-min window lapses while the page is open, drop
-  // the session + tenant override so the banner never claims a live session
-  // (and the admin never keeps a stale cross-tenant view) past expiry.
+  // Auto-expire: the impersonation token's exp enforces the 15-min window
+  // server-side (requests 401 past expiry); this timer restores the admin
+  // token and banner at the same moment so the UI never claims a live session.
   useEffect(() => {
     if (!activeSession) return;
     const ms = new Date(activeSession.expiresAt).getTime() - Date.now();
     const timer = setTimeout(() => {
       setActiveSession(null);
       localStorage.removeItem(SESSION_STORAGE_KEY);
-      setTenantOverride(null);
+      restoreAdminIdentity();
       toast.warning('Impersonation session expired', {
         message: 'The 15-minute window ended. You are back to your own view.',
       });
@@ -155,6 +169,9 @@ export function ImpersonationPage() {
       if (!imp) {
         throw new Error('Impersonation response missing session data');
       }
+      if (typeof imp.token !== 'string' || !imp.token) {
+        throw new Error('Impersonation response missing session token');
+      }
       const session: ImpersonationSession = {
         userId: String(imp.userId),
         userName: String(imp.name),
@@ -166,9 +183,13 @@ export function ImpersonationPage() {
       };
       setActiveSession(session);
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-      // Scope subsequent API calls to the impersonated tenant so the admin sees
-      // that tenant's data, not their own.
-      setTenantOverride(session.tenantId);
+      // Swap to the server-issued impersonation token: role + tenant scoping
+      // and the 15-min expiry are enforced by the API, not client state. Stash
+      // the admin token so End Session can restore it. The admin refresh token
+      // is kept, so after expiry the next 401 silently renews the admin identity.
+      localStorage.setItem(ADMIN_TOKEN_STASH_KEY, getToken() || '');
+      setToken(String(imp.token));
+      setTenantOverride(null);
       setConfirmUser(null);
       toast.success('Impersonation started', {
         message: `Viewing as ${session.userName} (${session.userRole}). Session expires at ${new Date(session.expiresAt).toLocaleTimeString()}.`,
@@ -185,11 +206,14 @@ export function ImpersonationPage() {
 
   const endImpersonation = async () => {
     setEnding(true);
+    // Restore the admin token FIRST — the end endpoint is support/superadmin
+    // only, so calling it with the scoped-down impersonation token would 403.
+    restoreAdminIdentity();
     try {
       await api.adminTooling.impersonateEnd();
     } catch (err) {
-      // Best-effort: even if the end call fails, we clear client state so the
-      // admin isn't stuck with a dead override. Surface the error as a warning.
+      // Best-effort: even if the end call fails, client state is already
+      // restored so the admin isn't stuck. Surface the error as a warning.
       toast.warning('Impersonation end may not have been logged', {
         message: err instanceof Error ? err.message : 'Session cleared locally',
         requestId: err instanceof ApiError ? err.requestId : null,
@@ -197,7 +221,6 @@ export function ImpersonationPage() {
     } finally {
       setActiveSession(null);
       localStorage.removeItem(SESSION_STORAGE_KEY);
-      setTenantOverride(null);
       setEnding(false);
     }
   };
@@ -268,7 +291,6 @@ export function ImpersonationPage() {
         style={{
           background: 'rgb(var(--rag-watch-rgb) / 0.12)',
           border: '1px solid rgb(var(--rag-watch-rgb) / 0.34)',
-          borderLeft: '3px solid var(--warning)',
         }}
       >
         <AlertTriangle size={18} style={{ color: 'var(--warning)' }} className="mt-0.5 shrink-0" />
