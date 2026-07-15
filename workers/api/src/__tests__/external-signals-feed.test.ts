@@ -10,6 +10,8 @@ import { env, SELF } from 'cloudflare:test';
 import {
   frankfurterFxSource,
   eiaOilSource,
+  worldBankMacroSource,
+  gdeltNewsSource,
   sweepExternalSignals,
   type ExternalSignalSource,
 } from '../services/external-signals-feed';
@@ -122,6 +124,63 @@ describe('Phase 10-2 — external signals feed', () => {
         EIA_API_KEY: 'test-key', EIA_BASE: 'https://eia.test',
       });
       expect(readings).toBeNull();
+    });
+  });
+
+  describe('worldBankMacroSource', () => {
+    it('fetches SA CPI + GDP growth and maps to macro readings', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response(JSON.stringify([
+          { page: 1 }, [{ date: '2025', value: 4.4 }],
+        ]), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify([
+          { page: 1 }, [{ date: '2025', value: 1.1 }],
+        ]), { status: 200 }));
+
+      const readings = await worldBankMacroSource.fetchLatest({ WORLD_BANK_BASE: 'https://wb.test' });
+      expect(readings).not.toBeNull();
+      expect(readings!.length).toBe(2);
+      expect(readings![0].signal_key).toBe('macro.za_cpi_inflation');
+      expect(readings![0].value).toBe(4.4);
+      expect(readings![0].category).toBe('macro');
+      expect(readings![1].signal_key).toBe('macro.za_gdp_growth');
+      expect(fetchMock.mock.calls[0][0]).toContain('/country/ZAF/indicator/FP.CPI.TOTL.ZG');
+    });
+
+    it('skips null-value points and returns null when nothing usable', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ page: 1 }, [{ date: '2025', value: null }]]), { status: 200 }))
+        .mockResolvedValueOnce(new Response('server error', { status: 500 }));
+      expect(await worldBankMacroSource.fetchLatest({ WORLD_BANK_BASE: 'https://wb.test' })).toBeNull();
+    });
+  });
+
+  describe('gdeltNewsSource', () => {
+    it('maps real articles into one news reading with articles payload', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+        articles: [
+          { title: 'Rand slides on power cuts', url: 'https://news.test/a', seendate: '20260714T080000Z', domain: 'news.test' },
+          { title: 'Mining exports up', url: 'https://news.test/b', seendate: '20260713T080000Z', domain: 'news.test' },
+        ],
+      }), { status: 200 }));
+
+      const readings = await gdeltNewsSource.fetchLatest({ GDELT_BASE: 'https://gdelt.test' });
+      expect(readings).not.toBeNull();
+      expect(readings!.length).toBe(1);
+      const r = readings![0];
+      expect(r.category).toBe('news');
+      expect(r.signal_key).toBe('news.za_economy');
+      expect(r.value).toBe(2);
+      expect(r.summary).toBe('Rand slides on power cuts');
+      expect(r.articles).toEqual([
+        { title: 'Rand slides on power cuts', url: 'https://news.test/a', date: '2026-07-14', domain: 'news.test' },
+        { title: 'Mining exports up', url: 'https://news.test/b', date: '2026-07-13', domain: 'news.test' },
+      ]);
+    });
+
+    it('returns null when no articles', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ articles: [] }), { status: 200 }));
+      expect(await gdeltNewsSource.fetchLatest({ GDELT_BASE: 'https://gdelt.test' })).toBeNull();
     });
   });
 

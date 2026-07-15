@@ -44,7 +44,10 @@ export function defaultPersona(user: User | null): Persona | null {
 }
 
 const ARROW: Record<ExternalPulseChannel['direction'], string> = { up: '↑', down: '↓', flat: '→' };
-const PULSE_LABEL: Record<string, string> = { 'fx.usd_zar': 'ZAR/USD', 'oil.brent_spot': 'Brent' };
+const PULSE_LABEL: Record<string, string> = {
+  'fx.usd_zar': 'ZAR/USD', 'oil.brent_spot': 'Brent',
+  'macro.za_cpi_inflation': 'CPI', 'macro.za_gdp_growth': 'GDP',
+};
 
 function channelLine(c: ExternalPulseChannel): string {
   const label = PULSE_LABEL[c.signal_key] ?? c.signal_key;
@@ -53,7 +56,8 @@ function channelLine(c: ExternalPulseChannel): string {
 }
 
 function pulseLine(p: NonNullable<PersonaInsightsResponse['external_pulse']>): string {
-  const bits = [p.fx, p.brent].filter((c): c is ExternalPulseChannel => !!c).map(channelLine);
+  const bits = [p.fx, p.brent, p.cpi, p.gdp].filter((c): c is ExternalPulseChannel => !!c).map(channelLine);
+  if (p.news_latest) bits.push(`News: ${p.news_latest.title}`);
   if (p.regulatory_latest) bits.push(`Reg: ${p.regulatory_latest.title}`);
   return bits.join(' · ');
 }

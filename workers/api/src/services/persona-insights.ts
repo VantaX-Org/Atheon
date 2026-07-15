@@ -107,6 +107,11 @@ interface PulseChannel {
 export interface ExternalPulse {
   fx: PulseChannel | null;
   brent: PulseChannel | null;
+  /** Macro indicators — SA CPI inflation and GDP growth (World Bank feed). */
+  cpi: PulseChannel | null;
+  gdp: PulseChannel | null;
+  /** Latest real headline from the GDELT news feed — linked, never paraphrased into claims. */
+  news_latest: { signal_id: string; title: string; url: string; date: string; domain: string } | null;
   regulatory_latest: { id: string; title: string; jurisdiction: string | null; effective_date: string | null } | null;
 }
 
@@ -197,10 +202,30 @@ async function readPulseChannel(db: D1Database, tenantId: string, signalKey: str
   }
 }
 
+/** Latest real news headline stored by the GDELT feed source. */
+async function readNewsLatest(db: D1Database, tenantId: string): Promise<ExternalPulse['news_latest']> {
+  try {
+    const row = await db.prepare(
+      `SELECT id, raw_data FROM external_signals
+        WHERE tenant_id = ? AND raw_data LIKE '%"signal_key":"news.za_economy"%'
+        ORDER BY detected_at DESC LIMIT 1`,
+    ).bind(tenantId).first<{ id: string; raw_data: string }>();
+    if (!row) return null;
+    const raw = JSON.parse(row.raw_data) as { articles?: Array<{ title: string; url: string; date: string; domain: string }> };
+    const a = raw.articles?.[0];
+    return a ? { signal_id: row.id, ...a } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readExternalPulse(db: D1Database, tenantId: string): Promise<ExternalPulse | null> {
-  const [fx, brent] = await Promise.all([
+  const [fx, brent, cpi, gdp, news] = await Promise.all([
     readPulseChannel(db, tenantId, 'fx.usd_zar'),
     readPulseChannel(db, tenantId, 'oil.brent_spot'),
+    readPulseChannel(db, tenantId, 'macro.za_cpi_inflation'),
+    readPulseChannel(db, tenantId, 'macro.za_gdp_growth'),
+    readNewsLatest(db, tenantId),
   ]);
   let regulatory: ExternalPulse['regulatory_latest'] = null;
   try {
@@ -210,8 +235,140 @@ async function readExternalPulse(db: D1Database, tenantId: string): Promise<Exte
     ).bind(tenantId).first<{ id: string; title: string; jurisdiction: string | null; effective_date: string | null }>();
     if (row) regulatory = row;
   } catch { /* table absent → no regulatory pulse */ }
-  if (!fx && !brent && !regulatory) return null;
-  return { fx, brent, regulatory_latest: regulatory };
+  if (!fx && !brent && !cpi && !gdp && !news && !regulatory) return null;
+  return { fx, brent, cpi, gdp, news_latest: news, regulatory_latest: regulatory };
+}
+
+// ── Economic exposure (supply / demand / value-chain net) ───────────────────
+// Booked figures straight from erp rows — native currency only, never converted
+// to ZAR here. Shown beside the FX pulse so the reader draws the conclusion
+// (honesty law §5.3.2).
+
+export interface EconomicExposureLeg {
+  currency: string;
+  spend_native: number;   // trailing-12mo supplier PO spend — input-cost side
+  po_count: number;
+  revenue_native: number; // trailing-12mo invoiced revenue — demand side
+  invoice_count: number;
+}
+
+export async function readEconomicExposure(db: D1Database, tenantId: string): Promise<EconomicExposureLeg[]> {
+  const legs = new Map<string, EconomicExposureLeg>();
+  const leg = (ccy: string): EconomicExposureLeg => {
+    let l = legs.get(ccy);
+    if (!l) { l = { currency: ccy, spend_native: 0, po_count: 0, revenue_native: 0, invoice_count: 0 }; legs.set(ccy, l); }
+    return l;
+  };
+  try {
+    const pos = await db.prepare(
+      `SELECT currency, COUNT(*) AS n, COALESCE(SUM(total), 0) AS v FROM erp_purchase_orders
+        WHERE tenant_id = ? AND currency IS NOT NULL AND currency != 'ZAR' AND status != 'cancelled'
+          AND order_date >= date('now', '-12 months')
+        GROUP BY currency`,
+    ).bind(tenantId).all<{ currency: string; n: number; v: number }>();
+    for (const r of pos.results || []) { const l = leg(r.currency); l.spend_native = r.v; l.po_count = r.n; }
+    const inv = await db.prepare(
+      `SELECT currency, COUNT(*) AS n, COALESCE(SUM(total), 0) AS v FROM erp_invoices
+        WHERE tenant_id = ? AND currency IS NOT NULL AND currency != 'ZAR' AND status != 'cancelled'
+          AND invoice_date >= date('now', '-12 months')
+        GROUP BY currency`,
+    ).bind(tenantId).all<{ currency: string; n: number; v: number }>();
+    for (const r of inv.results || []) { const l = leg(r.currency); l.revenue_native = r.v; l.invoice_count = r.n; }
+  } catch { return []; } // table absent → no exposure card, insights still render
+  return [...legs.values()].sort((a, b) => (b.spend_native + b.revenue_native) - (a.spend_native + a.revenue_native));
+}
+
+function fmtNative(n: number, ccy: string): string {
+  if (n >= 1_000_000) return `${ccy} ${(n / 1_000_000).toFixed(2)}m`;
+  if (n >= 1_000) return `${ccy} ${(n / 1_000).toFixed(0)}k`;
+  return `${ccy} ${Math.round(n).toLocaleString()}`;
+}
+
+const ECON_EXPOSURE_PERSONAS = ['cfo', 'cpo', 'cmo'] as const;
+
+/**
+ * One context card per persona lens over the same booked legs:
+ * CPO = input costs (supply), CMO = foreign revenue (demand),
+ * CFO = value-chain net position (natural hedge or open exposure).
+ */
+export function economicExposureCard(
+  persona: Persona, legs: EconomicExposureLeg[], pulse: ExternalPulse | null, assessmentId: string,
+): PersonaInsight | null {
+  if (!(ECON_EXPOSURE_PERSONAS as readonly string[]).includes(persona) || legs.length === 0) return null;
+  const side = persona === 'cpo' ? 'spend' : persona === 'cmo' ? 'revenue' : 'net';
+  const active = legs.filter((l) => (side === 'spend' ? l.spend_native > 0 : side === 'revenue' ? l.revenue_native > 0 : true));
+  if (active.length === 0) return null;
+
+  let headline: string;
+  let bits: string[];
+  if (side === 'spend') {
+    headline = `Foreign-currency input costs (12mo): ${active.map((l) => fmtNative(l.spend_native, l.currency)).join(' · ')}`;
+    bits = active.map((l) => `${fmtNative(l.spend_native, l.currency)} across ${l.po_count} purchase order${l.po_count === 1 ? '' : 's'}`);
+  } else if (side === 'revenue') {
+    headline = `Foreign-currency revenue (12mo): ${active.map((l) => fmtNative(l.revenue_native, l.currency)).join(' · ')}`;
+    bits = active.map((l) => `${fmtNative(l.revenue_native, l.currency)} across ${l.invoice_count} invoice${l.invoice_count === 1 ? '' : 's'}`);
+  } else {
+    headline = `Value-chain currency position (12mo): ${active.map((l) => {
+      const net = l.revenue_native - l.spend_native;
+      return `${l.currency} ${net >= 0 ? '+' : '−'}${fmtNative(Math.abs(net), l.currency).slice(l.currency.length + 1)}`;
+    }).join(' · ')}`;
+    bits = active.map((l) => {
+      const net = l.revenue_native - l.spend_native;
+      const dir = net > 0 ? 'revenue exceeds spend by' : net < 0 ? 'spend exceeds revenue by' : 'revenue and spend offset —';
+      return `${l.currency}: earns ${fmtNative(l.revenue_native, l.currency)}, spends ${fmtNative(l.spend_native, l.currency)} — ${dir} ${fmtNative(Math.abs(net), l.currency)}`;
+    });
+  }
+
+  const usdLeg = active.some((l) => l.currency === 'USD');
+  const fx = usdLeg ? pulse?.fx ?? null : null;
+  const rateBit = fx
+    ? ` USD/ZAR ${fx.value}${fx.change_pct !== null ? ` (${fx.change_pct > 0 ? '+' : ''}${fx.change_pct}%)` : ''} as of ${fx.as_of}.`
+    : '';
+
+  // Suggestions: deterministic pairing of the booked leg with the live signal.
+  // Always conditional ("potential effect") — the reader draws the conclusion.
+  const suggestions: string[] = [];
+  if (fx && fx.direction !== 'flat') {
+    const weaker = fx.direction === 'up'; // ZAR per USD rising = rand weakening
+    if (side === 'spend') {
+      suggestions.push(weaker
+        ? 'Potential effect: a weaker rand raises the cost of this imported spend — consider reviewing supplier contracts and forward-cover options.'
+        : 'Potential effect: a stronger rand lowers the cost of this imported spend — a window to negotiate pricing or bring forward orders.');
+    } else if (side === 'revenue') {
+      suggestions.push(weaker
+        ? 'Potential effect: a weaker rand lifts the rand value of this foreign revenue.'
+        : 'Potential effect: a stronger rand reduces the rand value of this foreign revenue — watch pricing and margins.');
+    } else {
+      suggestions.push('Where inflows and outflows share a currency they partly offset (a natural hedge); the open leg carries the rate risk.');
+    }
+  }
+  if (side !== 'revenue' && pulse?.cpi) {
+    suggestions.push(`SA CPI inflation ${pulse.cpi.value}% (${pulse.cpi.as_of}) adds domestic input-cost pressure on top of any currency move.`);
+  }
+  const news = pulse?.news_latest;
+  const newsBit = news ? ` In the news: “${news.title}” (${news.domain}, ${news.date}).` : '';
+
+  return {
+    id: `${persona}:econ_exposure:${assessmentId}`,
+    persona,
+    severity: 'low',
+    headline,
+    detail: `Booked ${side === 'spend' ? 'supplier spend' : side === 'revenue' ? 'invoiced revenue' : 'flows'} from your ERP records, native currency.` +
+      ` ${bits.join(' · ')}.${rateBit}${suggestions.length ? ` ${suggestions.join(' ')}` : ''}${newsBit}` +
+      ' Context only — no Rand impact is calculated from these figures.',
+    value_zar: null,
+    value_kind: 'context',
+    source: { assessment_id: assessmentId, ...(fx ? { external_signal_id: fx.signal_id } : {}) },
+    ...(fx ? {
+      external_context: {
+        signal: fx.signal_key,
+        value: `${fx.value} ${fx.unit}`.trim(),
+        direction: fx.direction,
+        note: `As of ${fx.as_of}. Context only — not included in any Rand figure.`,
+      },
+    } : {}),
+    cta: { label: 'View findings', route: '/findings' },
+  };
 }
 
 function rankFindings(findings: Finding[]): Finding[] {
@@ -337,6 +494,9 @@ async function buildCeoCards(
     const bits: string[] = [];
     if (pulse.fx) bits.push(`USD/ZAR ${pulse.fx.value}${pulse.fx.change_pct !== null ? ` (${pulse.fx.change_pct > 0 ? '+' : ''}${pulse.fx.change_pct}%)` : ''}`);
     if (pulse.brent) bits.push(`Brent ${pulse.brent.value} ${pulse.brent.unit}`.trim());
+    if (pulse.cpi) bits.push(`CPI ${pulse.cpi.value}%`);
+    if (pulse.gdp) bits.push(`GDP ${pulse.gdp.value}%`);
+    if (pulse.news_latest) bits.push(`News: ${pulse.news_latest.title}`);
     if (pulse.regulatory_latest) bits.push(`Reg: ${pulse.regulatory_latest.title}`);
     const primary = pulse.fx || pulse.brent;
     cards.push({
@@ -493,6 +653,12 @@ export async function buildPersonaInsights(
   const codeSet = new Set<FindingCode>(PERSONA_SIGNAL_MAP[persona]);
   const matched = rankFindings(findings.filter((f) => codeSet.has(f.code))).slice(0, 8);
   const insights = matched.map((f) => attachExternalContext(insightFromFinding(persona, f, row.id), pulse));
+
+  // Economic exposure — booked supply/demand/net legs paired with the live pulse.
+  if ((ECON_EXPOSURE_PERSONAS as readonly string[]).includes(persona)) {
+    const econ = economicExposureCard(persona, await readEconomicExposure(db, tenantId), pulse, row.id);
+    if (econ) insights.push(econ);
+  }
 
   return { persona, generated_from_assessment_id: row.id, insights, external_pulse: pulse };
 }
