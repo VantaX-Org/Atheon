@@ -47,26 +47,29 @@ governance.get('/:tenantId', async (c) => {
   const tenantId = requestedTenantId;
 
   try {
+    // No per-query catch fallbacks: a failed query must surface as the outer
+    // 500 (the page shows its error state), never render as "0 exports" —
+    // these are compliance counts.
     const [exportsRow, erasuresRow, lastExportRow, retentionRow, auditVolumeRow, encryptionRow] = await Promise.all([
       c.env.DB.prepare(
         "SELECT COUNT(*) as count FROM audit_log WHERE tenant_id = ? AND action = 'popia.data_export.completed' AND created_at > datetime('now', '-30 days')",
-      ).bind(tenantId).first().catch(() => ({ count: 0 })),
+      ).bind(tenantId).first(),
       c.env.DB.prepare(
         "SELECT COUNT(*) as count FROM audit_log WHERE tenant_id = ? AND action = 'popia.erasure.completed' AND created_at > datetime('now', '-30 days')",
-      ).bind(tenantId).first().catch(() => ({ count: 0 })),
+      ).bind(tenantId).first(),
       c.env.DB.prepare(
         "SELECT MAX(created_at) as last_at FROM audit_log WHERE tenant_id = ? AND action = 'popia.data_export.completed'",
-      ).bind(tenantId).first().catch(() => ({ last_at: null })),
+      ).bind(tenantId).first(),
       c.env.DB.prepare(
         'SELECT data_retention_days FROM tenant_entitlements WHERE tenant_id = ?',
-      ).bind(tenantId).first().catch(() => ({ data_retention_days: null })),
+      ).bind(tenantId).first(),
       c.env.DB.prepare(
         "SELECT COUNT(*) as count FROM audit_log WHERE tenant_id = ? AND created_at > datetime('now', '-30 days')",
-      ).bind(tenantId).first().catch(() => ({ count: 0 })),
+      ).bind(tenantId).first(),
       c.env.DB.prepare(
         // Count ERP connections with credentials stored encrypted vs plaintext.
         "SELECT SUM(CASE WHEN encrypted_config IS NOT NULL AND encrypted_config != '' THEN 1 ELSE 0 END) as encrypted, SUM(CASE WHEN (encrypted_config IS NULL OR encrypted_config = '') AND config != '{}' THEN 1 ELSE 0 END) as plaintext FROM erp_connections WHERE tenant_id = ?",
-      ).bind(tenantId).first().catch(() => ({ encrypted: 0, plaintext: 0 })),
+      ).bind(tenantId).first(),
     ]);
 
     const retentionDays = Number((retentionRow as Record<string, unknown>)?.data_retention_days || 0) || null;

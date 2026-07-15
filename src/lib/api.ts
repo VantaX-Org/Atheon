@@ -2091,9 +2091,6 @@ export const api = {
       request<{ id: string }>('/api/v1/admin-tooling/custom-roles', { method: 'POST', body: JSON.stringify(data) }),
     customRolesDelete: (id: string) =>
       request<{ success: boolean }>(`/api/v1/admin-tooling/custom-roles/${id}`, { method: 'DELETE' }),
-    // ADMIN-007: Revenue
-    revenue: () =>
-      request<Record<string, unknown>>('/api/v1/admin-tooling/revenue'),
     // ADMIN-008: Feature Flags
     featureFlags: () =>
       request<{ flags: Record<string, unknown>[] }>('/api/v1/admin-tooling/feature-flags'),
@@ -4550,15 +4547,16 @@ export interface DsarSummary { by_type_and_status: DsarRow[] }
 
 export interface PlatformTotals {
   lookback_days: number | null;
-  runs: { total: number; matched: number; discrepancies: number; exceptions: number };
+  // null block = that aggregate query failed server-side — hide, never show 0
+  runs: { total: number; matched: number; discrepancies: number; exceptions: number } | null;
   items: {
     total: number; matched: number; discrepancies: number; exceptions: number;
     processed_value: number; discrepancy_value: number;
-  };
-  actions: { total: number; verified: number; pending: number };
-  risks: { total: number; critical: number; high: number };
-  anomalies: { total: number; open: number };
-  savings: { total_realised: number; atheon_revenue: number; currency: string };
+  } | null;
+  actions: { total: number; verified: number; pending: number } | null;
+  risks: { total: number; critical: number; high: number } | null;
+  anomalies: { total: number; open: number } | null;
+  savings: { total_realised: number; atheon_revenue: number; currency: string } | null;
 }
 
 // §4.4 ROI & Board Report Types
@@ -4983,9 +4981,10 @@ export interface RevenueUsageResponse {
   byPlan: Array<{ plan: string; count: number; estMrrUsd: number | null }>;
   growth: { newTenantsByMonth: Array<{ month: string; count: number }> };
   llm: {
-    totalTokens30d: number;
-    callCount30d: number;
-    topTenants: Array<{ tenantId: string; name: string; plan: string; tokens30d: number }>;
+    // null = usage query failed server-side — render as unknown, never 0
+    totalTokens30d: number | null;
+    callCount30d: number | null;
+    topTenants: Array<{ tenantId: string; name: string; plan: string; tokens30d: number }> | null;
   };
   timestamp: string;
 }

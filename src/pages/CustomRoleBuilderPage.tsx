@@ -134,6 +134,9 @@ export function CustomRoleBuilderPage() {
   const ceiling = useMemo(() => {
     if (isPlatformStaff) return null;
     const own = baseRoles.find(b => b.id === currentRole);
+    // admin.* wildcard = full tenant authority — no ceiling. Without this,
+    // exact-match locks every checkbox for the page's primary user (admin).
+    if (own?.permissions.includes('admin.*')) return null;
     return new Set(own?.permissions || []);
   }, [isPlatformStaff, baseRoles, currentRole]);
   const isAboveCeiling = useCallback(

@@ -829,6 +829,23 @@ function requireAdmin(c: { get: (k: string) => unknown }): { ok: true; auth: Aut
   return { ok: true, auth };
 }
 
+/**
+ * Permission ceiling for the caller: the set of permissions their own base
+ * role holds. Grants above this are privilege escalation. `null` = unlimited
+ * (platform staff, or a role holding the admin.* wildcard).
+ */
+function permissionCeiling(auth: AuthContext): Set<string> | null {
+  if (auth.role === 'superadmin' || auth.role === 'support_admin') return null;
+  const own = BASE_ROLE_PERMISSIONS[auth.role] || [];
+  if (own.includes('admin.*')) return null;
+  return new Set(own);
+}
+
+/** Expand a base role to its inherited permission list ([] if none/unknown). */
+function basePerms(inheritsFrom: string | null | undefined): string[] {
+  return inheritsFrom ? (BASE_ROLE_PERMISSIONS[inheritsFrom] || []) : [];
+}
+
 // GET /api/iam/permissions — master permission taxonomy
 iam.get('/permissions', async (c) => {
   const gate = requireAdmin(c);
@@ -890,6 +907,18 @@ iam.post('/custom-roles', async (c) => {
     }
   }
 
+  // Escalation guard: callers cannot grant permissions above their own role,
+  // whether directly or via inherits_from. Client-side ceiling is bypassable
+  // with a direct API call.
+  const ceiling = permissionCeiling(gate.auth);
+  if (ceiling) {
+    const granted = new Set([...permSet, ...basePerms(body.inherits_from)]);
+    const escalating = [...granted].filter(p => !ceiling.has(p));
+    if (escalating.length > 0) {
+      return c.json({ error: 'Permission escalation', message: `Cannot grant permissions above your own role: ${escalating.join(', ')}` }, 403);
+    }
+  }
+
   // Reject duplicate name for this tenant
   const existing = await c.env.DB.prepare(
     'SELECT id FROM iam_custom_roles WHERE tenant_id = ? AND name = ?'
@@ -938,6 +967,25 @@ iam.put('/custom-roles/:id', async (c) => {
 
   if (body.inherits_from && !VALID_BASE_ROLES.has(body.inherits_from)) {
     return c.json({ error: 'Invalid inherits_from' }, 400);
+  }
+
+  // Escalation guard: removals always allowed; NEWLY-added permissions (direct
+  // or via an inherits_from change) above the caller's own role are rejected.
+  // Perms already on the role (e.g. granted by a superadmin) are preserved.
+  const ceiling = permissionCeiling(gate.auth);
+  if (ceiling) {
+    let existingPerms: string[] = [];
+    try { existingPerms = JSON.parse(existing.permissions || '[]'); } catch { existingPerms = []; }
+    const had = new Set([...existingPerms, ...basePerms(existing.inherits_from)]);
+    const nextDirect = body.permissions !== undefined
+      ? body.permissions.filter((p): p is string => typeof p === 'string')
+      : existingPerms;
+    const nextBase = body.inherits_from !== undefined ? (body.inherits_from || null) : existing.inherits_from;
+    const escalating = [...new Set([...nextDirect, ...basePerms(nextBase)])]
+      .filter(p => !had.has(p) && !ceiling.has(p));
+    if (escalating.length > 0) {
+      return c.json({ error: 'Permission escalation', message: `Cannot grant permissions above your own role: ${escalating.join(', ')}` }, 403);
+    }
   }
 
   const updates: string[] = [];

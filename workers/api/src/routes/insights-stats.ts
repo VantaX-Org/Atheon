@@ -70,7 +70,9 @@ stats.get('/billing-summary', async (c) => {
       currency: r?.currency ?? 'ZAR',
     });
   } catch {
-    return c.json({ periods_count: 0, total_realised_savings: 0, total_atheon_revenue: 0, currency: 'ZAR' });
+    // A failed query must not fabricate "R0 recovered" — every consumer
+    // already tolerates a rejected billingSummary (catch / allSettled).
+    return c.json({ error: 'Billing summary unavailable' }, 503);
   }
 });
 
@@ -83,8 +85,8 @@ stats.get('/billing-summary', async (c) => {
  * every action — not just the latest period.
  *
  * Returns lifetime aggregates by default; pass `?lookback_days=N` to scope
- * to a window. All counts are best-effort: failures on individual tables
- * fall back to 0 rather than breaking the chip.
+ * to a window. Best-effort per block: a failed table query returns that
+ * block as null (the chip hides / makes no claim) — never a fabricated 0.
  */
 stats.get('/platform-totals', async (c) => {
   const tid = tenant(c);
@@ -95,8 +97,8 @@ stats.get('/platform-totals', async (c) => {
     ? ` AND created_at > datetime('now', '-${lookbackDays} days')`
     : '';
 
-  // Helper: best-effort single-row aggregate. Returns null on any failure
-  // so callers fall back to 0 rather than 500-ing the whole rollup.
+  // Helper: best-effort single-row aggregate. Returns null on any failure;
+  // the response block stays null so the client renders "unknown", never 0.
   async function safeOne<T extends Record<string, unknown>>(sql: string): Promise<T | null> {
     try {
       return await c.env.DB.prepare(sql).bind(tid).first<T>();
@@ -148,40 +150,42 @@ stats.get('/platform-totals', async (c) => {
     ),
   ]);
 
+  // A null block = that query failed. Inner `?? 0` only covers SQL NULL from
+  // SUM over an empty table — a real, honest zero.
   return c.json({
     lookback_days: lookbackDays,
-    runs: {
-      total: runs?.n ?? 0,
-      matched: runs?.matched ?? 0,
-      discrepancies: runs?.disc ?? 0,
-      exceptions: runs?.exc ?? 0,
+    runs: runs === null ? null : {
+      total: runs.n ?? 0,
+      matched: runs.matched ?? 0,
+      discrepancies: runs.disc ?? 0,
+      exceptions: runs.exc ?? 0,
     },
-    items: {
-      total: items?.n ?? 0,
-      matched: items?.matched ?? 0,
-      discrepancies: items?.disc ?? 0,
-      exceptions: items?.exc ?? 0,
-      processed_value: items?.total_value ?? 0,
-      discrepancy_value: items?.disc_value ?? 0,
+    items: items === null ? null : {
+      total: items.n ?? 0,
+      matched: items.matched ?? 0,
+      discrepancies: items.disc ?? 0,
+      exceptions: items.exc ?? 0,
+      processed_value: items.total_value ?? 0,
+      discrepancy_value: items.disc_value ?? 0,
     },
-    actions: {
-      total: actions?.total ?? 0,
-      verified: actions?.verified ?? 0,
-      pending: actions?.pending ?? 0,
+    actions: actions === null ? null : {
+      total: actions.total ?? 0,
+      verified: actions.verified ?? 0,
+      pending: actions.pending ?? 0,
     },
-    risks: {
-      total: risksRow?.total ?? 0,
-      critical: risksRow?.critical ?? 0,
-      high: risksRow?.high ?? 0,
+    risks: risksRow === null ? null : {
+      total: risksRow.total ?? 0,
+      critical: risksRow.critical ?? 0,
+      high: risksRow.high ?? 0,
     },
-    anomalies: {
-      total: anomalies?.total ?? 0,
-      open: anomalies?.open ?? 0,
+    anomalies: anomalies === null ? null : {
+      total: anomalies.total ?? 0,
+      open: anomalies.open ?? 0,
     },
-    savings: {
-      total_realised: savings?.realised ?? 0,
-      atheon_revenue: savings?.atheon ?? 0,
-      currency: savings?.currency ?? 'ZAR',
+    savings: savings === null ? null : {
+      total_realised: savings.realised ?? 0,
+      atheon_revenue: savings.atheon ?? 0,
+      currency: savings.currency ?? 'ZAR',
     },
   });
 });

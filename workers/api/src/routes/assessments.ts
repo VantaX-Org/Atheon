@@ -1,6 +1,8 @@
 // workers/api/src/routes/assessments.ts
-// Pre-Assessment Tool API — superadmin only
-import { Hono } from 'hono';
+// Pre-Assessment Tool API — writes are superadmin-only; reads extend to
+// support_admin (any tenant) and tenant admins (own tenant only), so the
+// billing-proof findings are visible to the people being billed.
+import { Hono, type Context } from 'hono';
 import type { AppBindings, AuthContext } from '../types';
 import {
   runAssessment,
@@ -22,17 +24,43 @@ function requireSuperAdmin(auth: AuthContext | undefined): boolean {
   return auth?.role === 'superadmin';
 }
 
+function isPlatformStaff(auth: AuthContext | undefined): boolean {
+  return auth?.role === 'superadmin' || auth?.role === 'support_admin';
+}
+
+/**
+ * Read gate for /:id routes: platform staff read any assessment; a tenant
+ * admin reads only assessments belonging to their own tenant. Returns the
+ * denial Response to send, or null when allowed. Cross-tenant lookups 404
+ * (don't leak existence). Writes stay superadmin-only.
+ */
+async function assessmentReadGate(c: Context<AppBindings>): Promise<Response | null> {
+  const auth = c.get('auth') as AuthContext | undefined;
+  if (isPlatformStaff(auth)) return null;
+  if (auth?.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
+  const row = await c.env.DB.prepare('SELECT tenant_id FROM assessments WHERE id = ?')
+    .bind(c.req.param('id')).first<{ tenant_id: string }>();
+  if (!row || row.tenant_id !== auth.tenantId) return c.json({ error: 'Not found' }, 404);
+  return null;
+}
+
 // ── GET /api/assessments — list all assessments ───────────────────────────
 assessments.get('/', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  if (!isPlatformStaff(auth) && auth?.role !== 'admin') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
 
-  const results = await c.env.DB.prepare(`
+  // Tenant admins see only their own tenant's assessments.
+  const scoped = !isPlatformStaff(auth);
+  const stmt = c.env.DB.prepare(`
     SELECT a.*, t.name as tenant_name
     FROM assessments a
     JOIN tenants t ON a.tenant_id = t.id
+    ${scoped ? 'WHERE a.tenant_id = ?' : ''}
     ORDER BY a.created_at DESC
-  `).all<Record<string, unknown>>();
+  `);
+  const results = await (scoped ? stmt.bind(auth!.tenantId) : stmt).all<Record<string, unknown>>();
 
   return c.json({
     assessments: results.results.map(formatAssessment),
@@ -278,8 +306,8 @@ assessments.put('/config/defaults', async (c) => {
 
 // ── GET /api/assessments/:id — get assessment + results ───────────────────
 assessments.get('/:id', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessment = await c.env.DB.prepare(`
     SELECT a.*, t.name as tenant_name
@@ -294,8 +322,8 @@ assessments.get('/:id', async (c) => {
 
 // ── GET /api/assessments/:id/status — polling endpoint ────────────────────
 assessments.get('/:id/status', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessment = await c.env.DB.prepare(
     'SELECT status, results FROM assessments WHERE id = ?'
@@ -317,8 +345,8 @@ assessments.get('/:id/status', async (c) => {
 
 // ── GET /api/assessments/:id/report/business — download business PDF ──────
 assessments.get('/:id/report/business', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessmentId = c.req.param('id');
   const assessment = await c.env.DB.prepare(
@@ -388,8 +416,8 @@ assessments.get('/:id/report/business', async (c) => {
 
 // ── GET /api/assessments/:id/report/technical — download technical PDF ────
 assessments.get('/:id/report/technical', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessment = await c.env.DB.prepare(
     'SELECT technical_report_key, prospect_name FROM assessments WHERE id = ?'
@@ -412,8 +440,8 @@ assessments.get('/:id/report/technical', async (c) => {
 
 // ── GET /api/assessments/:id/report/excel — download Excel model ──────────
 assessments.get('/:id/report/excel', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessment = await c.env.DB.prepare(
     'SELECT excel_model_key, prospect_name FROM assessments WHERE id = ?'
@@ -484,8 +512,8 @@ assessments.post('/:id/run-value-assessment', async (c) => {
 
 // ── GET /api/assessments/:id/findings ──────────────────────────────────────
 assessments.get('/:id/findings', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessmentId = c.req.param('id');
   const category = c.req.query('category');
@@ -518,8 +546,8 @@ assessments.get('/:id/findings', async (c) => {
 
 // ── GET /api/assessments/:id/data-quality ──────────────────────────────────
 assessments.get('/:id/data-quality', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const results = await c.env.DB.prepare(
     'SELECT * FROM assessment_data_quality WHERE assessment_id = ? ORDER BY table_name'
@@ -537,8 +565,8 @@ assessments.get('/:id/data-quality', async (c) => {
 
 // ── GET /api/assessments/:id/process-timing ────────────────────────────────
 assessments.get('/:id/process-timing', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const results = await c.env.DB.prepare(
     'SELECT * FROM assessment_process_timing WHERE assessment_id = ? ORDER BY process_name'
@@ -555,8 +583,8 @@ assessments.get('/:id/process-timing', async (c) => {
 
 // ── GET /api/assessments/:id/value-summary ─────────────────────────────────
 assessments.get('/:id/value-summary', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const summary = await c.env.DB.prepare(
     'SELECT * FROM assessment_value_summary WHERE assessment_id = ? LIMIT 1'
@@ -573,8 +601,8 @@ assessments.get('/:id/value-summary', async (c) => {
 
 // ── GET /api/assessments/:id/report/value — download Value Assessment report ──
 assessments.get('/:id/report/value', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const assessment = await c.env.DB.prepare(
     'SELECT business_report_key, prospect_name FROM assessments WHERE id = ?'
@@ -616,8 +644,8 @@ assessments.get('/:id/report/value', async (c) => {
 
 // ── GET /api/assessments/:id/evidence/:findingId ──────────────────────────
 assessments.get('/:id/evidence/:findingId', async (c) => {
-  const auth = c.get('auth') as AuthContext | undefined;
-  if (!requireSuperAdmin(auth)) return c.json({ error: 'Forbidden' }, 403);
+  const deny = await assessmentReadGate(c);
+  if (deny) return deny;
 
   const finding = await c.env.DB.prepare(
     'SELECT * FROM assessment_findings WHERE id = ? AND assessment_id = ?'

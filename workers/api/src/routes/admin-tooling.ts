@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { AuthContext, AppBindings } from '../types';
+import { generateToken, ACCESS_TOKEN_TTL_SECONDS } from '../middleware/auth';
 
 const adminTooling = new Hono<AppBindings>();
 // CORS is handled by the parent app's middleware — no sub-router override needed
@@ -320,15 +321,32 @@ adminTooling.post('/impersonate/start', async (c) => {
       new Date().toISOString()
     ).run();
 
+    // Issue a real short-lived JWT scoped to the target's role + tenant.
+    // `sub` stays the ADMIN (actions remain attributed to the actor, as the
+    // UI promises); role/tenant are scoped DOWN so every route's role gate
+    // and tenant isolation enforce the impersonated view server-side, and
+    // the 15-min expiry is enforced by token exp — not client theatre.
+    const target = user as Record<string, unknown>;
+    const token = await generateToken({
+      sub: auth?.userId,
+      email: auth?.email,
+      name: auth?.name,
+      role: target.role as string,
+      tenant_id: target.tenant_id as string,
+      permissions: [],
+      impersonating: userId,
+    }, c.env.JWT_SECRET);
+
     return c.json({
       success: true,
       impersonation: {
-        userId: (user as Record<string, unknown>).id,
-        name: (user as Record<string, unknown>).name,
-        email: (user as Record<string, unknown>).email,
-        role: (user as Record<string, unknown>).role,
-        tenantId: (user as Record<string, unknown>).tenant_id,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min
+        userId: target.id,
+        name: target.name,
+        email: target.email,
+        role: target.role,
+        tenantId: target.tenant_id,
+        token,
+        expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
       },
     });
   } catch (err) {
@@ -537,47 +555,9 @@ adminTooling.delete('/custom-roles/:id', async (c) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════
-// ADMIN-007: Revenue & Usage Dashboard (superadmin only)
-// ══════════════════════════════════════════════════════════
-
-adminTooling.get('/revenue', async (c) => {
-  if (!isSuperadmin(c)) return c.json({ error: 'Forbidden: Superadmin only' }, 403);
-
-  try {
-    const [tenants, users] = await Promise.all([
-      c.env.DB.prepare("SELECT plan, COUNT(*) as count FROM tenants WHERE status != 'deleted' GROUP BY plan").all(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first(),
-    ]);
-
-    // Calculate revenue metrics from tenant plans
-    const planPricing: Record<string, number> = { starter: 499, professional: 1499, enterprise: 4999 };
-    let mrr = 0;
-    const planDistribution: Array<{ plan: string; count: number; revenue: number }> = [];
-    for (const row of (tenants.results || []) as Array<Record<string, unknown>>) {
-      const plan = row.plan as string;
-      const count = row.count as number;
-      const revenue = (planPricing[plan] || 0) * count;
-      mrr += revenue;
-      planDistribution.push({ plan, count, revenue });
-    }
-
-    return c.json({
-      success: true,
-      revenue: {
-        mrr,
-        arr: mrr * 12,
-        arpu: (users as Record<string, unknown>)?.count ? Math.round(mrr / ((users as Record<string, unknown>).count as number)) : 0,
-        churnRate: 2.1, // Mock — would need historical tracking
-      },
-      planDistribution,
-      totalUsers: (users as Record<string, unknown>)?.count || 0,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    return c.json({ error: 'Failed', details: (err as Error).message }, 500);
-  }
-});
+// ADMIN-007 (/revenue) removed: it fabricated MRR from hardcoded plan pricing
+// and a mock churn rate — Atheon bills shared-savings, not plan MRR. The real
+// figures come from tenants-admin revenue-usage. No frontend consumer existed.
 
 // ══════════════════════════════════════════════════════════
 // ADMIN-008: Feature Flags System (superadmin only)

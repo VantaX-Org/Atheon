@@ -49,6 +49,10 @@ tenants.get('/', async (c) => {
 // NOTE: Must be registered BEFORE /:id route to avoid being captured by the param.
 tenants.get('/data-export', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
+  // DSAR export dumps every PII table for the tenant — admin-level only.
+  if (!auth || !['superadmin', 'support_admin', 'admin'].includes(auth.role)) {
+    return c.json({ error: 'Forbidden: admin role required for data export' }, 403);
+  }
   const tenantId = auth?.tenantId || '';
   if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
 
@@ -218,6 +222,11 @@ tenants.get('/data-export/:key{.+}', async (c) => {
 // NOTE: Must be registered BEFORE /:id route to avoid being captured by the param.
 tenants.delete('/data-export', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
+  // Right-to-erasure destroys/anonymises tenant PII irreversibly — admin-level only.
+  // UI role-gating alone is bypassable with a direct API call.
+  if (!auth || !['superadmin', 'support_admin', 'admin'].includes(auth.role)) {
+    return c.json({ error: 'Forbidden: admin role required for erasure' }, 403);
+  }
   const tenantId = auth?.tenantId || '';
   if (!tenantId) return c.json({ error: 'No tenant context' }, 400);
 

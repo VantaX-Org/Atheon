@@ -221,7 +221,9 @@ export function RevenueUsagePage() {
             <h3 className="text-h2 t-primary mb-4 flex items-center gap-2">
               <Brain size={15} className="text-accent" /> Top Tenants by LLM Tokens (30d)
             </h3>
-            {llm.topTenants.length === 0 ? (
+            {llm.topTenants === null ? (
+              <p className="text-xs t-muted">LLM usage data unavailable.</p>
+            ) : llm.topTenants.length === 0 ? (
               <p className="text-xs t-muted">No LLM usage recorded in the last 30 days.</p>
             ) : (
               <div className="space-y-2">
@@ -312,11 +314,11 @@ export function RevenueUsagePage() {
             <div className="space-y-3">
               <div className="flex justify-between items-baseline border-b border-[var(--border-card)] pb-2.5">
                 <span className="text-label">Total Tokens · 30d</span>
-                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.totalTokens30d.toLocaleString()}</span>
+                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.totalTokens30d === null ? '—' : llm.totalTokens30d.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-baseline">
                 <span className="text-label">LLM Calls · 30d</span>
-                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.callCount30d.toLocaleString()}</span>
+                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.callCount30d === null ? '—' : llm.callCount30d.toLocaleString()}</span>
               </div>
             </div>
           </Card>
@@ -325,7 +327,9 @@ export function RevenueUsagePage() {
               <TrendingUp size={15} className="text-accent" />
               <span className="text-h2 t-primary">Top 10 Tenants by Tokens · 30d</span>
             </div>
-            {llm.topTenants.length === 0 ? (
+            {llm.topTenants === null ? (
+              <p className="text-xs t-muted">LLM usage data unavailable.</p>
+            ) : llm.topTenants.length === 0 ? (
               <p className="text-xs t-muted">No LLM usage to report.</p>
             ) : (
               <div className="space-y-2">

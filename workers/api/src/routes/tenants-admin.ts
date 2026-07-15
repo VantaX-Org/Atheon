@@ -739,7 +739,9 @@ tenants.get('/revenue-usage', async (c) => {
       ).all(),
       c.env.DB.prepare(
         "SELECT COALESCE(SUM(total_tokens), 0) as total_tokens, COUNT(*) as call_count FROM tenant_llm_usage WHERE created_at > datetime('now', '-30 days')",
-      ).first().catch(() => ({ total_tokens: 0, call_count: 0 })),
+      // null = query failed (table missing / D1 error) — the response must say
+      // "unknown", never claim 0 tokens. COALESCE guarantees a row on success.
+      ).first().catch(() => null),
       c.env.DB.prepare(
         `SELECT u.tenant_id, t.name, t.plan, COALESCE(SUM(u.total_tokens), 0) as tokens
          FROM tenant_llm_usage u
@@ -748,7 +750,7 @@ tenants.get('/revenue-usage', async (c) => {
          GROUP BY u.tenant_id, t.name, t.plan
          ORDER BY tokens DESC
          LIMIT 10`,
-      ).all().catch(() => ({ results: [] })),
+      ).all().catch(() => null),
     ]);
 
     const revenueEstimateEnabled =
@@ -785,14 +787,16 @@ tenants.get('/revenue-usage', async (c) => {
       newTenantsByMonth.push({ month: key, count: monthCounts.get(key) || 0 });
     }
 
-    const topTenants = ((topTenantsRows as { results?: Array<Record<string, unknown>> }).results || []).map((r) => ({
-      tenantId: String(r.tenant_id || ''),
-      name: r.name ? String(r.name) : '(deleted)',
-      plan: r.plan ? String(r.plan) : 'unknown',
-      tokens30d: Number(r.tokens) || 0,
-    }));
+    const topTenants = topTenantsRows === null ? null
+      : ((topTenantsRows as { results?: Array<Record<string, unknown>> }).results || []).map((r) => ({
+        tenantId: String(r.tenant_id || ''),
+        name: r.name ? String(r.name) : '(deleted)',
+        plan: r.plan ? String(r.plan) : 'unknown',
+        tokens30d: Number(r.tokens) || 0,
+      }));
 
-    const totalTokens30d = Number((llmTotalRow as Record<string, unknown>)?.total_tokens || 0);
+    const totalTokens30d = llmTotalRow === null ? null
+      : Number((llmTotalRow as Record<string, unknown>).total_tokens || 0);
 
     return c.json({
       success: true,
@@ -810,7 +814,8 @@ tenants.get('/revenue-usage', async (c) => {
       growth: { newTenantsByMonth },
       llm: {
         totalTokens30d,
-        callCount30d: Number((llmTotalRow as Record<string, unknown>)?.call_count || 0),
+        callCount30d: llmTotalRow === null ? null
+          : Number((llmTotalRow as Record<string, unknown>).call_count || 0),
         topTenants,
       },
       timestamp: new Date().toISOString(),
