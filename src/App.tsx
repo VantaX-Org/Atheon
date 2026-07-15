@@ -80,6 +80,7 @@ const SupportTriagePage = lazyWithRetry(() => import("@/pages/admin/SupportTriag
 const TrustPerformancePage = lazyWithRetry(() => import("@/pages/TrustPerformancePage"));
 const OnboardingWizardPage = lazyWithRetry(() => import("@/pages/OnboardingWizardPage"));
 const CompliancePage = lazyWithRetry(() => import("@/pages/CompliancePage"));
+const AssurancePage = lazyWithRetry(() => import("@/pages/AssurancePage").then(m => ({ default: m.AssurancePage })));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -103,8 +104,11 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
  */
 function ScopedRoleRedirect({ children }: { children: React.ReactNode }) {
   const user = useAppStore((s) => s.user);
-  if (user?.role === 'auditor') return <Navigate to="/compliance" replace />;
-  if (user?.role === 'board_member') return <Navigate to="/board-digest" replace />;
+  // v2 §10 step 2.5: scoped roles land on their consolidated v2 surfaces.
+  // Both targets are gated to accept the redirected role (no lockout) so the
+  // old routes can 301 here in step 3.
+  if (user?.role === 'auditor') return <Navigate to="/assurance" replace />;
+  if (user?.role === 'board_member') return <Navigate to="/board" replace />;
   return <>{children}</>;
 }
 
@@ -205,6 +209,9 @@ export default function App() {
             {/* Phase AU: Quarterly digest for Board Members + Audit Committee.
                 Open to executives so they can preview what the board sees. */}
             <Route path="/board-digest" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
+            {/* v2 board edition — board_member scoped landing (step 2.5). Renders the
+                board digest surface; /board-digest 301s here in step 3. */}
+            <Route path="/board" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
             {/* ApexBriefPage retired (see commit 2026-05-12 frontend
                 consolidation). Same data lives on /executive-summary
                 which uses a single backend endpoint + cleaner layout. */}
@@ -225,6 +232,8 @@ export default function App() {
                 support_admin / superadmin for cross-tenant via the existing
                 tenant switcher. Backend enforces role + cross-tenant rules. */}
             <Route path="/compliance" element={<ProtectedRoute allowedRoles={COMPLIANCE_ROLES}><CompliancePage /></ProtectedRoute>} />
+            {/* v2 §7 Assurance — consolidated auditor landing (step 2.5 scoped landing). */}
+            <Route path="/assurance" element={<ProtectedRoute allowedRoles={COMPLIANCE_ROLES}><AssurancePage /></ProtectedRoute>} />
             {/* Trust & Performance — buyer-facing aggregation of calibration,
                 provenance, and federated peer patterns. Open to standard roles
                 so a salesperson with a viewer login can demo it. */}
