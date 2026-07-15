@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { DemoEnvironmentBanner } from "./DemoEnvironmentBanner";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { JourneyStageBar } from "@/components/journey/JourneyStageBar";
 import { HelpButton } from "@/components/common/HelpButton";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
@@ -112,6 +113,10 @@ export function AppLayout() {
       >
         <div id="main-content" className="p-4 sm:p-5 lg:p-6">
           <Breadcrumbs />
+          {/* Value-loop locator on every screen. Scoped read-only roles
+              (auditor, board_member) keep their narrow world — the loop links
+              would 403 for them (App.tsx gates connect/detect to STANDARD_ROLES). */}
+          {user.role !== 'auditor' && user.role !== 'board_member' && <JourneyStageBar />}
           <Outlet />
         </div>
       </main>
