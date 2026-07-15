@@ -22,7 +22,7 @@ const marketingCSS = `
   --accent-tint: var(--accent-subtle, rgba(36, 86, 214, 0.07));
   --bronze: #9a6b1f;
   --neg-c: #b03423;
-  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-feature-settings: "ss01", "ss02";
   background: var(--field);
   color: var(--ink);
@@ -33,7 +33,7 @@ const marketingCSS = `
 .mk5-body ::selection { background: var(--accent-c); color: #fff; }
 .mk5-body a { color: inherit; text-decoration: none; }
 .mk5-body h1, .mk5-body h2, .mk5-body h3, .mk5-body h4 {
-  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-weight: 500;
   letter-spacing: -0.018em;
   color: var(--ink);
@@ -60,7 +60,7 @@ const marketingCSS = `
 }
 .mk5-nav-logo {
   display: flex; align-items: center; gap: .55rem;
-  font-family: 'Inter', sans-serif; font-weight: 600;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;
   font-size: 1.0625rem; letter-spacing: -0.005em; color: var(--ink);
 }
 .mk5-nav-links { display: flex; gap: 2.25rem; align-items: center; }
@@ -127,14 +127,13 @@ const marketingCSS = `
   color: var(--ink); padding: .75rem 0; border-bottom: 1px solid var(--rule);
 }
 
-/* HERO — bold editorial split: heavy headline left, royal-blue metric + dashboard panel right */
+/* HERO — headline over the business value chain flow (the centerpiece) */
 .mk5-hero {
   position: relative;
   min-height: calc(100vh - 64px);
-  display: grid; grid-template-columns: 1.08fr 1fr;
-  gap: 4.5rem;
-  padding: 5.5rem 3rem 6rem;
-  align-items: center;
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 3.25rem;
+  padding: 5rem 3rem 6rem;
   border-bottom: 1px solid var(--rule);
 }
 .mk5-hero-eyebrow {
@@ -178,70 +177,123 @@ const marketingCSS = `
 }
 .mk5-hero-textlink:hover { color: var(--accent-c); border-color: var(--accent-c); }
 
-/* RIGHT: hero metric + dashboard panel */
-.mk5-hero-right { display: flex; flex-direction: column; gap: 2rem; }
-.mk5-hero-metric { display: flex; flex-direction: column; gap: .75rem; }
-.mk5-hero-metric-num {
-  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
-  font-size: clamp(2.75rem, 5vw, 4.25rem);
-  font-weight: 700; letter-spacing: -0.025em; line-height: 1;
-  color: var(--accent-c);
+/* VALUE CHAIN FLOW — the spend cycle: where it leaks (warn/bad), what Atheon recovers (ok) */
+.mk5-chain { width: 100%; --chain-warn: #9a6200; --chain-bad: #d33b4e; --chain-ok: #0f8a4d; }
+.mk5-chain-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.1rem;
 }
-.mk5-hero-metric-caption {
-  display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+.mk5-chain-head .t {
   font-family: 'Space Mono', monospace;
-  font-size: .6875rem; letter-spacing: 0.16em; text-transform: uppercase;
+  font-size: .6875rem; letter-spacing: 0.2em; text-transform: uppercase;
   color: var(--ink-2);
 }
-.mk5-hero-metric-caption .up { color: var(--rag-healthy, #1c8a4a); }
-
-/* Dashboard preview panel — frosted card with hairline rows + sparkline */
-.mk5-hero-panel {
-  border: 1px solid var(--rule);
-  background: var(--paper);
-  border-radius: 8px;
-  box-shadow: 0 24px 60px -28px rgba(15, 17, 21, 0.18), 0 2px 8px -4px rgba(15, 17, 21, 0.08);
-  overflow: hidden;
-}
-.mk5-hero-panel-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .85rem 1.1rem;
-  border-bottom: 1px solid var(--rule);
-  background: var(--field-2);
-}
-.mk5-hero-panel-bar .name {
+.mk5-chain-legend {
+  display: flex; gap: 1.5rem; flex-wrap: wrap;
   font-family: 'Space Mono', monospace;
-  font-size: .625rem; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--ink-2);
-}
-.mk5-hero-panel-bar .pill {
-  font-family: 'Space Mono', monospace;
-  font-size: .5625rem; letter-spacing: 0.16em; text-transform: uppercase;
-  padding: .2rem .55rem; border-radius: 999px;
-  color: var(--accent-c); background: var(--accent-tint);
-  border: 1px solid var(--accent-c);
-}
-.mk5-hero-panel-body {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1px; background: var(--rule);
-}
-.mk5-hero-panel-cell {
-  padding: 1rem 1.1rem; background: var(--paper);
-  display: flex; flex-direction: column; gap: .4rem;
-}
-.mk5-hero-panel-cell.chart { grid-column: 1 / -1; padding-bottom: .75rem; }
-.mk5-hero-panel-cell .k {
-  font-family: 'Space Mono', monospace;
-  font-size: .5625rem; letter-spacing: 0.18em; text-transform: uppercase;
+  font-size: .625rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink-3);
 }
-.mk5-hero-panel-cell .v {
-  font-family: 'Space Mono', monospace; font-feature-settings: "tnum";
-  font-size: 1.0625rem; font-weight: 500; letter-spacing: -0.01em;
+.mk5-chain-legend span { display: inline-flex; align-items: center; gap: .45rem; }
+.mk5-chain-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; flex: none; }
+.mk5-chain-dot.leak { background: var(--chain-warn); }
+.mk5-chain-dot.ok { background: var(--chain-ok); }
+.mk5-chain-row { display: flex; align-items: stretch; }
+.mk5-chain-stage {
+  position: relative;
+  flex: 1 1 0; min-width: 0;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--paper);
+  padding: 1.2rem 1.1rem 1rem;
+  display: flex; flex-direction: column; gap: .55rem;
+  box-shadow: 0 2px 8px -4px rgba(15, 17, 21, 0.08);
+}
+/* Leak drip — value falling out of the stage, caught by the recovery rail below */
+.mk5-chain-stage.sev-warn { --leak-c: var(--chain-warn); }
+.mk5-chain-stage.sev-bad { --leak-c: var(--chain-bad); }
+.mk5-chain-stage::after {
+  content: ""; position: absolute; left: 50%; top: 100%;
+  width: 2px; height: 26px; margin-left: -1px;
+  background: repeating-linear-gradient(180deg, var(--leak-c) 0 5px, transparent 5px 9px);
+  opacity: .55;
+}
+.mk5-chain-stage .num {
+  font-size: .5625rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mk5-chain-stage .name {
+  font-size: 1.125rem; font-weight: 600; letter-spacing: -0.012em;
   color: var(--ink);
 }
-.mk5-hero-panel-cell .v.accent { color: var(--accent-c); }
-.mk5-hero-spark { width: 100%; height: 56px; margin-top: .25rem; }
+.mk5-chain-leak {
+  margin: 0;
+  font-size: .8125rem; line-height: 1.45;
+  display: flex; gap: .45rem; align-items: baseline;
+}
+.mk5-chain-leak .mark { font-family: 'Space Mono', monospace; font-size: .75rem; flex: none; }
+.mk5-chain-leak.warn { color: var(--chain-warn); }
+.mk5-chain-leak.bad { color: var(--chain-bad); }
+.mk5-chain-fix {
+  margin-top: auto; padding-top: .6rem;
+  border-top: 1px solid var(--rule);
+  font-family: 'Space Mono', monospace;
+  font-size: .6875rem; letter-spacing: 0.04em;
+  color: var(--chain-ok);
+  display: flex; gap: .45rem; align-items: baseline;
+}
+.mk5-chain-link {
+  flex: 0 0 auto; align-self: center;
+  padding: 0 .3rem;
+  color: var(--ink-3);
+  display: flex; align-items: center;
+}
+/* Recovery rail — catches the drips, flows recovered value back left to the P&L */
+.mk5-recover-rail {
+  margin-top: 26px; /* exactly the drip height, so drips land on the rail */
+  border: 1px solid color-mix(in srgb, var(--chain-ok) 35%, transparent);
+  background: color-mix(in srgb, var(--chain-ok) 6%, transparent);
+  border-radius: 4px;
+  padding: .7rem 1.1rem;
+  display: flex; align-items: center; gap: 1rem;
+  font-family: 'Space Mono', monospace;
+  font-size: .65rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--chain-ok);
+}
+.mk5-recover-rail .rflow {
+  flex: 1; height: 2px; min-width: 40px;
+  background: repeating-linear-gradient(90deg, var(--chain-ok) 0 10px, transparent 10px 18px);
+  opacity: .55;
+}
+@keyframes mk5-flow-back { from { background-position-x: 0; } to { background-position-x: -18px; } }
+@keyframes mk5-drip { from { background-position-y: 0; } to { background-position-y: 9px; } }
+@keyframes mk5-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .mk5-chain-stage { animation: mk5-rise .55s cubic-bezier(0.23, 1, 0.32, 1) both; }
+  .mk5-chain-stage::after { animation: mk5-drip 1s linear infinite; }
+  .mk5-recover-rail { animation: mk5-rise .55s cubic-bezier(0.23, 1, 0.32, 1) .5s both; }
+  .mk5-recover-rail .rflow { animation: mk5-flow-back 1.2s linear infinite; }
+  .mk5-hero-left { animation: mk5-rise .55s cubic-bezier(0.23, 1, 0.32, 1) both; }
+}
+@media (hover: hover) {
+  .mk5-chain-stage { transition: opacity 250ms ease, transform 250ms ease, box-shadow 250ms ease; }
+  .mk5-chain-row:has(.mk5-chain-stage:hover) .mk5-chain-stage:not(:hover) { opacity: .45; }
+  .mk5-chain-stage:hover { transform: translateY(-3px); box-shadow: 0 10px 24px -12px rgba(15, 17, 21, 0.25); }
+}
+
+/* The Atheon loop — ties the chain to the product's five-stage loop */
+.mk5-chain-loop {
+  margin-top: 1rem;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: var(--field-2);
+  padding: .85rem 1.1rem;
+  display: flex; align-items: center; gap: .5rem 1rem; flex-wrap: wrap;
+  font-family: 'Space Mono', monospace;
+  font-size: .6875rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.mk5-chain-loop .lbl { color: var(--ink-3); letter-spacing: 0.2em; margin-right: .5rem; }
+.mk5-chain-loop .arrow { color: var(--chain-ok); }
+.mk5-chain-loop .end { color: var(--accent-c); }
 
 .mk5-hero-scroll {
   position: absolute; left: 3rem; bottom: 1.75rem;
@@ -984,7 +1036,7 @@ const marketingCSS = `
 }
 .mk5-contact-field input,
 .mk5-contact-field textarea {
-  font-family: 'Inter', sans-serif;
+  font-family: 'IBM Plex Sans', sans-serif;
   font-size: .9375rem; color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--rule);
@@ -1027,7 +1079,7 @@ const marketingCSS = `
   gap: 2rem; align-items: end;
 }
 .mk5-fl {
-  font-family: 'Inter', sans-serif;
+  font-family: 'IBM Plex Sans', sans-serif;
   font-weight: 600; font-size: 1rem; color: var(--ink);
   letter-spacing: -0.005em;
 }
@@ -1053,8 +1105,14 @@ const marketingCSS = `
 
 /* RESPONSIVE */
 @media(max-width: 1100px) {
-  .mk5-hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 4rem 2rem 3rem; align-items: start; min-height: 0; }
+  .mk5-hero { gap: 2.5rem; padding: 4rem 2rem 3rem; min-height: 0; }
   .mk5-hero-scroll { display: none; }
+  .mk5-chain-row { flex-direction: column; }
+  .mk5-chain-link { align-self: flex-start; padding: .35rem 0 .35rem 1.1rem; }
+  .mk5-chain-link svg { transform: rotate(90deg); }
+  /* Stacked cards: drips would hit the next card — drop them, tighten the rail */
+  .mk5-chain-stage::after { display: none; }
+  .mk5-recover-rail { margin-top: 1rem; }
   .mk5-ss { grid-template-columns: 1fr; gap: 1rem; padding: 2rem; }
   .mk5-ss-figure { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); padding-top: 1rem; }
   .mk5-evo { grid-template-columns: 1fr; }
@@ -1086,6 +1144,7 @@ const marketingCSS = `
 }
 @media(max-width: 768px) {
   .mk5-nav { padding: 1rem 1.25rem; }
+  .mk5-hero { padding-left: 1.25rem; padding-right: 1.25rem; }
   .mk5-nav-links { display: none; }
   .mk5-hamburger { display: flex; flex-direction: column; justify-content: center; }
   .mk5-ss, .mk5-manifesto, .mk5-layers, .mk5-comp, .mk5-int, .mk5-ind, .mk5-feat, .mk5-ethos, .mk5-personas, .mk5-proof { padding-left: 1.25rem; padding-right: 1.25rem; }
@@ -1114,6 +1173,23 @@ const AtheonLogo = ({ size = 28 }: { size?: number }) => (
     <circle cx="16" cy="9" r="1.5" fill="var(--accent, #2456d6)" />
   </svg>
 );
+
+const ChainArrow = () => (
+  <svg width="20" height="12" viewBox="0 0 20 12" aria-hidden>
+    <line x1="0" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1" />
+    <path d="M13 2l5 4-5 4" fill="none" stroke="currentColor" strokeWidth="1" />
+  </svg>
+);
+
+/* The business value chain — where the spend cycle leaks, what Atheon recovers.
+   No figures here on purpose: the concept carries it, and this is a public page. */
+const chainStages: { name: string; leak: string; sev: "warn" | "bad"; fix: string }[] = [
+  { name: "Procure", leak: "Prices creep above contract; off-contract buying goes unnoticed.", sev: "warn", fix: "Re-rated to contract" },
+  { name: "Receive", leak: "Short deliveries get billed — and paid — in full.", sev: "warn", fix: "Claimed back from supplier" },
+  { name: "Invoice", leak: "Duplicate invoices and billing errors slip through matching.", sev: "bad", fix: "Blocked before payment" },
+  { name: "Pay", leak: "Duplicate or erroneous payments go out; credit notes go unclaimed.", sev: "bad", fix: "Recovered & credited" },
+  { name: "Tax & Recover", leak: "VAT errors and unclaimed input credits sit with the revenue authority.", sev: "warn", fix: "Input VAT reclaimed" },
+];
 
 /* ---- Static layer pictogram (replaces dark canvas) ---- */
 
@@ -1348,19 +1424,19 @@ export function MarketingPage() {
         </a>
       </div>
 
-      {/* HERO */}
+      {/* HERO — the business value chain: where money leaks, what Atheon recovers */}
       <section className="mk5-hero">
         <div className="mk5-hero-left">
-          <div className="mk5-hero-eyebrow">01 &mdash; Connect &middot; Detect &middot; Fix &middot; Recover &middot; Report</div>
+          <div className="mk5-hero-eyebrow">01 &mdash; The Business Value Chain</div>
           <h1>
-            <span className="thin">The money is already</span><br />
-            <span className="thin">in your ERP.</span> <i>We recover it.</i>
+            <span className="thin">Every step of your spend</span><br />
+            <span className="thin">cycle leaks money.</span> <i>We recover it.</i>
           </h1>
           <p className="mk5-hero-desc">
-            Atheon connects to your ERP, detects the exposure hiding in the records&nbsp;&mdash;
-            duplicate payments, GR/IR mismatches, aged receivables&nbsp;&mdash; and drives the
-            fixes that recover it. Every Rand traces back to the source record it came from.
-            One loop, ledgered against your ERP: connect, detect, fix, recover, report.
+            From purchase order to VAT return, value slips out of the chain&nbsp;&mdash; price creep,
+            short deliveries, duplicate invoices, erroneous payments, unclaimed credits. Atheon
+            connects to your ERP, prices every leak in Rand, and drives the approved fix that
+            brings the money back. You pay a share of what is verifiably recovered. Nothing upfront.
           </p>
           <div className="mk5-hero-actions">
             <button className="mk5-btn-main" onClick={() => document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" })}>
@@ -1372,44 +1448,44 @@ export function MarketingPage() {
           </div>
         </div>
 
-        <div className="mk5-hero-right">
-          {/* Hero metric — realised shared-savings, the figure the CFO bills against */}
-          <div className="mk5-hero-metric">
-            <div className="mk5-hero-metric-num mk5-mono">R6.1m</div>
-            <div className="mk5-hero-metric-caption">
-              <span>Realised &middot; trailing 90 days</span>
-              <span className="up">&#8599; Ledgered to ERP</span>
+        {/* VALUE CHAIN FLOW */}
+        <div className="mk5-chain" aria-label="Business value chain: where money leaks and what Atheon recovers">
+          <div className="mk5-chain-head">
+            <span className="t">Procure &rarr; Receive &rarr; Invoice &rarr; Pay &rarr; Tax</span>
+            <div className="mk5-chain-legend">
+              <span><span className="mk5-chain-dot leak" />Where it leaks</span>
+              <span><span className="mk5-chain-dot ok" />What Atheon recovers</span>
             </div>
           </div>
-
-          {/* Assurance dashboard preview panel */}
-          <div className="mk5-hero-panel" aria-label="Shared-savings ledger preview">
-            <div className="mk5-hero-panel-bar">
-              <span className="name">Shared-Savings Ledger</span>
-              <span className="pill">Q2 2026</span>
-            </div>
-            <div className="mk5-hero-panel-body">
-              <div className="mk5-hero-panel-cell">
-                <span className="k">Identified</span>
-                <span className="v mk5-mono">R12.4m</span>
-              </div>
-              <div className="mk5-hero-panel-cell">
-                <span className="k">Approved</span>
-                <span className="v mk5-mono">R8.6m</span>
-              </div>
-              <div className="mk5-hero-panel-cell chart">
-                <span className="k">Realised, by month</span>
-                <svg className="mk5-hero-spark" viewBox="0 0 280 56" preserveAspectRatio="none" aria-hidden>
-                  <line x1="0" y1="55" x2="280" y2="55" stroke="var(--rule)" strokeWidth="1" />
-                  <polyline
-                    points="0,44 40,40 80,42 120,30 160,26 200,18 240,14 280,8"
-                    fill="none" stroke="var(--accent, #2456d6)" strokeWidth="2"
-                    strokeLinecap="round" strokeLinejoin="round"
-                  />
-                  <circle cx="280" cy="8" r="3" fill="var(--accent, #2456d6)" />
-                </svg>
-              </div>
-            </div>
+          <div className="mk5-chain-row">
+            {chainStages.map((s, i) => (
+              <span key={s.name} style={{ display: "contents" }}>
+                <div className={`mk5-chain-stage sev-${s.sev}`} style={{ animationDelay: `${i * 90}ms` }}>
+                  <span className="num mk5-mono">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="name">{s.name}</span>
+                  <p className={`mk5-chain-leak ${s.sev}`}>
+                    <span className="mark">&#9662;</span>{s.leak}
+                  </p>
+                  <div className="mk5-chain-fix"><span>&#10003;</span>{s.fix}</div>
+                </div>
+                {i < chainStages.length - 1 && (
+                  <div className="mk5-chain-link"><ChainArrow /></div>
+                )}
+              </span>
+            ))}
+          </div>
+          <div className="mk5-recover-rail" aria-label="Atheon catches the leaks and recovers the value back to your P&L">
+            <span>Leaks caught</span>
+            <span className="rflow" aria-hidden />
+            <span>&larr; Recovered back to your P&amp;L</span>
+          </div>
+          <div className="mk5-chain-loop" aria-label="The Atheon loop">
+            <span className="lbl">The Atheon loop</span>
+            <span>Connect data</span><span className="arrow">&rarr;</span>
+            <span>Findings in Rand</span><span className="arrow">&rarr;</span>
+            <span>Approved fixes</span><span className="arrow">&rarr;</span>
+            <span>Verified savings</span><span className="arrow">&rarr;</span>
+            <span className="end">Board-ready reports</span>
           </div>
         </div>
 
@@ -1423,7 +1499,7 @@ export function MarketingPage() {
       <div className="mk5-ss" aria-label="Shared-savings ledger">
         <div>
           <div className="mk5-ss-label">Shared-Savings Ledger</div>
-          <div className="mk5-ss-meta mk5-mono">Trailing 90 days &middot; Q2 2026</div>
+          <div className="mk5-ss-meta mk5-mono">Illustrative example &middot; trailing 90 days</div>
         </div>
         <div className="mk5-ss-meta mk5-mono" style={{ alignSelf: "end" }}>
           Every claimed Rand traces to ERP record &middot; field &middot; confidence band.

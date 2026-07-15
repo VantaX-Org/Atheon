@@ -243,7 +243,7 @@ export default function ConnectorsPage(): JSX.Element {
         </Card>
 
         <div className="text-caption t-muted text-center pt-2">
-          Updated alongside the Atheon platform release notes. Material additions are documented
+          Catalog last reviewed 15 July 2026. Updated alongside the Atheon platform release notes. Material additions are documented
           in the changelog and announced 30 days before any deprecation.
         </div>
       </div>

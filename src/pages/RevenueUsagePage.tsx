@@ -314,20 +314,16 @@ export function RevenueUsagePage() {
                 <span className="text-label">Total Tokens · 30d</span>
                 <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.totalTokens30d.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between items-baseline border-b border-[var(--border-card)] pb-2.5">
+              <div className="flex justify-between items-baseline">
                 <span className="text-label">LLM Calls · 30d</span>
                 <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.callCount30d.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-label">Tenants Using LLM</span>
-                <span className="t-primary font-mono tnum text-body-sm font-medium">{llm.topTenants.length}</span>
               </div>
             </div>
           </Card>
           <Card className="p-5">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp size={15} className="text-accent" />
-              <span className="text-h2 t-primary">Top 10 Tenants by Spend</span>
+              <span className="text-h2 t-primary">Top 10 Tenants by Tokens · 30d</span>
             </div>
             {llm.topTenants.length === 0 ? (
               <p className="text-xs t-muted">No LLM usage to report.</p>

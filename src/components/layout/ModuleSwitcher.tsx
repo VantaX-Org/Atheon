@@ -1,10 +1,10 @@
 /**
- * `<ModuleSwitcher>` — top-bar Apex / Pulse / Catalysts tabs.
+ * `<ModuleSwitcher>` — top-bar Executive / Live Monitor / Fixes tabs.
  *
  * Mirrors the Stitch Athens Executive Interface top bar (the three
  * intelligence modules pinned to the header). Hidden below `lg` (mobile
- * uses the sidebar). Role-gated: Apex requires executive+, Pulse and
- * Catalysts require operator+. Active tab gets a sage underline.
+ * uses the sidebar). Role-gated to match the sidebar; labels must stay
+ * in sync with Sidebar.tsx. Active tab gets an accent underline.
  */
 import { Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
@@ -21,9 +21,9 @@ const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'exe
 const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
 
 const MODULES: Module[] = [
-  { label: 'Apex',      to: '/apex',      roles: EXECUTIVE_ROLES },
-  { label: 'Pulse',     to: '/pulse',     roles: STANDARD_ROLES },
-  { label: 'Fixes', to: '/catalysts', roles: OPERATOR_ROLES },
+  { label: 'Executive',    to: '/apex',      roles: EXECUTIVE_ROLES },
+  { label: 'Live Monitor', to: '/pulse',     roles: STANDARD_ROLES },
+  { label: 'Fixes',        to: '/catalysts', roles: OPERATOR_ROLES },
 ];
 
 export function ModuleSwitcher(): JSX.Element | null {

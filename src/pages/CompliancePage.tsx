@@ -118,11 +118,17 @@ function RingStat({
  */
 export function CompliancePage(): JSX.Element {
   const { activeTab, setActiveTab } = useTabState('evidence');
+  // The read-only `auditor` role can read the evidence pack + audit log, but
+  // the backend gates /api/v1/governance/:tenantId to admin+ (see
+  // workers/api/src/routes/governance.ts). Hide the tab rather than render a
+  // guaranteed 403. PageTabsLayout only honors ?tab= values present in `tabs`,
+  // so a deep link to ?tab=governance safely falls back to Evidence.
+  const isAuditor = useAppStore(s => s.user?.role) === 'auditor';
 
   const tabs = [
     { id: 'evidence', label: 'Evidence Pack', icon: <ShieldCheck size={14} /> },
     { id: 'audit', label: 'Audit Log', icon: <FileText size={14} /> },
-    { id: 'governance', label: 'Governance', icon: <Database size={14} /> },
+    ...(isAuditor ? [] : [{ id: 'governance', label: 'Governance', icon: <Database size={14} /> }]),
   ];
 
   return (
@@ -140,9 +146,11 @@ export function CompliancePage(): JSX.Element {
         <TabPanel id="audit" activeTab={activeTab}>
           <AuditPage />
         </TabPanel>
-        <TabPanel id="governance" activeTab={activeTab}>
-          <DataGovernancePage />
-        </TabPanel>
+        {!isAuditor && (
+          <TabPanel id="governance" activeTab={activeTab}>
+            <DataGovernancePage />
+          </TabPanel>
+        )}
       </PageTabsLayout>
     </div>
   );
@@ -156,7 +164,12 @@ export function CompliancePage(): JSX.Element {
 function ComplianceEvidence(): JSX.Element {
   const toast = useToast();
   const activeTenantId = useAppStore(s => s.activeTenantId);
+  // Share-link mint/list/revoke endpoints are platform-admin only (see
+  // workers/api/src/routes/compliance.ts) — an auditor clicking "Share with
+  // auditor" would only ever see 403s, so hide it for them.
+  const canShare = useAppStore(s => s.user?.role) !== 'auditor';
   const [pack, setPack] = useState<EvidencePack | null>(null);
+  const [error, setError] = useState<Error | string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -168,8 +181,10 @@ function ComplianceEvidence(): JSX.Element {
     try {
       const p = await api.compliance.evidencePack(activeTenantId || undefined);
       setPack(p);
+      setError(null);
       setLoadedAt(new Date().toISOString());
     } catch (err) {
+      setError(err instanceof Error ? err : String(err));
       toast.error('Failed to load evidence pack', {
         message: err instanceof Error ? err.message : undefined,
         requestId: err instanceof ApiError ? err.requestId : null,
@@ -196,13 +211,19 @@ function ComplianceEvidence(): JSX.Element {
     URL.revokeObjectURL(url);
   }
 
-  const status = statusFrom({ loading, error: null, isEmpty: !pack });
+  // Honesty: a failed fetch must render an error state, never the "no
+  // evidence pack" empty state — that would be a false compliance claim.
+  // A stale pack from a previous load stays visible; refresh failures toast.
+  const status = statusFrom({ loading, error: pack ? null : error, isEmpty: !pack });
   if (status !== 'success' || !pack) {
     return (
       <AsyncPageContent
         status={status}
         loadingVariant="cards"
         loadingCount={4}
+        error={error}
+        errorTitle="Failed to load evidence pack"
+        onRetry={() => { setLoading(true); load(); }}
         emptyState={{
           icon: ShieldCheck,
           title: 'No evidence pack available',
@@ -278,8 +299,8 @@ function ComplianceEvidence(): JSX.Element {
   ];
 
   return (
-    <div className="px-6 py-8 max-w-7xl mx-auto" data-testid="compliance-page">
-      <ShareWithAuditorModal open={shareOpen} onClose={() => setShareOpen(false)} />
+    <div className="px-6 py-8 max-w-7xl mx-auto" data-testid="compliance-evidence">
+      {canShare && <ShareWithAuditorModal open={shareOpen} onClose={() => setShareOpen(false)} />}
 
       {/* Hero — centered posture score */}
       <header className="relative text-center pb-10">
@@ -288,10 +309,12 @@ function ComplianceEvidence(): JSX.Element {
             <RefreshCw size={14} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button onClick={() => setShareOpen(true)} variant="ghost" size="sm">
-            <Share2 size={14} className="mr-2" />
-            Share with auditor
-          </Button>
+          {canShare && (
+            <Button onClick={() => setShareOpen(true)} variant="ghost" size="sm">
+              <Share2 size={14} className="mr-2" />
+              Share with auditor
+            </Button>
+          )}
           <Button onClick={downloadJson} variant="primary" size="sm">
             <Download size={14} className="mr-2" />
             Download JSON

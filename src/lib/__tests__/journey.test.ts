@@ -42,6 +42,22 @@ describe('buildJourneyStages', () => {
     expect(fix.rag).toBe('amber');
   });
 
+  it('open exposure, empty queue, nothing recovered → fix is current (not recover)', () => {
+    const stages = buildJourneyStages(
+      { ...base, savings: { recoveredZar: 0, roiMultiple: 0 } },
+      'ZAR',
+    );
+    expect(stages.find((s) => s.key === 'fix')!.current).toBe(true);
+  });
+
+  it('zero findings → detect CTA is neutral, not "Review findings"', () => {
+    const stages = buildJourneyStages(
+      { ...base, exposure: { openValueZar: 0, findingCount: 0 } },
+      'ZAR',
+    );
+    expect(stages.find((s) => s.key === 'detect')!.cta).toBe('View findings');
+  });
+
   it('healthy mature tenant → report is current', () => {
     const stages = buildJourneyStages(base, 'ZAR');
     expect(stages.find((s) => s.key === 'report')!.current).toBe(true);

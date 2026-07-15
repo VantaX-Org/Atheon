@@ -19,6 +19,7 @@ import type { ERPConnection, CircuitBreakerState, ERPCompany } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/state";
+import { AsyncPageContent, statusFrom } from "@/components/ui/async";
 import {
   Plug, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Clock, Loader2,
   Play, Wifi, ShieldAlert, ShieldCheck, Building2,
@@ -37,6 +38,7 @@ export function ConnectivityPage() {
   const [companies, setCompanies] = useState<ERPCompany[]>([]);
   const [testResults, setTestResults] = useState<Record<string, { connected: boolean; message?: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const toast = useToast();
 
@@ -61,9 +63,11 @@ export function ConnectivityPage() {
     try {
       const data = await api.erp.connections();
       setConnections(data.connections);
+      setLoadError(null);
       loadCircuit(data.connections);
     } catch (err) {
       console.error("Failed to load connections", err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load connections');
       toast.error('Failed to load connections', {
         message: err instanceof Error ? err.message : undefined,
         requestId: err instanceof ApiError ? err.requestId : null,
@@ -133,11 +137,24 @@ export function ConnectivityPage() {
     }
   };
 
-  if (loading) {
+  // A failed load is "couldn't load", never "no connections configured".
+  const pageStatus = statusFrom({
+    loading,
+    error: loadError && connections.length === 0 ? loadError : null,
+    isEmpty: false,
+  });
+  if (pageStatus !== 'success') {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} />
-      </div>
+      <AsyncPageContent
+        status={pageStatus}
+        error={loadError}
+        onRetry={() => { setLoading(true); fetchConnections(); }}
+        errorTitle="Couldn't load connections"
+        loadingVariant="list"
+        loadingCount={3}
+      >
+        {null}
+      </AsyncPageContent>
     );
   }
 
@@ -148,10 +165,18 @@ export function ConnectivityPage() {
   const errorCount = normalisedConnections.filter((c) => c._status === "error").length;
   const circuitsOpen = Object.values(circuitStates).filter((s) => s.state !== 'CLOSED').length;
   const totalRecords = normalisedConnections.reduce((sum, c) => sum + (c.recordsSynced ?? 0), 0);
-  const uptimePct = normalisedConnections.length > 0
+  const onlinePct = normalisedConnections.length > 0
     ? (connectedCount / normalisedConnections.length) * 100
-    : 0;
-  const engineHealthy = errorCount === 0 && circuitsOpen === 0;
+    : null;
+  // Circuit state fetches can fail individually; an unfetched breaker is
+  // unknown, not CLOSED — never claim "Optimal" over unknown circuits.
+  const allCircuitsKnown = normalisedConnections.every((c) => circuitStates[c.id]);
+  const engineState: 'optimal' | 'degraded' | 'unknown' =
+    errorCount > 0 || circuitsOpen > 0
+      ? 'degraded'
+      : normalisedConnections.length > 0 && allCircuitsKnown
+        ? 'optimal'
+        : 'unknown';
 
   return (
     <div className="space-y-8">
@@ -190,10 +215,10 @@ export function ConnectivityPage() {
             className="mt-3 font-bold t-primary leading-none"
             style={{ fontFamily: "'Space Mono', ui-monospace, monospace", fontSize: '44px', letterSpacing: '-0.02em' }}
           >
-            {uptimePct.toFixed(2)}%
+            {onlinePct == null ? '—' : `${Math.round(onlinePct)}%`}
           </p>
           <p className="text-caption t-muted mt-1 uppercase" style={{ fontFamily: "'Space Mono', ui-monospace, monospace", letterSpacing: '0.06em' }}>
-            Fleet Uptime
+            Connections Online ({connectedCount}/{normalisedConnections.length})
           </p>
 
           <div className="my-5 h-px" style={{ background: 'var(--border-card)' }} />
@@ -212,14 +237,23 @@ export function ConnectivityPage() {
           <div className="mt-5 flex items-center gap-2">
             <span
               className="inline-flex items-center gap-1.5 text-caption px-2.5 py-1 rounded-md border font-medium"
+              title={
+                engineState === 'unknown'
+                  ? (normalisedConnections.length === 0
+                      ? 'No connections to monitor'
+                      : 'Circuit-breaker state unavailable for some connections')
+                  : undefined
+              }
               style={
-                engineHealthy
+                engineState === 'optimal'
                   ? { background: 'rgb(var(--rag-healthy-rgb) / 0.10)', color: 'var(--rag-healthy)', borderColor: 'rgb(var(--rag-healthy-rgb) / 0.24)' }
-                  : { background: 'rgb(var(--neg-rgb) / 0.10)', color: 'var(--neg)', borderColor: 'rgb(var(--neg-rgb) / 0.20)' }
+                  : engineState === 'degraded'
+                    ? { background: 'rgb(var(--neg-rgb) / 0.10)', color: 'var(--neg)', borderColor: 'rgb(var(--neg-rgb) / 0.20)' }
+                    : { background: 'var(--bg-secondary)', color: 'var(--text-muted)', borderColor: 'var(--border-card)' }
               }
             >
-              {engineHealthy ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
-              {engineHealthy ? 'Live Status: Optimal' : 'Live Status: Degraded'}
+              {engineState === 'optimal' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+              {engineState === 'optimal' ? 'Live Status: Optimal' : engineState === 'degraded' ? 'Live Status: Degraded' : 'Live Status: Unknown'}
             </span>
           </div>
         </div>
@@ -336,7 +370,7 @@ export function ConnectivityPage() {
               { label: "Total Connections", value: normalisedConnections.length, icon: Wifi },
               { label: "Connected", value: connectedCount, icon: CheckCircle2 },
               { label: "Errors", value: errorCount, icon: XCircle },
-              { label: "Circuits Open", value: circuitsOpen, icon: ShieldAlert },
+              { label: "Circuits Open", value: allCircuitsKnown ? circuitsOpen : circuitsOpen > 0 ? `${circuitsOpen}+` : '—', icon: ShieldAlert },
             ].map((card) => (
               <div key={card.label} className="rounded-xl p-5" style={{ background: "var(--bg-card-solid)", border: "1px solid var(--border-card)", boxShadow: 'var(--shadow-card)' }}>
                 <div className="flex items-center gap-2 mb-3">

@@ -114,8 +114,10 @@ export function MFASetupPage() {
       // Once MFA is enabled, clear any grace-period warning.
       if (res.enabled && mfaEnforcementWarning) setMfaEnforcementWarning(null);
     } catch {
-      // Status endpoint may not exist in all deployments — gracefully fall back to "unknown".
-      setStatus({ enabled: false });
+      // Unknown ≠ disabled: don't render "MFA not enabled" (or offer enrollment)
+      // when we genuinely don't know — show the failure and a retry instead.
+      setStatus(null);
+      setStatusError("Couldn't load your MFA status.");
     } finally {
       setStatusLoading(false);
     }
@@ -231,6 +233,22 @@ export function MFASetupPage() {
 
         {statusLoading ? (
           <div className="flex items-center gap-2 text-xs t-muted"><Loader2 size={14} className="animate-spin" /> Loading status...</div>
+        ) : statusError ? (
+          <div className="space-y-4">
+            <div
+              className="flex items-center gap-3 p-3 rounded-md"
+              style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}
+            >
+              <Shield className="w-5 h-5 t-muted" />
+              <div className="flex-1">
+                <p className="text-sm t-primary">MFA status: —</p>
+                <p className="text-xs t-muted">{statusError}</p>
+              </div>
+            </div>
+            <Button variant="secondary" className="w-full justify-center" onClick={loadStatus} title="Retry loading MFA status">
+              <RefreshCw size={14} /> Retry
+            </Button>
+          </div>
         ) : status?.enabled ? (
           <div className="space-y-4">
             <div
@@ -298,7 +316,6 @@ export function MFASetupPage() {
               </div>
               <Badge variant="warning" size="sm">Disabled</Badge>
             </div>
-            {statusError && <p className="text-xs text-neg text-center">{statusError}</p>}
             {!showWizard && (
               <div className="pt-1 space-y-3">
                 <p className="text-caption t-muted text-center max-w-md mx-auto">

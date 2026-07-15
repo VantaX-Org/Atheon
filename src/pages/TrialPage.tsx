@@ -41,6 +41,11 @@ export function TrialPage() {
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Real engine progress from /api/trial/:id/status — no hardcoded pipeline.
+  const [procProgress, setProcProgress] = useState<number | null>(null);
+  const [procStep, setProcStep] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+
   const handleStart = async () => {
     if (!companyName || !contactName || !contactEmail) {
       setError('Please fill in all required fields');
@@ -92,6 +97,8 @@ export function TrialPage() {
       await new Promise((r) => setTimeout(r, 2000));
       try {
         const status = await api.trial.status(id);
+        setProcProgress(typeof status.progress === 'number' ? status.progress : null);
+        setProcStep(status.currentStep ?? null);
         if (status.status === 'complete') {
           const res = await api.trial.results(id);
           setResults(res);
@@ -112,6 +119,45 @@ export function TrialPage() {
     setLoading(false);
   };
 
+  // "Download Full Report" must actually download — every figure comes from
+  // the real /api/trial/:id/report payload, nulls rendered as em-dashes.
+  const handleDownloadReport = async () => {
+    if (!trialId || reportBusy) return;
+    setReportBusy(true);
+    setError(null);
+    try {
+      const r = await api.trial.report(trialId);
+      const money = (n: number | null) => (n === null || n === undefined ? '—' : formatFullCurrency(n, currency));
+      const lines = [
+        `Atheon Trial Assessment — ${r.companyName}`,
+        `Industry: ${r.industry}`,
+        `Generated: ${r.generatedAt}`,
+        '',
+        `Health score: ${r.healthScore ?? '—'}`,
+        `Findings: ${r.issuesFound ?? '—'}`,
+        `Confirmed exposure (confidence-gated): ${money(r.estimatedExposure)}`,
+        '',
+        'Top risks:',
+        ...(r.topRisks.length ? r.topRisks.map((t) => `  - ${t.title} (${money(t.impact)}): ${t.description}`) : ['  —']),
+        '',
+        'Top opportunities:',
+        ...(r.topOpportunities.length ? r.topOpportunities.map((t) => `  - ${t.title} (${money(t.value)}): ${t.description}`) : ['  —']),
+        '',
+        'Trial data is automatically deleted after 7 days.',
+      ];
+      const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `atheon-trial-report-${r.companyName.replace(/\W+/g, '-').toLowerCase()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Report generation failed. Please try again.');
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   const stepOrder: Step[] = ['info', 'upload', 'processing', 'results'];
 
   return (
@@ -122,7 +168,7 @@ export function TrialPage() {
           <div className="flex items-center gap-3">
             <Shield size={22} className="text-accent" aria-hidden="true" />
             <div className="leading-tight">
-              <div className="text-sm font-semibold t-primary">Atheon Luminous Editorial</div>
+              <div className="text-sm font-semibold t-primary">Atheon</div>
               <div className="text-label">Financial-assurance SaaS</div>
             </div>
           </div>
@@ -344,21 +390,14 @@ export function TrialPage() {
               <Loader2 size={28} className="text-accent animate-spin shrink-0 mt-1" aria-hidden="true" />
             </div>
 
+            {/* Real progress as reported by the engine — no hardcoded checkmarks. */}
             <p className="text-label mb-4">Analysis Pipeline</p>
-            <div className="space-y-3">
-              {['Ingesting data', 'Running health check', 'Identifying risks', 'Calculating ROI potential', 'Generating report'].map((label, i) => {
-                const done = i < 2;
-                return (
-                  <div key={i} className="flex items-center gap-3 rounded-sm border px-4 py-3" style={{ borderColor: 'var(--border-card)', background: done ? 'var(--accent-subtle)' : 'var(--bg-secondary)' }}>
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${done ? 'text-accent' : 't-muted'}`}
-                      style={{ background: done ? `rgb(var(--accent-rgb) / 0.16)` : 'var(--bg-card-solid)' }}>
-                      {done ? <CheckCircle2 size={12} /> : <span className="text-caption font-mono">{i + 1}</span>}
-                    </div>
-                    <span className={`text-sm ${done ? 't-primary font-medium' : 't-muted'}`}>{label}</span>
-                  </div>
-                );
-              })}
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-secondary)' }} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={procProgress ?? undefined}>
+              <div className="h-full bg-accent transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, procProgress ?? 0))}%` }} />
             </div>
+            <p className="text-sm t-secondary mt-3 font-mono tnum">
+              {procProgress !== null ? `${Math.round(procProgress)}%` : '—'} · {procStep ?? 'Waiting for engine…'}
+            </p>
           </div>
         )}
 
@@ -395,7 +434,8 @@ export function TrialPage() {
                 <div className="rounded-lg border p-7" style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)', boxShadow: 'var(--shadow-card)' }} data-testid="exposure-hero">
                   <div className="flex items-center justify-between">
                     <p className="text-label">Detected Exposure</p>
-                    <span className="pill-success inline-flex items-center rounded-full border px-3 py-1 text-label">ERP-evidenced</span>
+                    {/* Trial evidence is the uploaded CSV, not a live ERP sync — label it as such. */}
+                    <span className="pill-success inline-flex items-center rounded-full border px-3 py-1 text-label">Evidenced from your upload</span>
                   </div>
                   <div className="mt-3 text-5xl sm:text-6xl font-bold font-mono tnum leading-none" style={{ color: 'var(--neg)' }}>
                     {formatFullCurrency(results.estimatedExposure, currency)}
@@ -462,24 +502,20 @@ export function TrialPage() {
                   <p className="text-sm t-secondary max-w-lg">Book a call and our team will walk your ERP data through the full engine — historical analysis, root-cause, and a recovery plan tied to real Rand.</p>
                 </div>
                 <div className="flex flex-col gap-3 md:items-end">
-                  <a href="/login" className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-sm bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)] font-medium text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
+                  {/* Goes to the marketing contact form — not the login page. */}
+                  <a href="/#cta-s" className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-sm bg-accent hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)] font-medium text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]">
                     <ArrowRight size={16} aria-hidden="true" />
                     Book a call
                   </a>
                   {!results.insufficientData && (
                     <button
-                      onClick={async () => {
-                        if (trialId) {
-                          try {
-                            await api.trial.report(trialId);
-                          } catch { /* report generation is best-effort */ }
-                        }
-                      }}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm border t-primary text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97]"
+                      onClick={() => void handleDownloadReport()}
+                      disabled={reportBusy}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-sm border t-primary text-sm transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] disabled:opacity-50"
                       style={{ background: 'var(--bg-card-solid)', borderColor: 'var(--border-card)' }}
                     >
-                      <FileText size={14} aria-hidden="true" />
-                      Download Full Report
+                      {reportBusy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <FileText size={14} aria-hidden="true" />}
+                      {reportBusy ? 'Preparing…' : 'Download Full Report'}
                     </button>
                   )}
                 </div>

@@ -50,6 +50,8 @@ export function IAMPage() {
  const [users, setUsers] = useState<IAMUser[]>([]);
  // ISO timestamp of last successful IAM load — fuels MetricSource freshness rows.
  const [iamLoadedAt, setIamLoadedAt] = useState<string | null>(null);
+ // Which IAM sources failed to load — drives em-dash tiles/counts instead of false zeros.
+ const [loadFailed, setLoadFailed] = useState({ policies: false, sso: false, roles: false, users: false });
  const [loading, setLoading] = useState(true);
  const [showNewPolicy, setShowNewPolicy] = useState(false);
  const [showInviteUser, setShowInviteUser] = useState(false);
@@ -214,6 +216,12 @@ export function IAMPage() {
      if (s.status === 'fulfilled') setSsoConfigs(s.value.configs);
      if (r.status === 'fulfilled') setRoles(r.value.roles);
      if (u.status === 'fulfilled') setUsers(u.value.users);
+     setLoadFailed({
+       policies: p.status === 'rejected',
+       sso: s.status === 'rejected',
+       roles: r.status === 'rejected',
+       users: u.status === 'rejected',
+     });
      setIamLoadedAt(new Date().toISOString());
      // Surface load failures so users know something is missing instead of
      // just seeing a partial/empty page. Pick the first rejection's requestId
@@ -239,9 +247,9 @@ export function IAMPage() {
  }, [tenantId]);
 
  const tabs = [
-   { id: 'users', label: 'Users', icon: <Users size={14} />, count: users.length },
-   { id: 'roles', label: 'Roles & Permissions', icon: <ShieldCheck size={14} />, count: roles.length },
-   { id: 'policies', label: 'Policies', icon: <Shield size={14} />, count: policies.length },
+   { id: 'users', label: 'Users', icon: <Users size={14} />, count: loadFailed.users ? undefined : users.length },
+   { id: 'roles', label: 'Roles & Permissions', icon: <ShieldCheck size={14} />, count: loadFailed.roles ? undefined : roles.length },
+   { id: 'policies', label: 'Policies', icon: <Shield size={14} />, count: loadFailed.policies ? undefined : policies.length },
    { id: 'sso', label: 'SSO / Identity', icon: <Key size={14} /> },
    { id: 'scim', label: 'Provisioning (SCIM)', icon: <UploadCloud size={14} /> },
  ];
@@ -411,8 +419,8 @@ export function IAMPage() {
              notes: [{ label: 'Suspended', value: `${suspendedUsers} accounts` }],
            }} />
          </div>
-         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{activeUsers}</p>
-         <span className="text-caption t-muted">{suspendedUsers} suspended</span>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{loadFailed.users ? <span aria-label="Unavailable">—</span> : activeUsers}</p>
+         <span className="text-caption t-muted">{loadFailed.users ? 'failed to load' : `${suspendedUsers} suspended`}</span>
        </div>
        <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
@@ -427,8 +435,8 @@ export function IAMPage() {
              notes: [{ label: 'Total defined', value: roles.length }],
            }} />
          </div>
-         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{rolesInUse}</p>
-         <span className="text-caption t-muted">{roles.length} total defined</span>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{loadFailed.roles ? <span aria-label="Unavailable">—</span> : rolesInUse}</p>
+         <span className="text-caption t-muted">{loadFailed.roles ? 'failed to load' : `${roles.length} total defined`}</span>
        </div>
        <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
@@ -443,8 +451,8 @@ export function IAMPage() {
              notes: [{ label: 'Total rules', value: totalRules }],
            }} />
          </div>
-         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{policies.length}</p>
-         <span className="text-caption t-muted">{totalRules} rules</span>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{loadFailed.policies ? <span aria-label="Unavailable">—</span> : policies.length}</p>
+         <span className="text-caption t-muted">{loadFailed.policies ? 'failed to load' : `${totalRules} rules`}</span>
        </div>
        <div className="p-5" style={{ background: 'var(--bg-card-solid)' }}>
          <div className="flex items-center justify-between">
@@ -459,8 +467,8 @@ export function IAMPage() {
              notes: [{ label: 'Configured (incl. disabled)', value: ssoConfigs.length }],
            }} />
          </div>
-         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{enabledSso}</p>
-         <span className="text-caption t-muted">{ssoConfigs.length} configured</span>
+         <p className="font-mono font-bold t-primary tabular-nums mt-2" style={{ fontSize: '34px', lineHeight: 1.05 }}>{loadFailed.sso ? <span aria-label="Unavailable">—</span> : enabledSso}</p>
+         <span className="text-caption t-muted">{loadFailed.sso ? 'failed to load' : `${ssoConfigs.length} configured`}</span>
        </div>
      </div>
        );
@@ -489,7 +497,14 @@ export function IAMPage() {
              </div>
            )}
 
-           {users.length === 0 && (
+           {users.length === 0 && loadFailed.users && (
+             <div className="text-center py-12 t-muted">
+               <Users className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
+               <p className="text-sm">Couldn&apos;t load users — this is not an empty list. Reload to retry.</p>
+             </div>
+           )}
+
+           {users.length === 0 && !loadFailed.users && (
              <div className="text-center py-12 t-muted">
                <Users className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
                <p className="text-sm">No users found for this tenant</p>
@@ -721,7 +736,13 @@ export function IAMPage() {
      {activeTab === 'policies' && (
        <TabPanel>
          <div className="space-y-4">
-           {policies.length === 0 && (
+           {policies.length === 0 && loadFailed.policies && (
+             <div className="text-center py-12 t-muted">
+               <Shield className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
+               <p className="text-sm">Couldn&apos;t load policies — this is not an empty list. Reload to retry.</p>
+             </div>
+           )}
+           {policies.length === 0 && !loadFailed.policies && (
              <div className="text-center py-12 t-muted">
                <Shield className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
                <p className="text-sm">No policies configured</p>
@@ -797,7 +818,13 @@ export function IAMPage() {
                setSsoConfigs(u.configs);
              }}
            />
-           {ssoConfigs.length === 0 && (
+           {ssoConfigs.length === 0 && loadFailed.sso && (
+             <div className="text-center py-12 t-muted">
+               <Globe className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
+               <p className="text-sm">Couldn&apos;t load SSO providers — this is not an empty list. Reload to retry.</p>
+             </div>
+           )}
+           {ssoConfigs.length === 0 && !loadFailed.sso && (
              <div className="text-center py-12 t-muted">
                <Globe className="w-8 h-8 mx-auto mb-3 t-muted opacity-40" />
                <p className="text-sm">No SSO providers configured</p>

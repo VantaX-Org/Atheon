@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/toast';
 import { AssessmentFindingsPanel } from '@/components/AssessmentFindingsPanel';
 import { PageHeader } from '@/components/ui/page-header';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
-import { ClipboardList, Plug, Package, Calculator, FileText, CheckCircle2, XCircle, BarChart3 } from 'lucide-react';
+import { ClipboardList, XCircle, BarChart3 } from 'lucide-react';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { formatDays } from '@/lib/utils';
@@ -30,6 +30,7 @@ export function AssessmentsPage() {
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const toast = useToast();
 
   const reportError = useCallback((title: string, err: unknown) => {
@@ -46,7 +47,9 @@ export function AssessmentsPage() {
       setLoading(true);
       const data = await api.assessments.list();
       setAssessments(data.assessments);
+      setListError(null);
     } catch (err) {
+      setListError(err instanceof Error ? err.message : String(err));
       reportError('Failed to load assessments', err);
     } finally {
       setLoading(false);
@@ -71,7 +74,9 @@ export function AssessmentsPage() {
   };
 
   const deleteAssessment = async (id: string) => {
-    if (!confirm('Delete this assessment?')) return;
+    const target = assessments.find(x => x.id === id);
+    const name = target?.prospectName ? `"${target.prospectName}"` : 'this assessment';
+    if (!confirm(`Delete assessment ${name}? This removes its findings and generated reports. This cannot be undone.`)) return;
     try {
       await api.assessments.delete(id);
       toast.success('Assessment deleted');
@@ -122,6 +127,7 @@ export function AssessmentsPage() {
         <ListView
           assessments={assessments}
           loading={loading}
+          error={listError}
           onView={openResults}
           onDelete={deleteAssessment}
         />
@@ -147,15 +153,16 @@ export function AssessmentsPage() {
 }
 
 // ── List View ─────────────────────────────────────────────────────────────
-function ListView({ assessments, loading, onView, onDelete }: {
+function ListView({ assessments, loading, error, onView, onDelete }: {
   assessments: Assessment[];
   loading: boolean;
+  error: string | null;
   onView: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const currency = useTenantCurrency();
   const [query, setQuery] = useState('');
-  const status = statusFrom({ loading, error: null, isEmpty: assessments.length === 0 });
+  const status = statusFrom({ loading, error, isEmpty: assessments.length === 0 });
   if (status !== 'success') {
     return (
       <AsyncPageContent
@@ -203,7 +210,7 @@ function ListView({ assessments, loading, onView, onDelete }: {
   const hero: Array<{ label: string; value: string }> = [
     { label: 'Active Assessments', value: activeCount.toString() },
     { label: 'Total Findings', value: totalFindings.toString() },
-    { label: 'Risk Exposure', value: formatCompactCurrency(riskExposure, currency) },
+    { label: 'Est. Annual Saving', value: formatCompactCurrency(riskExposure, currency) },
   ];
 
   const q = query.trim().toLowerCase();
@@ -246,7 +253,7 @@ function ListView({ assessments, loading, onView, onDelete }: {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border-card)' }}>
-                {['Name', 'ERP Source', 'Date', 'Finding Count', 'Verified', 'Status', ''].map((h, i) => (
+                {['Name', 'ERP Source', 'Date', 'Finding Count', 'Est. Saving /yr', 'Status', ''].map((h, i) => (
                   <th
                     key={h || `actions-${i}`}
                     className={`px-5 py-3 text-label font-normal ${i === 6 ? 'text-right' : 'text-left'}`}
@@ -838,16 +845,12 @@ function RunningView({ id, onComplete }: {
   id: string;
   onComplete: (a: Assessment) => void;
 }) {
-  const [stage, setStage] = useState(0);
+  // Server reports coarse progress only ('pending' / 'Processing data...' /
+  // error message on failure) — render it verbatim rather than fabricating
+  // per-stage completion the API never reported.
+  const [progress, setProgress] = useState('pending');
+  const [failedMsg, setFailedMsg] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stages = [
-    { label: 'Connecting to ERP', Icon: Plug },
-    { label: 'Collecting volume data', Icon: Package },
-    { label: 'Scoring catalysts', Icon: Calculator },
-    { label: 'Generating reports', Icon: FileText },
-    { label: 'Complete', Icon: CheckCircle2 },
-  ];
 
   useEffect(() => {
     let mounted = true;
@@ -857,17 +860,15 @@ function RunningView({ id, onComplete }: {
         if (!mounted) return;
 
         if (data.status === 'complete') {
-          setStage(4);
           if (pollRef.current) clearInterval(pollRef.current);
           // Fetch full results
           const full = await api.assessments.get(id);
           if (mounted) onComplete(full);
         } else if (data.status === 'failed') {
-          setStage(-1);
+          setFailedMsg(data.progress || 'Assessment failed');
           if (pollRef.current) clearInterval(pollRef.current);
         } else {
-          // Increment stage based on time elapsed
-          setStage(prev => Math.min(prev + 1, 3));
+          setProgress(data.progress || data.status);
         }
       } catch (err) {
         console.error('Assessment status poll failed', err);
@@ -884,45 +885,25 @@ function RunningView({ id, onComplete }: {
     };
   }, [id, onComplete]);
 
-  if (stage === -1) {
+  if (failedMsg) {
     return (
       <div className="text-center py-20">
         <XCircle className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--neg)' }} aria-hidden="true" />
         <h3 className="text-lg font-medium" style={{ color: 'var(--neg)' }}>Assessment Failed</h3>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>An error occurred during processing. Check the logs.</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{failedMsg}</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-md mx-auto py-12">
-      <div className="text-center mb-8">
+      <div className="text-center">
         <div className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center animate-pulse" style={{ background: 'var(--accent-subtle)' }}>
-          {(() => {
-            const StageIcon = stages[Math.min(stage, 4)].Icon;
-            return <StageIcon className="w-7 h-7" style={{ color: 'var(--accent)' }} aria-hidden="true" />;
-          })()}
+          <ClipboardList className="w-7 h-7" style={{ color: 'var(--accent)' }} aria-hidden="true" />
         </div>
         <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Running Assessment</h3>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{progress}</p>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>This may take 30–60 seconds</p>
-      </div>
-
-      <div className="space-y-3">
-        {stages.map((s, i) => (
-          <div key={i} className="flex items-center gap-3">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs${i === stage ? ' animate-pulse' : ''}`}
-              style={
-                i < stage ? { background: 'rgb(var(--accent-rgb) / 0.1)', color: 'var(--accent)' } :
-                i === stage ? { background: 'var(--accent-subtle)', color: 'var(--accent)' } :
-                { background: 'var(--bg-secondary)', color: 'var(--text-muted)' }
-              }>
-              {i < stage ? '✓' : i + 1}
-            </div>
-            <span className="text-sm" style={{ color: i <= stage ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-              {s.label}
-            </span>
-          </div>
-        ))}
       </div>
     </div>
   );

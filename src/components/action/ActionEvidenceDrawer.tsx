@@ -112,6 +112,12 @@ export function ActionEvidenceDrawer({
       toast.error('Cannot approve', 'Action has no connection_id.');
       return;
     }
+    // Money path: sober confirm naming the action, type and ZAR value.
+    const confirmed = window.confirm(
+      `Approve ${shortRef(action.id)} — ${action.action_type.replace(/_/g, ' ')} for R ${(action.value_zar || 0).toLocaleString('en-ZA')}?\n\n` +
+      'This dispatches a write-back to your ERP immediately. It cannot be undone from this queue.',
+    );
+    if (!confirmed) return;
     setActing('approve');
     try {
       await api.erp.approveAction(action.connection_id, action.id);

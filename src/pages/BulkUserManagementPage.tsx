@@ -58,6 +58,7 @@ export function BulkUserManagementPage() {
 
   // Users / bulk action state
   const [users, setUsers] = useState<IAMUser[]>([]);
+  const [usersError, setUsersError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [bulkAction, setBulkAction] = useState<string>('');
@@ -65,6 +66,7 @@ export function BulkUserManagementPage() {
 
   // History state
   const [history, setHistory] = useState<ImportHistoryEntry[]>([]);
+  const [historyError, setHistoryError] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const showError = useCallback((title: string, err: unknown, fallback: string) => {
@@ -80,7 +82,9 @@ export function BulkUserManagementPage() {
     try {
       const res = await api.iam.users();
       setUsers(res.users || []);
+      setUsersError(false);
     } catch (err) {
+      setUsersError(true);
       showError('Failed to load users', err, 'Could not load users');
     } finally {
       setLoadingUsers(false);
@@ -92,7 +96,9 @@ export function BulkUserManagementPage() {
     try {
       const res = await api.bulkUsers.history();
       setHistory(res.imports || []);
+      setHistoryError(false);
     } catch (err) {
+      setHistoryError(true);
       showError('Failed to load import history', err, 'Could not load history');
     } finally {
       setLoadingHistory(false);
@@ -189,11 +195,18 @@ export function BulkUserManagementPage() {
 
   const applyBulkAction = async () => {
     if (!bulkAction || selectedCount === 0) return;
+    const [kind, roleArg] = bulkAction.split(':') as [string, string | undefined];
+    const action = (kind === 'role' ? 'change_role' : kind) as 'suspend' | 'activate' | 'change_role';
+    const ids = Array.from(selectedIds);
+    // Confirm with the exact affected count and the users by name before
+    // touching anything — suspend and role changes are access-altering.
+    const targets = users.filter(u => selectedIds.has(u.id));
+    const nameList = targets.slice(0, 5).map(u => u.email || u.name).join(', ')
+      + (targets.length > 5 ? ` … and ${targets.length - 5} more` : '');
+    const verb = action === 'suspend' ? 'Suspend' : action === 'activate' ? 'Activate' : `Change role to "${roleArg}" for`;
+    if (!window.confirm(`${verb} ${ids.length} user${ids.length === 1 ? '' : 's'}?\n\n${nameList}`)) return;
     setApplyingAction(true);
     try {
-      const [kind, roleArg] = bulkAction.split(':') as [string, string | undefined];
-      const action = (kind === 'role' ? 'change_role' : kind) as 'suspend' | 'activate' | 'change_role';
-      const ids = Array.from(selectedIds);
       const res = await api.bulkUsers.action(ids, action, roleArg);
       if (res.failed.length > 0) {
         toast.warning(`Applied to ${res.applied} of ${ids.length} users · ${res.failed.length} failed`);
@@ -241,20 +254,21 @@ export function BulkUserManagementPage() {
 
       <Card className="p-6 sm:p-8">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-4">
+          {/* Honesty: em-dash (never 0) when the backing fetch failed. */}
           <div className="sm:pr-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
-            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{users.length}</p>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{usersError ? '—' : users.length}</p>
             <p className="text-label mt-2">Total Users</p>
           </div>
           <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
-            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--positive)' }}>{activeCount}</p>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--positive)' }}>{usersError ? '—' : activeCount}</p>
             <p className="text-label mt-2">Active</p>
           </div>
           <div className="sm:px-4 sm:border-r" style={{ borderColor: 'var(--border-card)' }}>
-            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--neg)' }}>{suspendedCount}</p>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums leading-none" style={{ color: 'var(--neg)' }}>{usersError ? '—' : suspendedCount}</p>
             <p className="text-label mt-2">Suspended</p>
           </div>
           <div className="sm:pl-4">
-            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{history.length}</p>
+            <p className="text-3xl sm:text-4xl font-bold tabular-nums t-primary leading-none">{historyError ? '—' : history.length}</p>
             <p className="text-label mt-2">Imports</p>
           </div>
         </div>
@@ -274,7 +288,7 @@ export function BulkUserManagementPage() {
             </div>
             <p className="text-label mb-1">Bulk User Import</p>
             <h3 className="text-base font-semibold t-primary mb-1">Import Users via CSV</h3>
-            <p className="text-xs t-muted mb-4">Columns: <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">email</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">name</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">role</code> (optional), <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">permissions</code> (optional)</p>
+            <p className="text-xs t-muted mb-4">Columns: <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">email</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">name</code>, <code className="px-1 rounded font-mono bg-[var(--bg-secondary)]">role</code> (optional)</p>
             <div
               className={`border-2 border-dashed rounded-md p-8 mb-4 transition-colors ${dragOver ? 'border-accent bg-accent/5' : 'border-[var(--border-card)] hover:border-accent/50'} active:scale-[0.97]`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -436,6 +450,8 @@ export function BulkUserManagementPage() {
 
           {loadingUsers ? (
             <LoadingState variant="list" count={3} />
+          ) : usersError ? (
+            <EmptyState title="Couldn't load users" description="The user list failed to load — this is not an empty tenant. Retry from your browser or check the error toast for the request id." />
           ) : users.length === 0 ? (
             <EmptyState title="No users in this tenant yet" description="Import a CSV above to get started." />
           ) : (
@@ -482,6 +498,8 @@ export function BulkUserManagementPage() {
       <TabPanel id="history" activeTab={activeTab}>
         {loadingHistory ? (
           <LoadingState variant="list" count={3} />
+        ) : historyError ? (
+          <EmptyState title="Couldn't load import history" description="History failed to load — there may still be past imports. Check the error toast for the request id." />
         ) : history.length === 0 ? (
           <EmptyState title="No imports yet" description="Run a CSV import to see history here." />
         ) : (

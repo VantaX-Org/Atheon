@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-// Design tokens — Luminous Editorial. Source of truth is CSS variables in
+// Design tokens — Daylight. Source of truth is CSS variables in
 // src/index.css. Never inline a hex that has a CSS-var equivalent. Blue accent
 // is brand/active ONLY; RAG (rag-healthy/watch/risk) is status & health ONLY.
 export default {
@@ -50,10 +50,10 @@ export default {
         danger:  'rgb(var(--rag-risk-rgb) / <alpha-value>)',
       },
       fontFamily: {
-        sans:        ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        body:        ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        display:     ['Inter', 'system-ui', 'sans-serif'],
-        headline:    ['Inter', 'system-ui', 'sans-serif'],
+        sans:        ['IBM Plex Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        body:        ['IBM Plex Sans', 'system-ui', '-apple-system', 'sans-serif'],
+        display:     ['Schibsted Grotesk', 'system-ui', 'sans-serif'],
+        headline:    ['Schibsted Grotesk', 'system-ui', 'sans-serif'],
         mono:        ['Space Mono', 'ui-monospace', 'monospace'],
         'mono-data': ['Space Mono', 'ui-monospace', 'monospace'],
       },

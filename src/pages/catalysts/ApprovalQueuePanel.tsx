@@ -15,10 +15,13 @@ import {
   Clock,
 } from 'lucide-react';
 import { api, ApiError, isStepUpRequired } from '@/lib/api';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, useTenantCurrency } from '@/stores/appStore';
+import { formatCompactCurrency } from '@/lib/format-currency';
 
 type ApprovalsResp = Awaited<ReturnType<typeof api.catalysts.pendingApprovals>>;
 type Approval = ApprovalsResp['approvals'][number];
+/** Phase AL traceability payload — action + linked source finding + step logs. */
+type ActionEvidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
 
 /**
  * The worker doesn't currently project `escalation_level` onto the approvals
@@ -78,12 +81,15 @@ type Pending = SinglePending | BatchPending;
 
 export function ApprovalQueuePanel() {
   const currentUser = useAppStore((s) => s.user);
+  const currency = useTenantCurrency();
   const [data, setData] = useState<ApprovalsResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Evidence chain per action, fetched lazily on first expand and cached.
+  const [evidence, setEvidence] = useState<Record<string, ActionEvidence | 'loading' | 'error'>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stepUp, setStepUp] = useState<Pending | null>(null);
   const [mfaCode, setMfaCode] = useState('');
@@ -218,6 +224,8 @@ export function ApprovalQueuePanel() {
   const onBatchApprove = useCallback(() => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    // Sober confirmation — batch approval releases write-backs in one stroke.
+    if (!window.confirm(`Approve ${ids.length} action${ids.length === 1 ? '' : 's'}? Approved actions release write-backs to your ERP.`)) return;
     void runBatch(ids, 'approve', undefined, undefined);
   }, [selected, runBatch]);
 
@@ -258,6 +266,19 @@ export function ApprovalQueuePanel() {
       setBusyId(null);
     }
   }, [load, currentUser?.id]);
+
+  // ── Evidence chain — fetched lazily on first expand, cached per action. ──
+  const toggleEvidence = useCallback((ap: Approval) => {
+    const id = ap.id;
+    const opening = expanded !== id;
+    setExpanded(opening ? id : null);
+    if (opening && !evidence[id]) {
+      setEvidence((p) => ({ ...p, [id]: 'loading' }));
+      api.erp.actionEvidence(id)
+        .then((ev) => setEvidence((p) => ({ ...p, [id]: ev })))
+        .catch(() => setEvidence((p) => ({ ...p, [id]: 'error' })));
+    }
+  }, [expanded, evidence]);
 
   const onConfirmStepUp = useCallback(async () => {
     if (!stepUp || mfaCode.length !== 6) return;
@@ -308,7 +329,8 @@ export function ApprovalQueuePanel() {
         </div>
         <EmptyState
           title="Nothing waiting on you"
-          description="Catalyst actions below the confidence threshold or escalated by HITL rules will appear here for sign-off."
+          description="The queue is clear. New actions below the confidence threshold or escalated by HITL rules will appear here for sign-off — next stop is the Savings stage."
+          action={{ label: 'See savings proof', href: '/roi-dashboard' }}
         />
       </Card>
     );
@@ -391,7 +413,7 @@ export function ApprovalQueuePanel() {
 
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <button
-                  onClick={() => setExpanded(isOpen ? null : ap.id)}
+                  onClick={() => toggleEvidence(ap)}
                   className="flex items-center gap-1 text-caption t-muted hover:t-primary transition-[color] duration-[var(--dur-press,160ms)] [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]"
                 >
                   {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -432,11 +454,7 @@ export function ApprovalQueuePanel() {
                 </div>
               </div>
 
-              {isOpen && (
-                <pre className="mt-3 p-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] text-caption t-secondary overflow-x-auto whitespace-pre-wrap break-words">
-                  {JSON.stringify(ap.inputData, null, 2)}
-                </pre>
-              )}
+              {isOpen && <EvidenceBlock ev={evidence[ap.id]} inputData={ap.inputData} currency={currency} />}
             </Card>
           );
         })}
@@ -533,6 +551,103 @@ export function ApprovalQueuePanel() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Evidence chain shown before approving — value at stake, source finding, ──
+// and the raw input as a fallback. Money decision: facts, no gamification.
+function EvidenceBlock({ ev, inputData, currency }: {
+  ev: ActionEvidence | 'loading' | 'error' | undefined;
+  inputData: unknown;
+  currency: string;
+}): JSX.Element {
+  const rawInput = (
+    <details className="mt-2">
+      <summary className="text-caption t-muted cursor-pointer hover:t-primary">Raw input data</summary>
+      <pre className="mt-2 p-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] text-caption t-secondary overflow-x-auto whitespace-pre-wrap break-words">
+        {JSON.stringify(inputData, null, 2)}
+      </pre>
+    </details>
+  );
+
+  if (!ev || ev === 'loading') {
+    return <p className="mt-3 text-caption t-muted">Loading evidence…</p>;
+  }
+  if (ev === 'error') {
+    return (
+      <div className="mt-3">
+        <p className="text-caption text-neg">
+          Couldn't load the evidence chain — approve only if you can verify this action elsewhere.
+        </p>
+        {rawInput}
+      </div>
+    );
+  }
+
+  const { action, finding } = ev;
+  const severityStatus = finding && (finding.severity === 'critical' || finding.severity === 'high') ? 'high'
+    : finding?.severity === 'medium' ? 'amber' : 'neutral';
+  const samples = finding?.evidence?.sample_records;
+
+  return (
+    <div className="mt-3 p-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)] space-y-2">
+      <p className="text-caption t-primary">
+        Value at stake:{' '}
+        {/* Worker coerces null value_zar to 0, so falsy renders as unknown, not "R0". */}
+        <span className="font-mono tabular-nums font-semibold">
+          {action.value_zar ? formatCompactCurrency(action.value_zar, currency) : '—'}
+        </span>
+        {action.sample_size != null && (
+          <span className="t-muted"> · sampled from {action.sample_size} records</span>
+        )}
+      </p>
+
+      {finding ? (
+        <div className="space-y-1.5 border-t border-[var(--border-card)] pt-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <StatusPill status={severityStatus} label={finding.severity} />
+            <span className="text-caption t-primary font-medium">{finding.title}</span>
+          </div>
+          {finding.description && <p className="text-caption t-secondary">{finding.description}</p>}
+          <p className="text-caption t-muted">
+            Impact{' '}
+            <span className="font-mono tabular-nums t-secondary">
+              {finding.financial_impact ? formatCompactCurrency(finding.financial_impact, currency) : '—'}
+            </span>
+            {finding.affected_records != null && <> · {finding.affected_records} affected records</>}
+          </p>
+          {finding.root_cause && (
+            <p className="text-caption t-muted">Root cause: <span className="t-secondary">{finding.root_cause}</span></p>
+          )}
+          {finding.prescription && (
+            <p className="text-caption t-muted">Fix: <span className="t-secondary">{finding.prescription}</span></p>
+          )}
+          {samples && samples.length > 0 && (
+            <details>
+              <summary className="text-caption t-muted cursor-pointer hover:t-primary">
+                Sample records ({samples.length})
+              </summary>
+              <ul className="mt-1.5 space-y-1">
+                {samples.map((r, i) => (
+                  <li key={i} className="text-caption font-mono tabular-nums t-secondary">
+                    {r.ref ?? `#${i + 1}`}
+                    {r.source_value != null && <> · source {String(r.source_value)}</>}
+                    {r.target_value != null && <> · target {String(r.target_value)}</>}
+                    {typeof r.difference === 'number' && <> · diff {formatCompactCurrency(r.difference, currency)}</>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      ) : (
+        <p className="text-caption t-muted border-t border-[var(--border-card)] pt-2">
+          No linked source finding — this action wasn't raised from an assessment finding.
+        </p>
+      )}
+
+      {rawInput}
     </div>
   );
 }

@@ -71,6 +71,7 @@ export function TenantManagementPage() {
       setLoading(true);
       const data = await api.get<{ tenants: Tenant[] }>('/api/v1/admin/tenants');
       setTenants(data.tenants);
+      setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load tenants';
       setError(message);
@@ -101,7 +102,7 @@ export function TenantManagementPage() {
   };
 
   const handleSoftDelete = async (tenantId: string) => {
-    if (!confirm(`Are you sure you want to soft-delete "${tenants.find(t => t.id === tenantId)?.name}"?\n\nThis will:\n- Suspend all users\n- Mark tenant as deleted\n- Keep all data intact\n- Allow reactivation within 24 hours`)) {
+    if (!confirm(`Are you sure you want to soft-delete "${tenants.find(t => t.id === tenantId)?.name}"?\n\nThis will:\n- Suspend all users\n- Mark tenant as deleted\n- Keep all data intact\n- Allow reactivation later`)) {
       return;
     }
 
@@ -170,13 +171,14 @@ export function TenantManagementPage() {
   };
 
   const handleHardDelete = async (tenantId: string) => {
-    if (!confirm(`DANGER: PERMANENT DELETION\n\nThis will IRREVERSIBLY delete:\n- All tenant data\n- All users\n- All runs, metrics, risks\n- All history and audit logs\n\nThis action CANNOT be undone.\n\nType "DELETE" to confirm:`)) {
+    const tenantName = tenants.find(t => t.id === tenantId)?.name ?? tenantId;
+    if (!confirm(`DANGER: PERMANENT DELETION of "${tenantName}"\n\nThis will IRREVERSIBLY delete:\n- All tenant data\n- All users\n- All runs, metrics, risks\n- All history and audit logs\n\nThis action CANNOT be undone.`)) {
       return;
     }
 
-    // Additional confirmation
-    const confirmation = prompt('Type "DELETE" to confirm permanent deletion:');
-    if (confirmation !== 'DELETE') {
+    // Additional confirmation — must type the exact tenant name
+    const confirmation = prompt(`Type the tenant name "${tenantName}" to confirm permanent deletion:`);
+    if (confirmation !== tenantName) {
       return;
     }
 
@@ -247,7 +249,7 @@ export function TenantManagementPage() {
                   className="inline-block w-1.5 h-1.5 rounded-full"
                   style={{ background: 'currentColor' }}
                 />
-                {selectedTenant.is_deleted ? 'Deleted' : 'Healthy'}
+                {selectedTenant.is_deleted ? 'Deleted' : 'Active'}
               </span>
               <Button
                 variant="primary"
@@ -580,7 +582,7 @@ export function TenantManagementPage() {
                 {filteredTenants.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center t-muted">
-                      No tenants found
+                      {error && tenants.length === 0 ? 'Tenant list unavailable — load failed.' : 'No tenants found'}
                     </td>
                   </tr>
                 ) : (
@@ -604,7 +606,7 @@ export function TenantManagementPage() {
                         ) : (
                           <span className="pill pill-success">
                             <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
-                            Healthy
+                            Active
                           </span>
                         )}
                       </td>
@@ -636,7 +638,7 @@ export function TenantManagementPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleExport(tenant.id)}
+                            onClick={() => handleExport(tenant.id, tenant.slug)}
                             disabled={!!actionLoading}
                             title="Export data"
                           >

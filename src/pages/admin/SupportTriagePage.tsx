@@ -82,6 +82,11 @@ export function SupportTriagePage() {
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  // Honesty: a failed fetch must render an error, never the "no tickets"
+  // empty state; and when the API pages (next_cursor set) the counts only
+  // cover the loaded page, so we say so instead of claiming "all tickets".
+  const [loadError, setLoadError] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -100,7 +105,10 @@ export function SupportTriagePage() {
         status: statusFilter === 'all' ? undefined : statusFilter,
       });
       setTickets(res.tickets);
+      setHasMore(res.next_cursor !== null);
+      setLoadError(false);
     } catch (err) {
+      setLoadError(true);
       showError('Failed to load tickets', err, 'Network error');
     }
   }, [statusFilter, showError]);
@@ -114,9 +122,16 @@ export function SupportTriagePage() {
           limit: 100,
           status: statusFilter === 'all' ? undefined : statusFilter,
         });
-        if (!cancelled) setTickets(res.tickets);
+        if (!cancelled) {
+          setTickets(res.tickets);
+          setHasMore(res.next_cursor !== null);
+          setLoadError(false);
+        }
       } catch (err) {
-        if (!cancelled) showError('Failed to load tickets', err, 'Network error');
+        if (!cancelled) {
+          setLoadError(true);
+          showError('Failed to load tickets', err, 'Network error');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -179,7 +194,9 @@ export function SupportTriagePage() {
       <PageHeader
         eyebrow="Incoming Ticket Kanban · AI-Assisted Workflow"
         title="Support Triage"
-        dek="All tickets for this tenant. Assign, change status, and reply via detail view."
+        dek={hasMore
+          ? 'Showing the 100 most recent tickets — more exist beyond this page. Assign, change status, and reply via detail view.'
+          : 'All tickets for this tenant. Assign, change status, and reply via detail view.'}
         actions={
           <div className="flex items-center gap-3">
             <div className="flex items-baseline gap-2 px-3 py-1.5 rounded-md" style={{ background: 'var(--bg-secondary)' }}>
@@ -188,8 +205,9 @@ export function SupportTriagePage() {
                 className="font-mono tnum text-lg font-bold leading-none"
                 style={{ color: 'var(--text-primary)' }}
                 data-testid="support-triage-unassigned"
+                title={hasMore ? 'Within the 100 loaded tickets — more exist beyond this page' : undefined}
               >
-                {unassignedCount}
+                {loadError ? '—' : hasMore ? `${unassignedCount}+` : unassignedCount}
               </span>
             </div>
           </div>
@@ -213,8 +231,8 @@ export function SupportTriagePage() {
               data-testid={`support-triage-filter-${s}`}
             >
               {s.replace('_', ' ')}
-              {s === statusFilter && counts[s] !== undefined && (
-                <span className="ml-1 opacity-70">({counts[s]})</span>
+              {s === statusFilter && counts[s] !== undefined && !loadError && (
+                <span className="ml-1 opacity-70">({counts[s]}{hasMore ? '+' : ''})</span>
               )}
             </button>
           ))}
@@ -226,6 +244,15 @@ export function SupportTriagePage() {
           <div className="flex items-center justify-center py-10 t-muted text-sm gap-2">
             <Loader2 size={16} className="animate-spin" />
             Loading tickets…
+          </div>
+        </Card>
+      ) : loadError ? (
+        <Card>
+          <div className="text-center py-10">
+            <p className="text-sm t-secondary">Couldn't load tickets — this is not an empty queue.</p>
+            <Button size="sm" variant="secondary" className="mt-3" onClick={() => void reload()}>
+              Retry
+            </Button>
           </div>
         </Card>
       ) : tickets.length === 0 ? (
@@ -268,7 +295,6 @@ export function SupportTriagePage() {
                             Urgency
                             <span style={{ color: urgency.color }}>{urgency.label}</span>
                           </span>
-                          <Badge variant="info">RAG</Badge>
                         </div>
 
                         <Link

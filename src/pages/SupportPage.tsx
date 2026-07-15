@@ -5,7 +5,7 @@
  * Route: /support-tickets | Role: any authenticated user
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,11 +57,24 @@ const EMPTY_FORM: FormState = {
 
 export function SupportPage() {
   const toast = useToast();
+  // Deep-link prefill (e.g. the 403 page links here with ?new=1&category=access
+  // &subject=…&body=…) so error surfaces can hand off a ready-to-send ticket.
+  const [searchParams] = useSearchParams();
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [showForm, setShowForm] = useState(searchParams.get('new') === '1');
+  const [form, setForm] = useState<FormState>(() => {
+    const cat = searchParams.get('category');
+    return {
+      ...EMPTY_FORM,
+      subject: searchParams.get('subject') ?? '',
+      body: searchParams.get('body') ?? '',
+      category: CATEGORIES.some((c) => c.value === cat) ? (cat as SupportTicketCategory) : EMPTY_FORM.category,
+    };
+  });
   const [saving, setSaving] = useState(false);
 
   const showError = useCallback((title: string, err: unknown, fallback: string) => {
@@ -72,30 +85,22 @@ export function SupportPage() {
     });
   }, [toast]);
 
-  const reload = useCallback(async () => {
+  const load = useCallback(async (initial = false) => {
+    if (initial) setLoading(true);
     try {
       const res = await api.support.list({ limit: 50 });
       setTickets(res.tickets);
+      setHasMore(res.next_cursor !== null);
+      setLoadFailed(false);
     } catch (err) {
+      setLoadFailed(true);
       showError('Failed to load tickets', err, 'Network error');
+    } finally {
+      if (initial) setLoading(false);
     }
   }, [showError]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await api.support.list({ limit: 50 });
-        if (!cancelled) setTickets(res.tickets);
-      } catch (err) {
-        if (!cancelled) showError('Failed to load tickets', err, 'Network error');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [showError]);
+  useEffect(() => { void load(true); }, [load]);
 
   const canSubmit = form.subject.trim().length > 0 && form.body.trim().length > 0 && !saving;
 
@@ -104,16 +109,16 @@ export function SupportPage() {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await api.support.create({
+      const res = await api.support.create({
         subject: form.subject.trim(),
         body: form.body,
         category: form.category,
         priority: form.priority,
       });
-      toast.success('Ticket created', { message: 'Our team will respond shortly.' });
+      toast.success(`Ticket #${res.ticket.id} created`, { message: 'Track our response on this page.' });
       setForm(EMPTY_FORM);
       setShowForm(false);
-      await reload();
+      await load();
     } catch (err) {
       showError('Could not create ticket', err, 'Please try again.');
     } finally {
@@ -147,13 +152,13 @@ export function SupportPage() {
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <LifeBuoy size={20} className="t-accent shrink-0" aria-hidden />
                 <p className="text-sm t-secondary truncate">
-                  Describe an issue and our team will respond shortly.
+                  Describe an issue and track our response here.
                 </p>
               </div>
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }}
+                onClick={() => setShowForm(true) /* keeps any draft/prefill instead of wiping it */}
                 data-testid="support-new-ticket-btn"
               >
                 <Plus size={14} />
@@ -173,6 +178,16 @@ export function SupportPage() {
               <div className="flex items-center justify-center py-10 t-muted text-sm gap-2">
                 <Loader2 size={16} className="animate-spin" />
                 Loading tickets…
+              </div>
+            </Card>
+          ) : loadFailed ? (
+            <Card>
+              <div className="text-center py-12" data-testid="support-load-error">
+                <p className="text-sm t-secondary">We couldn't load your tickets.</p>
+                <p className="text-xs t-muted mt-1">Your tickets are safe — this is a loading problem, not a data problem.</p>
+                <Button className="mt-4" variant="secondary" size="sm" onClick={() => void load(true)}>
+                  Retry
+                </Button>
               </div>
             </Card>
           ) : tickets.length === 0 ? (
@@ -225,35 +240,20 @@ export function SupportPage() {
               <span>Overview</span>
             </p>
             <Card variant="prominent" className="space-y-4">
+              {/* Honest counts: em-dash on failed fetch; "+" when the API
+                  reports more pages beyond the 50 we loaded. */}
               <div className="flex items-baseline justify-between">
                 <span className="text-caption t-muted">Total tickets</span>
-                <span className="font-mono text-2xl font-bold t-primary tabular-nums">{tickets.length}</span>
+                <span className="font-mono text-2xl font-bold t-primary tabular-nums">
+                  {loadFailed && !loading ? '—' : hasMore ? `${tickets.length}+` : tickets.length}
+                </span>
               </div>
               <div className="flex items-baseline justify-between pt-3 border-t border-theme">
                 <span className="text-caption t-muted">Open</span>
-                <span className="font-mono text-2xl font-bold t-primary tabular-nums">{openCount}</span>
+                <span className="font-mono text-2xl font-bold t-primary tabular-nums">
+                  {loadFailed && !loading ? '—' : hasMore ? `${openCount}+` : openCount}
+                </span>
               </div>
-            </Card>
-          </div>
-
-          {/* 04. Status */}
-          <div>
-            <p className="text-label flex items-center gap-2 mb-3">
-              <span className="t-accent">04.</span>
-              <span>Status</span>
-            </p>
-            <Card variant="prominent">
-              <div className="flex items-center gap-2.5">
-                <span
-                  aria-hidden
-                  className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: 'var(--rag-healthy)' }}
-                />
-                <span className="text-sm font-medium t-primary">Support online</span>
-              </div>
-              <p className="text-xs t-muted mt-2">
-                For urgent outages, escalate via your CSM.
-              </p>
             </Card>
           </div>
         </aside>
@@ -263,18 +263,14 @@ export function SupportPage() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={() => setShowForm(false)}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); /* backdrop only — inside clicks must not destroy the draft */ }}
           data-testid="support-new-ticket-modal"
         >
           <Card
             className="w-full max-w-lg"
             style={{ background: 'var(--bg-modal)', maxHeight: '90vh', overflow: 'auto' }}
-            onClick={() => { /* stop close-on-inside-click */ }}
           >
-            <div
-              className="flex items-center justify-between mb-4"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold t-primary">New support ticket</h2>
               <button
                 onClick={() => setShowForm(false)}
@@ -285,12 +281,7 @@ export function SupportPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={handleCreate}
-              onClick={(e) => e.stopPropagation()}
-              className="space-y-3"
-              data-testid="support-new-ticket-form"
-            >
+            <form onSubmit={handleCreate} className="space-y-3" data-testid="support-new-ticket-form">
               <Input
                 label="Subject"
                 value={form.subject}

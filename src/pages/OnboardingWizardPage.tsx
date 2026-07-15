@@ -27,30 +27,43 @@ import {
 import { AsyncPageContent, statusFrom } from "@/components/ui/async";
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { useAppStore } from "@/stores/appStore";
 import type { OnboardingStep } from "@/lib/api";
+import type { UserRole } from "@/types";
+
+// Who can open each target route — mirrors the ProtectedRoute gates in
+// src/App.tsx (not exported from there). The wizard is open to ALL roles,
+// so a CTA must never deep-link a role into a 403.
+const ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
+const EXEC_ROLES: UserRole[] = [...ADMIN_ROLES, 'executive'];
+const OPERATOR_ROLES: UserRole[] = [...EXEC_ROLES, 'manager', 'operator'];
+const STANDARD_ROLES: UserRole[] = [...EXEC_ROLES, 'manager', 'analyst', 'operator'];
 
 // Deep-link each onboarding step to its journey stage (Connect→Detect→Fix→
 // Recover→Report), not the old product-noun pages. Keeps the guided path and
-// the sidebar speaking the same plain language.
-const STEP_TARGETS: Record<string, { route: string; cta: string }> = {
-  connect_erp:      { route: '/data',                               cta: 'Connect your data' },
-  deploy_catalyst:  { route: '/catalysts',                          cta: 'Open Fixes' },
-  run_catalyst:     { route: '/catalysts',                          cta: 'Open Fixes' },
-  review_action:    { route: '/findings',                           cta: 'Review findings' },
-  view_diagnostics: { route: '/findings',                           cta: 'Review findings' },
-  generate_report:  { route: '/executive-summary',                  cta: 'Open Reports' },
-  invite_user:      { route: '/iam',                                cta: 'Open IAM · Users' },
+// the sidebar speaking the same plain language. `needs` is the honest hint
+// shown when the signed-in role can't open the route.
+const STEP_TARGETS: Record<string, { route: string; cta: string; roles: UserRole[]; needs: string }> = {
+  connect_erp:      { route: '/data',              cta: 'Connect your data', roles: STANDARD_ROLES, needs: 'analyst access or higher' },
+  deploy_catalyst:  { route: '/catalysts',         cta: 'Open Fixes',        roles: OPERATOR_ROLES, needs: 'operator access or higher' },
+  run_catalyst:     { route: '/catalysts',         cta: 'Open Fixes',        roles: OPERATOR_ROLES, needs: 'operator access or higher' },
+  review_action:    { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
+  view_diagnostics: { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
+  generate_report:  { route: '/executive-summary', cta: 'Open Reports',      roles: EXEC_ROLES,     needs: 'executive access or higher' },
+  invite_user:      { route: '/iam',               cta: 'Open IAM · Users',  roles: ADMIN_ROLES,    needs: 'admin access' },
 };
 
 export function OnboardingWizardPage(): JSX.Element {
   const navigate = useNavigate();
   const toast = useToast();
+  const user = useAppStore((s) => s.user);
   const [steps, setSteps] = useState<OnboardingStep[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
   const [totalSteps, setTotalSteps] = useState(7);
   const [progressPct, setProgressPct] = useState(0);
   const [allComplete, setAllComplete] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
 
   async function refresh() {
@@ -61,7 +74,11 @@ export function OnboardingWizardPage(): JSX.Element {
       setTotalSteps(data.totalSteps);
       setProgressPct(data.progressPct);
       setAllComplete(data.allComplete);
+      setLoadError(null);
     } catch (err) {
+      // A failed load must render as an error with retry — not an empty
+      // "0% complete" page that looks like real state.
+      setLoadError(err instanceof Error ? err.message : 'Failed to load onboarding progress');
       toast.error('Failed to load onboarding progress', {
         message: err instanceof Error ? err.message : undefined,
         requestId: err instanceof ApiError ? err.requestId : null,
@@ -91,7 +108,7 @@ export function OnboardingWizardPage(): JSX.Element {
     }
   }
 
-  const status = statusFrom({ loading, error: null, isEmpty: false });
+  const status = statusFrom({ loading, error: loadError, isEmpty: !loading && !loadError && steps.length === 0 });
   if (status !== 'success') {
     return (
       <AsyncPageContent
@@ -172,7 +189,7 @@ export function OnboardingWizardPage(): JSX.Element {
           </div>
           <h2 className="text-headline-xl font-bold t-primary tracking-tight leading-tight mb-2">You're set up.</h2>
           <p className="text-body-sm t-muted mb-5 max-w-md mx-auto leading-relaxed">
-            All seven first-week milestones complete. Your customer success engineer can now schedule
+            All {totalSteps} first-week milestones complete. Your customer success engineer can now schedule
             the week-4 ROI review.
           </p>
           <Button variant="primary" onClick={() => navigate('/dashboard')}>
@@ -314,26 +331,39 @@ export function OnboardingWizardPage(): JSX.Element {
                 </div>
               )}
 
-              {/* Action bar — primary CTA + mark-done, mockup footer */}
+              {/* Action bar — primary CTA + mark-done, mockup footer.
+                  The deep-link only renders when this role can open the route
+                  (gates mirrored from src/App.tsx); otherwise we say so
+                  honestly instead of navigating into a 403. */}
               {!activeStep.completed && activeTarget && (
-                <div className="flex flex-wrap items-center gap-3 mt-auto pt-8">
-                  <Button
-                    variant="primary"
-                    onClick={() => navigate(activeTarget.route)}
-                  >
-                    {activeTarget.cta} <ArrowRight size={14} className="ml-1" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => markComplete(activeStep.id)}
-                    disabled={completing === activeStep.id}
-                  >
-                    {completing === activeStep.id ? (
-                      <><Loader2 size={14} className="mr-1 animate-spin" /> Marking…</>
-                    ) : (
-                      <>I&apos;ve done this</>
+                <div className="mt-auto pt-8">
+                  {user && !activeTarget.roles.includes(user.role) && (
+                    <p className="text-body-sm t-muted mb-3 max-w-xl">
+                      Your role can&apos;t open this page — it needs {activeTarget.needs}. Ask a
+                      teammate with access to do it, then mark it done here.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {(!user || activeTarget.roles.includes(user.role)) && (
+                      <Button
+                        variant="primary"
+                        onClick={() => navigate(activeTarget.route)}
+                      >
+                        {activeTarget.cta} <ArrowRight size={14} className="ml-1" />
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => markComplete(activeStep.id)}
+                      disabled={completing === activeStep.id}
+                    >
+                      {completing === activeStep.id ? (
+                        <><Loader2 size={14} className="mr-1 animate-spin" /> Marking…</>
+                      ) : (
+                        <>I&apos;ve done this</>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -343,7 +373,7 @@ export function OnboardingWizardPage(): JSX.Element {
 
       <div className="text-caption t-muted text-center pt-8">
         Need help? File a ticket at <a href="/support-tickets" className="text-accent hover:underline">/support-tickets</a> or
-        ping your CS engineer in your shared Slack channel.
+        contact your customer success engineer.
       </div>
     </div>
   );

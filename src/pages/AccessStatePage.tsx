@@ -10,8 +10,9 @@
  *   - ProtectedRoute when a role check fails ({kind: '403'})
  *   - The catch-all `<Route path="*">` at the bottom of App.tsx ({kind: '404'})
  */
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/stores/appStore';
 import { ShieldX, Compass, type LucideIcon } from 'lucide-react';
 
 interface AccessStatePageProps {
@@ -20,25 +21,50 @@ interface AccessStatePageProps {
   requiredRoles?: string[];
 }
 
-const COPY: Record<'403' | '404', { Icon: LucideIcon; title: string; code: string; body: string; cta: string }> = {
+const COPY: Record<'403' | '404', { Icon: LucideIcon; title: string; code: string; body: string }> = {
   '403': {
     Icon: ShieldX,
     title: 'Access Denied',
     code: '403',
     body: "You don't have permission to access this page. If you think this is wrong, ask your tenant admin to grant your role the required permissions.",
-    cta: 'Back to Dashboard',
   },
   '404': {
     Icon: Compass,
     title: 'Page not found',
     code: '404',
-    body: "The page you're looking for doesn't exist, or has been moved. Check the URL or head back to the dashboard.",
-    cta: 'Back to Dashboard',
+    body: "The page you're looking for doesn't exist, or has been moved. Check the URL or head back.",
   },
 };
 
+/**
+ * A destination this user's role can actually reach (route buckets in
+ * App.tsx): auditor → /compliance, board_member → /board-digest, other
+ * authed roles → /dashboard. Logged out (404 renders outside AppLayout)
+ * → public home.
+ */
+function homeFor(role: string | undefined): { to: string; label: string } {
+  if (!role) return { to: '/', label: 'Back to home' };
+  if (role === 'auditor') return { to: '/compliance', label: 'Back to Compliance' };
+  if (role === 'board_member') return { to: '/board-digest', label: 'Back to Board Digest' };
+  return { to: '/dashboard', label: 'Back to Dashboard' };
+}
+
 export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): JSX.Element {
   const c = COPY[kind];
+  const user = useAppStore((s) => s.user);
+  const location = useLocation();
+  const home = homeFor(user?.role);
+
+  // 403 → pre-filled access ticket so the user can request access in one click.
+  const ticketBody =
+    `I hit a 403 on ${location.pathname}.\n` +
+    `My role: ${user?.role ?? 'unknown'}\n` +
+    `Required role${(requiredRoles?.length ?? 0) === 1 ? '' : 's'}: ${requiredRoles?.join(', ') || 'unknown'}\n\n` +
+    'What I was trying to do: ';
+  const ticketLink =
+    '/support-tickets?new=1&category=access' +
+    `&subject=${encodeURIComponent(`Access request: ${location.pathname}`)}` +
+    `&body=${encodeURIComponent(ticketBody)}`;
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 sm:px-6 py-12"
@@ -141,11 +167,22 @@ export function AccessStatePage({ kind, requiredRoles }: AccessStatePageProps): 
             </div>
           )}
 
-          <Link to="/dashboard" className="block mt-7 w-full">
+          <Link to={home.to} className="block mt-7 w-full">
             <Button variant="primary" size="md" className="w-full">
-              {c.cta}
+              {home.label}
             </Button>
           </Link>
+
+          {kind === '403' && user && (
+            <p className="text-center mt-4">
+              <Link
+                to={ticketLink}
+                className="text-caption font-mono uppercase tracking-wide text-accent hover:underline"
+              >
+                Request access via support ticket
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

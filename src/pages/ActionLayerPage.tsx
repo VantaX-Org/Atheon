@@ -304,6 +304,16 @@ export function ActionLayerPage(): JSX.Element {
   const runBulk = async (kind: 'approve' | 'reject') => {
     const target = actions.filter((a) => selected.has(a.id));
     if (target.length === 0) return;
+    if (kind === 'approve') {
+      // Money path: approving dispatches ERP write-backs. Confirm with the
+      // exact count and total ZAR value before anything is sent.
+      const totalZar = target.reduce((s, a) => s + (a.value_zar || 0), 0);
+      const confirmed = window.confirm(
+        `Approve ${target.length} action${target.length === 1 ? '' : 's'} totalling R ${totalZar.toLocaleString('en-ZA')}?\n\n` +
+        'Each approval dispatches a write-back to your ERP immediately. This cannot be undone from this queue.',
+      );
+      if (!confirmed) return;
+    }
     let reason: string | undefined;
     if (kind === 'reject') {
       const input = window.prompt(`Reject reason (applied to all ${target.length} selected):`);
@@ -352,6 +362,12 @@ export function ActionLayerPage(): JSX.Element {
       toast.error('Cannot approve', 'Action has no connection_id.');
       return;
     }
+    // Money path: sober confirm naming the action, type and ZAR value.
+    const confirmed = window.confirm(
+      `Approve ${shortRef(a.id)} — ${a.action_type.replace(/_/g, ' ')} for R ${(a.value_zar || 0).toLocaleString('en-ZA')}?\n\n` +
+      'This dispatches a write-back to your ERP immediately. It cannot be undone from this queue.',
+    );
+    if (!confirmed) return;
     setActingOn(a.id);
     try {
       await api.erp.approveAction(a.connection_id, a.id);
@@ -429,9 +445,11 @@ export function ActionLayerPage(): JSX.Element {
         }
       />
 
-      {error && !loading && <ErrorState error={error} onRetry={() => void load()} />}
-
-      {loading ? (
+      {/* On error render ONLY the error state — never zeroed tiles/chips
+          alongside it (a failed fetch must not read as "0 pending / R0"). */}
+      {error && !loading ? (
+        <ErrorState error={error} onRetry={() => void load()} />
+      ) : loading ? (
         <LoadingState variant="cards" count={4} />
       ) : (
         <>
@@ -444,8 +462,11 @@ export function ActionLayerPage(): JSX.Element {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {TILE_DEFS.map((tile) => {
               const Icon = tile.icon;
-              const count = (summary?.[tile.countKey] as number | undefined) ?? 0;
-              const value = (summary?.[tile.valueKey] as number | undefined) ?? 0;
+              // Honesty: no null→0. Summary is guaranteed by the error/loading
+              // gate above, but if a field is ever missing we show an em-dash,
+              // never a fabricated zero.
+              const count = typeof summary?.[tile.countKey] === 'number' ? (summary[tile.countKey] as number) : null;
+              const value = typeof summary?.[tile.valueKey] === 'number' ? (summary[tile.valueKey] as number) : null;
               const isActiveFilter = filter === tile.key;
               const tileProvenance: MetricProvenance = {
                 label: `${tile.label} actions`,
@@ -454,10 +475,10 @@ export function ActionLayerPage(): JSX.Element {
                 endpoint: 'GET /api/erp/actions/summary',
                 query: `SELECT COUNT(*), SUM(value_zar)\n  FROM catalyst_actions\n WHERE tenant_id = ?\n   AND status = '${tile.key}'`,
                 window: 'All time',
-                sample: count,
+                sample: count ?? undefined,
                 refreshedAt: loadedAt,
                 drillTo: `/action-layer?status=${tile.key}`,
-                notes: [{ label: 'Value', value: <Numeric value={value} unit="currency" compact size="sm" /> }],
+                notes: [{ label: 'Value', value: value === null ? '—' : <Numeric value={value} unit="currency" compact size="sm" /> }],
               };
               return (
                 <div
@@ -490,12 +511,12 @@ export function ActionLayerPage(): JSX.Element {
                     </div>
                   </div>
                   <div className="text-display t-primary tabular-nums font-mono">
-                    <Numeric value={count} size="xl" />
+                    {count === null ? <span aria-label="Unavailable">—</span> : <Numeric value={count} size="xl" />}
                   </div>
                   <div className="flex items-center gap-1.5 mt-2">
                     <Icon size={13} style={{ color: tile.accent }} aria-hidden="true" />
                     <span className="text-caption font-mono t-muted">
-                      <Numeric value={value} unit="currency" compact size="sm" tone="mute" />
+                      {value === null ? '—' : <Numeric value={value} unit="currency" compact size="sm" tone="mute" />}
                     </span>
                   </div>
                 </div>

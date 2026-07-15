@@ -65,9 +65,12 @@ function loadSessionFromStorage(): ImpersonationSession | null {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ImpersonationSession;
-    // Discard if expired
+    // Discard if expired — and clear the tenant override too, otherwise the
+    // admin keeps silently seeing the impersonated tenant's data with no
+    // banner (the override is persisted in localStorage by api.ts).
     if (new Date(parsed.expiresAt).getTime() < Date.now()) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      setTenantOverride(null);
       return null;
     }
     return parsed;
@@ -112,6 +115,23 @@ export function ImpersonationPage() {
   }, [toast]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // Auto-expire: when the 15-min window lapses while the page is open, drop
+  // the session + tenant override so the banner never claims a live session
+  // (and the admin never keeps a stale cross-tenant view) past expiry.
+  useEffect(() => {
+    if (!activeSession) return;
+    const ms = new Date(activeSession.expiresAt).getTime() - Date.now();
+    const timer = setTimeout(() => {
+      setActiveSession(null);
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setTenantOverride(null);
+      toast.warning('Impersonation session expired', {
+        message: 'The 15-minute window ended. You are back to your own view.',
+      });
+    }, Math.max(0, ms));
+    return () => clearTimeout(timer);
+  }, [activeSession, toast]);
 
   // Client-side filter on already-loaded list (avoids a round-trip per keystroke)
   useEffect(() => {
@@ -257,10 +277,10 @@ export function ImpersonationPage() {
             className="text-label"
             style={{ color: 'var(--warning)', letterSpacing: '0.08em' }}
           >
-            You are about to act as another user. All actions will be logged under your admin account as an impersonation event.
+            You are about to act as another user. Session start and end are audit-logged as impersonation events under your admin account.
           </p>
           <p className="text-xs t-muted mt-1">
-            Sessions expire after 15 minutes. Every action taken while impersonating is recorded in the audit trail with your identity as the actor. You cannot impersonate users with equal or higher privilege than your own. Proceed with care.
+            Sessions expire after 15 minutes. Actions taken while impersonating are recorded in the audit trail with your identity as the actor. You cannot impersonate users with equal or higher privilege than your own. Proceed with care.
           </p>
         </div>
       </div>
@@ -379,9 +399,10 @@ export function ImpersonationPage() {
               <p className="text-label">Audit &amp; Compliance Record</p>
             </div>
             <p className="text-xs t-muted leading-relaxed">
-              This session will be subject to enhanced auditing. A mandatory record of your justification and
-              activities will be securely retained for compliance purposes. All actions are strictly necessary
-              and authorised.
+              Session start and end are written to the audit log with your identity as the actor,
+              and actions you take during the session are attributed to your admin account.
+              A justification note is not captured here yet — record your reason on the related
+              support ticket before starting.
             </p>
           </Card>
         </aside>

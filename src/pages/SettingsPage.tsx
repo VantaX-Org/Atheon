@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/stores/appStore";
-import type { AccentColor } from "@/stores/appStore";
 import { api, ApiError } from "@/lib/api";
 import type { LlmConfigResponse } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
@@ -14,7 +13,7 @@ import { PERSONA_LABELS } from "@/components/journey/PersonaRail";
 import type { Persona } from "@/types";
 import { FormError } from "@/components/ui/state";
 import {
- User, Bell, Palette, Cpu, Loader2, Check, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle, HelpCircle
+ User, Bell, Cpu, Loader2, Check, Shield, Key, Copy, Download, Trash2, Brain, ArrowRight, AlertTriangle, HelpCircle, RefreshCw
 } from "lucide-react";
 
 interface NotificationPref {
@@ -34,9 +33,17 @@ const NOTIFICATION_DEFS: NotificationPref[] = [
  { key: 'system_health', label: 'System health', desc: 'Uptime and performance degradation alerts', enabled: true },
 ];
 
+const applyPrefs = (prefs?: Record<string, boolean>): NotificationPref[] =>
+ NOTIFICATION_DEFS.map(d => ({ ...d, enabled: prefs && d.key in prefs ? prefs[d.key] : d.enabled }));
+
 export function SettingsPage() {
  const toast = useToast();
- const { user, setUser, accentColor, setAccentColor } = useAppStore();
+ const { user, setUser } = useAppStore();
+ // Role gating — hide (not disable) sections a role cannot use:
+ //  - auditor/board_member: read-oriented roles → minimal profile + MFA only.
+ //  - Data & Privacy triggers TENANT-WIDE export/erasure server-side → admin roles only.
+ const isMinimalRole = user?.role === 'auditor' || user?.role === 'board_member';
+ const isTenantAdmin = user?.role === 'superadmin' || user?.role === 'support_admin' || user?.role === 'admin';
  const [displayName, setDisplayName] = useState(user?.name || '');
  const [email, setEmail] = useState(user?.email || '');
  const [persona, setPersona] = useState<Persona | ''>(user?.persona ?? '');
@@ -44,21 +51,27 @@ export function SettingsPage() {
  const [saved, setSaved] = useState(false);
  const [saveError, setSaveError] = useState<string | null>(null);
 
- const applyPrefs = (prefs?: Record<string, boolean>): NotificationPref[] =>
- NOTIFICATION_DEFS.map(d => ({ ...d, enabled: prefs && d.key in prefs ? prefs[d.key] : d.enabled }));
-
  const [notifications, setNotifications] = useState<NotificationPref[]>(() => applyPrefs(user?.notificationPrefs));
  const [notifsDirty, setNotifsDirty] = useState(false);
  const [savingNotifs, setSavingNotifs] = useState(false);
+ // 'ready' = toggles reflect real saved prefs (server copy, or store copy from login).
+ // 'error' = no trustworthy copy — show retry, never defaults dressed up as saved values.
+ const [notifsState, setNotifsState] = useState<'loading' | 'ready' | 'error'>(user?.notificationPrefs ? 'ready' : 'loading');
 
  // Hydrate from the authoritative server copy (store may predate this field).
- useEffect(() => {
- let live = true;
- api.auth.me()
- .then(me => { if (live && me.notificationPrefs) setNotifications(applyPrefs(me.notificationPrefs)); })
- .catch(() => { /* keep defaults */ });
- return () => { live = false; };
+ const hydrateNotifs = useCallback(async () => {
+ setNotifsState(prev => prev === 'ready' ? 'ready' : 'loading');
+ try {
+ const me = await api.auth.me();
+ if (me.notificationPrefs) setNotifications(applyPrefs(me.notificationPrefs));
+ // No prefs on the server = backend defaults apply, which NOTIFICATION_DEFS mirrors.
+ setNotifsState('ready');
+ } catch {
+ setNotifsState(prev => prev === 'ready' ? 'ready' : 'error');
+ }
  }, []);
+
+ useEffect(() => { hydrateNotifs(); }, [hydrateNotifs]);
 
  const toggleNotification = (index: number) => {
  setNotifications(prev => prev.map((n, i) => i === index ? { ...n, enabled: !n.enabled } : n));
@@ -131,14 +144,21 @@ export function SettingsPage() {
  // MFA status — full enrollment/management UX lives on /settings/mfa.
  const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
  const [mfaStatus, setMfaStatus] = useState<{ enabled: boolean; backupCodesRemaining?: number } | null>(null);
+ const [mfaStatusError, setMfaStatusError] = useState(false);
 
- useEffect(() => {
-   let cancelled = false;
-   api.auth.mfaStatus()
-     .then((res) => { if (!cancelled) setMfaStatus({ enabled: !!res.enabled, backupCodesRemaining: res.backupCodesRemaining }); })
-     .catch(() => { if (!cancelled) setMfaStatus({ enabled: false }); });
-   return () => { cancelled = true; };
+ const loadMfaStatus = useCallback(async () => {
+   setMfaStatusError(false);
+   try {
+     const res = await api.auth.mfaStatus();
+     setMfaStatus({ enabled: !!res.enabled, backupCodesRemaining: res.backupCodesRemaining });
+   } catch {
+     // Unknown ≠ disabled — surface the failure rather than claiming "not enabled".
+     setMfaStatus(null);
+     setMfaStatusError(true);
+   }
  }, []);
+
+ useEffect(() => { loadMfaStatus(); }, [loadMfaStatus]);
 
  // Phase 4.4: API key — server-side generation
  const [apiKeyVisible, setApiKeyVisible] = useState(false);
@@ -146,8 +166,10 @@ export function SettingsPage() {
  const [apiKeyMeta, setApiKeyMeta] = useState<{ id: string; name: string; prefix: string; createdAt: string } | null>(null);
  const [apiKeyLoading, setApiKeyLoading] = useState(false);
  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+ const [apiKeyListError, setApiKeyListError] = useState(false);
 
  const loadApiKeys = useCallback(async () => {
+   setApiKeyListError(false);
    try {
      const res = await api.auth.listApiKeys();
      if (res.keys.length > 0) {
@@ -156,18 +178,25 @@ export function SettingsPage() {
      }
    } catch (err) {
      console.error('Failed to load API keys', err);
-     // Silent load failure — the UI just shows the "Generate" CTA, which is
-     // the correct fallback. Surface an error only if the user tries to
-     // generate/regenerate a key.
+     // Don't show the "Generate" CTA on a failed list — the user may already
+     // have a key, and generating another would silently leave it active.
+     setApiKeyListError(true);
    }
  }, []);
 
  useEffect(() => { loadApiKeys(); }, [loadApiKeys]);
 
  const handleGenerateApiKey = async () => {
+   // Regeneration is destructive: revoke the existing key first so the
+   // "revokes existing" promise in the UI is actually true server-side.
+   if (apiKeyMeta && !confirm(`Regenerate API key? Your existing key (${apiKeyMeta.prefix}…) will be revoked immediately and any integrations using it will stop working.`)) return;
    setApiKeyLoading(true);
    setApiKeyError(null);
    try {
+     if (apiKeyMeta) {
+       await api.auth.revokeApiKey(apiKeyMeta.id);
+       setApiKeyMeta(null);
+     }
      const res = await api.auth.generateApiKey();
      setGeneratedApiKey(res.key);
      setApiKeyMeta({ id: res.id, name: res.name, prefix: res.prefix, createdAt: new Date().toISOString() });
@@ -195,9 +224,11 @@ export function SettingsPage() {
  const [llmSaving, setLlmSaving] = useState(false);
  const [llmSaved, setLlmSaved] = useState(false);
  const [llmError, setLlmError] = useState<string | null>(null);
+ const [llmLoadError, setLlmLoadError] = useState(false);
 
  const loadLlmConfig = useCallback(async () => {
   if (!isSuperadmin) return;
+  setLlmLoadError(false);
   try {
    const config = await api.admin.getLlmConfig();
    setLlmConfig(config);
@@ -206,7 +237,11 @@ export function SettingsPage() {
    setLlmBaseUrl(config.baseUrl || '');
    setLlmTemperature(config.temperature);
    setLlmMaxTokens(config.maxTokens);
-  } catch (err) { console.error('Failed to load LLM config', err); }
+  } catch (err) {
+   console.error('Failed to load LLM config', err);
+   // Don't render the form with hardcoded defaults posing as the saved config.
+   setLlmLoadError(true);
+  }
  }, [isSuperadmin]);
 
  useEffect(() => { loadLlmConfig(); }, [loadLlmConfig]);
@@ -238,22 +273,22 @@ export function SettingsPage() {
   setLlmSaving(false);
  };
 
- // Accent options — keys reference AccentColor enum values via indirect strings
- // to keep display labels decoupled from the colour name literals.
- const accentOptions: { key: AccentColor; label: string }[] = [
-  { key: ('ind' + 'igo') as AccentColor, label: 'Ink' },
-  { key: 'blue' as AccentColor,          label: 'Cobalt' },
-  { key: ('vi' + 'olet') as AccentColor, label: 'Dusk' },
-  { key: 'emerald' as AccentColor,       label: 'Sage' },
-  { key: 'rose' as AccentColor,          label: 'Coral' },
+ // Section rail mirrors exactly the cards this role can see — no dead anchors.
+ const sections = [
+  { id: 'profile',       label: 'Profile' },
+  ...(!isMinimalRole ? [{ id: 'notifications', label: 'Notifications' }] : []),
+  { id: 'security',      label: 'Two-Factor' },
+  ...(!isMinimalRole ? [{ id: 'api', label: 'API Key' }] : []),
+  ...(isTenantAdmin ? [{ id: 'privacy', label: 'Data & Privacy' }] : []),
+  ...(!isMinimalRole ? [{ id: 'platform', label: 'Platform' }] : []),
  ];
 
  return (
  <div className="space-y-6 animate-fadeIn">
  <PageHeader
   eyebrow="Account · Settings"
-  title="Organization Settings"
-  dek="Platform configuration & preferences"
+  title="Settings"
+  dek="Your profile, security & preferences"
  />
 
  {/* Editorial three-column scaffold (matches v4-49 mockup):
@@ -272,25 +307,12 @@ export function SettingsPage() {
    boxShadow: 'var(--shadow-card)',
   }}
  >
-  {[
-   { id: 'profile',       label: 'Profile' },
-   { id: 'notifications', label: 'Notifications' },
-   { id: 'appearance',    label: 'Appearance' },
-   { id: 'security',      label: 'Two-Factor' },
-   { id: 'api',           label: 'API Key' },
-   { id: 'privacy',       label: 'Data & Privacy' },
-   { id: 'platform',      label: 'Platform' },
-  ].map((s, i) => (
+  {sections.map((s) => (
    <a
     key={s.id}
     href={`#${s.id}`}
-    aria-current={i === 0 ? 'page' : undefined}
     className="text-label !text-[10px] px-3 py-2 rounded-md transition-colors"
-    style={
-     i === 0
-      ? { background: 'var(--accent-subtle)', color: 'var(--accent)' }
-      : { color: 'var(--text-muted)' }
-    }
+    style={{ color: 'var(--text-muted)' }}
    >
     {s.label}
    </a>
@@ -316,7 +338,10 @@ export function SettingsPage() {
  </div>
  </div>
  <Input label="Display Name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+ <div>
  <Input label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+ <p className="text-caption t-muted mt-1">This is your sign-in email — changes take effect immediately after saving.</p>
+ </div>
  <div>
  <label className="block text-xs font-medium t-secondary mb-1" htmlFor="settings-persona">Your view</label>
  <select
@@ -367,11 +392,23 @@ export function SettingsPage() {
  </div>
  </Card>
 
- {/* Notifications */}
+ {/* Notifications — personal prefs, hidden for read-only oversight roles */}
+ {!isMinimalRole && (
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
  <Bell className="w-4 h-4 text-accent" /> <span id="notifications">Notifications</span>
  </h3>
+ {notifsState === 'loading' ? (
+ <div className="flex items-center gap-2 text-xs t-muted py-4"><Loader2 size={14} className="animate-spin" /> Loading your saved preferences…</div>
+ ) : notifsState === 'error' ? (
+ <div className="py-4 space-y-3">
+ <p className="text-sm t-muted">Preferences — <span className="tnum">couldn't load your saved settings.</span></p>
+ <Button variant="secondary" size="sm" onClick={hydrateNotifs} title="Retry loading notification preferences">
+ <RefreshCw size={14} /> Retry
+ </Button>
+ </div>
+ ) : (
+ <>
  <div className="space-y-3">
  {notifications.map((notif, index) => (
  <div
@@ -398,6 +435,7 @@ export function SettingsPage() {
  </div>
  ))}
  </div>
+ <p className="text-caption t-muted mt-3">Changes apply to alerts sent to your account after saving.</p>
  <div className="flex justify-end mt-4">
  <Button
   variant="secondary"
@@ -410,39 +448,10 @@ export function SettingsPage() {
  {notifsDirty ? 'Save Preferences' : 'Saved'}
  </Button>
  </div>
+ </>
+ )}
  </Card>
-
- {/* Appearance */}
- <Card>
- <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
- <Palette className="w-4 h-4 text-accent" /> <span id="appearance">Appearance</span>
- </h3>
- <div className="space-y-4">
- <div>
- <span className="text-sm t-muted">Accent Colour</span>
- <div className="flex gap-3 mt-2">
- {accentOptions.map(c => (
- <button
-  key={c.key}
-  onClick={() => setAccentColor(c.key)}
-  title={c.label}
-  className="w-8 h-8 rounded-full transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)]"
-  style={{
-   background: c.key === accentColor ? 'var(--accent)' : 'var(--bg-secondary)',
-   border: c.key === accentColor ? '2px solid var(--accent)' : '1px solid var(--border-card)',
-   outline: c.key === accentColor ? '2px solid var(--accent)' : 'none',
-   outlineOffset: '3px',
-   transform: c.key === accentColor ? 'scale(1.15)' : 'scale(1)',
-  }}
- />
- ))}
- </div>
- <p className="text-caption t-muted mt-2">
- Selected: {accentOptions.find(c => c.key === accentColor)?.label || 'Ink'}
- </p>
- </div>
- </div>
- </Card>
+ )}
 
  {/* Phase 4.4: MFA / Two-Factor Authentication — summary card; full UX at /settings/mfa */}
  <Card>
@@ -466,7 +475,21 @@ export function SettingsPage() {
      </p>
    </div>
  )}
- {mfaStatus?.enabled ? (
+ {mfaStatusError ? (
+   <div className="space-y-3">
+     <p className="text-sm t-muted">Status: — <span className="text-xs">(couldn't load MFA status)</span></p>
+     <div className="flex items-center gap-3">
+       <Button variant="secondary" size="sm" onClick={loadMfaStatus} title="Retry loading MFA status">
+         <RefreshCw size={14} /> Retry
+       </Button>
+       <Link to="/settings/mfa" className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--accent)' }}>
+         Open MFA settings <ArrowRight size={12} />
+       </Link>
+     </div>
+   </div>
+ ) : !mfaStatus ? (
+   <div className="flex items-center gap-2 text-xs t-muted py-2"><Loader2 size={14} className="animate-spin" /> Loading status…</div>
+ ) : mfaStatus.enabled ? (
    <div className="space-y-3">
      <div className="flex items-center gap-3 p-3 rounded-md" style={{ background: 'rgb(var(--accent-rgb) / 0.08)', border: '1px solid rgb(var(--accent-rgb) / 0.20)' }}>
        <Shield className="w-5 h-5 text-accent" />
@@ -499,13 +522,14 @@ export function SettingsPage() {
  )}
  </Card>
 
- {/* Phase 4.4: API Key */}
+ {/* Phase 4.4: API Key — personal integration credential, hidden for read-only oversight roles */}
+ {!isMinimalRole && (
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
  <Key className="w-4 h-4 text-accent" /> <span id="api">API Key</span>
  </h3>
  <div className="space-y-3">
-   <p className="text-xs t-muted">Use this key to authenticate API requests programmatically.</p>
+   <p className="text-xs t-muted">Use this key to authenticate API requests programmatically. It acts with your permissions.</p>
    {generatedApiKey ? (
      <>
        <div className="flex items-center gap-2">
@@ -527,8 +551,16 @@ export function SettingsPage() {
          <span className="font-mono text-xs t-primary tnum">{apiKeyMeta.prefix}••••••••</span>
          <span className="text-caption t-muted ml-auto">Created {new Date(apiKeyMeta.createdAt).toLocaleDateString()}</span>
        </div>
-       <Button variant="secondary" size="sm" onClick={handleGenerateApiKey} disabled={apiKeyLoading} title="Generate a new API key (revokes existing)">
+       <Button variant="secondary" size="sm" onClick={handleGenerateApiKey} disabled={apiKeyLoading} title="Revoke this key and generate a new one">
          {apiKeyLoading ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Regenerate Key
+       </Button>
+       <p className="text-caption t-muted">Regenerating revokes this key immediately — integrations using it will stop working.</p>
+     </div>
+   ) : apiKeyListError ? (
+     <div className="space-y-2">
+       <p className="text-sm t-muted">Existing keys: — <span className="text-xs">(couldn't load)</span></p>
+       <Button variant="secondary" size="sm" onClick={loadApiKeys} title="Retry loading API keys">
+         <RefreshCw size={14} /> Retry
        </Button>
      </div>
    ) : (
@@ -540,20 +572,21 @@ export function SettingsPage() {
    <p className="text-caption t-muted">Include as <code className="text-accent">X-API-Key</code> header in your requests.</p>
  </div>
  </Card>
+ )}
 
- {/* Spec 7 POPIA-3: Data & Privacy */}
+ {/* Spec 7 POPIA-3: Data & Privacy — these endpoints act on the WHOLE TENANT
+     (all users, customers, employees), so they're shown to admin roles only. */}
+ {isTenantAdmin && (
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
  <Shield className="w-4 h-4 text-accent" /> <span id="privacy">Data &amp; Privacy (POPIA)</span>
  </h3>
  <div className="space-y-4">
    <div className="p-3 rounded-md" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-card)' }}>
-     <p className="text-label !text-[10px] mb-1.5">Information Officer</p>
-     <p className="text-sm t-primary font-medium">{user?.name || 'Not configured'} — {user?.email || 'Contact your administrator'}</p>
-     <p className="text-xs t-muted">In terms of POPIA (Protection of Personal Information Act), you have the right to access and delete your personal data.</p>
+     <p className="text-xs t-muted">POPIA (Protection of Personal Information Act) data-subject tools for your organisation. Both actions apply to <strong className="t-primary">all personal data in your organisation</strong> — every user, customer and employee record — not only your own account.</p>
    </div>
    <div className="flex gap-3">
-     <Button variant="secondary" size="sm" title="Request a copy of all your personal data" onClick={async () => {
+     <Button variant="secondary" size="sm" title="Download all personal data held for your organisation (JSON)" onClick={async () => {
        try {
          const res = await api.tenants.dataExport();
          const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
@@ -569,14 +602,14 @@ export function SettingsPage() {
          });
        }
      }}>
-       <Download size={14} /> Request My Data
+       <Download size={14} /> Export Organisation Data
      </Button>
-     <Button variant="danger" size="sm" title="Permanently delete all your personal data" onClick={async () => {
-       if (!confirm('This will permanently erase your personal data. This action cannot be undone. Continue?')) return;
-       if (!confirm('Are you absolutely sure? All your data will be permanently deleted.')) return;
+     <Button variant="danger" size="sm" title="Permanently erase or anonymise all personal data in your organisation" onClick={async () => {
+       if (!confirm('This erases or anonymises personal data for your ENTIRE organisation: all users, customers and employees are deleted or anonymised, and invoice/audit identities are redacted. This cannot be undone. Continue?')) return;
+       if (!confirm('Final confirmation: every user in your organisation (including you) will lose their profile data immediately. Proceed with organisation-wide erasure?')) return;
        try {
          await api.tenants.dataErasure();
-         toast.success('Your data has been erased', 'Redirecting to login…');
+         toast.success('Organisation data erased', 'Redirecting to login…');
          setTimeout(() => { window.location.href = '/login'; }, 1500);
        } catch (err) {
          toast.error('Data erasure failed', {
@@ -585,11 +618,12 @@ export function SettingsPage() {
          });
        }
      }}>
-       <Trash2 size={14} /> Delete My Data
+       <Trash2 size={14} /> Erase Organisation Data
      </Button>
    </div>
  </div>
  </Card>
+ )}
 
  {/* LLM Configuration — Superadmin Only */}
  {isSuperadmin && (
@@ -598,7 +632,17 @@ export function SettingsPage() {
  <Brain className="w-4 h-4 text-accent" /> AI Engine Configuration
  <Badge variant="warning" size="sm">Superadmin</Badge>
  </h3>
- <p className="text-xs t-muted mb-4">Configure the AI provider powering Atheon Intelligence insights across Pulse, Apex, and Dashboard.</p>
+ <p className="text-xs t-muted mb-4">Configure the AI provider powering Atheon Intelligence insights across Pulse, Apex, and Dashboard. Changes apply to new AI requests immediately after saving.</p>
+ {llmLoadError ? (
+ <div className="space-y-3">
+ <p className="text-sm t-muted">Current configuration: — <span className="text-xs">(couldn't load)</span></p>
+ <Button variant="secondary" size="sm" onClick={loadLlmConfig} title="Retry loading LLM configuration">
+  <RefreshCw size={14} /> Retry
+ </Button>
+ </div>
+ ) : !llmConfig ? (
+ <div className="flex items-center gap-2 text-xs t-muted py-2"><Loader2 size={14} className="animate-spin" /> Loading current configuration…</div>
+ ) : (
  <div className="space-y-4">
  <div>
  <label className="text-xs font-medium t-secondary mb-1 block">Provider</label>
@@ -638,10 +682,12 @@ export function SettingsPage() {
   {llmError && <span className="text-xs text-neg">{llmError}</span>}
  </div>
  </div>
+ )}
  </Card>
  )}
 
- {/* Platform Info */}
+ {/* Platform Info — static deployment facts */}
+ {!isMinimalRole && (
  <Card>
  <h3 className="text-base font-semibold t-primary mb-4 flex items-center gap-2">
  <Cpu className="w-4 h-4 text-accent" /> <span id="platform">Platform</span>
@@ -663,6 +709,7 @@ export function SettingsPage() {
  ))}
  </div>
  </Card>
+ )}
  </div>
 
  {/* ── Help-tip + live system-status aside ────────────────────── */}
@@ -681,20 +728,8 @@ export function SettingsPage() {
    <p className="text-label !text-[10px] mt-1.5 t-accent">Help Tip</p>
   </div>
   <p className="text-body-sm t-muted">
-   Manage your organization's profile and preferences. Ensure your contact details and security settings are up-to-date for optimal assurance and compliance.
+   Manage your profile and preferences. Ensure your contact details and security settings are up-to-date for optimal assurance and compliance.
   </p>
-  <div className="pt-3" style={{ borderTop: '1px solid var(--divider)' }}>
-   <div className="flex items-center gap-2">
-    <span
-     aria-hidden
-     className="inline-block w-1.5 h-1.5 rounded-full"
-     style={{ background: 'var(--rag-healthy)' }}
-    />
-    <span className="text-label !text-[10px]" style={{ color: 'var(--rag-healthy)' }}>
-     System Status · Optimal
-    </span>
-   </div>
-  </div>
  </aside>
  </div>
  </div>

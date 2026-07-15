@@ -69,7 +69,7 @@ const RUNS: Run[] = [
     p50Ms: 1459,
     p95Ms: 2724,
     p99Ms: 2889,
-    description: '3 D1 queries + KV-derived component status. Latency dominated by D1 cold-query path; sub-200ms once cached. Zero errors at sustained 5-VU load.',
+    description: '3 D1 queries + KV-derived component status. Latency dominated by the D1 cold-query path. Zero errors at sustained 5-VU load.',
     significance: 'note',
   },
   {
@@ -180,7 +180,12 @@ export default function PerformancePage(): JSX.Element {
 
         {/* Run cards — latency & throughput, mockup metric treatment */}
         <section>
-          <p className="text-label mb-3">Latest Results · Last Run</p>
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <p className="text-label">Latest Results</p>
+            <span className="text-caption t-muted font-mono">
+              Captured 2026-05-15 · production atheon-api.vantax.co.za
+            </span>
+          </div>
           <div className="space-y-4">
             {RUNS.map((run, i) => {
               const tone = sigTone(run.significance);

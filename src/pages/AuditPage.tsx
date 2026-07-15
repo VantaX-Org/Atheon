@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { LayerBadge } from "@/components/ui/layer-badge";
 import { api, ApiError } from "@/lib/api";
@@ -16,6 +16,7 @@ import { BillingProofFindings } from "@/components/audit/BillingProofFindings";
 export function AuditPage() {
  const toast = useToast();
  const [entries, setEntries] = useState<AuditEntry[]>([]);
+ const [error, setError] = useState<Error | string | null>(null);
  const [loading, setLoading] = useState(true);
  const [showFilters, setShowFilters] = useState(false);
  const [filterLayer, setFilterLayer] = useState<string>('');
@@ -26,13 +27,14 @@ export function AuditPage() {
  // Phase Z: Provenance timeline view (Stitch default) ↔ classic table view.
  const [viewMode, setViewMode] = useState<'timeline' | 'table'>('timeline');
 
- useEffect(() => {
- async function load() {
+ const load = useCallback(async () => {
  setLoading(true);
  try {
  const data = await api.audit.log();
  setEntries(data.entries);
+ setError(null);
   } catch (err) {
+   setError(err instanceof Error ? err : String(err));
    console.error('Failed to load audit log', err);
    toast.error('Failed to load audit log', {
     message: err instanceof Error ? err.message : 'Unable to retrieve audit entries',
@@ -40,10 +42,10 @@ export function AuditPage() {
    });
   }
   setLoading(false);
- }
- load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
  }, []);
+
+ useEffect(() => { load(); }, [load]);
 
  // Shared filter predicate so the table, export buttons, and active-filter
  // count stay in sync instead of duplicating the same inline filter logic.
@@ -58,10 +60,19 @@ export function AuditPage() {
 
  const activeFilterCount = [filterLayer, filterOutcome, dateFrom, dateTo].filter(Boolean).length;
 
- const status = statusFrom({ loading, error: null, isEmpty: false });
+ // Honesty: a failed fetch must never render "0 Total Events" / "No audit
+ // entries found" — that is a false compliance claim. Show the error state.
+ const status = statusFrom({ loading, error, isEmpty: false });
  if (status !== 'success') {
   return (
-   <AsyncPageContent status={status} loadingVariant="cards" loadingCount={4}>
+   <AsyncPageContent
+    status={status}
+    loadingVariant="cards"
+    loadingCount={4}
+    error={error}
+    errorTitle="Failed to load audit log"
+    onRetry={load}
+   >
     {null}
    </AsyncPageContent>
   );
@@ -124,9 +135,9 @@ export function AuditPage() {
        `Filters: ${[filterLayer && `Layer=${filterLayer}`, filterOutcome && `Outcome=${filterOutcome}`, dateFrom && `From=${dateFrom}`, dateTo && `To=${dateTo}`].filter(Boolean).join(', ') || 'None'}`,
        `Total entries: ${filteredEntries.length}`,
        '',
-       'TIMESTAMP | ACTION | LAYER | RESOURCE | OUTCOME | IP | DETAILS',
+       'TIMESTAMP | ACTION | LAYER | RESOURCE | OUTCOME | IP | USER | DETAILS',
        '-'.repeat(120),
-       ...filteredEntries.map(e => `${new Date(e.createdAt).toISOString()} | ${e.action} | ${e.layer} | ${e.resource || '-'} | ${e.outcome} | ${e.ipAddress || '-'} | ${e.details ? Object.entries(e.details).map(([k,v]) => `${k}: ${v}`).join('; ') : '-'}`),
+       ...filteredEntries.map(e => `${new Date(e.createdAt).toISOString()} | ${e.action} | ${e.layer} | ${e.resource || '-'} | ${e.outcome} | ${e.ipAddress || '-'} | ${e.userId || '-'} | ${e.details ? Object.entries(e.details).map(([k,v]) => `${k}: ${v}`).join('; ') : '-'}`),
       ];
       const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);

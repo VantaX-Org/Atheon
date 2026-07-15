@@ -39,6 +39,9 @@ export function SupportTicketDetailPage() {
   const [ticket, setTicket] = useState<SupportTicket | null>(null);
   const [replies, setReplies] = useState<SupportTicketReply[]>([]);
   const [loading, setLoading] = useState(true);
+  // 'not_found' = server said 403/404 (wrong user/tenant or deleted);
+  // 'failed'    = network/5xx — the ticket may exist, offer a retry.
+  const [loadError, setLoadError] = useState<'not_found' | 'failed' | null>(null);
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -50,36 +53,27 @@ export function SupportTicketDetailPage() {
     });
   }, [toast]);
 
-  const reload = useCallback(async () => {
+  const load = useCallback(async (initial = false) => {
     if (!id) return;
+    if (initial) setLoading(true);
     try {
       const res = await api.support.get(id);
       setTicket(res.ticket);
       setReplies(res.replies);
+      setLoadError(null);
     } catch (err) {
-      showError('Failed to load ticket', err, 'Network error');
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        setLoadError('not_found');
+      } else {
+        setLoadError('failed');
+        showError('Failed to load ticket', err, 'Network error');
+      }
+    } finally {
+      if (initial) setLoading(false);
     }
   }, [id, showError]);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!id) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await api.support.get(id);
-        if (!cancelled) {
-          setTicket(res.ticket);
-          setReplies(res.replies);
-        }
-      } catch (err) {
-        if (!cancelled) showError('Failed to load ticket', err, 'Network error');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [id, showError]);
+  useEffect(() => { void load(true); }, [load]);
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +82,7 @@ export function SupportTicketDetailPage() {
     try {
       await api.support.addReply(id, replyBody);
       setReplyBody('');
-      await reload();
+      await load();
     } catch (err) {
       showError('Could not send reply', err, 'Please try again.');
     } finally {
@@ -120,12 +114,25 @@ export function SupportTicketDetailPage() {
           Back
         </button>
         <Card>
-          <div className="text-center py-8">
-            <p className="text-sm t-secondary">Ticket not found.</p>
-            <Link to="/support-tickets" className="text-xs text-accent hover:underline mt-2 inline-block">
-              Back to tickets
-            </Link>
-          </div>
+          {loadError === 'failed' ? (
+            <div className="text-center py-8" data-testid="support-detail-error">
+              <p className="text-sm t-secondary">We couldn't load this ticket.</p>
+              <p className="text-xs t-muted mt-1">The ticket may still exist — this is a loading problem.</p>
+              <Button className="mt-4" variant="secondary" size="sm" onClick={() => void load(true)}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center py-8" data-testid="support-detail-not-found">
+              <p className="text-sm t-secondary">Ticket not found.</p>
+              <p className="text-xs t-muted mt-1">
+                It may have been filed by another user, or the link is out of date.
+              </p>
+              <Link to="/support-tickets" className="text-xs text-accent hover:underline mt-3 inline-block">
+                Back to your tickets
+              </Link>
+            </div>
+          )}
         </Card>
       </div>
     );
@@ -166,7 +173,9 @@ export function SupportTicketDetailPage() {
             {/* Original ticket message */}
             <Card>
               <div className="flex items-start justify-between gap-3">
-                <Badge variant="default">Customer</Badge>
+                <Badge variant={currentUser && ticket.user_id === currentUser.id ? 'info' : 'default'}>
+                  {currentUser && ticket.user_id === currentUser.id ? 'You' : 'Requester'}
+                </Badge>
                 <span className="text-caption font-mono t-muted whitespace-nowrap">
                   {new Date(ticket.created_at).toLocaleString()}
                 </span>
@@ -176,12 +185,14 @@ export function SupportTicketDetailPage() {
 
             {replies.map((r) => {
               const isMine = currentUser && r.user_id === currentUser.id;
+              // Honest labels from real user_ids: the ticket requester is
+              // "Requester"; anyone else on the thread is staff ("Support" —
+              // the server only lets the requester and admins in).
+              const label = isMine ? 'You' : r.user_id === ticket.user_id ? 'Requester' : 'Support';
               return (
                 <Card key={r.id}>
                   <div className="flex items-start justify-between gap-3">
-                    <Badge variant={isMine ? 'info' : 'default'}>
-                      {isMine ? 'You' : 'Agent'}
-                    </Badge>
+                    <Badge variant={isMine ? 'info' : 'default'}>{label}</Badge>
                     <span className="text-caption font-mono t-muted whitespace-nowrap">
                       {new Date(r.created_at).toLocaleString()}
                     </span>
@@ -195,6 +206,13 @@ export function SupportTicketDetailPage() {
           {/* Composer */}
           {canReply ? (
             <Card>
+              {/* Status is real API data — 'waiting_customer' means the ball is
+                  in the requester's court, so say so. */}
+              {ticket.status === 'waiting_customer' && (
+                <p className="text-xs t-secondary mb-3" data-testid="support-waiting-hint">
+                  Support is waiting on a reply to move this ticket forward.
+                </p>
+              )}
               <form onSubmit={handleReply} className="space-y-3" data-testid="support-reply-form">
                 <label className="block">
                   <span className="sr-only">Reply</span>
@@ -202,7 +220,7 @@ export function SupportTicketDetailPage() {
                     value={replyBody}
                     maxLength={10000}
                     rows={4}
-                    placeholder="Write a reply or internal note…"
+                    placeholder="Write a reply…"
                     onChange={(e) => setReplyBody(e.target.value)}
                     className="w-full rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring-focus)] resize-y"
                     style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}

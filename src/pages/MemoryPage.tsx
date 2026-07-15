@@ -218,7 +218,7 @@ export function MemoryPage() {
     { id: "graph", label: "Graph" },
     { id: "entities", label: "Entities" },
     { id: "relationships", label: "Relationships" },
-    { id: "search", label: "GraphRAG Search" },
+    { id: "search", label: "Ask Memory" },
   ];
 
   // Confidence → RAG status (presentation only; healthy/watch/risk pill in the
@@ -381,19 +381,27 @@ export function MemoryPage() {
                   </div>
                   <p className="mt-3 text-lg font-semibold t-primary leading-snug">{ent.name}</p>
                   <div
-                    className="mt-4 pt-3 flex items-center justify-between gap-3"
+                    className="mt-4 pt-3 flex items-center justify-between gap-3 flex-wrap"
                     style={{ borderTop: "1px solid var(--border-card)" }}
                   >
                     <span className="font-mono text-caption t-muted truncate">
                       <span className="t-muted">SOURCE:</span>{" "}
                       <span className="t-secondary">{ent.source || "—"}</span>
                     </span>
-                    {typeof ent.confidence === "number" ? (
-                      <span className="font-mono text-caption t-muted tabular-nums flex-shrink-0">
-                        <span className="t-muted">CONFIDENCE:</span>{" "}
-                        <span className="t-secondary">{Math.round(ent.confidence * 100)}%</span>
-                      </span>
-                    ) : null}
+                    <span className="flex items-center gap-3 flex-shrink-0">
+                      {ent.validFrom ? (
+                        <span className="font-mono text-caption t-muted tabular-nums">
+                          <span className="t-muted">SINCE:</span>{" "}
+                          <span className="t-secondary">{new Date(ent.validFrom).toLocaleDateString()}</span>
+                        </span>
+                      ) : null}
+                      {typeof ent.confidence === "number" ? (
+                        <span className="font-mono text-caption t-muted tabular-nums">
+                          <span className="t-muted">CONFIDENCE:</span>{" "}
+                          <span className="t-secondary">{Math.round(ent.confidence * 100)}%</span>
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                 </div>
               );
@@ -501,6 +509,14 @@ export function MemoryPage() {
                 <span className="flex-1 text-sm font-medium t-primary truncate text-right" title={rel.targetName}>
                   {rel.targetName || rel.targetId}
                 </span>
+                {typeof rel.confidence === "number" ? (
+                  <span
+                    className="font-mono text-caption t-muted tabular-nums flex-shrink-0"
+                    title="Confidence recorded on this relationship"
+                  >
+                    {Math.round(rel.confidence * 100)}%
+                  </span>
+                ) : null}
               </div>
             ))}
             {relationships.length === 0 && (
@@ -630,10 +646,17 @@ export function MemoryPage() {
             <div className="space-y-6">
               {searchResult.answer && (
                 <div
-                  className="p-5 rounded-lg text-sm t-secondary leading-relaxed whitespace-pre-wrap"
+                  className="p-5 rounded-lg"
                   style={{ background: "var(--accent-subtle)", border: "1px solid var(--border-card)" }}
                 >
-                  {searchResult.answer}
+                  {/* AI text is attributed and never a source of figures. */}
+                  <p className="text-label flex items-center gap-1.5 mb-2">
+                    <Sparkles size={12} style={{ color: "var(--accent)" }} /> AI-generated answer
+                  </p>
+                  <p className="text-sm t-secondary leading-relaxed whitespace-pre-wrap">{searchResult.answer}</p>
+                  <p className="mt-3 text-caption t-muted">
+                    Written by the AI from the matched entries below — check any figure against its source entry, not this text.
+                  </p>
                 </div>
               )}
 

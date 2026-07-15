@@ -25,6 +25,13 @@ import {
 export function DataGovernancePage() {
   const { activeTab, setActiveTab } = useTabState('overview');
   const user = useAppStore((s) => s.user);
+  // The governance endpoint reads the tenant from the path param only (it
+  // ignores the tenant_id query override request() injects), so the
+  // cross-tenant switcher must be honored here explicitly or support_admin/
+  // superadmin would silently see their own tenant's data while "viewing"
+  // another tenant.
+  const activeTenantId = useAppStore((s) => s.activeTenantId);
+  const tenantId = activeTenantId || user?.tenantId;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +39,14 @@ export function DataGovernancePage() {
   const toast = useToast();
 
   const load = useCallback(async () => {
-    if (!user?.tenantId) {
+    if (!tenantId) {
       setError('No tenant context');
       setLoading(false);
       return;
     }
     setError(null);
     try {
-      const res = await api.governance.get(user.tenantId);
+      const res = await api.governance.get(tenantId);
       setData(res);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -52,8 +59,11 @@ export function DataGovernancePage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.tenantId, toast]);
+  }, [tenantId, toast]);
 
+  // Tenant switch must never show the previous tenant's data under the new
+  // tenant's name — drop back to the loading skeleton until the fetch lands.
+  useEffect(() => { setData(null); setLoading(true); }, [tenantId]);
   useEffect(() => { load(); }, [load]);
 
   const handleRefresh = () => {

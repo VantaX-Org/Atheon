@@ -35,18 +35,20 @@ const SUBPROCESSORS = [
 
 const POSTURE = [
   { icon: Lock, title: 'Encryption in transit', detail: 'TLS 1.2+ on every endpoint. HSTS enforced. Inter-service traffic in private Cloudflare backbone.' },
-  { icon: Lock, title: 'Encryption at rest', detail: 'D1 storage encrypted by Cloudflare. R2 objects encrypted server-side. Customer-managed keys (BYOK) available on the Enterprise plan.' },
+  { icon: Lock, title: 'Encryption at rest', detail: 'D1 storage encrypted by Cloudflare. R2 objects encrypted server-side. Customer-managed keys (BYOK) are on the roadmap, not yet available.' },
   { icon: KeyRound, title: 'Identity', detail: 'SAML 2.0 (via WorkOS) + OIDC (Azure AD). SCIM 2.0 provisioning. MFA enforced for admin roles with grace-period tracking.' },
   { icon: Shield, title: 'Access control', detail: '10 built-in roles incl. scoped auditor + board_member. Custom roles. Tenant isolation enforced at the query layer; every D1 query is tenant-id-bound.' },
   { icon: FileText, title: 'Audit trail', detail: 'Cryptographically-chained provenance ledger (SHA-256 root hash, hourly anchor). Append-only audit_log. Verifiable via /api/audit/provenance/verify.' },
   { icon: Activity, title: 'Monitoring', detail: 'Public /status page with 30-second polling. Hourly D1 snapshots, 30-day retention. RTO ≤ 4h, RPO ≤ 1h.' },
 ];
 
-const FRAMEWORKS = [
-  { name: 'SOC 2 Type II', status: 'Controls implemented · evidence pack live on /compliance for Auditor role', certified: true },
-  { name: 'POPIA (South Africa)', status: 'DSAR endpoints live · 30-day response SLA', certified: true },
-  { name: 'GDPR (EU)', status: 'DSAR + erasure endpoints · Art. 28 DPA available on request', certified: true },
-  { name: 'ISO 27001', status: 'Gap assessment in progress — Q3 2026 target', certified: false },
+// Honesty: Atheon holds no third-party audit certification today, so no row
+// may say "Certified". Pills state the actual posture per framework.
+const FRAMEWORKS: Array<{ name: string; status: string; pill: string; tone: 'success' | 'warning' }> = [
+  { name: 'SOC 2 Type II', status: 'Controls implemented (self-assessed, not yet independently audited) · evidence pack live on /compliance for Auditor role', pill: 'Controls implemented', tone: 'warning' },
+  { name: 'POPIA (South Africa)', status: 'DSAR endpoints live · 30-day response SLA', pill: 'Supported', tone: 'success' },
+  { name: 'GDPR (EU)', status: 'DSAR + erasure endpoints · Art. 28 DPA available on request', pill: 'Supported', tone: 'success' },
+  { name: 'ISO 27001', status: 'Gap assessment in progress — Q3 2026 target', pill: 'In progress', tone: 'warning' },
 ];
 
 export default function SecurityPage(): JSX.Element {
@@ -67,8 +69,8 @@ export default function SecurityPage(): JSX.Element {
                 Enterprise procurement summary — posture, sub-processors, compliance claims, and DPA contact.
               </p>
             </div>
-            <span className="pill pill-success flex-shrink-0">
-              <CheckCircle2 size={13} /> Posture · Healthy
+            <span className="text-caption t-muted flex-shrink-0 font-mono uppercase tracking-wide">
+              Datasheet · updated 15 Jul 2026
             </span>
           </div>
 
@@ -139,7 +141,11 @@ export default function SecurityPage(): JSX.Element {
 
         {/* Compliance frameworks */}
         <section>
-          <div className="text-label mb-4">Compliance &amp; Certifications</div>
+          <div className="text-label mb-2">Compliance Posture</div>
+          <p className="text-caption t-muted mb-4 max-w-2xl">
+            Atheon does not currently hold a third-party audit certification. Statuses below are
+            self-assessed; supporting evidence is available for review on request.
+          </p>
           <Card className="p-0 overflow-hidden">
             <table className="w-full text-body-sm">
               <thead>
@@ -153,8 +159,8 @@ export default function SecurityPage(): JSX.Element {
                   <tr key={f.name} className="border-b border-[var(--border-card)] last:border-0">
                     <td className="px-5 py-4 t-primary font-medium align-top">
                       <span className="inline-flex items-center gap-2">
-                        <span className={`pill ${f.certified ? 'pill-success' : 'pill-warning'}`}>
-                          {f.certified ? 'Certified' : 'In progress'}
+                        <span className={`pill ${f.tone === 'success' ? 'pill-success' : 'pill-warning'}`}>
+                          {f.pill}
                         </span>
                         {f.name}
                       </span>
