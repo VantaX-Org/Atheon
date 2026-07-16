@@ -1,7 +1,8 @@
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { api, getToken, setToken } from "@/lib/api";
 
 // Eager-loaded — needed on first paint regardless of where the user lands:
 // app shell, public entry points, and a thin set of pages that we don't
@@ -85,6 +86,52 @@ const ConsolePageX = lazyWithRetry(() => import("@/x/ConsolePage").then(m => ({ 
  * 3.10: Role-based frontend route protection
  * Only admin and executive roles can access platform management pages
  */
+/**
+ * Session restore for routes that live OUTSIDE AppLayout (the /x console has
+ * its own shell). Mirrors AppLayout's bootstrap: token → auth.me → user in
+ * store, then companies + currency for the switcher. Without this, a hard
+ * navigation to /x hits ProtectedRoute with user=null and bounces to /login.
+ */
+function StandaloneAuthGate({ children }: { children: React.ReactNode }) {
+  const { user, setUser } = useAppStore();
+  const loadCompanies = useAppStore((s) => s.loadCompanies);
+  const loadCurrency = useAppStore((s) => s.loadCurrency);
+  const activeTenantId = useAppStore((s) => s.activeTenantId);
+  const [checking, setChecking] = useState(!useAppStore.getState().user);
+
+  useEffect(() => {
+    if (user) { setChecking(false); return; }
+    const token = getToken();
+    if (!token) { setChecking(false); return; }
+    api.auth.me()
+      .then((me) => {
+        setUser({
+          id: me.id,
+          email: me.email,
+          name: me.name,
+          role: me.role as UserRole,
+          tenantId: me.tenantId,
+          tenantName: me.tenantName,
+          permissions: me.permissions,
+          brand: me.brand
+            ? { logoUrl: me.brand.logoUrl, primaryColor: me.brand.primaryColor, nameOverride: me.brand.nameOverride }
+            : { logoUrl: null, primaryColor: null, nameOverride: null },
+        });
+      })
+      .catch(() => setToken(null))
+      .finally(() => setChecking(false));
+  }, [user, setUser]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadCompanies();
+    loadCurrency();
+  }, [user, activeTenantId, loadCompanies, loadCurrency]);
+
+  if (checking) return <RouteLoader />;
+  return <>{children}</>;
+}
+
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: UserRole[] }) {
   const user = useAppStore((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
@@ -179,7 +226,7 @@ export default function App() {
           <Route path="/audit-share/:token" element={<AuditSharePage />} />
           {/* Flow refactor: new one-screen Recovery Console grows at /x in a
               parallel tree (src/x). Own shell — deliberately outside AppLayout. */}
-          <Route path="/x" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ConsolePageX /></ProtectedRoute>} />
+          <Route path="/x" element={<StandaloneAuthGate><ProtectedRoute allowedRoles={STANDARD_ROLES}><ConsolePageX /></ProtectedRoute></StandaloneAuthGate>} />
           <Route element={<AppLayout />}>
             {/* Operational dashboard — open to every role except the
                 scoped read-only ones (auditor, board_member), which get
