@@ -31,8 +31,8 @@ export interface RiverOpts {
   wBase?: number;
   wScale?: number;
   poolT?: number;
-  onNodeClick?: (id: string) => void;
-  onAskJeff?: (id: string) => void;
+  onNodeClick?: (n: RiverNode) => void;
+  onAskJeff?: (n: RiverNode) => void;
 }
 
 const FLOW_VARS = ['--f-rec', '--f-fee', '--f-gate', '--f-revw', '--f-rev', '--f-leak'] as const;
@@ -78,7 +78,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       const fv = document.createElement('button');
       fv.className = 'fv num';
       fv.textContent = n.value;
-      fv.addEventListener('click', () => opts.onNodeClick?.(n.id));
+      fv.addEventListener('click', () => opts.onNodeClick?.(n));
       d.appendChild(fv);
     } else {
       const fv = document.createElement('span');
@@ -98,7 +98,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ask.textContent = '✦';
       ask.title = 'Ask Jeff about this';
       ask.setAttribute('aria-label', `Ask Jeff about ${n.kicker}`);
-      ask.addEventListener('click', () => opts.onAskJeff?.(n.id));
+      ask.addEventListener('click', () => opts.onAskJeff?.(n));
       d.appendChild(ask);
     }
     el.appendChild(d);
