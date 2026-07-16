@@ -13,13 +13,13 @@
  * the footer is the signed-in identity ("EXECUTIVE USER" in the mockup).
  *
  * The app has ~50 routes the six-item mockup can't show. Rather than lose them,
- * the non-core pages live in two COLLAPSED disclosures below the primary rail:
+ * the non-core pages live below the primary rail as:
  *
- *   WORKSPACE → Executive · Live Monitor · Board Digest · Memory · Mind (extras)
- *   ADMIN     → integrations / IAM / platform-ops / tooling    (PLATFORM_ADMIN+)
+ *   WORKSPACE → Executive · Live Monitor · Board Digest · Memory · Mind (collapsed)
+ *   CONSOLE   → one row → the platform-admin quarantine (PLATFORM_ADMIN+)
  *
  * Executives see a clean six-item rail (+ Workspace where roled); admins get
- * the full surface, one disclosure deep, in the same flat mono language.
+ * one extra Console row that opens the whole admin world in its own left-nav.
  *
  * Scoped read-only roles keep their narrow landing:
  *   auditor       → ASSURANCE (/compliance) + SUPPORT + SETTINGS
@@ -35,9 +35,7 @@ import {
   X, ChevronDown,
   LayoutDashboard, ShieldCheck, PiggyBank, ClipboardCheck, FileText, Settings,
   Gem, Activity, LayoutGrid, MemoryStick, Brain,
-  Network, Webhook, Inbox, Cable, BadgeCheck, KeyRound, UserCog,
-  UserPlus, Building2, LifeBuoy, Cpu, Rocket, ClipboardList, HeartPulse, Bell,
-  AlertTriangle, Flag, CreditCard, Headset, ListFilter, UserSearch, Newspaper, Gavel, Radar,
+  Cable, ClipboardList, LifeBuoy, Newspaper, Gavel, Radar, Wrench,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/types";
@@ -47,8 +45,6 @@ const MONO = "'Space Mono', ui-monospace, monospace";
 // ──────────────────────────────────────────────────────────────
 // Role groups
 // ──────────────────────────────────────────────────────────────
-const SUPERADMIN_ROLES: UserRole[] = ['superadmin'];
-const SUPPORT_ROLES: UserRole[] = ['superadmin', 'support_admin'];
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
 const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
@@ -106,35 +102,12 @@ const WORKSPACE: NavGroup = {
   ],
 };
 
-// Everything operational/administrative, one disclosure deep. Gated to
-// platform admins as a whole; individual leaves narrow further.
-const ADMIN: NavGroup = {
-  key: 'admin',
-  label: 'Admin',
-  roles: PLATFORM_ADMIN_ROLES,
-  children: [
-    { path: '/integrations',       label: 'Integrations',       icon: Network,        roles: PLATFORM_ADMIN_ROLES },
-    { path: '/webhooks',           label: 'Webhooks',           icon: Webhook,        roles: PLATFORM_ADMIN_ROLES },
-    { path: '/action-layer',       label: 'Operator Queue',     icon: Inbox,          roles: PLATFORM_ADMIN_ROLES },
-    { path: '/compliance',         label: 'Compliance',         icon: BadgeCheck,     roles: PLATFORM_ADMIN_ROLES },
-    { path: '/iam',                label: 'IAM',                icon: KeyRound,       roles: PLATFORM_ADMIN_ROLES },
-    { path: '/custom-roles',       label: 'Custom Roles',       icon: UserCog,        roles: PLATFORM_ADMIN_ROLES },
-    { path: '/bulk-users',         label: 'Bulk Users',         icon: UserPlus,       roles: PLATFORM_ADMIN_ROLES },
-    { path: '/tenants',            label: 'Clients',            icon: Building2,      roles: SUPERADMIN_ROLES },
-    { path: '/support-tickets',    label: 'Support',            icon: LifeBuoy,       roles: PLATFORM_ADMIN_ROLES },
-    { path: '/control-plane',      label: 'Control Plane',      icon: Cpu,            roles: PLATFORM_ADMIN_ROLES },
-    { path: '/deployments',        label: 'Deployments',        icon: Rocket,         roles: SUPERADMIN_ROLES },
-    { path: '/assessments',        label: 'Assessments',        icon: ClipboardList,  roles: SUPERADMIN_ROLES },
-    { path: '/platform-health',    label: 'Operations Health',  icon: HeartPulse,     roles: PLATFORM_ADMIN_ROLES },
-    { path: '/system-alerts',      label: 'System Alerts',      icon: Bell,           roles: PLATFORM_ADMIN_ROLES },
-    { path: '/admin/incidents',    label: 'Incident Manager',   icon: AlertTriangle,  roles: SUPPORT_ROLES },
-    { path: '/feature-flags',      label: 'Feature Flags',      icon: Flag,           roles: SUPERADMIN_ROLES },
-    { path: '/revenue',            label: 'Revenue',            icon: CreditCard,     roles: SUPERADMIN_ROLES },
-    { path: '/support',            label: 'Support Console',    icon: Headset,        roles: SUPPORT_ROLES },
-    { path: '/support-triage',     label: 'Support Triage',     icon: ListFilter,     roles: PLATFORM_ADMIN_ROLES },
-    { path: '/impersonate',        label: 'Impersonate',        icon: UserSearch,     roles: SUPPORT_ROLES },
-  ],
-};
+// The admin world — every platform-operator surface — is quarantined behind
+// the Console (v2 §10 step 5). One entry on the journey rail; its own grouped
+// left-nav lives inside ConsolePage. Gated to platform admins; sections narrow
+// further by role inside the Console. (`/support-tickets` is the everyone-can-
+// file ticket queue — it is NOT admin tooling and stays out of the Console.)
+const CONSOLE_ITEM: NavItem = { path: '/console', label: 'Console', icon: Wrench, roles: PLATFORM_ADMIN_ROLES };
 
 const SETTINGS_ITEM: NavItem = { path: '/settings', label: 'Settings', icon: Settings };
 
@@ -268,8 +241,7 @@ export function Sidebar() {
   }, [userRole]);
 
   const workspaceItems = useMemo(() => (isScoped ? [] : visibleFor(WORKSPACE.children, userRole)), [userRole, isScoped]);
-  const adminVisible = !isScoped && !!userRole && !!ADMIN.roles && ADMIN.roles.includes(userRole);
-  const adminItems = useMemo(() => (adminVisible ? visibleFor(ADMIN.children, userRole) : []), [userRole, adminVisible]);
+  const consoleVisible = !isScoped && !!userRole && !!CONSOLE_ITEM.roles && CONSOLE_ITEM.roles.includes(userRole);
 
   // Logo target is role-aware — scoped roles land on their own home.
   const homeTarget =
@@ -304,8 +276,8 @@ export function Sidebar() {
             </>
           )}
 
-          {adminItems.length > 0 && (
-            <Disclosure label={ADMIN.label} items={adminItems} pathname={pathname} onNavigate={closeMobile} />
+          {consoleVisible && (
+            <NavRow item={CONSOLE_ITEM} pathname={pathname} onNavigate={closeMobile} />
           )}
 
           <NavRow item={SETTINGS_ITEM} pathname={pathname} onNavigate={closeMobile} />

@@ -78,6 +78,7 @@ const TrustPerformancePage = lazyWithRetry(() => import("@/pages/TrustPerformanc
 const OnboardingWizardPage = lazyWithRetry(() => import("@/pages/OnboardingWizardPage"));
 const CompliancePage = lazyWithRetry(() => import("@/pages/CompliancePage"));
 const AssurancePage = lazyWithRetry(() => import("@/pages/AssurancePage").then(m => ({ default: m.AssurancePage })));
+const ConsolePage = lazyWithRetry(() => import("@/pages/ConsolePage").then(m => ({ default: m.ConsolePage })));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -241,6 +242,14 @@ export default function App() {
             <Route path="/trust" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><TrustPerformancePage /></ProtectedRoute>} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/mfa" element={<MFASetupPage />} />
+            {/* v2 §10 step 5: Console — the platform-administration quarantine.
+                Folds every admin-world surface (tenancy, access, platform ops,
+                integrations, support, governance) behind one grouped left-nav
+                so the journey rail carries none of it. Floor is admin; each
+                mounted section narrows further by its own role. The old
+                top-level admin routes below stay live for drill-downs and old
+                deep-links — Console mounts the list surfaces via ?section=. */}
+            <Route path="/console" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConsolePage /></ProtectedRoute>} />
             <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />
             <Route path="/admin/tenants/:id/llm" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantLlmBudgetPage /></ProtectedRoute>} />
             <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
