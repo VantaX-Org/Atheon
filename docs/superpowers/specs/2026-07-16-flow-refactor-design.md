@@ -14,6 +14,7 @@
 | Role switching | **Dateline persona + `?as=`** — "Viewing as CPO ▾" in the dateline; URL carries `?as=cpo` so any demo view is a shareable link. Vantax (demo tenant) only; real tenants see their own role, no switcher |
 | Tab folding | **Anchor rail** — former tabs become a left rail scrolling one long screen; nothing hidden |
 | Avatar | **Identity menu** — company switcher · viewing-as · Settings · MFA · Support · Sign out. Absorbs the module switcher and orphaned settings routes |
+| Jeff | **Always assisting** — Jeff (the existing honest assistant, `/api/mind/query`) is first-class in the shell on every surface, context-aware of the reactor |
 
 ## Goal
 
@@ -35,6 +36,7 @@ Extend `src/components/journey/ValueChainFlow.tsx` from the current 5-stage ribb
 - **Nodes:** business value chain across the top (Procure · Receive · Invoice · Pay · Tax, each with its leakage figure and `leaky/clean` state) → Leakage detected → Recovered (gold) → Net to client + Atheon fee (never netted) → Awaiting signature (gate, pooling) · In review · Reversed.
 - **Engine:** the artifact's `mount(el, nodes, edges, opts)` canvas pattern — bezier edges, width ∝ amount, particles along curves, `pool:true` edges bunch at the gate until a decision is signed, `--glow` in dark, static curves under `prefers-reduced-motion`, pause when off-screen.
 - **Focus:** `focus` prop per surface highlights the relevant region (e.g. Decisions focuses the gate pool; Ledger focuses recovered/fee), dims the rest; one context line + CTA under the panel phrased per role.
+- **Heart of the system:** every surface opens with the reactor; every navigation, decision, and Jeff conversation is anchored to a reactor node. Nothing in the console exists that the reactor can't point to.
 - **Honesty law (hard):** every node value binds to a real API field; null/failed → em-dash and that node's edges render static grey; a segment animates only when its field is non-zero; fees never netted; no fabricated motion.
 
 ## IA — four surfaces, everything folds
@@ -58,9 +60,24 @@ Former tabs become anchor rails (left rail, scrolls one long screen). Old routes
 - **CPO example:** lands on Brief with detect focus grouped by supplier; kicker "Recovered from your suppliers · since March"; lens surfaces supplier concentration (e.g. Karoo Packaging, open findings, price-variance vs contract) — figures computed from real fields, phrased in supplier/contract terms.
 - Real tenants: role comes from auth; no switcher; `?as=` ignored server-side outside the demo tenant.
 
-## Identity menu (avatar)
+## Jeff — the reactor's voice, always present
 
-Company switcher · Viewing as (mirror of dateline persona) · Settings · MFA · Support · Sign out. Nothing else.
+The reactor is the heart of the system; Jeff is how you talk to it. The existing honest assistant (`JeffLauncher`, arc-reactor mark, `POST /api/mind/query`) graduates from a floating afterthought to a first-class shell citizen:
+
+- **Placement:** the artifact's `✦ Ask` slot in the shell nav becomes **Jeff** (arc-reactor `JeffLogo`, spins while thinking) — present on every surface, same slide-over.
+- **Reactor-aware context:** Jeff's query carries the current surface, role lens (`?as=`), and focused reactor node, so "why is this pooling?" answers about THE gate the user is looking at. Every reactor node gets an "Ask Jeff" affordance in its hover/receipt card.
+- **Honesty law unchanged:** Jeff answers only from booked rows, cites receipts, figures computed never generated, attribution line on every answer.
+- Backend reuse: `/api/mind/query` as-is; only the context envelope grows (surface, role, node id).
+
+## Menus & custom iconography
+
+Every menu is redesigned to the Recovery Console craft level — no admin-template dropdowns, no off-the-shelf icon pack:
+
+- **Custom icon set:** bespoke SVG icons drawn in one language — the reactor's: 1.5px rounded strokes, flow-curve motifs, `currentColor`, 20px grid. Set covers the four surfaces, five value-chain stages, gate/pool, receipt/seal, Jeff arc-reactor, identity-menu entries, anchor-rail sections. Ships as a single `icons.tsx` sprite module; lucide retired from the new console.
+- **Shell nav:** icon + label pills (artifact `.tabs` treatment), decision badge on Decisions.
+- **Identity menu (avatar):** Company switcher · Viewing as (mirror of dateline persona) · Settings · MFA · Support · Sign out. Nothing else. Rendered as a shell-styled floating card (18px radius, `--sh2`), each entry with its custom icon.
+- **Anchor rails:** section icons + labels, active state in `--brand-soft`.
+- **Context menus / selects:** the artifact's `.role` pill-select treatment everywhere; native `<select>` under the skin.
 
 ## Build plan (from scratch, parity-gated)
 
