@@ -10,11 +10,19 @@ import { formatCompactCurrency } from '@/lib/format-currency';
 import { useTenantCurrency } from '@/stores/appStore';
 import type { Persona } from '../persona';
 
+// display subset — older assessments lack findings_summary, so findings can
+// also come from the /findings endpoint folded into this shape
+type BriefFinding = Pick<AssessmentFinding, 'id' | 'title' | 'severity' | 'value_at_risk_zar' | 'affected_count'> & {
+  category: string;
+  evidence_quality?: AssessmentFinding['evidence_quality'];
+};
+type BriefSummary = Pick<AssessmentFindingsSummary, 'total_count' | 'total_value_at_risk_zar' | 'potential_unverified_zar'>;
+
 interface BriefData {
   ctx: StrategicContext | null;
   connections: ERPConnection[] | null;
-  findings: AssessmentFinding[] | null;
-  summary: AssessmentFindingsSummary | null;
+  findings: BriefFinding[] | null;
+  summary: BriefSummary | null;
 }
 
 export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
@@ -32,8 +40,8 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
         api.erp.connections(),
         api.assessments.list(),
       ]);
-      let findings: AssessmentFinding[] | null = null;
-      let summary: AssessmentFindingsSummary | null = null;
+      let findings: BriefFinding[] | null = null;
+      let summary: BriefSummary | null = null;
       if (assessList.status === 'fulfilled') {
         const latest = latestCompleteAssessment(assessList.value.assessments);
         if (latest) {
@@ -41,6 +49,22 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
             const detail = await api.assessments.get(latest.id);
             findings = detail.results?.findings ?? null;
             summary = detail.results?.findings_summary ?? null;
+            if (!summary) {
+              // older assessments (live demo included) — fold raw findings
+              const raw = (await api.assessments.findings(latest.id)).findings;
+              if (raw.length) {
+                findings = raw.map((f) => ({
+                  id: f.id, title: f.title, severity: f.severity,
+                  value_at_risk_zar: f.financial_impact || 0,
+                  affected_count: f.affected_records || 0,
+                  category: f.domain,
+                }));
+                summary = {
+                  total_count: raw.length,
+                  total_value_at_risk_zar: raw.reduce((s, f) => s + (f.financial_impact || 0), 0),
+                };
+              }
+            }
           } catch { /* stays null → em-dash */ }
         }
       }
@@ -185,7 +209,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
               </button>
               <p>
                 <b>{f.title}</b> — {f.affected_count.toLocaleString()} records affected
-                <span className="when">{f.category.replace('_', ' ')} · evidence {f.evidence_quality}</span>
+                <span className="when">{f.category.replace('_', ' ')}{f.evidence_quality ? ` · evidence ${f.evidence_quality}` : ''}</span>
               </p>
               <span className={`pill ${f.severity === 'critical' || f.severity === 'high' ? 'warn' : 'grey'}`}>{f.severity}</span>
             </div>

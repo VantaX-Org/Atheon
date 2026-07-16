@@ -3,7 +3,6 @@
 // leaves its field null (em-dash), never a fabricated zero.
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { useSelectedCompanyId } from '@/stores/appStore';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import type { ReactorInput } from './reactor-graph';
 
@@ -37,6 +36,22 @@ async function fetchReactorInput(): Promise<ReactorInput> {
             totalZar: s.total_value_at_risk_zar,
             totalCount: s.total_count,
           };
+        } else {
+          // older assessments (live demo included) have no findings_summary —
+          // fold the raw findings by domain instead
+          const { findings } = await api.assessments.findings(latest.id);
+          if (findings.length) {
+            const by = new Map<string, { count: number; valueZar: number }>();
+            for (const f of findings) {
+              const cur = by.get(f.domain) ?? { count: 0, valueZar: 0 };
+              by.set(f.domain, { count: cur.count + 1, valueZar: cur.valueZar + (f.financial_impact || 0) });
+            }
+            ops = {
+              categories: [...by].map(([key, v]) => ({ key, label: CAT_LABEL[key] ?? key, ...v })),
+              totalZar: findings.reduce((s2, f) => s2 + (f.financial_impact || 0), 0),
+              totalCount: findings.length,
+            };
+          }
         }
       } catch { /* ops stays null */ }
     }
@@ -60,18 +75,18 @@ async function fetchReactorInput(): Promise<ReactorInput> {
 }
 
 export function useReactorInput(): { input: ReactorInput; loading: boolean } {
-  const companyId = useSelectedCompanyId();
   const [input, setInput] = useState<ReactorInput>(EMPTY_REACTOR_INPUT);
   const [loading, setLoading] = useState(true);
 
+  // all four sources are tenant-scoped (no company param) — fetch once on
+  // mount; refetching on company switch just restarted the whole chain
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetchReactorInput()
       .then((v) => { if (!cancelled) { setInput(v); setLoading(false); } })
       .catch(() => { if (!cancelled) { setInput(EMPTY_REACTOR_INPUT); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, []);
 
   return { input, loading };
 }
