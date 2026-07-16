@@ -12,6 +12,7 @@ export interface RiverNode {
   kicker: string;
   value: string; // pre-formatted; '—' when the source has not reported
   sub?: string;
+  tag?: string; // boundary chip: EXTERNAL / INTERNAL / YOUR CALL
   tone?: RiverTone;
   cls?: string; // extra fnode classes, e.g. 'stage leaky'
   anchor?: string; // section this node deep-links to
@@ -32,6 +33,7 @@ export interface RiverOpts {
   wBase?: number;
   wScale?: number;
   poolT?: number;
+  lanes?: { y: number; label: string }[]; // faint bands: outside vs inside the business
   onNodeClick?: (n: RiverNode) => void;
   onAskJeff?: (n: RiverNode) => void;
 }
@@ -53,6 +55,8 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   function readTokens() {
     const cs = getComputedStyle(el);
     TOK = { glow: parseFloat(cs.getPropertyValue('--glow')) || 0 };
+    TOK.faint = cs.getPropertyValue('--faint').trim() || '#8a90ab';
+    TOK.line = cs.getPropertyValue('--line').trim() || 'rgba(84,98,156,0.14)';
     FLOW_VARS.forEach((k) => (TOK[k] = cs.getPropertyValue(k).trim()));
   }
   readTokens();
@@ -71,21 +75,30 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       .filter(Boolean).join(' ');
     d.style.left = n.x * 100 + '%';
     d.style.top = n.y * 100 + '%';
+    if (n.tag) {
+      const ft = document.createElement('div');
+      ft.className = 'ftag';
+      ft.textContent = n.tag;
+      d.appendChild(ft);
+    }
     const fk = document.createElement('div');
     fk.className = 'fk';
     fk.textContent = n.kicker;
     d.appendChild(fk);
+    const fv = document.createElement('span');
+    fv.className = 'fv num';
+    fv.textContent = n.value;
+    d.appendChild(fv);
     if (opts.onNodeClick) {
-      const fv = document.createElement('button');
-      fv.className = 'fv num';
-      fv.textContent = n.value;
-      fv.addEventListener('click', () => opts.onNodeClick?.(n));
-      d.appendChild(fv);
-    } else {
-      const fv = document.createElement('span');
-      fv.className = 'fv num';
-      fv.textContent = n.value;
-      d.appendChild(fv);
+      // whole tile is the drill-through target, not just the number
+      d.classList.add('link');
+      d.setAttribute('role', 'button');
+      d.tabIndex = 0;
+      d.setAttribute('aria-label', `${n.kicker} ${n.value} — open details`);
+      d.addEventListener('click', () => opts.onNodeClick?.(n));
+      d.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); opts.onNodeClick?.(n); }
+      });
     }
     if (n.sub) {
       const fs = document.createElement('div');
@@ -99,7 +112,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ask.textContent = '✦';
       ask.title = 'Ask Jeff about this';
       ask.setAttribute('aria-label', `Ask Jeff about ${n.kicker}`);
-      ask.addEventListener('click', () => opts.onAskJeff?.(n));
+      ask.addEventListener('click', (ev) => { ev.stopPropagation(); opts.onAskJeff?.(n); });
       d.appendChild(ask);
     }
     el.appendChild(d);
@@ -135,7 +148,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   const parts: Particle[] = [];
   edges.forEach((e) => {
     for (let i = 0; i < e.particles; i++)
-      parts.push({ e, t: Math.random(), sp: 0.028 + Math.random() * 0.02, ph: Math.random() * Math.PI * 2, r: (1.5) * (0.9 + Math.random() * 0.6) });
+      parts.push({ e, t: Math.random(), sp: 0.028 + Math.random() * 0.02, ph: Math.random() * Math.PI * 2, r: 2.3 * (0.85 + Math.random() * 0.5) });
   });
 
   let raf = 0, last = 0;
@@ -147,6 +160,19 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     const dt = last ? Math.min((ts - last) / 1000, 0.05) : 0.016;
     last = ts;
     ctx!.clearRect(0, 0, W, H);
+    (opts.lanes ?? []).forEach((l) => {
+      const y = l.y * H;
+      ctx!.strokeStyle = String(TOK.line);
+      ctx!.globalAlpha = 0.7;
+      ctx!.setLineDash([2, 6]);
+      ctx!.lineWidth = 1;
+      ctx!.beginPath(); ctx!.moveTo(12, y); ctx!.lineTo(W - 12, y); ctx!.stroke();
+      ctx!.setLineDash([]);
+      ctx!.fillStyle = String(TOK.faint);
+      ctx!.font = '600 9px "Space Mono", monospace';
+      ctx!.fillText(l.label.toUpperCase(), 14, y - 6);
+      ctx!.globalAlpha = 1;
+    });
     edges.forEach((e) => {
       ctx!.beginPath();
       for (let i = 0; i <= 36; i++) {
@@ -154,10 +180,17 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
         if (i) ctx!.lineTo(x, y); else ctx!.moveTo(x, y);
       }
       const dimK = e.dim ? 0.25 : 1;
-      ctx!.strokeStyle = String(TOK[e.colorVar] ?? '#888');
+      const col = String(TOK[e.colorVar] ?? '#888');
+      const glow = Number(TOK.glow);
+      ctx!.strokeStyle = col;
       ctx!.lineCap = 'round';
-      ctx!.globalAlpha = 0.15 * dimK; ctx!.lineWidth = eW(e); ctx!.stroke();
-      ctx!.globalAlpha = 0.10 * dimK; ctx!.lineWidth = Math.max(1, eW(e) * 0.3); ctx!.stroke();
+      const w = eW(e);
+      // three-layer stream: wide soft base (glow halo in dark), mid body, bright core
+      if (glow > 0) { ctx!.shadowColor = col; ctx!.shadowBlur = glow * 0.9; }
+      ctx!.globalAlpha = 0.1 * dimK; ctx!.lineWidth = w * 2.6; ctx!.stroke();
+      ctx!.shadowBlur = 0;
+      ctx!.globalAlpha = 0.22 * dimK; ctx!.lineWidth = w * 1.4; ctx!.stroke();
+      ctx!.globalAlpha = 0.45 * dimK; ctx!.lineWidth = Math.max(1, w * 0.6); ctx!.stroke();
       ctx!.globalAlpha = 1;
     });
     if (reduced) return;
@@ -179,7 +212,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ctx!.fillStyle = String(TOK[p.e.colorVar] ?? '#888');
       ctx!.shadowColor = String(TOK[p.e.colorVar] ?? '#888');
       ctx!.shadowBlur = Number(TOK.glow);
-      ctx!.globalAlpha = 0.85 * (p.e.dim ? 0.25 : 1);
+      ctx!.globalAlpha = (0.55 + 0.35 * Math.sin(ts * 0.004 + p.ph * 3)) * (p.e.dim ? 0.25 : 1);
       ctx!.fill();
       ctx!.shadowBlur = 0;
       ctx!.globalAlpha = 1;

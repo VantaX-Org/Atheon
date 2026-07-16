@@ -12,17 +12,20 @@ the same river tastefully. All existing functionality is preserved — nothing r
 
 ## Theme (tokens.css)
 
-`.rx` becomes **always-dark navy** — the brand surface. No light variant; theme toggles do not
-affect `.rx` (mockup is dark, period). Palette:
+**Light default, navy dark** (user decision — supersedes earlier always-dark call). Light is a
+soft indigo-tinted paper (`--bg:#f5f6fb`, white cards); dark is the mockup navy:
 
 ```
---bg:#0a0d17  --panel:#10152a  --card:#141b32  --line:rgba(148,163,214,.10)
---ink:#eef1fb  --mut:#8b93b3  --dim:#5b6280
---green:#34d399  --blue:#7c9bff  --blue-btn:#5b76f7  --amber:#e8b44a  --red:#f0647c
+dark:  --bg:#0a0d17  --card:#10152a  --card2:#141b32  --line:rgba(148,163,214,.12)
+       --ink:#eef1fb  --mut:#8b93b3  --faint:#5b6280
+       --ok:#34d399  --brand:#7c9bff  --brand-btn:#5b76f7  --warn:#e8b44a  --bad:#f0647c
+light: same hue family, darkened for contrast (--ok:#0f9d63 --brand:#4459d8 --bad:#d63b57 …)
 ```
 
-Flow tokens map: `--f-rec:green --f-fee:blue-dim --f-gate:blue --f-revw:dim --f-rev:red --f-leak:amber`.
-`--glow` always on (dark). Fonts stay Schibsted Grotesk / IBM Plex Sans / Space Mono (already
+Dark applies via `@media(prefers-color-scheme:dark)` guarded `:root:not([data-theme="light"])`,
+plus explicit `:root[data-theme="dark"]`. `--glow:0` light / `7` dark drives canvas bloom;
+`--bloom1/2` drive the page radial washes. Flow tokens `--f-*` themed per mode.
+Fonts stay Schibsted Grotesk / IBM Plex Sans / Space Mono (already
 loaded; Inter adds a dependency for no functional gain — display face keeps brand continuity).
 Gradient logo mark `#5b76f7 → #7c5bf7`. Radial blooms behind hero panels.
 
@@ -30,14 +33,20 @@ Gradient logo mark `#5b76f7 → #7c5bf7`. Radial blooms behind hero panels.
 
 Port mockup's richer rendering, keep node tiles + honesty laws (null → em-dash, 0 particles):
 
-- 3-layer tapered stream strokes: base w×2.6 α.10, mid w×1.4 α.22, core w×0.6 α.45 (+ existing
-  glow band).
-- Particles: perpendicular scatter off the path + sine twinkle; radius jitter (already in-flight).
+- 3-layer stream strokes: base w×2.6 α.10 (glow halo in dark), mid w×1.4 α.22, core w×0.6 α.45.
+- Particles: scatter off the path + sine twinkle; radius jitter.
+- Whole fnode tile is the drill-through target (role=button, Enter/Space); ✦ ask button
+  stops propagation.
+- `RiverNode.tag` — boundary chip (EXTERNAL / INTERNAL / YOUR CALL); `RiverOpts.lanes` —
+  faint labelled dashed bands ("outside your business" / "inside your business"). C-suite
+  framing: the river reads as money crossing the business boundary; role-aware copy
+  (persona `canApprove` → "YOUR SIGNATURE") lives in the graph builders.
 - DPR clamp 2, `prefers-reduced-motion` → static frame (exists).
 
-New renderer `ledger-river.ts`: cumulative recovered rand over months — smoothstep width ∝
-cumulative value, gentle wave, month labels + amounts along the path, terminal "TO DATE" card.
-Only booked receipts feed it; no receipts → thin static line + em-dash.
+**One engine everywhere** (user decision): no separate ledger renderer. The ledger's
+cumulative river is a `RiverGraph` from flows.ts — month nodes chained left→right, edge
+`amt` ∝ cumulative recovered so the stream widens month over month; terminal "TO DATE"
+node. Only booked receipts feed it; no receipts → thin static line + em-dash.
 
 ## Console layout (/x)
 
