@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, Building2, Loader2, ShieldCheck, UserPlus } from "lucide-react";
 import { api, setToken, getToken, setTenantOverride, setRememberMe as setApiRememberMe } from "@/lib/api";
 import { FormError } from "@/components/ui/state";
+import { MiniRiver } from "@/x/MiniRiver";
+import { journeyRiver } from "@/x/flows";
 import type { IndustryVertical, UserRole } from "@/types";
+
+// stable graph — labels only, the brand river (module-level so the canvas mounts once)
+const JOURNEY = journeyRiver();
 
 type AuthMode= 'login' | 'register';
 
@@ -339,6 +344,11 @@ export function LoginPage() {
         <h1 className="text-5xl xl:text-6xl font-bold t-primary tracking-tight leading-[1.05] max-w-[15ch]">
           The money is already in your ERP. Recover it.
         </h1>
+
+        <MiniRiver
+          graph={JOURNEY}
+          label="The Atheon journey: connect, detect, fix, recover, report"
+        />
 
         <div className="space-y-2 max-w-md">
           <p

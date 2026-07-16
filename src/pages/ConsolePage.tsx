@@ -18,8 +18,10 @@
  *
  * Deep-linkable via ?section=<key> so ⌘K / GlobalSearch can jump straight in.
  */
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { MiniRiver } from '@/x/MiniRiver';
+import { consoleNavRiver } from '@/x/flows';
 import {
   Loader2,
   Building2, Building, CreditCard,
@@ -142,6 +144,25 @@ export function ConsolePage() {
   const requested = params.get('section');
   const current = flat.find((s) => s.key === requested) ?? flat[0];
 
+  // Brand river over the groups — GROUPS is static, so role + active section
+  // fully determine the graph; memoised so the canvas doesn't remount.
+  const activeLabel = visibleGroups.find((g) => g.sections.some((s) => s.key === current?.key))?.label;
+  const navGraph = useMemo(
+    () => consoleNavRiver(
+      visibleGroups.map((g) => ({ key: g.label, title: g.label, sections: g.sections.length })),
+      activeLabel,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleGroups derives from static GROUPS + role
+    [role, activeLabel],
+  );
+  const navOpts = useMemo(() => ({
+    onNodeClick: (id: string) => {
+      const first = visibleGroups.find((g) => g.label === id)?.sections[0];
+      if (first) setParams({ section: first.key }, { replace: true });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- same derivation
+  }), [role, setParams]);
+
   if (!current) {
     // No section visible to this role — the route floor should prevent it, but
     // never render a blank shell.
@@ -154,6 +175,12 @@ export function ConsolePage() {
         <p className="text-sm font-semibold t-primary">Console</p>
         <p className="text-sm t-secondary">Platform administration — tenancy, access, platform operations, integrations, support and governance in one place.</p>
       </header>
+
+      {/* Group-nav river — the brand flow, one node per group this role can
+          see; real section counts, click jumps to the group's first section. */}
+      <div className="hidden md:block">
+        <MiniRiver graph={navGraph} opts={navOpts} label="Console areas available to your role" />
+      </div>
 
       <div className="flex flex-col md:flex-row gap-6">
         {/* Left rail — grouped section switcher. One mount at a time. */}
