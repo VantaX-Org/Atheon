@@ -27,6 +27,8 @@ import {
 const seed = new Hono<AppBindings>();
 seed.use('/*', cors());
 
+const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+
 async function getVantaXTenantId(c: { get: (key: string) => unknown; env: { DB: D1Database } }): Promise<string | null> {
   const auth = c.get('auth') as AuthContext | undefined;
   const allowedRoles = ['superadmin', 'support_admin', 'admin', 'executive'];
@@ -1303,7 +1305,7 @@ seed.post('/seed-vantax', async (c) => {
     // AND connection_id is set. Without both, the queue looks dead. We mix:
     //   - 8 pending_approval (the demo focus — operator approves on stage)
     //   - 4 completed/verified (track record visible in queue history)
-    //   - 2 in_progress + 1 rejected (status diversity for filter UI)
+    //   - 2 in_progress + 1 rejected + 1 failed + 1 previewed (status diversity for filter UI)
     // Every row carries: connection_id, value_zar, action_type, idempotency_key,
     // source_finding_id, and output_data with mode + reasoning so the queue
     // panel light up with values, mode pills, and traceable drill-through.
@@ -1409,16 +1411,16 @@ seed.post('/seed-vantax', async (c) => {
         action: 'Auto-matched 45 of 55 GR/IR items with 87.2% confidence',
         actionType: 'erp_post_clearing', status: 'completed', confidence: 0.872,
         reasoning: 'High match rates on PO-invoice pairs with exact quantity and within 1% price tolerance.',
-        valueZar: 2_840_000, vendor: null, sourceFindingId: null,
+        valueZar: 1_450_000, vendor: null, sourceFindingId: null,
         outputMode: 'live',
-        outputSummary: '45 FB05 clearing docs posted; total cleared R 2.84M; 10 items escalated for manual review',
+        outputSummary: '45 FB05 clearing docs posted; total cleared R 1.45M; 10 items escalated for manual review',
       },
       {
         clusterId: financeClusterId, catalystName: 'Bank Reconciliation',
         action: 'Reconciled 55 of 80 bank transactions automatically',
         actionType: 'erp_match_bank', status: 'completed', confidence: 0.845,
         reasoning: 'EFT payments matched using reference and amount. 15 items require manual matching due to new reference format.',
-        valueZar: 6_120_000, vendor: null, sourceFindingId: null,
+        valueZar: 3_120_000, vendor: null, sourceFindingId: null,
         outputMode: 'live',
         outputSummary: '55 bank line items cleared in SAP FF67; 10 fees auto-allocated; 15 escalated for manual review',
       },
@@ -1427,7 +1429,7 @@ seed.post('/seed-vantax', async (c) => {
         action: 'Matched 55 of 80 billing documents to AR postings',
         actionType: 'erp_match_ar', status: 'completed', confidence: 0.82,
         reasoning: 'Primary match on document number and amount. 10 items show amount variances within tolerance.',
-        valueZar: 4_680_000, vendor: null, sourceFindingId: null,
+        valueZar: 2_390_000, vendor: null, sourceFindingId: null,
         outputMode: 'live',
         outputSummary: '55 SD-to-AR document links posted; 10 variances flagged for review; 7 status mismatches deferred',
       },
@@ -1470,6 +1472,24 @@ seed.post('/seed-vantax', async (c) => {
         outputMode: null,
         outputSummary: null,
       },
+      {
+        clusterId: financeClusterId, catalystName: 'Bank Reconciliation',
+        action: 'Auto-allocation of 3 FX revaluation differences failed — GL 477200 posting blocked',
+        actionType: 'erp_post_journal', status: 'failed', confidence: 0.71,
+        reasoning: 'SAP returned posting-period-closed error (F5 201). Requires period re-open or posting into current period.',
+        valueZar: 9_800, vendor: null, sourceFindingId: null,
+        outputMode: 'live',
+        outputSummary: 'FB50 posting rejected by SAP: period 03 closed for company code 1000',
+      },
+      {
+        clusterId: supplyChainClusterId, catalystName: 'Inventory Reconciliation',
+        action: 'Preview: write-down proposal for 2 slow-moving SKUs (R 14,200)',
+        actionType: 'erp_write_down', status: 'previewed', confidence: 0.68,
+        reasoning: 'No stock movement in 150+ days on both SKUs. Preview generated for controller review before submission.',
+        valueZar: 14_200, vendor: null, sourceFindingId: null,
+        outputMode: 'preview',
+        outputSummary: 'Would post MR21 value change: write-down R 14,200 across 2 materials',
+      },
     ];
     // Per-action created_at / completed_at offsets so that the Process
     // Mining sweep (services/scheduled.ts refreshProcessMining) computes
@@ -1488,9 +1508,13 @@ seed.post('/seed-vantax', async (c) => {
     await flushSeed('before-catalyst-actions');
     const catalystActionStmts = catalystActionsData.map((ca) => {
       const elapsedMin = durationMinutesByCatalyst[ca.catalystName] ?? 60;
-      const startHoursAgo = Math.round((Math.random() * 168) + 1);
+      const startDaysAgo = (ca.status === 'completed' || ca.status === 'verified')
+        ? 30 + Math.round(Math.random() * 140)
+        : (ca.status === 'rejected' || ca.status === 'failed')
+          ? 20 + Math.round(Math.random() * 70)
+          : 1 + Math.round(Math.random() * 14);
       const completedAt = (ca.status === 'completed' || ca.status === 'verified')
-        ? `datetime('now', '-${startHoursAgo} hours', '+${elapsedMin} minutes')`
+        ? `datetime('now', '-${startDaysAgo} days', '+${elapsedMin} minutes')`
         : `NULL`;
       const outputData = (ca.outputMode || ca.outputSummary)
         ? JSON.stringify({ mode: ca.outputMode, summary: ca.outputSummary })
@@ -1500,7 +1524,7 @@ seed.post('/seed-vantax', async (c) => {
           id, tenant_id, cluster_id, catalyst_name, action, status, confidence, reasoning,
           connection_id, action_type, value_zar, source_finding_id, idempotency_key, vendor, output_data,
           created_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-${startHoursAgo} hours'), ${completedAt})`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-${startDaysAgo} days'), ${completedAt})`
       ).bind(
         crypto.randomUUID(), tenantId, ca.clusterId, ca.catalystName, ca.action,
         ca.status, ca.confidence, ca.reasoning,
@@ -1538,7 +1562,7 @@ seed.post('/seed-vantax', async (c) => {
         '',
         'Top exposures: GR/IR exception rate is running at 14.8% against an 8% target — R 8.4M of unmatched receipts concentrated across three vendors (LIFNR 100013, 100027, 100089). At JHB-DC, a 21.7% cycle-count variance on finished goods category FG-104 points to either receiving errors or shrinkage, with a R 320k value exposure. Revenue recognition timing is the most urgent: 26.3% of Q1 2026 invoices were booked outside the correct period under IFRS 15, which is now under external-auditor review.',
         '',
-        'Tailwinds: cumulative discrepancy recovery hit R 3.2M (ROI 5.5x against Atheon licence cost), the GR/IR automation pilot is approved with a projected 3.8-month payback, and the FX hedging programme has been accelerated to 50% coverage following the Rand breaching R19/USD. CFO and COO decisions on inventory audit budget and revenue recognition policy are needed within the next two weeks to keep the recovery trajectory intact.',
+        'Tailwinds: cumulative discrepancy recovery hit R 7.0M (ROI 12.1x against Atheon licence cost), the GR/IR automation pilot is approved with a projected 3.8-month payback, and the FX hedging programme has been accelerated to 50% coverage following the Rand breaching R19/USD. CFO and COO decisions on inventory audit budget and revenue recognition policy are needed within the next two weeks to keep the recovery trajectory intact.',
       ].join('\n'),
       JSON.stringify([
         { title: 'High GR/IR Discrepancy Rate', detail: '17% exceeds 10% threshold; R 8.4M exposure across LIFNR 100013, 100027, 100089', dimension: 'Financial', severity: 'high', owner: 'CFO' },
@@ -1555,7 +1579,7 @@ seed.post('/seed-vantax', async (c) => {
         { kpi: 'Match Rate', current: 82.4, previous: 87.6, movement: '-5.2%', direction: 'down', period: 'vs last month', target: 92.0 },
         { kpi: 'Exception Rate', current: 14.8, previous: 11.7, movement: '+3.1%', direction: 'up', period: 'vs last month', target: 8.0 },
         { kpi: 'Avg Processing Time', current: 38, previous: 50, movement: '-12s', direction: 'down', period: 'vs last month', target: 30, unit: 'seconds' },
-        { kpi: 'Recovered Discrepancies', current: 3_200_000, previous: 2_450_000, movement: '+R 750k', direction: 'up', period: 'vs last month', target: 4_000_000, unit: 'ZAR' },
+        { kpi: 'Recovered Discrepancies', current: 7_012_400, previous: 6_200_000, movement: '+R 812k', direction: 'up', period: 'vs last month', target: 8_000_000, unit: 'ZAR' },
         { kpi: 'Atheon Score', current: 73, previous: 69, movement: '+4', direction: 'up', period: 'vs last month', target: 85 },
       ]),
       JSON.stringify([
@@ -1628,6 +1652,23 @@ seed.post('/seed-vantax', async (c) => {
         `INSERT INTO radar_signal_impacts (id, tenant_id, signal_id, dimension, impact_direction, impact_magnitude, affected_metrics, recommended_actions, llm_reasoning, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Analysis generated by Atheon Intelligence based on signal context and current health dimensions.', ?)`
       ).bind(impId, tenantId, signalIds[imp.sigIdx], imp.dimension, imp.direction, imp.magnitude, JSON.stringify(imp.metrics), JSON.stringify(imp.actions), now));
+    }
+
+    const externalSignals = [
+      { category: 'market', title: 'Rand volatility: ZAR/USD swings past R19 before retracing to R18.40', summary: 'Two-week 6% trading range on the rand driven by global risk-off flows and domestic energy uncertainty. Import cost planning windows shortened.', source: 'Reuters', reliability: 0.9, relevance: 0.95, sentiment: 'negative', detectedDays: 5 },
+      { category: 'regulatory', title: 'SARS confirms VAT rise to 16% with updated invoicing rules', summary: 'SARS published transitional invoicing guidance for the VAT rate change; ERP tax codes and open-order pricing must be updated before the effective date.', source: 'SARS', reliability: 0.95, relevance: 0.92, sentiment: 'negative', detectedDays: 12 },
+      { category: 'regulatory', title: 'SARS eFiling mandates structured supplier invoice data', summary: 'New eFiling validation rejects VAT input claims lacking structured supplier detail, raising the compliance bar on AP master data quality.', source: 'SARS', reliability: 0.9, relevance: 0.82, sentiment: 'negative', detectedDays: 45 },
+      { category: 'economic', title: 'SARB raises repo rate 50bps to contain inflation', summary: 'Borrowing costs increase across variable-rate facilities; capex and working-capital financing assumptions need revision.', source: 'SARB', reliability: 0.95, relevance: 0.85, sentiment: 'negative', detectedDays: 30 },
+      { category: 'competitor', title: 'Competitor acquires Gauteng distribution partner', summary: 'A major rival acquired a key regional logistics distributor, threatening shared distribution capacity and regional pricing power.', source: 'BusinessDay', reliability: 0.8, relevance: 0.78, sentiment: 'negative', detectedDays: 70 },
+      { category: 'supplier', title: 'Steel price index up 11% quarter-on-quarter', summary: 'SAISI input price index shows sustained steel cost inflation; fixed-price supply contracts up for renewal face double-digit increases.', source: 'SAISI', reliability: 0.85, relevance: 0.8, sentiment: 'negative', detectedDays: 55 },
+      { category: 'supplier', title: 'Chemical feedstock prices ease 4% as Sasol restores capacity', summary: 'Local chemical supply normalising after maintenance shutdowns; opportunity to renegotiate spot purchasing back toward contract rates.', source: 'ChemWeek', reliability: 0.75, relevance: 0.68, sentiment: 'positive', detectedDays: 20 },
+      { category: 'economic', title: 'Load shedding suspended for six consecutive weeks', summary: 'Improved Eskom generation availability lifts production planning confidence; diesel generation cost accruals can be partially released.', source: 'Eskom', reliability: 0.85, relevance: 0.72, sentiment: 'positive', detectedDays: 8 },
+    ];
+    for (const es of externalSignals) {
+      seedBatch.push(c.env.DB.prepare(
+        `INSERT INTO external_signals (id, tenant_id, category, title, summary, source_url, source_name, reliability_score, relevance_score, sentiment, raw_data, detected_at)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, '{}', ?)`
+      ).bind(crypto.randomUUID(), tenantId, es.category, es.title, es.summary, es.source, es.reliability, es.relevance, es.sentiment, daysAgo(es.detectedDays)));
     }
 
     // Seed strategic context
@@ -2213,25 +2254,26 @@ seed.post('/seed-vantax', async (c) => {
 
     // ROI tracking — three rolling windows so /board-digest has a non-zero
     // ROI multiple regardless of which period range the page is asking for.
-    const annualLicence = 1_800_000;
+    const annualLicence = 580_000;
     const personHoursSaved = totalRunsSeeded * 18;
-    const downstreamLossesPrevented = Math.round(totalRealisedSavings * 0.35);
-    const roiPeriods: Array<{ period: string; mult: number; identified: number; recovered: number }> = [
-      { period: 'last_30d', mult: 1, identified: totalPredictedSavings, recovered: totalRealisedSavings },
-      { period: 'last_90d', mult: 3, identified: totalPredictedSavings * 3, recovered: totalRealisedSavings * 2.9 },
-      { period: 'ytd', mult: 5.5, identified: totalPredictedSavings * 5.5, recovered: totalRealisedSavings * 5.2 },
+    const roiPeriods: Array<{ period: string; mult: number; identified: number; recovered: number; minutesOld: number }> = [
+      { period: 'last_30d', mult: 1, identified: 2_600_000, recovered: 1_250_000, minutesOld: 2 },
+      { period: 'last_90d', mult: 3, identified: 7_200_000, recovered: 3_600_000, minutesOld: 1 },
+      { period: 'ytd', mult: 5.5, identified: 14_500_000, recovered: 7_012_400, minutesOld: 0 },
     ];
     for (const rp of roiPeriods) {
-      const roiMultiple = annualLicence > 0 ? (rp.recovered + downstreamLossesPrevented * rp.mult) / annualLicence : 0;
+      const recovered = Math.min(rp.recovered, rp.identified);
+      const roiMultiple = Math.round((recovered / annualLicence) * 10) / 10;
       seedBatch.push(c.env.DB.prepare(
         `INSERT INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, total_catalyst_runs, licence_cost_annual, roi_multiple, calculated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(), tenantId, rp.period,
-        Math.round(rp.identified), Math.round(rp.recovered),
-        Math.round(downstreamLossesPrevented * rp.mult),
+        rp.identified, recovered,
+        Math.round(recovered * 0.3),
         personHoursSaved * rp.mult, totalRunsSeeded * rp.mult,
-        annualLicence, roiMultiple, periodGeneratedAt,
+        annualLicence, roiMultiple,
+        new Date(Date.now() - rp.minutesOld * 60000).toISOString(),
       ));
     }
     console.log(`[VantaX Seeder] Seeded billing period R${Math.round(totalRealisedSavings).toLocaleString()} realised → R${atheonRevenue.toLocaleString()} Atheon revenue across ${Object.keys(archetypeRealised).length} line items`);
@@ -2269,7 +2311,7 @@ seed.post('/seed-vantax', async (c) => {
       baselineDate.toISOString()
     ));
     seedBatch.push(c.env.DB.prepare(
-      `INSERT INTO baseline_snapshots (id, tenant_id, snapshot_type, health_score, dimensions, metric_count_green, metric_count_amber, metric_count_red, total_discrepancy_value, total_process_conformance, avg_catalyst_success_rate, roi_at_snapshot, captured_at) VALUES (?, ?, 'manual', 73, ?, 7, 3, 2, 850000, 81.3, 72.0, 4850000, ?)`
+      `INSERT INTO baseline_snapshots (id, tenant_id, snapshot_type, health_score, dimensions, metric_count_green, metric_count_amber, metric_count_red, total_discrepancy_value, total_process_conformance, avg_catalyst_success_rate, roi_at_snapshot, captured_at) VALUES (?, ?, 'manual', 73, ?, 7, 3, 2, 850000, 81.3, 72.0, 7012400, ?)`
     ).bind(crypto.randomUUID(), tenantId,
       JSON.stringify({ finance: 75, operations: 71, compliance: 68, revenue: 78, supply_chain: 73 }),
       now
@@ -2338,8 +2380,8 @@ seed.post('/seed-vantax', async (c) => {
     ).bind(crypto.randomUUID(), tenantId, now));
     seedBatch.push(c.env.DB.prepare(
       `INSERT OR REPLACE INTO roi_tracking (id, tenant_id, period, total_discrepancy_value_identified, total_discrepancy_value_recovered, total_downstream_losses_prevented, total_person_hours_saved, licence_cost_annual, roi_multiple, calculated_at)
-       VALUES (?, ?, 'Q1 2026', 4850000, 3200000, 1800000, 2400, 580000, 8.3, ?)`
-    ).bind(crypto.randomUUID(), tenantId, now));
+       VALUES (?, ?, 'Q1 2026', 6100000, 3400000, 1000000, 1400, 580000, 5.9, ?)`
+    ).bind(crypto.randomUUID(), tenantId, daysAgo(55)));
     console.log('[VantaX Seeder] Seeded ROI tracking record + tenant_settings.licence_cost_annual');
 
     // ── STEP: Seed Industry Playbook Seeds ──
@@ -2439,27 +2481,27 @@ seed.post('/seed-vantax', async (c) => {
     // Assessment findings (18 specific, evidence-backed findings)
     const vaFindings = [
       // Finance findings
-      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'critical', title: 'Invoice #INV-2024-1847 — R47,200 payment terms mismatch', desc: 'SAP payment terms show Net-30 but bank settlement occurred at Net-67. The 37-day overshoot on this single transaction cost R47,200 in working capital.', affected: 1, impact: 47200, category: 'payment_terms', immediate: 47200, ongoing: 3900, domain: 'finance', evidence: { sample_records: [{ ref: 'Invoice #INV-2024-1847', source_value: 'Net-30 (SAP)', target_value: 'Settled Day 67', difference: 47200 }], pattern: 'Late payment on high-value invoices', first_occurrence: '2024-08-15', frequency: 'Monthly' }, rootCause: 'Manual AP approval queue with no escalation for overdue items.', prescription: 'Implement automated payment terms enforcement with escalation rules.' },
-      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'critical', title: '23 overdue invoices worth R218,400 — no collection follow-up', desc: '23 invoices are past their due date with no systematic follow-up. Total outstanding: R218,400. Average days overdue: 42.', affected: 23, impact: 218400, category: 'data_issue', immediate: 65520, ongoing: 4368, domain: 'finance', evidence: { sample_records: [{ ref: 'INV-2024-0892', source_value: 'Due: 2024-06-15', target_value: 'Unpaid', difference: 34200 }, { ref: 'INV-2024-1103', source_value: 'Due: 2024-07-22', target_value: 'Unpaid', difference: 28700 }, { ref: 'INV-2024-1456', source_value: 'Due: 2024-08-01', target_value: 'Unpaid', difference: 19800 }], pattern: 'Overdue accounts receivable', first_occurrence: '2024-06-15', frequency: 'Ongoing' }, rootCause: 'No automated AR aging alerts. Manual collection process misses follow-ups.', prescription: 'Deploy automated AR collection catalyst with aging bucket escalation.' },
-      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'high', title: '8 potential duplicate payments totalling R89,600', desc: '8 instances of identical payment amounts processed on the same day to the same vendor. Potential duplicate payments worth R89,600.', affected: 8, impact: 89600, category: 'duplicate_payment', immediate: 89600, ongoing: 7467, domain: 'finance', evidence: { sample_records: [{ ref: 'PAY-2024-0445', source_value: 'R18,500 to Supplier A', target_value: 'R18,500 same day', difference: 18500 }, { ref: 'PAY-2024-0612', source_value: 'R15,200 to Supplier C', target_value: 'R15,200 same day', difference: 15200 }], pattern: 'Same amount, same vendor, same day', first_occurrence: '2024-05-20', frequency: 'Monthly' }, rootCause: 'No duplicate payment detection in AP workflow. Manual bank reconciliation misses these.', prescription: 'Enable real-time duplicate payment detection with vendor + amount + date matching.' },
-      { runId: vaRunDomains[0].id, type: 'exception', severity: 'high', title: '14 GL journal entries without proper authorization', desc: '14 journal entries posted without the required dual authorization. Total value: R156,000. These entries bypass the segregation of duties control.', affected: 14, impact: 156000, category: 'compliance', immediate: 0, ongoing: 5000, domain: 'finance', evidence: { sample_records: [{ ref: 'JE-2024-0234', source_value: 'Posted by: user_a', target_value: 'Approved by: user_a (same)', difference: 42000 }, { ref: 'JE-2024-0567', source_value: 'Posted by: user_b', target_value: 'No approval', difference: 28000 }], pattern: 'Missing dual authorization', first_occurrence: '2024-04-10', frequency: 'Weekly' }, rootCause: 'SAP workflow rules allow posting without second approval for amounts under R50k.', prescription: 'Enforce dual authorization for all JE amounts above R10k.' },
-      { runId: vaRunDomains[0].id, type: 'risk', severity: 'medium', title: '5 vendor master records with mismatched bank details', desc: '5 vendors have bank account details that differ between SAP master data and last payment instruction. Fraud risk indicator.', affected: 5, impact: 67000, category: 'fraud_risk', immediate: 0, ongoing: 2800, domain: 'finance', evidence: { sample_records: [{ ref: 'Vendor LFA1-V001', source_value: 'Bank: ABSA 1234', target_value: 'Payment to: FNB 5678', difference: 24500 }], pattern: 'Bank detail mismatch', first_occurrence: '2024-07-01', frequency: 'Quarterly' }, rootCause: 'Vendor bank detail changes not triggering verification workflow.', prescription: 'Implement vendor bank change verification with dual approval and confirmation letter.' },
-      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'medium', title: 'R12,300 in unmatched bank transactions (15 records)', desc: '15 bank transactions worth R12,300 cannot be matched to any GL posting. These need manual investigation and reconciliation.', affected: 15, impact: 12300, category: 'reconciliation', immediate: 12300, ongoing: 1025, domain: 'finance', evidence: { sample_records: [{ ref: 'BNK-2024-0891', source_value: 'R4,200 credit', target_value: 'No GL match', difference: 4200 }, { ref: 'BNK-2024-0923', source_value: 'R2,800 debit', target_value: 'No GL match', difference: 2800 }], pattern: 'Unmatched bank transactions', first_occurrence: '2024-03-01', frequency: 'Monthly' }, rootCause: 'Automated bank reconciliation only matches exact amounts. Partial payments and fees remain unmatched.', prescription: 'Implement fuzzy matching with tolerance rules for bank fees and partial payments.' },
+      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'critical', title: 'Invoice #INV-1847 — R47,200 payment terms mismatch', desc: 'SAP payment terms show Net-30 but bank settlement occurred at Net-67. The 37-day overshoot on this single transaction cost R47,200 in working capital.', affected: 1, impact: 47200, category: 'payment_terms', immediate: 47200, ongoing: 3900, domain: 'finance', evidence: { sample_records: [{ ref: 'Invoice #INV-1847', source_value: 'Net-30 (SAP)', target_value: 'Settled Day 67', difference: 47200 }], pattern: 'Late payment on high-value invoices', first_occurrence: daysAgo(150), frequency: 'Monthly' }, rootCause: 'Manual AP approval queue with no escalation for overdue items.', prescription: 'Implement automated payment terms enforcement with escalation rules.' },
+      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'critical', title: '23 overdue invoices worth R218,400 — no collection follow-up', desc: '23 invoices are past their due date with no systematic follow-up. Total outstanding: R218,400. Average days overdue: 42.', affected: 23, impact: 218400, category: 'data_issue', immediate: 65520, ongoing: 4368, domain: 'finance', evidence: { sample_records: [{ ref: 'INV-0892', source_value: `Due: ${daysAgo(120)}`, target_value: 'Unpaid', difference: 34200 }, { ref: 'INV-1103', source_value: `Due: ${daysAgo(85)}`, target_value: 'Unpaid', difference: 28700 }, { ref: 'INV-1456', source_value: `Due: ${daysAgo(75)}`, target_value: 'Unpaid', difference: 19800 }], pattern: 'Overdue accounts receivable', first_occurrence: daysAgo(120), frequency: 'Ongoing' }, rootCause: 'No automated AR aging alerts. Manual collection process misses follow-ups.', prescription: 'Deploy automated AR collection catalyst with aging bucket escalation.' },
+      { runId: vaRunDomains[0].id, type: 'discrepancy', severity: 'high', title: '8 potential duplicate payments totalling R89,600', desc: '8 instances of identical payment amounts processed on the same day to the same vendor. Potential duplicate payments worth R89,600.', affected: 8, impact: 89600, category: 'duplicate_payment', immediate: 89600, ongoing: 7467, domain: 'finance', evidence: { sample_records: [{ ref: 'PAY-0445', source_value: 'R18,500 to Supplier A', target_value: 'R18,500 same day', difference: 18500 }, { ref: 'PAY-0612', source_value: 'R15,200 to Supplier C', target_value: 'R15,200 same day', difference: 15200 }], pattern: 'Same amount, same vendor, same day', first_occurrence: daysAgo(140), frequency: 'Monthly' }, rootCause: 'No duplicate payment detection in AP workflow. Manual bank reconciliation misses these.', prescription: 'Enable real-time duplicate payment detection with vendor + amount + date matching.' },
+      { runId: vaRunDomains[0].id, type: 'exception', severity: 'high', title: '14 GL journal entries without proper authorization', desc: '14 journal entries posted without the required dual authorization. Total value: R156,000. These entries bypass the segregation of duties control.', affected: 14, impact: 156000, category: 'compliance', immediate: 0, ongoing: 5000, domain: 'finance', evidence: { sample_records: [{ ref: 'JE-0234', source_value: 'Posted by: user_a', target_value: 'Approved by: user_a (same)', difference: 42000 }, { ref: 'JE-0567', source_value: 'Posted by: user_b', target_value: 'No approval', difference: 28000 }], pattern: 'Missing dual authorization', first_occurrence: daysAgo(160), frequency: 'Weekly' }, rootCause: 'SAP workflow rules allow posting without second approval for amounts under R50k.', prescription: 'Enforce dual authorization for all JE amounts above R10k.' },
+      { runId: vaRunDomains[0].id, type: 'risk', severity: 'medium', title: '5 vendor master records with mismatched bank details', desc: '5 vendors have bank account details that differ between SAP master data and last payment instruction. Fraud risk indicator.', affected: 5, impact: 67000, category: 'fraud_risk', immediate: 0, ongoing: 2800, domain: 'finance', evidence: { sample_records: [{ ref: 'Vendor LFA1-V001', source_value: 'Bank: ABSA 1234', target_value: 'Payment to: FNB 5678', difference: 24500 }], pattern: 'Bank detail mismatch', first_occurrence: daysAgo(100), frequency: 'Quarterly' }, rootCause: 'Vendor bank detail changes not triggering verification workflow.', prescription: 'Implement vendor bank change verification with dual approval and confirmation letter.' },
+      { runId: vaRunDomains[0].id, type: 'data_quality', severity: 'medium', title: 'R12,300 in unmatched bank transactions (15 records)', desc: '15 bank transactions worth R12,300 cannot be matched to any GL posting. These need manual investigation and reconciliation.', affected: 15, impact: 12300, category: 'reconciliation', immediate: 12300, ongoing: 1025, domain: 'finance', evidence: { sample_records: [{ ref: 'BNK-0891', source_value: 'R4,200 credit', target_value: 'No GL match', difference: 4200 }, { ref: 'BNK-0923', source_value: 'R2,800 debit', target_value: 'No GL match', difference: 2800 }], pattern: 'Unmatched bank transactions', first_occurrence: daysAgo(170), frequency: 'Monthly' }, rootCause: 'Automated bank reconciliation only matches exact amounts. Partial payments and fees remain unmatched.', prescription: 'Implement fuzzy matching with tolerance rules for bank fees and partial payments.' },
       // Procurement findings
-      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'critical', title: '12 stale POs locking R345,000 in committed budget', desc: '12 purchase orders have been open for more than 90 days without goods receipt. This locks R345,000 in committed budget that may never be utilized.', affected: 12, impact: 345000, category: 'process_issue', immediate: 51750, ongoing: 8625, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500001234', source_value: 'Opened: 2024-03-15', target_value: 'Still open (180+ days)', difference: 67000 }, { ref: 'PO #4500001456', source_value: 'Opened: 2024-04-02', target_value: 'Still open (165 days)', difference: 52000 }], pattern: 'Stale POs with no goods receipt', first_occurrence: '2024-03-15', frequency: 'Accumulated' }, rootCause: 'No automated stale PO review process. Buyers do not close POs after project completion.', prescription: 'Implement automated PO lifecycle management with 60-day alerts and 90-day auto-close.' },
-      { runId: vaRunDomains[1].id, type: 'discrepancy', severity: 'high', title: 'GR/IR price variances on 7 POs worth R28,400', desc: '7 purchase orders show goods receipt amounts that differ from invoice amounts. Total variance: R28,400. These indicate potential pricing errors or unauthorized changes.', affected: 7, impact: 28400, category: 'price_variance', immediate: 28400, ongoing: 4733, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500002345', source_value: 'GR: R45,200', target_value: 'IR: R49,800', difference: 4600 }, { ref: 'PO #4500002567', source_value: 'GR: R32,100', target_value: 'IR: R35,700', difference: 3600 }], pattern: 'GR/IR mismatch above 5% tolerance', first_occurrence: '2024-05-01', frequency: 'Monthly' }, rootCause: 'No automated 3-way match validation. Price changes between order and invoice not flagged.', prescription: 'Deploy automated 3-way match with configurable tolerance thresholds.' },
-      { runId: vaRunDomains[1].id, type: 'exception', severity: 'high', title: '6 POs with inactive supplier codes — R89,000 at risk', desc: '6 active purchase orders reference suppliers marked as inactive in SAP master data. Combined value: R89,000.', affected: 6, impact: 89000, category: 'supplier_risk', immediate: 0, ongoing: 7417, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500003456 → V-INACTIVE-01', source_value: 'Supplier status: Blocked', target_value: 'PO status: Open', difference: 34000 }, { ref: 'PO #4500003567 → V-INACTIVE-03', source_value: 'Supplier status: Marked for deletion', target_value: 'PO status: Open', difference: 22000 }], pattern: 'Active PO referencing inactive vendor', first_occurrence: '2024-06-01', frequency: 'Quarterly' }, rootCause: 'Supplier deactivation process does not check for open POs. No link between vendor master and procurement.', prescription: 'Implement supplier lifecycle checks — block new POs for inactive vendors, flag existing open POs.' },
-      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'medium', title: '4 duplicate PO numbers detected', desc: '4 PO numbers appear more than once in the system, indicating potential duplicate ordering or data entry errors.', affected: 4, impact: 18000, category: 'data_issue', immediate: 18000, ongoing: 1500, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500004567', source_value: '2 entries', target_value: 'Should be 1', difference: 8500 }], pattern: 'Duplicate PO numbers', first_occurrence: '2024-07-10', frequency: 'Occasional' }, rootCause: 'Manual PO creation allows duplicate numbers when SAP number range is exhausted.', prescription: 'Enforce unique PO number validation at creation time.' },
-      { runId: vaRunDomains[1].id, type: 'process_delay', severity: 'medium', title: 'Average Procure-to-Pay cycle 18.3 days vs 12-day benchmark', desc: 'The P2P cycle is 52% slower than the industry benchmark. R134,600 in open POs would benefit from faster processing.', affected: 80, impact: 134600, category: 'process_issue', immediate: 20190, ongoing: 6730, domain: 'procurement', evidence: { sample_records: [{ ref: 'P2P cycle analysis', source_value: '18.3 days avg', target_value: '12 days benchmark', difference: 6.3 }], pattern: 'Slow procurement cycle', first_occurrence: '2024-01-01', frequency: 'Ongoing' }, rootCause: 'Manual approval routing with no SLA enforcement. Average approval wait: 4.2 days.', prescription: 'Implement automated approval routing with SLA escalation and parallel approvals.' },
+      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'critical', title: '12 stale POs locking R345,000 in committed budget', desc: '12 purchase orders have been open for more than 90 days without goods receipt. This locks R345,000 in committed budget that may never be utilized.', affected: 12, impact: 345000, category: 'process_issue', immediate: 51750, ongoing: 8625, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500001234', source_value: `Opened: ${daysAgo(185)}`, target_value: 'Still open (180+ days)', difference: 67000 }, { ref: 'PO #4500001456', source_value: `Opened: ${daysAgo(165)}`, target_value: 'Still open (165 days)', difference: 52000 }], pattern: 'Stale POs with no goods receipt', first_occurrence: daysAgo(185), frequency: 'Accumulated' }, rootCause: 'No automated stale PO review process. Buyers do not close POs after project completion.', prescription: 'Implement automated PO lifecycle management with 60-day alerts and 90-day auto-close.' },
+      { runId: vaRunDomains[1].id, type: 'discrepancy', severity: 'high', title: 'GR/IR price variances on 7 POs worth R28,400', desc: '7 purchase orders show goods receipt amounts that differ from invoice amounts. Total variance: R28,400. These indicate potential pricing errors or unauthorized changes.', affected: 7, impact: 28400, category: 'price_variance', immediate: 28400, ongoing: 4733, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500002345', source_value: 'GR: R45,200', target_value: 'IR: R49,800', difference: 4600 }, { ref: 'PO #4500002567', source_value: 'GR: R32,100', target_value: 'IR: R35,700', difference: 3600 }], pattern: 'GR/IR mismatch above 5% tolerance', first_occurrence: daysAgo(135), frequency: 'Monthly' }, rootCause: 'No automated 3-way match validation. Price changes between order and invoice not flagged.', prescription: 'Deploy automated 3-way match with configurable tolerance thresholds.' },
+      { runId: vaRunDomains[1].id, type: 'exception', severity: 'high', title: '6 POs with inactive supplier codes — R89,000 at risk', desc: '6 active purchase orders reference suppliers marked as inactive in SAP master data. Combined value: R89,000.', affected: 6, impact: 89000, category: 'supplier_risk', immediate: 0, ongoing: 7417, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500003456 → V-INACTIVE-01', source_value: 'Supplier status: Blocked', target_value: 'PO status: Open', difference: 34000 }, { ref: 'PO #4500003567 → V-INACTIVE-03', source_value: 'Supplier status: Marked for deletion', target_value: 'PO status: Open', difference: 22000 }], pattern: 'Active PO referencing inactive vendor', first_occurrence: daysAgo(110), frequency: 'Quarterly' }, rootCause: 'Supplier deactivation process does not check for open POs. No link between vendor master and procurement.', prescription: 'Implement supplier lifecycle checks — block new POs for inactive vendors, flag existing open POs.' },
+      { runId: vaRunDomains[1].id, type: 'data_quality', severity: 'medium', title: '4 duplicate PO numbers detected', desc: '4 PO numbers appear more than once in the system, indicating potential duplicate ordering or data entry errors.', affected: 4, impact: 18000, category: 'data_issue', immediate: 18000, ongoing: 1500, domain: 'procurement', evidence: { sample_records: [{ ref: 'PO #4500004567', source_value: '2 entries', target_value: 'Should be 1', difference: 8500 }], pattern: 'Duplicate PO numbers', first_occurrence: daysAgo(90), frequency: 'Occasional' }, rootCause: 'Manual PO creation allows duplicate numbers when SAP number range is exhausted.', prescription: 'Enforce unique PO number validation at creation time.' },
+      { runId: vaRunDomains[1].id, type: 'process_delay', severity: 'medium', title: 'Average Procure-to-Pay cycle 18.3 days vs 12-day benchmark', desc: 'The P2P cycle is 52% slower than the industry benchmark. R134,600 in open POs would benefit from faster processing.', affected: 80, impact: 134600, category: 'process_issue', immediate: 20190, ongoing: 6730, domain: 'procurement', evidence: { sample_records: [{ ref: 'P2P cycle analysis', source_value: '18.3 days avg', target_value: '12 days benchmark', difference: 6.3 }], pattern: 'Slow procurement cycle', first_occurrence: daysAgo(180), frequency: 'Ongoing' }, rootCause: 'Manual approval routing with no SLA enforcement. Average approval wait: 4.2 days.', prescription: 'Implement automated approval routing with SLA escalation and parallel approvals.' },
       // Workforce findings
-      { runId: vaRunDomains[2].id, type: 'data_quality', severity: 'high', title: '8 employees with missing department or cost centre', desc: '8 employee records have blank department or cost centre fields, preventing accurate labour cost allocation.', affected: 8, impact: 42000, category: 'data_issue', immediate: 42000, ongoing: 3500, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1045', source_value: 'Dept: (blank)', target_value: 'Cost Centre: (blank)', difference: 8500 }, { ref: 'EMP-1078', source_value: 'Dept: (blank)', target_value: 'Cost Centre: CC-4400', difference: 6200 }], pattern: 'Missing HR master data', first_occurrence: '2024-01-15', frequency: 'Ongoing' }, rootCause: 'Onboarding process does not enforce mandatory department and cost centre assignment.', prescription: 'Add mandatory field validation to employee onboarding workflow.' },
-      { runId: vaRunDomains[2].id, type: 'exception', severity: 'medium', title: '3 salary outliers — payments 3x above department average', desc: '3 employees received payments more than 3 standard deviations above their department average. Could indicate overpayment or miscategorisation.', affected: 3, impact: 24000, category: 'payroll_anomaly', immediate: 24000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1023', source_value: 'Salary: R85,000', target_value: 'Dept avg: R28,000', difference: 57000 }], pattern: 'Salary outlier detection', first_occurrence: '2024-04-01', frequency: 'Monthly' }, rootCause: 'No automated salary band validation. New hires can be assigned to wrong pay grade.', prescription: 'Implement salary band validation against department and role benchmarks.' },
-      { runId: vaRunDomains[2].id, type: 'risk', severity: 'medium', title: 'Termination processing delay — avg 8.5 days', desc: 'Average time from termination date to system access revocation is 8.5 days. 2 terminated employees still have active SAP access.', affected: 2, impact: 12000, category: 'security_risk', immediate: 12000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-0987 (terminated)', source_value: 'Term date: 2024-08-15', target_value: 'SAP access: Active', difference: 0 }], pattern: 'Delayed access revocation', first_occurrence: '2024-08-15', frequency: 'Per termination' }, rootCause: 'IT access revocation is manual and disconnected from HR termination process.', prescription: 'Automate SAP access deprovisioning triggered by HR termination workflow.' },
+      { runId: vaRunDomains[2].id, type: 'data_quality', severity: 'high', title: '8 employees with missing department or cost centre', desc: '8 employee records have blank department or cost centre fields, preventing accurate labour cost allocation.', affected: 8, impact: 42000, category: 'data_issue', immediate: 42000, ongoing: 3500, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1045', source_value: 'Dept: (blank)', target_value: 'Cost Centre: (blank)', difference: 8500 }, { ref: 'EMP-1078', source_value: 'Dept: (blank)', target_value: 'Cost Centre: CC-4400', difference: 6200 }], pattern: 'Missing HR master data', first_occurrence: daysAgo(180), frequency: 'Ongoing' }, rootCause: 'Onboarding process does not enforce mandatory department and cost centre assignment.', prescription: 'Add mandatory field validation to employee onboarding workflow.' },
+      { runId: vaRunDomains[2].id, type: 'exception', severity: 'medium', title: '3 salary outliers — payments 3x above department average', desc: '3 employees received payments more than 3 standard deviations above their department average. Could indicate overpayment or miscategorisation.', affected: 3, impact: 24000, category: 'payroll_anomaly', immediate: 24000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-1023', source_value: 'Salary: R85,000', target_value: 'Dept avg: R28,000', difference: 57000 }], pattern: 'Salary outlier detection', first_occurrence: daysAgo(155), frequency: 'Monthly' }, rootCause: 'No automated salary band validation. New hires can be assigned to wrong pay grade.', prescription: 'Implement salary band validation against department and role benchmarks.' },
+      { runId: vaRunDomains[2].id, type: 'risk', severity: 'medium', title: 'Termination processing delay — avg 8.5 days', desc: 'Average time from termination date to system access revocation is 8.5 days. 2 terminated employees still have active SAP access.', affected: 2, impact: 12000, category: 'security_risk', immediate: 12000, ongoing: 6000, domain: 'workforce', evidence: { sample_records: [{ ref: 'EMP-0987 (terminated)', source_value: `Term date: ${daysAgo(30)}`, target_value: 'SAP access: Active', difference: 0 }], pattern: 'Delayed access revocation', first_occurrence: daysAgo(30), frequency: 'Per termination' }, rootCause: 'IT access revocation is manual and disconnected from HR termination process.', prescription: 'Automate SAP access deprovisioning triggered by HR termination workflow.' },
       // Supply Chain findings
-      { runId: vaRunDomains[3].id, type: 'discrepancy', severity: 'critical', title: 'Inventory variance: 4 items with shrinkage worth R67,800', desc: '4 products show system stock exceeding physical count. Total shrinkage value: R67,800. Indicates theft, damage, or counting errors.', affected: 4, impact: 67800, category: 'inventory_variance', immediate: 67800, ongoing: 5650, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-007 (Wireless Router)', source_value: 'System: 150', target_value: 'Physical: 122', difference: 23800 }, { ref: 'MAT-PRD-012 (UPS Battery)', source_value: 'System: 85', target_value: 'Physical: 68', difference: 18700 }], pattern: 'System > Physical (shrinkage)', first_occurrence: '2024-06-30', frequency: 'Quarterly count' }, rootCause: 'Warehouse goods issue not posted in real-time. Cycle counts only quarterly.', prescription: 'Implement barcode-based real-time goods movement posting and monthly cycle counts for high-value items.' },
-      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'high', title: '6 products with zero cost price in SAP', desc: '6 products have a cost price of R0.00 in SAP material master. This causes incorrect COGS calculations and margin reporting.', affected: 6, impact: 34000, category: 'data_issue', immediate: 34000, ongoing: 2833, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-003', source_value: 'Cost: R0.00', target_value: 'Selling: R2,450', difference: 2450 }, { ref: 'MAT-PRD-009', source_value: 'Cost: R0.00', target_value: 'Selling: R890', difference: 890 }], pattern: 'Zero cost price in material master', first_occurrence: '2024-02-01', frequency: 'Ongoing' }, rootCause: 'Material master creation allows saving without cost price. No validation on financial fields.', prescription: 'Enforce mandatory cost price entry in material master creation workflow.' },
-      { runId: vaRunDomains[3].id, type: 'process_delay', severity: 'high', title: 'Order-to-Cash cycle 28.5 days vs 21-day benchmark', desc: 'O2C cycle is 36% above industry benchmark. Delayed billing reduces cash flow by an estimated R45,000 per month.', affected: 72, impact: 45000, category: 'process_issue', immediate: 0, ongoing: 9000, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'O2C cycle analysis', source_value: '28.5 days avg', target_value: '21 days benchmark', difference: 7.5 }], pattern: 'Slow order-to-cash cycle', first_occurrence: '2024-01-01', frequency: 'Ongoing' }, rootCause: 'Manual delivery confirmation and invoice creation. Average 5-day gap between delivery and billing.', prescription: 'Automate billing document creation triggered by goods issue posting.' },
-      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'medium', title: '3 dead stock items worth R23,400 — no movement in 180+ days', desc: '3 inventory items have had zero movement for over 180 days. Carrying cost and potential write-off: R23,400.', affected: 3, impact: 23400, category: 'dead_stock', immediate: 23400, ongoing: 1950, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-015', source_value: 'Last movement: 2024-01-20', target_value: 'Value: R12,600', difference: 12600 }], pattern: 'No movement > 180 days', first_occurrence: '2024-01-20', frequency: 'Review quarterly' }, rootCause: 'No slow-moving stock report or automated write-down trigger.', prescription: 'Implement monthly slow-moving stock report with automated write-down proposals after 120 days.' },
+      { runId: vaRunDomains[3].id, type: 'discrepancy', severity: 'critical', title: 'Inventory variance: 4 items with shrinkage worth R67,800', desc: '4 products show system stock exceeding physical count. Total shrinkage value: R67,800. Indicates theft, damage, or counting errors.', affected: 4, impact: 67800, category: 'inventory_variance', immediate: 67800, ongoing: 5650, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-007 (Wireless Router)', source_value: 'System: 150', target_value: 'Physical: 122', difference: 23800 }, { ref: 'MAT-PRD-012 (UPS Battery)', source_value: 'System: 85', target_value: 'Physical: 68', difference: 18700 }], pattern: 'System > Physical (shrinkage)', first_occurrence: daysAgo(95), frequency: 'Quarterly count' }, rootCause: 'Warehouse goods issue not posted in real-time. Cycle counts only quarterly.', prescription: 'Implement barcode-based real-time goods movement posting and monthly cycle counts for high-value items.' },
+      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'high', title: '6 products with zero cost price in SAP', desc: '6 products have a cost price of R0.00 in SAP material master. This causes incorrect COGS calculations and margin reporting.', affected: 6, impact: 34000, category: 'data_issue', immediate: 34000, ongoing: 2833, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-003', source_value: 'Cost: R0.00', target_value: 'Selling: R2,450', difference: 2450 }, { ref: 'MAT-PRD-009', source_value: 'Cost: R0.00', target_value: 'Selling: R890', difference: 890 }], pattern: 'Zero cost price in material master', first_occurrence: daysAgo(175), frequency: 'Ongoing' }, rootCause: 'Material master creation allows saving without cost price. No validation on financial fields.', prescription: 'Enforce mandatory cost price entry in material master creation workflow.' },
+      { runId: vaRunDomains[3].id, type: 'process_delay', severity: 'high', title: 'Order-to-Cash cycle 28.5 days vs 21-day benchmark', desc: 'O2C cycle is 36% above industry benchmark. Delayed billing reduces cash flow by an estimated R45,000 per month.', affected: 72, impact: 45000, category: 'process_issue', immediate: 0, ongoing: 9000, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'O2C cycle analysis', source_value: '28.5 days avg', target_value: '21 days benchmark', difference: 7.5 }], pattern: 'Slow order-to-cash cycle', first_occurrence: daysAgo(180), frequency: 'Ongoing' }, rootCause: 'Manual delivery confirmation and invoice creation. Average 5-day gap between delivery and billing.', prescription: 'Automate billing document creation triggered by goods issue posting.' },
+      { runId: vaRunDomains[3].id, type: 'data_quality', severity: 'medium', title: '3 dead stock items worth R23,400 — no movement in 180+ days', desc: '3 inventory items have had zero movement for over 180 days. Carrying cost and potential write-off: R23,400.', affected: 3, impact: 23400, category: 'dead_stock', immediate: 23400, ongoing: 1950, domain: 'supply_chain', evidence: { sample_records: [{ ref: 'MAT-PRD-015', source_value: `Last movement: ${daysAgo(210)}`, target_value: 'Value: R12,600', difference: 12600 }], pattern: 'No movement > 180 days', first_occurrence: daysAgo(210), frequency: 'Review quarterly' }, rootCause: 'No slow-moving stock report or automated write-down trigger.', prescription: 'Implement monthly slow-moving stock report with automated write-down proposals after 120 days.' },
     ];
 
     for (const f of vaFindings) {
@@ -3420,7 +3462,7 @@ seed.post('/seed-vantax', async (c) => {
           executive_summary: 'Operational momentum continues: Atheon Score rose from 65 to 69 in April. R 750k of additional discrepancy value recovered. Inventory variance at JHB-DC remains the largest open item.',
           highlights: [
             'Atheon Score: 65 → 69 (+4 points)',
-            'Discrepancy recovered: R 2.45M cumulative (R 750k added in April)',
+            'Discrepancy recovered: R 4.15M cumulative (R 750k added in April)',
             'Process metrics: 7 green, 3 amber, 2 red (vs 4 green / 5 amber / 4 red at baseline)',
             'GR/IR exception rate dropped from 17% to 12.4%',
           ],
@@ -3439,9 +3481,9 @@ seed.post('/seed-vantax', async (c) => {
             'VAT 16% configuration changes (effective July 2026)',
           ],
           financial_highlights: {
-            revenue_recovered_ytd: 3_200_000,
+            revenue_recovered_ytd: 4_150_000,
             atheon_cost_ytd: 580_000,
-            roi_multiple: 5.5,
+            roi_multiple: 7.2,
             currency: 'ZAR',
           },
         },
@@ -3451,11 +3493,11 @@ seed.post('/seed-vantax', async (c) => {
         report_type: 'quarterly',
         daysAgo: 55,
         content: {
-          executive_summary: 'Q1 2026 marked a step-change in operational visibility. Atheon Score rose 17 points (baseline 52 → 69 by quarter end). R 4.85M of discrepancy value identified, R 3.2M recovered. Three structural issues now have remediation plans with named owners.',
+          executive_summary: 'Q1 2026 marked a step-change in operational visibility. Atheon Score rose 17 points (baseline 52 → 69 by quarter end). R 6.1M of discrepancy value identified, R 3.4M recovered. Three structural issues now have remediation plans with named owners.',
           highlights: [
             'Atheon Score trajectory: 52 → 56 → 61 → 65 → 69 (5-month trend)',
-            'Discrepancy identified: R 4.85M total; R 3.2M recovered (66% recovery rate)',
-            'Person-hours saved: 2,400 hours equivalent across Finance + Operations teams',
+            'Discrepancy identified: R 6.1M total; R 3.4M recovered (56% recovery rate)',
+            'Person-hours saved: 1,400 hours equivalent across Finance + Operations teams',
             'Risk count: 12 critical risks at baseline → 4 critical at quarter-end',
           ],
           key_decisions: [
@@ -3472,13 +3514,13 @@ seed.post('/seed-vantax', async (c) => {
           next_period_focus: [
             'Q2 2026 priorities: VAT 16% changeover, GR/IR automation rollout, JHB-DC audit',
             'Target Atheon Score: 80 by end of Q2 (+11 points from current)',
-            'Target recovered value: R 5.5M cumulative by end of Q2',
+            'Target recovered value: R 7.5M cumulative by end of Q2',
           ],
           financial_highlights: {
-            revenue_recovered_q1: 3_200_000,
-            downstream_losses_prevented: 1_800_000,
+            revenue_recovered_q1: 3_400_000,
+            downstream_losses_prevented: 1_000_000,
             atheon_cost_q1: 580_000,
-            roi_multiple: 8.3,
+            roi_multiple: 5.9,
             currency: 'ZAR',
           },
         },
@@ -3525,7 +3567,7 @@ seed.post('/seed-vantax', async (c) => {
     // Activity feed renders empty without these; spans recent + older entries.
     console.log('[VantaX Seeder] Seeding notifications...');
     const notificationSeeds = [
-      { type: 'catalyst', severity: 'success', title: 'GR/IR Reconciliation completed', message: 'Run 9b2 matched 49/55 items (89.1% match rate, R 8.2M recovered). 4 exceptions flagged for review.', actionUrl: '/catalysts', hoursAgo: 2 },
+      { type: 'catalyst', severity: 'success', title: 'GR/IR Reconciliation completed', message: 'Run 9b2 matched 49/55 items (89.1% match rate, R 240k recovered). 4 exceptions flagged for review.', actionUrl: '/catalysts', hoursAgo: 2 },
       { type: 'signal', severity: 'critical', title: 'Apex Radar: Rand breached R19/USD', message: 'Reuters signal received. Estimated import cost impact R 1.65M over 90 days. FX hedging recommendation active.', actionUrl: '/apex', hoursAgo: 4 },
       { type: 'threshold', severity: 'warning', title: 'GR/IR exception rate above threshold', message: 'Exception rate hit 14.8% (target ≤ 8%). Top contributors: LIFNR 100013 (5 items), 100027 (3 items).', actionUrl: '/diagnostics', hoursAgo: 7 },
       { type: 'catalyst', severity: 'success', title: 'Bank Reconciliation completed', message: 'Run 6f4 reconciled 56/72 transactions (77.8%). 10 unallocated bank fees auto-categorised.', actionUrl: '/catalysts', hoursAgo: 14 },
@@ -3536,9 +3578,9 @@ seed.post('/seed-vantax', async (c) => {
       { type: 'agent', severity: 'success', title: 'AP Validation Agent deployed v2.3.8', message: '2,034 invoices validated this cycle. Health score 96%, uptime 99.9%.', actionUrl: '/agents', hoursAgo: 48 },
       { type: 'signal', severity: 'high', title: 'Apex Radar: SARS confirms VAT increase', message: 'VAT moves to 16% effective July 2026. All SAP tax codes and pricing masters require update.', actionUrl: '/apex', hoursAgo: 60 },
       { type: 'catalyst', severity: 'success', title: 'Inventory Reconciliation completed', message: 'Run b73 matched 10/18 products exactly. 4 shrinkage and 4 surplus items isolated.', actionUrl: '/catalysts', hoursAgo: 72 },
-      { type: 'roi', severity: 'success', title: 'ROI milestone: 5x return crossed', message: 'Q1 cumulative ROI hit 5.5x (R 3.2M recovered against R 580k Atheon spend).', actionUrl: '/roi-dashboard', hoursAgo: 96 },
+      { type: 'roi', severity: 'success', title: 'ROI milestone: 10x return crossed', message: 'Cumulative ROI hit 12.1x (R 7.0M recovered against R 580k Atheon spend).', actionUrl: '/roi-dashboard', hoursAgo: 96 },
       { type: 'threshold', severity: 'warning', title: 'Match Rate below target', message: 'Aggregate match rate 82.4% (target 92%). Down -5.2% vs last month. Drill-through available.', actionUrl: '/diagnostics', hoursAgo: 120 },
-      { type: 'briefing', severity: 'info', title: 'Quarterly Board Report ready', message: 'Q1 2026 board report generated. Atheon Score +17 points; R 4.85M discrepancy identified.', actionUrl: '/apex', hoursAgo: 168 },
+      { type: 'briefing', severity: 'info', title: 'Quarterly Board Report ready', message: 'Q1 2026 board report generated. Atheon Score +17 points; R 6.1M discrepancy identified.', actionUrl: '/apex', hoursAgo: 168 },
       { type: 'system', severity: 'info', title: 'SAP S/4HANA connector synced', message: 'Hourly sync completed: 2,847 records refreshed across FI/CO/MM/SD/PP/QM modules.', actionUrl: '/connectors', hoursAgo: 240 },
     ];
     for (const n of notificationSeeds) {
@@ -4268,7 +4310,7 @@ seed.post('/seed-findings-demo', async (c) => {
     await ins(
       `INSERT OR REPLACE INTO erp_tax_entries (id, tenant_id, tax_period, tax_type, output_vat, input_vat, net_vat, status, created_at)
        VALUES (?, ?, ?, 'VAT', 250000, 80000, 170000, 'draft', datetime('now', '-' || ? || ' days'))`,
-      [`${PREFIX}-tax-${i}`, tenantId, `2025-${String(i + 1).padStart(2, '0')}`, 90 + i * 30],
+      [`${PREFIX}-tax-${i}`, tenantId, daysAgo(90 + i * 30).slice(0, 7), 90 + i * 30],
     );
   }
   written.tax_overdue_submission = 2;

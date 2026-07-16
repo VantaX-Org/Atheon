@@ -1662,6 +1662,36 @@ auth.post('/mfa/validate', async (c) => {
   });
 });
 
+// GET /api/auth/mfa/status — enabled flag + remaining backup codes for the settings screen
+auth.get('/mfa/status', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  const payload = await verifyToken(authHeader.replace('Bearer ', ''), c.env.JWT_SECRET);
+  if (!payload) {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
+
+  const user = await c.env.DB.prepare(
+    'SELECT mfa_enabled, mfa_backup_codes FROM users WHERE id = ?',
+  ).bind(payload.sub).first();
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+
+  const enabled = (user.mfa_enabled as number) === 1;
+  let backupCodesRemaining: number | undefined;
+  if (enabled && user.mfa_backup_codes) {
+    try {
+      const hashes = JSON.parse(user.mfa_backup_codes as string);
+      if (Array.isArray(hashes)) backupCodesRemaining = hashes.length;
+    } catch { /* malformed column — omit the count rather than guess */ }
+  }
+
+  return c.json({ enabled, backupCodesRemaining });
+});
+
 // POST /api/auth/mfa/disable - Disable MFA (requires current TOTP code)
 auth.post('/mfa/disable', async (c) => {
   const authHeader = c.req.header('Authorization');

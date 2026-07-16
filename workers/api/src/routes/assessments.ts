@@ -317,7 +317,37 @@ assessments.get('/:id', async (c) => {
   `).bind(c.req.param('id')).first<Record<string, unknown>>();
 
   if (!assessment) return c.json({ error: 'Not found' }, 404);
-  return c.json(formatAssessment(assessment));
+  const out = formatAssessment(assessment);
+  // findings_summary is part of the read contract: older/seeded assessments
+  // persisted empty results, so derive it from the stored finding rows.
+  if (!out.results.findings_summary) {
+    const rows = await c.env.DB.prepare(`
+      SELECT category, severity, COUNT(*) AS count, SUM(financial_impact) AS value_zar
+      FROM assessment_findings WHERE assessment_id = ?
+      GROUP BY category, severity
+    `).bind(c.req.param('id')).all<{ category: string; severity: string; count: number; value_zar: number | null }>();
+    const found = rows.results ?? [];
+    if (found.length) {
+      const by_category: Record<string, { count: number; value_at_risk_zar: number }> = {};
+      const by_severity: Record<string, number> = {};
+      let total = 0, totalCount = 0;
+      for (const r of found) {
+        const cat = (by_category[r.category] ??= { count: 0, value_at_risk_zar: 0 });
+        cat.count += r.count;
+        cat.value_at_risk_zar += r.value_zar ?? 0;
+        by_severity[r.severity] = (by_severity[r.severity] ?? 0) + r.count;
+        total += r.value_zar ?? 0;
+        totalCount += r.count;
+      }
+      out.results.findings_summary = {
+        total_count: totalCount,
+        total_value_at_risk_zar: total,
+        by_severity,
+        by_category,
+      };
+    }
+  }
+  return c.json(out);
 });
 
 // ── GET /api/assessments/:id/status — polling endpoint ────────────────────

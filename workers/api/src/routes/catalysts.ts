@@ -5449,7 +5449,7 @@ Format as JSON: { "summary": "...", "risks": ["..."], "actions": ["..."], "impac
   // Call LLM (using Cloudflare AI or external API)
   try {
     // If using Cloudflare AI Workers
-    const aiResponse = await (c.env.AI as { run: (model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>> }).run('@cf/meta/llama-3.1-8b-instruct', {
+    const aiResponse = await (c.env.AI as { run: (model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>> }).run('@cf/meta/llama-3.1-8b-instruct-fp8', {
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       max_tokens: 500,

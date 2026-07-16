@@ -179,7 +179,7 @@ async function generateActionReasoning(
         ],
         maxTokens: 256,
         temperature: 0.3,
-        workersAiModel: '@cf/meta/llama-3.1-8b-instruct',
+        workersAiModel: '@cf/meta/llama-3.1-8b-instruct-fp8',
       },
     );
     return result.response || `Action "${action}" evaluated with ${confidence} confidence based on input parameters.`;

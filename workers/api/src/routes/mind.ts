@@ -15,9 +15,9 @@ const mind = new Hono<AppBindings>();
 
 // Model tier configurations — Atheon proprietary models with Workers AI fallback
 const MODEL_TIERS: Record<string, { name: string; model: string; ollamaModel: string; fallbackModel: string; maxTokens: number; description: string }> = {
-  'tier-1': { name: 'Atheon Edge', model: 'atheon-edge-v1', ollamaModel: 'atheon-edge-v1', fallbackModel: '@cf/meta/llama-3.1-8b-instruct', maxTokens: 2048, description: 'Fast inference for queries and classification' },
-  'tier-2': { name: 'Atheon Mind', model: 'atheon-mind-v1', ollamaModel: 'atheon-mind-v1', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Domain-tuned model for complex enterprise analysis and reasoning' },
-  'tier-3': { name: 'Atheon Apex', model: 'atheon-apex-v1', ollamaModel: 'atheon-apex-v1', fallbackModel: '@cf/meta/llama-3.1-70b-instruct', maxTokens: 8192, description: 'Multi-step reasoning for scenario modelling and strategic planning' },
+  'tier-1': { name: 'Atheon Edge', model: 'atheon-edge-v1', ollamaModel: 'atheon-edge-v1', fallbackModel: '@cf/meta/llama-3.1-8b-instruct-fp8', maxTokens: 2048, description: 'Fast inference for queries and classification' },
+  'tier-2': { name: 'Atheon Mind', model: 'atheon-mind-v1', ollamaModel: 'atheon-mind-v1', fallbackModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', maxTokens: 8192, description: 'Domain-tuned model for complex enterprise analysis and reasoning' },
+  'tier-3': { name: 'Atheon Apex', model: 'atheon-apex-v1', ollamaModel: 'atheon-apex-v1', fallbackModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', maxTokens: 8192, description: 'Multi-step reasoning for scenario modelling and strategic planning' },
 };
 
 // Industry LoRA adapters

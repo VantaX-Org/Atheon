@@ -225,9 +225,9 @@ const mcpTools: MCPTool[] = [
     },
     async handler(args, context) {
       const tierModels: Record<string, string> = {
-        'tier-1': '@cf/meta/llama-3.1-8b-instruct',
-        'tier-2': '@cf/meta/llama-3.1-70b-instruct',
-        'tier-3': '@cf/meta/llama-3.1-70b-instruct',
+        'tier-1': '@cf/meta/llama-3.1-8b-instruct-fp8',
+        'tier-2': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        'tier-3': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       };
       const model = tierModels[(args.tier as string) || 'tier-1'];
       try {

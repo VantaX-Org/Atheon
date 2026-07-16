@@ -42,6 +42,7 @@ import aiCosts from './routes/ai-costs';
 import seedVantaX from './routes/seed-vantax';
 import demoSeedRoutes from './routes/demo-seed';
 import adminOps from './routes/admin-ops';
+import adminData from './routes/admin';
 import tenantsAdmin from './routes/tenants-admin';
 import radar from './routes/radar';
 import diagnosticsRoutes from './routes/diagnostics';
@@ -643,6 +644,14 @@ app.route('/api/v1/seed-vantax', seedVantaX);
 app.route('/api/v1/admin/verify-ops', adminOps);
 app.route('/api/v1/admin', demoSeedRoutes);
 app.route('/api/admin', demoSeedRoutes);
+
+// LLM provider config lives in routes/admin.ts (superadmin enforced inside the
+// handler). tenantIsolation is scoped to llm-config only so the JWT-free
+// /admin/setup and /admin/migrate paths stay open.
+app.use('/api/v1/admin/llm-config', tenantIsolation());
+app.use('/api/admin/llm-config', tenantIsolation());
+app.route('/api/v1/admin', adminData);
+app.route('/api/admin', adminData);
 
 // Phase AX: SCIM 2.0 endpoints for enterprise IdP provisioning (Okta,
 // Azure AD, OneLogin, Google Workspace, JumpCloud). Mounted at /scim/v2

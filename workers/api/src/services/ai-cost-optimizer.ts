@@ -98,13 +98,13 @@ export interface TieredModelConfig {
 export const DEFAULT_TIERED_CONFIG: TieredModelConfig = {
   simple: {
     ollamaModel: 'Reshigan/atheon',
-    workersAiModel: '@cf/google/gemma-2b-it',
+    workersAiModel: '@cf/meta/llama-3.1-8b-instruct-fp8',
     maxTokens: 1024,
     temperature: 0.5,
   },
   complex: {
     ollamaModel: 'Reshigan/atheon',
-    workersAiModel: '@cf/meta/llama-3.1-70b-instruct',
+    workersAiModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     maxTokens: 4096,
     temperature: 0.3,
   },
@@ -156,9 +156,8 @@ export async function routedChat(
 // ═══ 3. COST TRACKING ═══
 
 const COST_RATES: Record<string, { input: number; output: number }> = {
-  '@cf/google/gemma-2b-it':           { input: 0.0001, output: 0.0002 },
-  '@cf/meta/llama-3.1-8b-instruct':   { input: 0.0003, output: 0.0006 },
-  '@cf/meta/llama-3.1-70b-instruct':  { input: 0.0035, output: 0.0070 },
+  '@cf/meta/llama-3.1-8b-instruct-fp8':   { input: 0.0003, output: 0.0006 },
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast':  { input: 0.0035, output: 0.0070 },
   '@cf/baai/bge-base-en-v1.5':        { input: 0.00005, output: 0 },
   'Reshigan/atheon':                   { input: 0.0002, output: 0.0004 },
   'default':                           { input: 0.001, output: 0.002 },

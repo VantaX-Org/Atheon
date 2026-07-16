@@ -636,7 +636,7 @@ ${context.topIssues.map((i: Record<string, unknown>) => `- Item #${i.item_number
 
 Respond with JSON: { "rootCauses": [{ "description": string, "confidence": number, "immediateAction": string, "longTermFix": string, "affectedSystems": string[] }] }`;
 
-    const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', { prompt });
+    const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct-fp8', { prompt });
     const text = aiResult?.response || '';
     
     if (!text) {
@@ -808,7 +808,7 @@ apex.post('/scenarios', async (c) => {
       const ai = (c.env as unknown as Record<string, unknown>).AI;
       if (!ai || typeof (ai as Record<string, unknown>).run !== 'function') throw new Error('Workers AI not available');
       const prompt = `You are Atheon Mind, an enterprise AI analyst. Analyze this what-if scenario for a business:\n\nScenario: ${body.title}\nDescription: ${body.description}\nQuery: ${body.input_query}\n\nCurrent Business Context:\n- Health Score: ${healthScore}/100\n- RED Metrics: ${JSON.stringify(contextData.redMetrics || [])}\n- Active Risks: ${JSON.stringify(contextData.activeRisks || [])}\n- Recent Runs: ${JSON.stringify((contextData.recentRuns as unknown[])?.slice(0, 5) || [])}\n\nRespond with JSON: { "npv_impact": number, "risk_change": string, "confidence": number (0-100), "recommendation": string, "analysis_points": string[] }`;
-      const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', { prompt });
+      const aiResult = await (ai as { run: (model: string, input: { prompt: string }) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct-fp8', { prompt });
       const text = aiResult?.response || '';
       if (!text) throw new Error('Empty AI response');
       try {

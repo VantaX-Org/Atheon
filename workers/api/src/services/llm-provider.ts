@@ -296,7 +296,7 @@ async function callInternal(config: LlmProviderConfig, messages: LlmMessage[], m
 }
 
 async function callWorkersAI(ai: Ai, messages: LlmMessage[], maxTokens: number, temperature: number): Promise<LlmResponse> {
-  const model = '@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0];
+  const model = '@cf/meta/llama-3.1-8b-instruct-fp8' as Parameters<Ai['run']>[0];
   const result = await ai.run(model, {
     messages: messages.map(m => ({ role: m.role, content: m.content })),
     max_tokens: maxTokens,

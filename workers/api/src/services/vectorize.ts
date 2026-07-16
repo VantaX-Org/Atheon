@@ -277,7 +277,7 @@ export async function ragQuery(
   const userPrompt = `Context:\n${contextBlock}\n\nQuestion: ${query}\n\nAnswer with citations:`;
 
   try {
-    const llmResult = await ai.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
+    const llmResult = await ai.run('@cf/meta/llama-3.1-8b-instruct-fp8' as Parameters<Ai['run']>[0], {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -292,7 +292,7 @@ export async function ragQuery(
     return {
       answer,
       citations,
-      model: '@cf/meta/llama-3.1-8b-instruct',
+      model: '@cf/meta/llama-3.1-8b-instruct-fp8',
       tokensUsed: answer.length, // Approximate
     };
   } catch (err) {
@@ -300,7 +300,7 @@ export async function ragQuery(
     return {
       answer: `Based on ${citations.length} retrieved documents, I found relevant information but could not generate a synthesized answer. Please review the cited sources directly.`,
       citations,
-      model: '@cf/meta/llama-3.1-8b-instruct',
+      model: '@cf/meta/llama-3.1-8b-instruct-fp8',
       tokensUsed: 0,
     };
   }

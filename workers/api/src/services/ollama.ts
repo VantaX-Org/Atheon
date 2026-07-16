@@ -127,7 +127,7 @@ export async function chatWithFallback(
   }
 
   // Fallback to Workers AI
-  const workersModel = options.workersAiModel || '@cf/meta/llama-3.1-8b-instruct';
+  const workersModel = options.workersAiModel || '@cf/meta/llama-3.1-8b-instruct-fp8';
   const result = await ai.run(workersModel as Parameters<Ai['run']>[0], {
     messages: options.messages.map(m => ({ role: m.role, content: m.content })),
     max_tokens: options.maxTokens || 2048,

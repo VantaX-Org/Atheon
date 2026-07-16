@@ -258,7 +258,7 @@ memory.post('/query', async (c) => {
   try {
     const combinedContext = [context, vectorContext].filter(Boolean).join('\n\nSemantic matches: ');
     if (matchingEntities.results.length > 0 || vectorResults.length > 0) {
-      const aiResult = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct' as Parameters<Ai['run']>[0], {
+      const aiResult = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct-fp8' as Parameters<Ai['run']>[0], {
         messages: [
           {
             role: 'system',

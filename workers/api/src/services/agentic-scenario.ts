@@ -235,7 +235,7 @@ export async function planScenario(env: { AI?: unknown }, prompt: string): Promi
       if (!ai || typeof ai.run !== 'function') throw new Error('Workers AI not available');
       const sys = `You are Atheon's scenario planner. Given an executive prompt, produce a JSON plan with: title (<=80 chars), description, drivers (array of business drivers), variables (array of {name, baseValue, proposedValue}), successCriteria (array), dataNeeded (array — pick from: red_metrics, risk_alerts, sub_catalyst_runs, catalyst_insights), confidence (0-100), reasoning. Do not fabricate values; baseValue/proposedValue can be "current"/"proposed" if unspecified.`;
       const userPrompt = `Plan a what-if scenario from this exec prompt:\n\n${prompt}\n\nRespond with JSON only.`;
-      const aiResult = await ai.run('@cf/meta/llama-3.1-8b-instruct', { prompt: `${sys}\n\n${userPrompt}` });
+      const aiResult = await ai.run('@cf/meta/llama-3.1-8b-instruct-fp8', { prompt: `${sys}\n\n${userPrompt}` });
       const text = aiResult?.response || '';
       if (!text) throw new Error('Empty AI response');
       const cleaned = stripCodeFences(text);
@@ -334,7 +334,7 @@ export async function executePlan(env: { AI?: unknown }, plan: ScenarioPlan, ctx
         '',
         'Respond with JSON only: { "npv_impact": number, "risk_change": string, "confidence": number, "recommendation": string, "analysis_points": string[] }',
       ].join('\n');
-      const aiResult = await ai.run('@cf/meta/llama-3.1-8b-instruct', { prompt: userPrompt });
+      const aiResult = await ai.run('@cf/meta/llama-3.1-8b-instruct-fp8', { prompt: userPrompt });
       const text = aiResult?.response || '';
       if (!text) throw new Error('Empty AI response');
       const cleaned = stripCodeFences(text);

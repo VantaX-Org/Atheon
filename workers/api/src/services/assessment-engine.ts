@@ -2333,7 +2333,7 @@ Write in a professional, confident tone. Refer to the customer as "${target}" â€
   // the call hangs, we fall through to the deterministic template below.
   if (ai) {
     try {
-      const aiRun = (ai as { run: (model: string, params: Record<string, unknown>) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct', {
+      const aiRun = (ai as { run: (model: string, params: Record<string, unknown>) => Promise<{ response?: string }> }).run('@cf/meta/llama-3.1-8b-instruct-fp8', {
         messages: [
           { role: 'system', content: `You are a financial analyst at GONXT Technology writing an assessment report for the Atheon AI platform prospect ${target}. Always refer to the customer as "${target}".` },
           { role: 'user', content: prompt },
