@@ -122,7 +122,7 @@ export function ConsolePage() {
           <p className="why">{persona ? persona.kicker : 'Everything on this screen traces to a booked API field.'}</p>
         </div>
 
-        <Reactor input={input} focus={active} onAskJeff={onAskJeff} />
+        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} onAskJeff={onAskJeff} />
 
         {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
         {sections.includes('decisions') && <DecisionsSection persona={persona} onAskJeff={onAskJeff} />}

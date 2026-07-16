@@ -78,7 +78,8 @@ export const PERSONAS: Record<PersonaKey, Persona> = {
 };
 
 export function activePersona(search: string, tenantName: string | null): Persona | null {
-  if (!tenantName?.toLowerCase().includes('vantax')) return null;
+  // live tenant is named "Vanta X" — strip spaces before matching
+  if (!tenantName?.toLowerCase().replace(/\s+/g, '').includes('vantax')) return null;
   const key = new URLSearchParams(search).get('as') as PersonaKey | null;
   return (key && PERSONAS[key]) || PERSONAS.cfo;
 }

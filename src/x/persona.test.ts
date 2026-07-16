@@ -12,6 +12,9 @@ describe('activePersona', () => {
   it('?as=cpo on a real tenant → null (no switcher)', () => {
     expect(activePersona('?as=cpo', 'Acme')).toBeNull();
   });
+  it('live tenant name "Vanta X" (spaced) still matches', () => {
+    expect(activePersona('?as=cpo', 'Vanta X')?.key).toBe('cpo');
+  });
   it('no ?as= on Vantax → default cfo', () => {
     expect(activePersona('', 'Vantax Demo')?.key).toBe('cfo');
   });

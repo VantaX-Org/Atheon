@@ -1,6 +1,6 @@
-// Single fetch for the reactor: world context, health, connections, operations
-// categories, decision gate, recovered. Honesty law from use-journey-input:
-// any failed fetch leaves its field null (em-dash), never a fabricated zero.
+// Single fetch for the reactor: operations categories (value-chain stages),
+// decision gate, recovered, and the Atheon fee. Honesty law: any failed fetch
+// leaves its field null (em-dash), never a fabricated zero.
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSelectedCompanyId } from '@/stores/appStore';
@@ -13,14 +13,10 @@ const CAT_LABEL: Record<string, string> = {
   cross_cutting: 'Cross-cutting', service_delivery: 'Service delivery',
 };
 
-export const EMPTY_REACTOR_INPUT: ReactorInput = {
-  world: null, health: null, connections: null, ops: null, gate: null, recovered: null,
-};
+export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
-  const [ctx, conns, assessList, actions, roi] = await Promise.allSettled([
-    api.radar.context(),
-    api.erp.connections(),
+  const [assessList, actions, roi] = await Promise.allSettled([
     api.assessments.list(),
     api.erp.actionsSummary(),
     api.roi.get(),
@@ -47,26 +43,6 @@ async function fetchReactorInput(): Promise<ReactorInput> {
   }
 
   return {
-    world: ctx.status === 'fulfilled'
-      ? {
-          headwinds: (ctx.value.headwinds ?? []).length,
-          tailwinds: (ctx.value.tailwinds ?? []).length,
-          // deploy-skew guard: older API returned the array itself, not a count
-          regulatoryDeadlines: Array.isArray(ctx.value.regulatoryDeadlines)
-            ? (ctx.value.regulatoryDeadlines as unknown[]).length
-            : ctx.value.regulatoryDeadlines ?? 0,
-          signalCount: (ctx.value.topSignals ?? []).length,
-        }
-      : null,
-    health: ctx.status === 'fulfilled'
-      ? { score: ctx.value.healthScore, benchmark: ctx.value.industryBenchmark }
-      : null,
-    connections: conns.status === 'fulfilled'
-      ? {
-          total: conns.value.total,
-          broken: (conns.value.connections ?? []).filter((c) => c.status === 'error' || c.status === 'failed').length,
-        }
-      : null,
     ops,
     gate: actions.status === 'fulfilled'
       ? {
@@ -78,9 +54,8 @@ async function fetchReactorInput(): Promise<ReactorInput> {
           reversedZar: actions.value.summary.failed_value_zar + actions.value.summary.rejected_value_zar,
         }
       : null,
-    recovered: roi.status === 'fulfilled'
-      ? { zar: roi.value.totalDiscrepancyValueRecovered }
-      : null,
+    recovered: roi.status === 'fulfilled' ? { zar: roi.value.totalDiscrepancyValueRecovered } : null,
+    fee: roi.status === 'fulfilled' && roi.value.platformCost != null ? { zar: roi.value.platformCost } : null,
   };
 }
 

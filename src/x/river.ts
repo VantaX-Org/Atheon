@@ -13,6 +13,7 @@ export interface RiverNode {
   value: string; // pre-formatted; '—' when the source has not reported
   sub?: string;
   tone?: RiverTone;
+  cls?: string; // extra fnode classes, e.g. 'stage leaky'
   anchor?: string; // section this node deep-links to
   dim?: boolean;
 }
@@ -66,7 +67,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   nodes.forEach((n) => {
     if (!n.kicker) return;
     const d = document.createElement('div');
-    d.className = ['fnode', TONE_CLS[n.tone ?? 'none'], pooled.has(n.id) ? 'gate' : '', n.dim ? 'dim' : '']
+    d.className = ['fnode', TONE_CLS[n.tone ?? 'none'], n.cls ?? '', pooled.has(n.id) ? 'gate' : '', n.dim ? 'dim' : '']
       .filter(Boolean).join(' ');
     d.style.left = n.x * 100 + '%';
     d.style.top = n.y * 100 + '%';
