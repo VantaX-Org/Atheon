@@ -35,7 +35,9 @@ const SECTION_ICON = { brief: 'brief', decisions: 'decisions', ledger: 'ledger',
 
 export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTenantName = useAppStore((s) => s.activeTenantName);
+  // fresh login stores the tenant name on the user; activeTenantName is only
+  // set when a multi-tenant user explicitly switches tenants
+  const activeTenantName = useAppStore((s) => s.activeTenantName ?? s.user?.tenantName ?? null);
   const { input } = useReactorInput();
   const [active, setActive] = useState<SectionKey>('brief');
   const [decisionsCount, setDecisionsCount] = useState<number | null>(null);
