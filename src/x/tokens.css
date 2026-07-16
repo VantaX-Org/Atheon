@@ -131,6 +131,13 @@
 .rx .fnode.stage.leaky .fs { color: var(--warn); font-weight: 600; }
 .rx .fnode.stage.clean .fs { color: var(--ok); font-weight: 600; }
 .rx .fnode.dim { opacity: 0.35; }
+.rx .fnode .fask {
+  position: absolute; top: -0.4rem; right: -0.4rem; width: 1.3rem; height: 1.3rem;
+  border-radius: 50%; background: var(--brand-soft); color: var(--brand);
+  font-size: 0.65rem; line-height: 1.3rem; text-align: center;
+  opacity: 0; transition: opacity 0.15s;
+}
+.rx .fnode:hover .fask, .rx .fnode .fask:focus-visible { opacity: 1; }
 
 /* ---------- KPI strip ---------- */
 .rx .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-top: 0.9rem; }
