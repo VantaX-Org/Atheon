@@ -84,6 +84,39 @@
   -webkit-appearance: none; appearance: none; cursor: pointer;
 }
 
+.rx .jeff-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.78rem; font-weight: 600; color: var(--brand);
+  background: var(--brand-soft); border-radius: 12px; padding: 0.42rem 0.8rem; white-space: nowrap;
+}
+.rx .jeff-pill:hover { background: var(--line); }
+.rx .idwrap { position: relative; }
+.rx .avatar {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: #fff;
+  font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 0.78rem;
+  display: grid; place-items: center;
+}
+:root[data-theme="dark"] .rx .avatar { color: #12141b; }
+.rx .idmenu {
+  position: absolute; right: 0; top: calc(100% + 0.5rem); min-width: 240px;
+  background: var(--card); border-radius: 16px; box-shadow: var(--sh2);
+  padding: 0.5rem; display: flex; flex-direction: column; gap: 0.1rem; z-index: 35;
+}
+.rx .id-head { padding: 0.5rem 0.7rem 0.6rem; border-bottom: 1px solid var(--line); margin-bottom: 0.3rem; }
+.rx .id-head b { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink); }
+.rx .id-head small { font-size: 0.68rem; color: var(--faint); }
+.rx .id-row {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%;
+  font-size: 0.8rem; font-weight: 500; color: var(--body);
+  padding: 0.45rem 0.7rem; border-radius: 10px;
+}
+.rx .id-row:hover { background: var(--card2); color: var(--ink); }
+.rx .id-row svg { color: var(--mut); flex-shrink: 0; }
+.rx .id-row select {
+  font: inherit; font-size: 0.78rem; color: var(--ink); background: var(--card2);
+  border: none; border-radius: 8px; padding: 0.3rem 0.5rem; flex: 1; min-width: 0; cursor: pointer;
+}
+
 .rx .page { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem; }
 
 .rx .head { padding-top: 2rem; }
