@@ -1,6 +1,6 @@
 /**
  * JourneyHome — the front door. Answers exactly two questions:
- *   1. Where am I in the loop?  (JourneySpine: 5 stages, one number each)
+ *   1. Where am I in the loop?  (ValueChainFlow: 5 stages, one number each, over the flow graphic)
  *   2. What needs me now?      (hero action + ActionQueuePanel)
  * Replaces the 12-engine widget-wall Dashboard (deleted 2026-07-03; analytics
  * live in Pulse/Apex under Workspace). Spec: 2026-07-03-journey-based-ui-design.md §4.
@@ -9,11 +9,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useAppStore, useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
+import { useAppStore, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
-import { buildJourneyStages, type StageInput } from '@/lib/journey';
-import { latestCompleteAssessment } from '@/lib/latest-assessment';
-import { JourneySpine } from '@/components/journey/JourneySpine';
+import { useJourneyInput } from '@/lib/use-journey-input';
+import { ValueChainFlow } from '@/components/journey/ValueChainFlow';
 import { PersonaRail, defaultPersona, PERSONA_LABELS } from '@/components/journey/PersonaRail';
 import type { Persona } from '@/types';
 import { useToast } from '@/components/ui/toast';
@@ -33,10 +32,9 @@ export function JourneyHome() {
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const mfaEnforcementWarning = useAppStore((s) => s.mfaEnforcementWarning);
-  const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
   const toast = useToast();
-  const [input, setInput] = useState<StageInput | null>(null);
+  const { input } = useJourneyInput();
 
   // Board lens (spec 2026-07-15): the C-suite viewer picks which lens the board
   // shows and the PersonaRail follows it live. Starts on the saved default (or
@@ -56,57 +54,6 @@ export function JourneyHome() {
     }
     setSavingLens(false);
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [conns, assessList, actions, roi] = await Promise.allSettled([
-        api.erp.connections(),
-        api.assessments.list(),
-        api.erp.actionsSummary(),
-        api.roi.get(),
-      ]);
-
-      // Exposure needs a second hop: latest complete assessment → findings_summary.
-      // Honesty law: exposure stays null (em-dash, no claim) until a complete
-      // assessment with a findings_summary exists — "R0" before detection has
-      // run would read as a false all-clear.
-      let exposure: StageInput['exposure'] = null;
-      if (assessList.status === 'fulfilled') {
-        const latest = latestCompleteAssessment(assessList.value.assessments);
-        if (latest) {
-          try {
-            const detail = await api.assessments.get(latest.id);
-            const s = detail.results?.findings_summary;
-            if (s) exposure = { openValueZar: s.total_value_at_risk_zar, findingCount: s.total_count };
-          } catch { /* exposure stays null */ }
-        }
-      }
-
-      if (cancelled) return;
-      setInput({
-        connections: conns.status === 'fulfilled'
-          ? {
-              total: conns.value.total,
-              broken: conns.value.connections.filter((c) => c.status === 'error' || c.status === 'failed').length,
-            }
-          : null,
-        exposure,
-        fixes: actions.status === 'fulfilled'
-          ? { pendingCount: actions.value.summary.pending_approval_count, pendingValueZar: actions.value.summary.pending_approval_value_zar }
-          : null,
-        savings: roi.status === 'fulfilled'
-          ? { recoveredZar: roi.value.totalDiscrepancyValueRecovered, roiMultiple: roi.value.roiMultiple }
-          : null,
-      });
-    })();
-    return () => { cancelled = true; };
-  }, [companyId]);
-
-  const stages = buildJourneyStages(
-    input ?? { connections: null, exposure: null, fixes: null, savings: null },
-    currency,
-  );
 
   // One plain sentence locating the user in the loop. Each clause is gated on
   // its fetch succeeding — a failed fetch makes no claim, not a zero claim.
@@ -214,7 +161,7 @@ export function JourneyHome() {
         </Link>
       )}
 
-      <JourneySpine stages={stages} />
+      <ValueChainFlow />
 
       {/* "What needs me now" outranks contextual insights — approvals are
           money stopped in the loop, so they sit directly under the spine. */}

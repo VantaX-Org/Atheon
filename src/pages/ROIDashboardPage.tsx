@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { ValueChainFlow } from '@/components/journey/ValueChainFlow';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { MetricSource, type MetricProvenance } from '@/components/ui/metric-source';
 import { SavingsPipeline } from '@/components/roi/SavingsPipeline';
@@ -143,6 +144,8 @@ export default function ROIDashboardPage(): JSX.Element {
           </Button>
         }
       />
+
+      <ValueChainFlow focus="recover" />
 
       {/* Wave H-3: ROI's anchor IS the realised-savings figure — the whole
           page exists to prove "you banked R{X} before we billed you R{Y}".

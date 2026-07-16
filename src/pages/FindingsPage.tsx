@@ -14,6 +14,7 @@ import { api, type AssessmentResults } from '@/lib/api';
 import { useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import { PageHeader } from '@/components/ui/page-header';
+import { ValueChainFlow } from '@/components/journey/ValueChainFlow';
 import { Card } from '@/components/ui/card';
 import { AssessmentFindingsPanel } from '@/components/AssessmentFindingsPanel';
 import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
@@ -50,6 +51,8 @@ export default function FindingsPage() {
         title="Findings"
         dek="What Atheon found in your data — every amount drills to the ERP records behind it."
       />
+
+      <ValueChainFlow focus="detect" />
 
       <Card className="p-6 mb-8">
         {results === null ? (

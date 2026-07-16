@@ -21,6 +21,7 @@
 import { useState } from 'react';
 import { Cable, PlugZap, Database } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import { ValueChainFlow } from '@/components/journey/ValueChainFlow';
 import DataPage from '@/pages/DataPage';
 import { ConnectivityPage } from '@/pages/ConnectivityPage';
 import { IntegrationHealthPage } from '@/pages/IntegrationHealthPage';
@@ -49,6 +50,8 @@ export function OperationsPage() {
         <p className="text-sm font-semibold t-primary">Data &amp; Sources</p>
         <p className="text-sm t-secondary">Is your data flowing — and, for admins, every source connected or broken and how each integration runs.</p>
       </header>
+
+      <ValueChainFlow focus="connect" />
 
       {/* Section switcher — one view at a time; each owns its data. Tabs narrow by role. */}
       {visible.length > 1 && (
