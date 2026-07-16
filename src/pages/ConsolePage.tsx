@@ -156,8 +156,8 @@ export function ConsolePage() {
     [role, activeLabel],
   );
   const navOpts = useMemo(() => ({
-    onNodeClick: (id: string) => {
-      const first = visibleGroups.find((g) => g.label === id)?.sections[0];
+    onNodeClick: (n: { id: string }) => {
+      const first = visibleGroups.find((g) => g.label === n.id)?.sections[0];
       if (first) setParams({ section: first.key }, { replace: true });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- same derivation
