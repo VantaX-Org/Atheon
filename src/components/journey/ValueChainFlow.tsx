@@ -127,7 +127,7 @@ function paint(
   ctx.beginPath();
   for (let x = 0; x <= w; x += 8) {
     const y = midY + Math.sin(x * 0.012 + t * 0.9) * band * 0.18;
-    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.lineTo(w, h);
   ctx.lineTo(0, h);
