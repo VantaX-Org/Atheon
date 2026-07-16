@@ -174,7 +174,7 @@ export function DecisionsSection({ persona, onAskJeff }: { persona: Persona | nu
                     {ev.action.confidence != null && (
                       <p className="rc-meta">Confidence {Math.round(ev.action.confidence * 100)}%{ev.action.sample_size != null ? ` on a sample of ${ev.action.sample_size}` : ''}</p>
                     )}
-                    {ev.execution_logs.length > 0 && (
+                    {(ev.execution_logs ?? []).length > 0 && (
                       <p className="rc-meta">{ev.execution_logs.length} execution steps logged.</p>
                     )}
                   </>

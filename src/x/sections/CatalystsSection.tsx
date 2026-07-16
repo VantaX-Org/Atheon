@@ -45,7 +45,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
       <div className="head">
         <span className="kicker">Catalysts</span>
         <h2>The machines working your flows
-          {ledger && (
+          {ledger?.summary && (
             <span className="meta"> {ledger.summary.totalRuns} runs · {money(ledger.summary.totalRealizedSavingsZar)} realised · last 90 days</span>
           )}
         </h2>
@@ -82,7 +82,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
                   <small>{v ? `realised · ${v.runs} runs · 90d` : 'realised · 90d'}</small>
                 </div>
               </div>
-              {c.subCatalysts.length > 0 && (
+              {(c.subCatalysts ?? []).length > 0 && (
                 <p className="desc">{c.subCatalysts.length} sub-catalysts: {c.subCatalysts.slice(0, 4).map((s) => s.name).join(', ')}{c.subCatalysts.length > 4 ? '…' : ''}</p>
               )}
             </div>

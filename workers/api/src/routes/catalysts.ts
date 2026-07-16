@@ -5729,7 +5729,7 @@ catalysts.get('/value-ledger', async (c) => {
     c.env.DB.prepare(
       `SELECT id, cluster_id, sub_catalyst_name, period_start, period_end, runs_count, success_rate, avg_match_rate, avg_duration_ms, total_value_processed, total_exceptions, improvement_trend, roi_estimate FROM catalyst_effectiveness WHERE tenant_id = ? AND period_end >= ? ORDER BY total_value_processed DESC`
     ).bind(tenantId, startISO).all<EffRow>(),
-    c.env.DB.prepare(`SELECT id, cluster_name, domain FROM catalyst_clusters WHERE tenant_id = ?`).bind(tenantId).all<ClusterRow>(),
+    c.env.DB.prepare(`SELECT id, name as cluster_name, domain FROM catalyst_clusters WHERE tenant_id = ?`).bind(tenantId).all<ClusterRow>(),
     c.env.DB.prepare(
       `SELECT id, period_id, rca_id, metric_name, attributed_savings, confidence, evidence, created_at FROM billable_line_items WHERE tenant_id = ? AND created_at >= ? ORDER BY attributed_savings DESC LIMIT ?`
     ).bind(tenantId, startISO, LINE_ITEM_CAP).all<LineItemRow>(),
