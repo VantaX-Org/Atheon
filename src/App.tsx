@@ -79,6 +79,7 @@ const OnboardingWizardPage = lazyWithRetry(() => import("@/pages/OnboardingWizar
 const CompliancePage = lazyWithRetry(() => import("@/pages/CompliancePage"));
 const AssurancePage = lazyWithRetry(() => import("@/pages/AssurancePage").then(m => ({ default: m.AssurancePage })));
 const ConsolePage = lazyWithRetry(() => import("@/pages/ConsolePage").then(m => ({ default: m.ConsolePage })));
+const ConsolePageX = lazyWithRetry(() => import("@/x/ConsolePage").then(m => ({ default: m.ConsolePage })));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -176,6 +177,9 @@ export default function App() {
               "Share with auditor" on /compliance. 7-day expiry,
               revocable, access-logged on every fetch. */}
           <Route path="/audit-share/:token" element={<AuditSharePage />} />
+          {/* Flow refactor: new one-screen Recovery Console grows at /x in a
+              parallel tree (src/x). Own shell — deliberately outside AppLayout. */}
+          <Route path="/x" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><ConsolePageX /></ProtectedRoute>} />
           <Route element={<AppLayout />}>
             {/* Operational dashboard — open to every role except the
                 scoped read-only ones (auditor, board_member), which get
