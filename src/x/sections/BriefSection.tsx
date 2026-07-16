@@ -2,8 +2,9 @@
 // plumbing, and what the detectors found. Confirmed leakage is the headline;
 // unverified potential renders separately and is never summed into it.
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { AssessmentFinding, AssessmentFindingsSummary, ERPConnection, StrategicContext } from '@/lib/api';
+import type { AnomalyItem, AssessmentFinding, AssessmentFindingsSummary, Briefing, ERPConnection, IntegrationHealthConnection, PeerBenchmarksResponse, PulseSummary, Risk, StrategicContext } from '@/lib/api';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
 import { useSelectedCompanyId } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
@@ -17,28 +18,59 @@ type BriefFinding = Pick<AssessmentFinding, 'id' | 'title' | 'severity' | 'value
   evidence_quality?: AssessmentFinding['evidence_quality'];
 };
 type BriefSummary = Pick<AssessmentFindingsSummary, 'total_count' | 'total_value_at_risk_zar' | 'potential_unverified_zar'>;
+type SlaResponse = Awaited<ReturnType<typeof api.pulse.sla>>;
 
 interface BriefData {
   ctx: StrategicContext | null;
   connections: ERPConnection[] | null;
   findings: BriefFinding[] | null;
   summary: BriefSummary | null;
+  // parity fold: retired Apex/Pulse/Connectivity pages — each field settles
+  // independently; a failed fetch stays null and renders '—' or is skipped
+  briefing: Briefing | null;
+  risks: Risk[] | null;
+  peers: PeerBenchmarksResponse | null;
+  pulse: PulseSummary | null;
+  anomalyCount: number | null;
+  anomalies: AnomalyItem[] | null;
+  sla: SlaResponse | null;
+  connHealth: IntegrationHealthConnection[] | null;
 }
+
+const NULL_DATA: BriefData = {
+  ctx: null, connections: null, findings: null, summary: null,
+  briefing: null, risks: null, peers: null, pulse: null,
+  anomalyCount: null, anomalies: null, sla: null, connHealth: null,
+};
+
+const SEV_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+const bySeverity = (a: { severity: string }, b: { severity: string }) =>
+  (SEV_ORDER[a.severity] ?? 4) - (SEV_ORDER[b.severity] ?? 4);
+const signed = (v: number | null) => (v == null ? '—' : v > 0 ? `+${v}` : `${v}`);
 
 export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
   const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
-  const [data, setData] = useState<BriefData>({ ctx: null, connections: null, findings: null, summary: null });
+  const [data, setData] = useState<BriefData>(NULL_DATA);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const [ctx, conns, assessList] = await Promise.allSettled([
+      const cid = companyId ?? undefined;
+      const [ctx, conns, assessList, briefing, risks, peers, pulseSum, anomCount, anoms, sla, connHealth] = await Promise.allSettled([
         api.radar.context(),
         api.erp.connections(),
         api.assessments.list(),
+        api.apex.briefing(undefined, undefined, cid),
+        api.apex.risks(undefined, undefined, cid),
+        api.peerBenchmarks.get(),
+        api.pulse.summary(undefined, undefined, cid),
+        api.pulse.anomaliesCount(undefined, undefined, cid),
+        api.pulse.anomalies(undefined, undefined, cid),
+        api.pulse.sla(cid),
+        api.erp.connectionsHealth(),
       ]);
       let findings: BriefFinding[] | null = null;
       let summary: BriefSummary | null = null;
@@ -74,14 +106,27 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
         connections: conns.status === 'fulfilled' ? conns.value.connections : null,
         findings,
         summary,
+        briefing: briefing.status === 'fulfilled' ? briefing.value : null,
+        risks: risks.status === 'fulfilled' ? risks.value.risks : null,
+        peers: peers.status === 'fulfilled' ? peers.value : null,
+        pulse: pulseSum.status === 'fulfilled' ? pulseSum.value : null,
+        anomalyCount: anomCount.status === 'fulfilled' ? anomCount.value.count : null,
+        anomalies: anoms.status === 'fulfilled' ? anoms.value.anomalies : null,
+        sla: sla.status === 'fulfilled' ? sla.value : null,
+        connHealth: connHealth.status === 'fulfilled' ? connHealth.value.connections : null,
       });
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [companyId]);
 
-  const { ctx, connections, findings, summary } = data;
+  const { ctx, connections, findings, summary, briefing, risks, peers, pulse, anomalyCount, anomalies, sla, connHealth } = data;
   const money = (v: number | null | undefined) => formatCompactCurrency(v ?? null, currency);
+
+  const topRisks = risks ? [...risks].sort(bySeverity).slice(0, 3) : null;
+  const topAnomalies = anomalies ? [...anomalies].sort(bySeverity).slice(0, 3) : null;
+  const peerRow = peers?.benchmarks.find((b) => b.dimension === 'overall') ?? peers?.benchmarks[0] ?? null;
+  const healthById = new Map((connHealth ?? []).map((h) => [h.id, h]));
 
   // Persona lens re-orders findings — opsFirst categories surface first,
   // then by confirmed value. Nothing is hidden.
@@ -173,28 +218,109 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
           ) : (
             <p className="flow-note">{loading ? 'Loading…' : "— couldn't load external signals"}</p>
           )}
+          {briefing && (
+            <div className="rowline">
+              <p className="num">
+                <b>Pulse</b> — health Δ {signed(briefing.healthDelta)} · anomalies {briefing.anomalyCount ?? '—'} · active risks {briefing.activeRiskCount ?? '—'} · red metrics {briefing.redMetricCount ?? '—'}
+              </p>
+            </div>
+          )}
+          {topRisks?.map((r) => (
+            <div key={r.id} className="rowline">
+              <span className={`pill ${r.severity === 'critical' || r.severity === 'high' ? 'warn' : 'grey'}`}>{r.severity}</span>
+              <p>
+                <button onClick={() => onAskJeff(`Risk "${r.title}" — severity ${r.severity}. ${r.description}`)}><b>{r.title}</b></button>
+                <span className="when">{r.recommendedActions?.[0] ?? r.description}</span>
+              </p>
+            </div>
+          ))}
+          {peers && peerRow && (
+            <div className="rowline">
+              <span className="pill grey">peers</span>
+              <p>
+                <b>{peerRow.dimension.replace(/_/g, ' ')}</b> — you {peerRow.ownScore ?? '—'} vs peer median {peerRow.p50Score} ({peers.industry}, {peerRow.tenantCount} companies{peerRow.percentileRank ? ` · ${peerRow.percentileRank}` : ''})
+              </p>
+            </div>
+          )}
+          <p className="flow-note">
+            <button className="ghost" onClick={() => onAskJeff('scenario: what happens to confirmed leakage and cash if a key input changes — name the change (payment terms, FX, supplier price, volume)')}>
+              Run a what-if scenario
+            </button>
+          </p>
         </div>
 
         <div className="card" id="plumbing">
           <h3>The plumbing <span className="meta">connected systems</span></h3>
           {connections ? (
             connections.length === 0 ? (
-              <p className="flow-note">No systems connected yet.</p>
+              <>
+                <p className="flow-note">No systems connected yet.</p>
+                {findings === null && (
+                  <div className="rowline">
+                    <p><Link to="/onboarding">Start onboarding</Link></p>
+                  </div>
+                )}
+              </>
             ) : (
-              connections.map((c) => (
-                <div key={c.id} className="rowline">
-                  <span className={`pill ${c.status === 'error' || c.status === 'failed' ? 'warn' : c.status === 'connected' || c.status === 'active' ? 'ok' : 'grey'}`}
-                    style={c.status === 'error' || c.status === 'failed' ? { color: 'var(--bad)', background: 'var(--bad-soft)' } : undefined}>
-                    {c.status}
-                  </span>
-                  <p><b>{c.name}</b> — {c.adapterName}
-                    <span className="when">{c.lastSync ? `Last sync ${new Date(c.lastSync).toLocaleDateString()}` : 'Never synced'} · {c.recordsSynced.toLocaleString()} records</span>
+              <>
+                <div className="rowline">
+                  <p className="num">
+                    <b>{connections.length} systems</b> — {connections.filter((c) => c.status === 'connected' || c.status === 'active').length} connected · {broken.length} in error
                   </p>
                 </div>
-              ))
+                {connections.map((c) => {
+                  const h = healthById.get(c.id);
+                  return (
+                    <div key={c.id} className="rowline">
+                      <span className={`pill ${c.status === 'error' || c.status === 'failed' ? 'warn' : c.status === 'connected' || c.status === 'active' ? 'ok' : 'grey'}`}
+                        style={c.status === 'error' || c.status === 'failed' ? { color: 'var(--bad)', background: 'var(--bad-soft)' } : undefined}>
+                        {c.status}
+                      </span>
+                      <p><b>{c.name}</b> — {c.adapterName}
+                        <span className="when">{c.lastSync ? `Last sync ${new Date(c.lastSync).toLocaleDateString()}` : 'Never synced'} · {c.recordsSynced.toLocaleString()} records{h ? ` · ${h.errorsLast30d} errors 30d · ${h.freshness}` : ''}</span>
+                      </p>
+                    </div>
+                  );
+                })}
+              </>
             )
           ) : (
             <p className="flow-note">{loading ? 'Loading…' : "— couldn't load connections"}</p>
+          )}
+        </div>
+
+        <div className="card" id="operations">
+          <h3>Operations <span className="meta">live pulse</span></h3>
+          {pulse ? (
+            <div className="rowline">
+              <p className="num">
+                <b>{pulse.statusBreakdown.green} green · {pulse.statusBreakdown.amber} amber · {pulse.statusBreakdown.red} red</b> — {pulse.totalMetrics} metrics tracked
+              </p>
+            </div>
+          ) : (
+            <p className="flow-note">{loading ? 'Loading…' : "— couldn't load ops pulse"}</p>
+          )}
+          {anomalyCount != null && (
+            <div className="rowline">
+              <button className="amt num" onClick={() => onAskJeff(`${anomalyCount} active anomalies — which need attention first?`)}>{anomalyCount}</button>
+              <p><b>Active anomalies</b></p>
+            </div>
+          )}
+          {topAnomalies?.map((a) => (
+            <div key={a.id} className="rowline">
+              <span className={`pill ${a.severity === 'critical' || a.severity === 'high' ? 'warn' : 'grey'}`}>{a.severity}</span>
+              <p>
+                <button onClick={() => onAskJeff(`Anomaly on ${a.metric} — severity ${a.severity}, expected ${a.expectedValue}, actual ${a.actualValue}. ${a.hypothesis}`)}><b>{a.metric}</b></button>
+                <span className="when">{a.hypothesis}</span>
+              </p>
+            </div>
+          ))}
+          {sla && (
+            <div className="rowline">
+              <p className="num">
+                <b>SLA adherence</b> — {sla.summary?.avgAdherencePct != null ? `${Math.round(sla.summary.avgAdherencePct)}% avg` : '—'} · {sla.summary?.breachingSlas ?? '—'} breaching
+              </p>
+            </div>
           )}
         </div>
       </div>

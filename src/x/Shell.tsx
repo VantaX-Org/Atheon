@@ -117,7 +117,7 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
                 <button className="id-row" role="menuitem" onClick={() => navigate('/settings')}>
                   <XIcon name="settings" size={16} /> Settings
                 </button>
-                <button className="id-row" role="menuitem" onClick={() => navigate('/mfa-setup')}>
+                <button className="id-row" role="menuitem" onClick={() => navigate('/settings/mfa')}>
                   <XIcon name="mfa" size={16} /> Multi-factor auth
                 </button>
                 <button className="id-row" role="menuitem" onClick={() => navigate('/support')}>
