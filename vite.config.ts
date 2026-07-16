@@ -104,6 +104,24 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Dev-only: the live API only sends CORS headers for the production origin,
+  // so a browser on localhost is blocked. Proxy /api (and /health) to the live
+  // API and rewrite the Origin so same-origin dev requests reach it. Ignored by
+  // `vite build`. Point the app at this proxy with VITE_API_URL=http://localhost:5173.
+  server: {
+    proxy: {
+      "/api": {
+        target: "https://atheon-api.vantax.co.za",
+        changeOrigin: true,
+        headers: { origin: "https://atheon.vantax.co.za" },
+      },
+      "/health": {
+        target: "https://atheon-api.vantax.co.za",
+        changeOrigin: true,
+        headers: { origin: "https://atheon.vantax.co.za" },
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

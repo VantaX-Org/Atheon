@@ -12,13 +12,14 @@ const CAT_LABEL: Record<string, string> = {
   cross_cutting: 'Cross-cutting', service_delivery: 'Service delivery',
 };
 
-export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null };
+export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
-  const [assessList, actions, roi] = await Promise.allSettled([
+  const [assessList, actions, roi, conns] = await Promise.allSettled([
     api.assessments.list(),
     api.erp.actionsSummary(),
     api.roi.get(),
+    api.erp.connections(),
   ]);
 
   let ops: ReactorInput['ops'] = null;
@@ -27,6 +28,8 @@ async function fetchReactorInput(): Promise<ReactorInput> {
     if (latest) {
       try {
         const detail = await api.assessments.get(latest.id);
+        // findings_summary is computed server-side from the stored finding
+        // rows when the persisted results lack it — no client-side re-fold
         const s = detail.results?.findings_summary;
         if (s) {
           ops = {
@@ -36,22 +39,6 @@ async function fetchReactorInput(): Promise<ReactorInput> {
             totalZar: s.total_value_at_risk_zar,
             totalCount: s.total_count,
           };
-        } else {
-          // older assessments (live demo included) have no findings_summary —
-          // fold the raw findings by domain instead
-          const { findings } = await api.assessments.findings(latest.id);
-          if (findings.length) {
-            const by = new Map<string, { count: number; valueZar: number }>();
-            for (const f of findings) {
-              const cur = by.get(f.domain) ?? { count: 0, valueZar: 0 };
-              by.set(f.domain, { count: cur.count + 1, valueZar: cur.valueZar + (f.financial_impact || 0) });
-            }
-            ops = {
-              categories: [...by].map(([key, v]) => ({ key, label: CAT_LABEL[key] ?? key, ...v })),
-              totalZar: findings.reduce((s2, f) => s2 + (f.financial_impact || 0), 0),
-              totalCount: findings.length,
-            };
-          }
         }
       } catch { /* ops stays null */ }
     }
@@ -69,8 +56,12 @@ async function fetchReactorInput(): Promise<ReactorInput> {
           reversedZar: actions.value.summary.failed_value_zar + actions.value.summary.rejected_value_zar,
         }
       : null,
-    recovered: roi.status === 'fulfilled' ? { zar: roi.value.totalDiscrepancyValueRecovered } : null,
+    recovered: roi.status === 'fulfilled' ? { zar: roi.value.totalDiscrepancyValueRecovered, mult: roi.value.roiMultiple ?? null } : null,
     fee: roi.status === 'fulfilled' && roi.value.platformCost != null ? { zar: roi.value.platformCost } : null,
+    // "live" means live: connected sources, not the all-time attribution list
+    sourceCount: conns.status === 'fulfilled'
+      ? conns.value.connections.filter((c) => ['connected', 'active'].includes(c.status.toLowerCase())).length
+      : null,
   };
 }
 

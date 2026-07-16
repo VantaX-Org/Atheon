@@ -6,10 +6,10 @@
 .rx {
   color-scheme: light;
   --bg: #f5f6fb; --card: #ffffff; --card2: #eef0f9; --line: rgba(84, 98, 156, 0.14);
-  --ink: #101528; --body: #3f4560; --mut: #646b8a; --faint: #8a90ab;
-  --brand: #4459d8; --brand-btn: #5b76f7; --brand-dk: #3a4ec5; --brand-soft: rgba(91, 118, 247, 0.10);
-  --ok: #0f9d63; --ok-soft: rgba(16, 157, 99, 0.10);
-  --warn: #9a6b00; --warn-soft: rgba(232, 180, 74, 0.18);
+  --ink: #101528; --body: #3f4560; --mut: #646b8a; --faint: #6b7290;
+  --brand: #4459d8; --brand-btn: #4459d8; --brand-dk: #3a4ec5; --brand-soft: rgba(91, 118, 247, 0.10);
+  --ok: #0b7f50; --ok-soft: rgba(16, 157, 99, 0.10);
+  --warn: #7f5800; --warn-soft: rgba(232, 180, 74, 0.18);
   --bad: #d63b57; --bad-soft: rgba(240, 100, 124, 0.10);
   --f-rec: #10b981; --f-fee: #0d9488; --f-gate: #5b76f7; --f-revw: #a7aec5; --f-rev: #e0455a; --f-leak: #d99a2b;
   --glow: 0;
@@ -22,12 +22,12 @@
   :root:not([data-theme="light"]) .rx {
     color-scheme: dark;
     --bg: #0a0d17; --card: #10152a; --card2: #141b32; --line: rgba(148, 163, 214, 0.12);
-    --ink: #eef1fb; --body: #a6aecb; --mut: #8b93b3; --faint: #5b6280;
+    --ink: #eef1fb; --body: #a6aecb; --mut: #8b93b3; --faint: #7a82a3;
     --brand: #7c9bff; --brand-btn: #5b76f7; --brand-dk: #6c86ff; --brand-soft: rgba(124, 155, 255, 0.14);
     --ok: #34d399; --ok-soft: rgba(52, 211, 153, 0.12);
     --warn: #e8b44a; --warn-soft: rgba(232, 180, 74, 0.13);
     --bad: #f0647c; --bad-soft: rgba(240, 100, 124, 0.13);
-    --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #4d5464; --f-rev: #f0647c; --f-leak: #e8b44a;
+    --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #5d6478; --f-rev: #f0647c; --f-leak: #e8b44a;
     --glow: 7;
     --bloom1: rgba(91, 118, 247, 0.11); --bloom2: rgba(52, 211, 153, 0.05);
     --sh1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -37,12 +37,12 @@
 :root[data-theme="dark"] .rx {
   color-scheme: dark;
   --bg: #0a0d17; --card: #10152a; --card2: #141b32; --line: rgba(148, 163, 214, 0.12);
-  --ink: #eef1fb; --body: #a6aecb; --mut: #8b93b3; --faint: #5b6280;
+  --ink: #eef1fb; --body: #a6aecb; --mut: #8b93b3; --faint: #7a82a3;
   --brand: #7c9bff; --brand-btn: #5b76f7; --brand-dk: #6c86ff; --brand-soft: rgba(124, 155, 255, 0.14);
   --ok: #34d399; --ok-soft: rgba(52, 211, 153, 0.12);
   --warn: #e8b44a; --warn-soft: rgba(232, 180, 74, 0.13);
   --bad: #f0647c; --bad-soft: rgba(240, 100, 124, 0.13);
-  --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #4d5464; --f-rev: #f0647c; --f-leak: #e8b44a;
+  --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #5d6478; --f-rev: #f0647c; --f-leak: #e8b44a;
   --glow: 7;
   --bloom1: rgba(91, 118, 247, 0.11); --bloom2: rgba(52, 211, 153, 0.05);
   --sh1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -126,7 +126,7 @@
 
 /* ---------- brief hero ---------- */
 .rx .hero { padding-top: 2.2rem; display: flex; align-items: flex-end; gap: 2.5rem; flex-wrap: wrap; }
-.rx .hero-big { font-family: "Schibsted Grotesk"; font-weight: 800; letter-spacing: -0.03em; font-size: clamp(2.6rem, 5vw, 3.9rem); line-height: 1.05; margin: 0.2rem 0 0; color: var(--ink); }
+.rx .hero-big { font-family: "Schibsted Grotesk"; font-weight: 800; letter-spacing: -0.03em; font-size: clamp(2.6rem, 5vw, 4.5rem); line-height: 1.05; margin: 0.2rem 0 0; color: var(--ink); }
 .rx .chip-up { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--ok-soft); color: var(--ok); font-size: 0.76rem; font-weight: 600; border-radius: 20px; padding: 0.3rem 0.8rem; margin-top: 0.55rem; }
 .rx .hero-side { display: flex; gap: 2rem; padding-bottom: 0.4rem; flex-wrap: wrap; }
 .rx .hero-side .s button { font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 1.3rem; color: var(--ink); display: block; }
@@ -166,11 +166,12 @@
   position: absolute; transform: translate(-50%, -50%); z-index: 2;
   background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0.55rem 0.9rem; min-width: 128px;
   box-shadow: var(--sh2);
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .rx .fnode .fk { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
 .rx .fnode .ftag {
-  display: inline-block; font-family: "Space Mono", monospace; font-size: 0.52rem; font-weight: 700;
-  letter-spacing: 0.1em; color: var(--faint); border: 1px solid var(--line); border-radius: 4px;
+  display: inline-block; font-family: "Space Mono", monospace; font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.1em; color: var(--mut); border: 1px solid var(--line); border-radius: 4px;
   padding: 0 0.3rem; margin-bottom: 0.15rem;
 }
 .rx .fnode.gate .ftag { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); }
@@ -192,10 +193,10 @@
 .rx .fnode.stage.clean .fs { color: var(--ok); font-weight: 600; }
 .rx .fnode.dim { opacity: 0.35; }
 .rx .fnode .fask {
-  position: absolute; top: -0.4rem; right: -0.4rem; width: 1.3rem; height: 1.3rem;
+  position: absolute; top: -0.5rem; right: -0.5rem; width: 1.5rem; height: 1.5rem;
   border-radius: 50%; background: var(--brand-soft); color: var(--brand);
-  font-size: 0.65rem; line-height: 1.3rem; text-align: center;
-  opacity: 0; transition: opacity 0.15s;
+  font-size: 0.72rem; line-height: 1.5rem; text-align: center;
+  opacity: 0.55; transition: opacity 0.15s;
 }
 .rx .fnode:hover .fask, .rx .fnode .fask:focus-visible { opacity: 1; }
 
@@ -209,7 +210,7 @@
 .rx .flow-note { font-size: 0.74rem; color: var(--faint); margin: 0.7rem 0 0; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .rx .legend { display: inline-flex; gap: 0.8rem; margin-left: auto; }
 .rx .legend-chip { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
-.rx .legend-chip i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.rx .legend-chip i { width: 14px; height: 6px; border-radius: 3px; border: 1px solid var(--line); display: inline-block; }
 
 /* ---------- embedded AI ---------- */
 .rx .ask { font-size: 0.78rem; font-weight: 600; color: var(--brand); background: var(--brand-soft); border-radius: 12px; padding: 0.42rem 0.9rem; white-space: nowrap; }
@@ -261,10 +262,6 @@
 .rx .lenscard p { margin: 0.3rem 0 0; font-size: 0.82rem; color: var(--mut); }
 .rx .lenscard p b { color: var(--ink); font-weight: 600; }
 
-.rx .context { margin-top: 1rem; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh1); padding: 0.7rem 1.3rem; display: flex; align-items: baseline; gap: 1.2rem; flex-wrap: wrap; font-size: 0.76rem; color: var(--mut); }
-.rx .context b { font-weight: 600; color: var(--ink); }
-.rx .context .up { color: var(--bad); font-weight: 600; }
-.rx .context a { color: var(--brand); }
 .rx .footnote { font-size: 0.68rem; color: var(--faint); margin: 1.6rem 0 3rem; max-width: 84ch; line-height: 1.7; }
 
 /* ---------- decisions ---------- */
@@ -321,6 +318,9 @@
 }
 .rx.receipt-open .scrim { opacity: 1; pointer-events: auto; }
 .rx.receipt-open .drawer { transform: none; }
+/* shared drawer variant: any consumer toggles .show/.open itself */
+.rx .scrim.show { opacity: 1; pointer-events: auto; }
+.rx .drawer.open { transform: none; }
 .rx .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .rx .seal { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ok); background: var(--ok-soft); border-radius: 12px; padding: 0.22rem 0.65rem; display: inline-flex; align-items: center; gap: 0.4rem; }
 .rx .seal i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
@@ -329,7 +329,7 @@
 .rx .rc-title { font-size: 1.05rem; font-weight: 700; line-height: 1.35; }
 .rx .rc-amt { font-family: "Schibsted Grotesk"; font-size: 1.6rem; font-weight: 800; color: var(--ink); }
 .rx .rc-id { font-size: 0.7rem; color: var(--mut); }
-.rx .rc-hash { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.63rem; color: var(--faint); word-break: break-all; background: var(--card2); border-radius: 10px; padding: 0.55rem 0.7rem; }
+.rx .rc-hash { font-family: "Space Mono", ui-monospace, Menlo, monospace; font-size: 0.63rem; color: var(--faint); word-break: break-all; background: var(--card2); border-radius: 10px; padding: 0.55rem 0.7rem; }
 .rx .rc-sec { display: flex; flex-direction: column; gap: 0.35rem; }
 .rx .rc-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
 .rx .rc-table th { text-align: left; font-weight: 600; font-size: 0.6rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); padding: 0.28rem 0; border-bottom: 1px solid var(--line); }
@@ -338,16 +338,19 @@
 .rx .rc-meta { font-size: 0.76rem; color: var(--mut); line-height: 1.65; margin: 0; }
 .rx .rc-meta b { color: var(--ink); font-weight: 600; }
 
-.rx .toast {
-  position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 80px);
-  background: var(--ink); color: var(--bg); font-size: 0.8rem; font-weight: 600;
-  border-radius: 14px; padding: 0.65rem 1.1rem; box-shadow: var(--sh2);
-  transition: transform 0.3s cubic-bezier(0.22, 0.8, 0.3, 1), opacity 0.3s;
-  z-index: 60; white-space: nowrap; opacity: 0; pointer-events: none;
+/* per-sub-catalyst config rows in the drawer */
+.rx .cfg { border-top: 1px solid var(--line); padding-top: 0.8rem; }
+.rx .cfg-on { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.rx .cfg-on b { font-size: 0.82rem; font-weight: 600; color: var(--ink); }
+.rx .cfg-on input { accent-color: var(--brand-btn); }
+.rx .cfg-row { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; font-size: 0.74rem; color: var(--mut); }
+.rx .cfg-row label { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; }
+.rx .cfg-row select, .rx .cfg-row input[type="time"] {
+  font: inherit; font-size: 0.76rem; font-weight: 500; color: var(--ink);
+  background: var(--card2); border: 1px solid var(--line); border-radius: 8px; padding: 0.3rem 0.5rem; cursor: pointer;
 }
-.rx .toast.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
-.rx .toast button { color: inherit; text-decoration: underline; margin-left: 0.5rem; }
+.rx .cfg-err { color: var(--bad); }
 
 .rx .in { animation: rx-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards; }
 @keyframes rx-in { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: reduce) { .rx .in { animation: none !important; } .rx .drawer, .rx .scrim, .rx .toast { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .rx .in { animation: none !important; } .rx .drawer, .rx .scrim { transition: none !important; } }

@@ -11,13 +11,15 @@ import { formatCompactCurrency } from '@/lib/format-currency';
 import { useTenantCurrency } from '@/stores/appStore';
 import type { Persona } from '../persona';
 
-// display subset — older assessments lack findings_summary, so findings can
-// also come from the /findings endpoint folded into this shape
-type BriefFinding = Pick<AssessmentFinding, 'id' | 'title' | 'severity' | 'value_at_risk_zar' | 'affected_count'> & {
+// display subset — findings come from the /findings endpoint (DB truth)
+type BriefFinding = Pick<AssessmentFinding, 'id' | 'title' | 'severity' | 'affected_count'> & {
   category: string;
+  value_at_risk_zar: number | null; // unpriced findings render '—', never R 0
   evidence_quality?: AssessmentFinding['evidence_quality'];
 };
-type BriefSummary = Pick<AssessmentFindingsSummary, 'total_count' | 'total_value_at_risk_zar' | 'potential_unverified_zar'>;
+type BriefSummary = Pick<AssessmentFindingsSummary, 'total_count' | 'total_value_at_risk_zar'> & {
+  potential_unverified_zar?: number;
+};
 type SlaResponse = Awaited<ReturnType<typeof api.pulse.sla>>;
 
 interface BriefData {
@@ -78,25 +80,19 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
         const latest = latestCompleteAssessment(assessList.value.assessments);
         if (latest) {
           try {
+            // summary is computed server-side from stored finding rows; the
+            // list itself always comes from the findings endpoint (DB truth)
             const detail = await api.assessments.get(latest.id);
-            findings = detail.results?.findings ?? null;
             summary = detail.results?.findings_summary ?? null;
-            if (!summary) {
-              // older assessments (live demo included) — fold raw findings
-              const raw = (await api.assessments.findings(latest.id)).findings;
-              if (raw.length) {
-                findings = raw.map((f) => ({
+            const raw = (await api.assessments.findings(latest.id)).findings;
+            findings = raw.length
+              ? raw.map((f) => ({
                   id: f.id, title: f.title, severity: f.severity,
-                  value_at_risk_zar: f.financial_impact || 0,
+                  value_at_risk_zar: f.financial_impact ?? null,
                   affected_count: f.affected_records || 0,
                   category: f.domain,
-                }));
-                summary = {
-                  total_count: raw.length,
-                  total_value_at_risk_zar: raw.reduce((s, f) => s + (f.financial_impact || 0), 0),
-                };
-              }
-            }
+                }))
+              : detail.results?.findings ?? null;
           } catch { /* stays null → em-dash */ }
         }
       }
@@ -135,7 +131,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
     ? [...findings].sort((a, b) => {
         const ai = opsFirst.indexOf(a.category); const bi = opsFirst.indexOf(b.category);
         const ar = ai === -1 ? opsFirst.length : ai; const br = bi === -1 ? opsFirst.length : bi;
-        return ar !== br ? ar - br : b.value_at_risk_zar - a.value_at_risk_zar;
+        return ar !== br ? ar - br : (b.value_at_risk_zar ?? 0) - (a.value_at_risk_zar ?? 0);
       }).slice(0, 6)
     : null;
 
@@ -155,7 +151,8 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
       <div className="hero">
         <div>
           <span className="kicker">Confirmed leakage detected</span>
-          <p className="hero-big num">{loading ? '…' : money(summary?.total_value_at_risk_zar)}</p>
+          {/* one page, one headline: the console hero owns .hero-big scale */}
+          <p className="hero-big num" style={{ fontSize: 'clamp(1.6rem, 2.6vw, 2rem)' }}>{loading ? '…' : money(summary?.total_value_at_risk_zar)}</p>
           {summary?.potential_unverified_zar != null && summary.potential_unverified_zar > 0 && (
             <span className="chip-up" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>
               + {money(summary.potential_unverified_zar)} potential, unverified — not in the headline

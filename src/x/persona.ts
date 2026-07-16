@@ -16,6 +16,14 @@ export interface Persona {
   opsFirst?: string[];
 }
 
+// Real tenants: the authenticated role decides whether Approve/Reject render
+// enabled. The API is the enforcement point (step-up MFA, 403) — this only
+// greys the buttons honestly. Unknown/legacy role → leave enabled, API decides.
+const APPROVER_ROLES = new Set(['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator']);
+export function roleCanApprove(role: string | undefined | null): boolean {
+  return role ? APPROVER_ROLES.has(role) : true;
+}
+
 const ALL: SectionKey[] = ['brief', 'decisions', 'ledger', 'catalysts'];
 
 export const PERSONAS: Record<PersonaKey, Persona> = {

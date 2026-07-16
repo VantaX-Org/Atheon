@@ -94,7 +94,9 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
               {initial}
             </button>
             {menuOpen && (
-              <div className="idmenu" role="menu">
+              // plain popover, not role=menu: it mixes buttons with a company
+              // select, and we don't implement menu arrow-key semantics
+              <div className="idmenu">
                 <div className="id-head">
                   <b>{user?.name || user?.email}</b>
                   {persona && <small>Viewing as {persona.label}</small>}
@@ -114,16 +116,16 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
                     </select>
                   </label>
                 )}
-                <button className="id-row" role="menuitem" onClick={() => navigate('/settings')}>
+                <button className="id-row" onClick={() => navigate('/settings')}>
                   <XIcon name="settings" size={16} /> Settings
                 </button>
-                <button className="id-row" role="menuitem" onClick={() => navigate('/settings/mfa')}>
+                <button className="id-row" onClick={() => navigate('/settings/mfa')}>
                   <XIcon name="mfa" size={16} /> Multi-factor auth
                 </button>
-                <button className="id-row" role="menuitem" onClick={() => navigate('/support')}>
+                <button className="id-row" onClick={() => navigate('/support')}>
                   <XIcon name="support" size={16} /> Support
                 </button>
-                <button className="id-row" role="menuitem" onClick={signOut}>
+                <button className="id-row" onClick={signOut}>
                   <XIcon name="signout" size={16} /> Sign out
                 </button>
               </div>

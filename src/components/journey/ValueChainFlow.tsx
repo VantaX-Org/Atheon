@@ -120,7 +120,7 @@ function paint(
   // Base ribbon — accent flowing in, green landing past the recover column.
   const grad = ctx.createLinearGradient(0, 0, w, 0);
   grad.addColorStop(0, c.accent);
-  grad.addColorStop(Math.min(0.99, recoverF / w), c.accent);
+  grad.addColorStop(w > 0 ? Math.min(0.99, Math.max(0, recoverF / w)) : 0, c.accent);
   grad.addColorStop(1, a.land ? c.positive : c.accent);
   ctx.globalAlpha = a.flow ? 0.1 : 0.05;
   ctx.fillStyle = grad;

@@ -2,10 +2,12 @@
 // across the top leak into the hub; the recovery machine returns net-to-you
 // after the Atheon fee, with the gate pooling until someone signs. Clicking
 // any node opens the action sidebar; ✦ asks Jeff about it.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '@/lib/api';
 import { useTenantCurrency } from '@/stores/appStore';
 import { mountRiver, type RiverNode } from './river';
-import { buildReactorGraph, type ReactorFocus, type ReactorInput } from './reactor-graph';
+import { buildReactorGraph, REACTOR_LANES, type ReactorFocus, type ReactorInput } from './reactor-graph';
+import { SideDrawer } from './SideDrawer';
 
 const CONTEXT: Record<ReactorFocus, string> = {
   all: 'The value chain, where it leaks, and what the recovery engine returns.',
@@ -21,7 +23,7 @@ const LEGEND: Array<{ label: string; token: string }> = [
   { label: 'At the gate', token: '--f-gate' },
   { label: 'Leakage', token: '--f-leak' },
   { label: 'In review', token: '--f-revw' },
-  { label: 'Reversed', token: '--f-rev' },
+  { label: 'Rejected/failed', token: '--f-rev' },
 ];
 
 const ANCHOR_LABEL: Record<string, string> = {
@@ -29,25 +31,39 @@ const ANCHOR_LABEL: Record<string, string> = {
   ledger: 'the ledger', catalysts: 'the catalysts',
 };
 
-export function Reactor({ input, focus, opsFirst, onAskJeff }: {
+export function Reactor({ input, focus, opsFirst, canApprove, loading, onAskJeff }: {
   input: ReactorInput;
   focus: ReactorFocus;
   opsFirst?: string[];
+  canApprove?: boolean;
+  loading?: boolean;
   onAskJeff: (nodeContext: string) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const currency = useTenantCurrency();
   const [sel, setSel] = useState<RiverNode | null>(null);
+  const [prov, setProv] = useState<{ root: string | null; seq: number; created_at: string | null } | null>(null);
+  const closeSel = useCallback(() => setSel(null), []);
+
+  // Seal the drawer with the live audit-chain root; a null root simply omits
+  // the seal block — never a fabricated hash.
+  useEffect(() => {
+    if (!sel?.sealed) return;
+    let on = true;
+    api.provenance.root().then((r) => { if (on) setProv(r); }).catch(() => { if (on) setProv(null); });
+    return () => { on = false; };
+  }, [sel]);
 
   useEffect(() => {
     const el = panelRef.current;
-    if (!el) return;
-    const { nodes, edges } = buildReactorGraph(input, currency, focus, opsFirst);
+    if (!el || loading) return; // hold the river until the ledger has reported
+    const { nodes, edges } = buildReactorGraph(input, currency, focus, opsFirst, canApprove);
     return mountRiver(el, nodes, edges, {
+      lanes: focus === 'all' || focus === 'brief' ? REACTOR_LANES : undefined,
       onNodeClick: setSel,
       onAskJeff: (n) => onAskJeff(`${n.kicker}: ${n.value}${n.sub ? ` (${n.sub})` : ''}`),
     });
-  }, [input, focus, currency, opsFirst, onAskJeff]);
+  }, [input, focus, currency, opsFirst, canApprove, loading, onAskJeff]);
 
   const goTo = (anchor: string) => {
     setSel(null);
@@ -57,8 +73,10 @@ export function Reactor({ input, focus, opsFirst, onAskJeff }: {
 
   return (
     <div className="mscroll">
-      <div ref={panelRef} className="flowpanel" role="img" aria-label="Live flow of the value chain: stage leakage, the decision gate, and recovered value net of fee">
-        <canvas />
+      {/* role=group: the tiles inside are real buttons — img would hide them from AT */}
+      <div ref={panelRef} className={`flowpanel${loading ? ' loading' : ''}`} role="group" aria-busy={loading || undefined} aria-label="Live flow of the value chain: stage leakage, the decision gate, and recovered value net of fee">
+        <canvas aria-hidden="true" />
+        {loading && <span className="flow-loading">Reading the ledger…</span>}
       </div>
       <p className="flow-note">
         {CONTEXT[focus]}
@@ -72,30 +90,45 @@ export function Reactor({ input, focus, opsFirst, onAskJeff }: {
       </p>
 
       {sel && (
-        <>
-          <div className="scrim" style={{ opacity: 1, pointerEvents: 'auto' }} onClick={() => setSel(null)} />
-          <aside className="drawer" style={{ transform: 'none' }} aria-label={`${sel.kicker} actions`}>
-            <div className="drawer-head">
-              <span className="kicker">{sel.kicker}</span>
-              <button className="drawer-close" onClick={() => setSel(null)} aria-label="Close">✕</button>
-            </div>
-            <div className="rc-amt num">{sel.value}</div>
-            {sel.sub && <p className="rc-meta">{sel.sub}</p>}
+        <SideDrawer
+          label={`${sel.kicker} details`}
+          head={sel.sealed && prov?.root
+            ? <span className="seal"><i />Sealed receipt</span>
+            : <span className="kicker">{sel.kicker}</span>}
+          onClose={closeSel}
+        >
+          {sel.sealed && prov?.root && <div className="kicker">{sel.kicker}</div>}
+          <div className="rc-amt num">{sel.value}</div>
+          {sel.sub && <p className="rc-meta">{sel.sub}</p>}
+          {sel.sealed && prov?.root && (
             <div className="rc-sec">
-              {sel.anchor && (
-                <button className="go" onClick={() => goTo(sel.anchor!)}>
-                  Open {ANCHOR_LABEL[sel.anchor] ?? sel.anchor}
-                </button>
-              )}
-              <button
-                className="ghost"
-                onClick={() => { onAskJeff(`${sel.kicker}: ${sel.value}${sel.sub ? ` (${sel.sub})` : ''}`); setSel(null); }}
-              >
-                ✦ Ask Jeff about this
-              </button>
+              <div className="rc-id">Audit chain · seq {prov.seq}</div>
+              <div className="rc-hash num">{prov.root}</div>
+              <p className="rc-meta">
+                chained &amp; sealed{prov.created_at ? ` · ${new Date(prov.created_at).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+              </p>
             </div>
-          </aside>
-        </>
+          )}
+          <div className="rc-sec">
+            <div className="rc-id">Provenance</div>
+            <p className="rc-meta">
+              {sel.prov ?? 'Read live from a booked API field — never estimated, never invented. A dash means the source has not reported.'}
+            </p>
+          </div>
+          <div className="rc-sec">
+            {sel.anchor && (
+              <button className="go" onClick={() => goTo(sel.anchor!)}>
+                Open {ANCHOR_LABEL[sel.anchor] ?? sel.anchor}
+              </button>
+            )}
+            <button
+              className="ghost"
+              onClick={() => { onAskJeff(`${sel.kicker}: ${sel.value}${sel.sub ? ` (${sel.sub})` : ''}`); setSel(null); }}
+            >
+              ✦ Explain in plain language
+            </button>
+          </div>
+        </SideDrawer>
       )}
     </div>
   );

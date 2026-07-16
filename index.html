@@ -43,10 +43,10 @@
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "ZAR" }
     }
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Daylight — Schibsted Grotesk (display + amounts) + IBM Plex Sans (body) + Space Mono (uppercase micro-labels). font-display:swap for performance. -->
-    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <!-- Daylight — Schibsted Grotesk (display + amounts) + IBM Plex Sans (body) + Space Mono (uppercase micro-labels).
+         Self-hosted woff2 in /public/fonts — no Google request, works offline and on blocked networks. -->
+    <link rel="preload" href="/fonts/SchibstedGrotesk-400-900.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/fonts.css" />
     <!-- Iconography is bundled lucide-react (SVG) — no remote icon font, so icons render offline and on blocked networks. -->
     <!-- The PWA manifest is injected at build time by vite-plugin-pwa. -->
   </head>

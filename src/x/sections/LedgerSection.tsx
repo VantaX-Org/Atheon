@@ -1,12 +1,15 @@
 // Ledger: the commercial layer between Vantax and the customer.
 // Recovered and prevented are API facts; the platform fee is shown on its own
 // line (never netted into recovered); net is computed client-side and says so.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ForecastAccuracyResp, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import type { Persona } from '../persona';
+import { ledgerRiver } from '../flows';
+import { MiniRiver } from '../MiniRiver';
+import { SideDrawer } from '../SideDrawer';
 
 type CompletedAction = Awaited<ReturnType<typeof api.erp.listAllActions>>['actions'][number];
 type Evidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
@@ -24,6 +27,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
   const [calib, setCalib] = useState<CalibrationSummary | null>(null);
   const [fcast, setFcast] = useState<ForecastAccuracyResp | null>(null);
   const [provRoot, setProvRoot] = useState<ProvRoot | null>(null);
+  const [totals, setTotals] = useState<{ count: number; zar: number } | null>(null);
   // 'error' = verify call itself failed — distinct from a booked invalid result
   const [verify, setVerify] = useState<ProvenanceVerifyResult | 'running' | 'error' | null>(null);
 
@@ -31,16 +35,21 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const [r, acts, cal, fa, pr] = await Promise.allSettled([
+      const [r, acts, cal, fa, pr, sum] = await Promise.allSettled([
         api.roi.get(),
-        api.erp.listAllActions({ status: 'completed', limit: 20 }),
+        api.erp.listAllActions({ status: 'completed', limit: 200 }),
         api.catalysts.getCalibrationSummary(),
         api.insightsStats.forecastAccuracy(),
         api.provenance.root(),
+        api.erp.actionsSummary(),
       ]);
       if (cancelled) return;
       setRoi(r.status === 'fulfilled' ? r.value : null);
       setReceipts(acts.status === 'fulfilled' ? acts.value.actions : null);
+      // tenant-wide completed totals: the 'To date' terminal never sums a page
+      setTotals(sum.status === 'fulfilled'
+        ? { count: sum.value.summary.completed_count, zar: sum.value.summary.completed_value_zar }
+        : null);
       setCalib(cal.status === 'fulfilled' ? cal.value : null);
       setFcast(fa.status === 'fulfilled' ? fa.value : null);
       setProvRoot(pr.status === 'fulfilled' ? pr.value : null);
@@ -48,13 +57,6 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     })();
     return () => { cancelled = true; };
   }, [companyId]);
-
-  // .drawer/.scrim open via the receipt-open class on the .rx root
-  useEffect(() => {
-    const root = document.querySelector('.rx');
-    root?.classList.toggle('receipt-open', receipt !== null);
-    return () => root?.classList.remove('receipt-open');
-  }, [receipt]);
 
   const openReceipt = async (id: string) => {
     setReceipt('loading');
@@ -105,7 +107,8 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     downloadBlob(new Blob([csv], { type: 'text/csv' }), 'atheon-value-ledger.csv');
   });
 
-  const money = (v: number | null | undefined) => formatCompactCurrency(v ?? null, currency);
+  const money = useCallback((v: number | null | undefined) => formatCompactCurrency(v ?? null, currency), [currency]);
+  const strip = useMemo(() => ledgerRiver(receipts, (v) => money(v), totals), [receipts, money, totals]);
   const recovered = roi?.totalDiscrepancyValueRecovered ?? null;
   const fee = roi?.platformCost ?? null;
   const net = recovered != null && fee != null ? recovered - fee : null;
@@ -136,12 +139,14 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
         </div>
         <div className="kpi">
           <span className="kicker">Net to you · computed</span>
-          <button className="num" onClick={() => onAskJeff(`Net = recovered ${money(recovered)} minus fee ${money(fee)} = ${money(net)}${roi ? `, ${roi.roiMultiple}× return` : ''}`)}>
+          <button className="num" onClick={() => onAskJeff(`Net = recovered ${money(recovered)} minus fee ${money(fee)} = ${money(net)}${roi?.roiMultiple != null ? `; the API reports an ROI multiple of ${roi.roiMultiple}×` : ''}`)}>
             {loading ? '…' : money(net)}{roi?.roiMultiple != null && <small style={{ fontSize: '0.75rem', color: 'var(--faint)' }}> · {roi.roiMultiple}×</small>}
           </button>
         </div>
       </div>
       {!loading && !roi && <p className="flow-note">— couldn't load the value ledger</p>}
+
+      {!loading && <MiniRiver graph={strip} label="Booked recovery accumulating month by month into the to-date total" />}
 
       <div className="cards">
         <div className="card" id="attribution">
@@ -225,45 +230,42 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
         )}
       </div>
 
-      <div className="scrim" onClick={() => setReceipt(null)} />
-      <div className="drawer" role="dialog" aria-label="Receipt">
-        {receipt === 'loading' && <p className="flow-note">Loading receipt…</p>}
-        {receipt && receipt !== 'loading' && (
-          <>
-            <div className="drawer-head">
-              <span className="seal"><i />Sealed receipt</span>
-              <button className="drawer-close" onClick={() => setReceipt(null)} aria-label="Close">✕</button>
-            </div>
-            <p className="rc-title">{receipt.action.catalyst_name} — {receipt.action.action_type.replace(/_/g, ' ')}</p>
-            <p className="rc-amt num">{money(receipt.action.value_zar)}</p>
-            <p className="rc-id">{receipt.action.id}{receipt.action.approved_by ? ` · approved by ${receipt.action.approved_by}` : ''}</p>
-            {receipt.action.idempotency_key && <p className="rc-hash">{receipt.action.idempotency_key}</p>}
-            {receipt.finding && (
-              <div className="rc-sec">
-                <span className="kicker">Source finding</span>
-                <p className="rc-meta"><b>{receipt.finding.title}</b> — {receipt.finding.description}</p>
-              </div>
-            )}
-            {(receipt.execution_logs ?? []).length > 0 && (
-              <div className="rc-sec">
-                <span className="kicker">Execution</span>
-                <table className="rc-table">
-                  <thead><tr><th>Step</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {receipt.execution_logs.map((l) => (
-                      <tr key={l.id}><td>{l.step_number}. {l.step_name}</td><td>{l.status}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <p className="rc-meta">
-              Raised {new Date(receipt.action.created_at).toLocaleString()}
-              {receipt.action.completed_at ? ` · completed ${new Date(receipt.action.completed_at).toLocaleString()}` : ''}
-            </p>
-          </>
-        )}
-      </div>
+      {receipt !== null && (
+        <SideDrawer label="Receipt" head={<span className="seal"><i />Sealed receipt</span>} onClose={() => setReceipt(null)}>
+          {receipt === 'loading' && <p className="flow-note">Loading receipt…</p>}
+          {receipt !== 'loading' && (
+            <>
+              <p className="rc-title">{receipt.action.catalyst_name} — {receipt.action.action_type.replace(/_/g, ' ')}</p>
+              <p className="rc-amt num">{money(receipt.action.value_zar)}</p>
+              <p className="rc-id">{receipt.action.id}{receipt.action.approved_by ? ` · approved by ${receipt.action.approved_by}` : ''}</p>
+              {receipt.action.idempotency_key && <p className="rc-hash">{receipt.action.idempotency_key}</p>}
+              {receipt.finding && (
+                <div className="rc-sec">
+                  <span className="kicker">Source finding</span>
+                  <p className="rc-meta"><b>{receipt.finding.title}</b> — {receipt.finding.description}</p>
+                </div>
+              )}
+              {(receipt.execution_logs ?? []).length > 0 && (
+                <div className="rc-sec">
+                  <span className="kicker">Execution</span>
+                  <table className="rc-table">
+                    <thead><tr><th>Step</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {receipt.execution_logs.map((l) => (
+                        <tr key={l.id}><td>{l.step_number}. {l.step_name}</td><td>{l.status}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="rc-meta">
+                Raised {new Date(receipt.action.created_at).toLocaleString()}
+                {receipt.action.completed_at ? ` · completed ${new Date(receipt.action.completed_at).toLocaleString()}` : ''}
+              </p>
+            </>
+          )}
+        </SideDrawer>
+      )}
     </section>
   );
 }

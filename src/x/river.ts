@@ -1,5 +1,7 @@
 // The river — canvas flow engine, ported verbatim from the "Atheon — Recovery
-// Console" artifact. Bezier edges (width ∝ amount), particles along the curves,
+// Console" artifact. Bezier edges (width grows with amount — an ordinal cue,
+// not a proportional scale: callers sqrt-normalize and widths are affine),
+// particles along the curves,
 // pool edges bunch at the gate, --glow drives shadowBlur in dark. Particle
 // jitter uses Math.random — presentational only, never a data path.
 
@@ -17,6 +19,8 @@ export interface RiverNode {
   cls?: string; // extra fnode classes, e.g. 'stage leaky'
   anchor?: string; // section this node deep-links to
   dim?: boolean;
+  sealed?: boolean; // figure is a directly booked API field — drawer may show the audit-chain seal
+  prov?: string; // node-specific provenance sentence for the drawer
 }
 
 export interface RiverEdge {
@@ -27,6 +31,7 @@ export interface RiverEdge {
   particles: number; // 0 = static edge (null/zero field — honesty law)
   pool?: boolean; // bunch at the gate until a decision is signed
   dim?: boolean;
+  dashed?: boolean; // null source field — motion-free honesty channel (reduced-motion users see it too)
 }
 
 export interface RiverOpts {
@@ -56,6 +61,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     const cs = getComputedStyle(el);
     TOK = { glow: parseFloat(cs.getPropertyValue('--glow')) || 0 };
     TOK.faint = cs.getPropertyValue('--faint').trim() || '#8a90ab';
+    TOK.mut = cs.getPropertyValue('--mut').trim() || String(TOK.faint);
     TOK.line = cs.getPropertyValue('--line').trim() || 'rgba(84,98,156,0.14)';
     FLOW_VARS.forEach((k) => (TOK[k] = cs.getPropertyValue(k).trim()));
   }
@@ -154,7 +160,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   let raf = 0, last = 0;
   function frame(ts: number) {
     raf = requestAnimationFrame(frame);
-    if (!el.offsetParent) { last = 0; return; }
+    if (!visible || !el.offsetParent) { last = 0; return; }
     if (!W) layout();
     if (!W) return;
     const dt = last ? Math.min((ts - last) / 1000, 0.05) : 0.016;
@@ -168,10 +174,12 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ctx!.lineWidth = 1;
       ctx!.beginPath(); ctx!.moveTo(12, y); ctx!.lineTo(W - 12, y); ctx!.stroke();
       ctx!.setLineDash([]);
-      ctx!.fillStyle = String(TOK.faint);
-      ctx!.font = '600 9px "Space Mono", monospace';
-      ctx!.fillText(l.label.toUpperCase(), 14, y - 6);
+      // label at full alpha in the muted ink — the band name must stay legible
       ctx!.globalAlpha = 1;
+      ctx!.fillStyle = String(TOK.mut);
+      ctx!.font = '600 10px "Space Mono", monospace';
+      // label names the band BELOW its line
+      ctx!.fillText(l.label.toUpperCase(), 14, y + 14);
     });
     edges.forEach((e) => {
       ctx!.beginPath();
@@ -185,12 +193,14 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ctx!.strokeStyle = col;
       ctx!.lineCap = 'round';
       const w = eW(e);
+      if (e.dashed) ctx!.setLineDash([7, 7]);
       // three-layer stream: wide soft base (glow halo in dark), mid body, bright core
       if (glow > 0) { ctx!.shadowColor = col; ctx!.shadowBlur = glow * 0.9; }
       ctx!.globalAlpha = 0.1 * dimK; ctx!.lineWidth = w * 2.6; ctx!.stroke();
       ctx!.shadowBlur = 0;
       ctx!.globalAlpha = 0.22 * dimK; ctx!.lineWidth = w * 1.4; ctx!.stroke();
       ctx!.globalAlpha = 0.45 * dimK; ctx!.lineWidth = Math.max(1, w * 0.6); ctx!.stroke();
+      ctx!.setLineDash([]);
       ctx!.globalAlpha = 1;
     });
     if (reduced) return;
@@ -222,11 +232,23 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   layout();
   const ro = new ResizeObserver(layout);
   ro.observe(el);
+  // stop the loop entirely while scrolled off-screen — restart resets `last`
+  // in frame() so the first dt after re-entry stays sane
+  let visible = true;
+  const io = new IntersectionObserver(([entry]) => {
+    const now = entry.isIntersecting;
+    if (now === visible) return;
+    visible = now;
+    cancelAnimationFrame(raf);
+    if (visible) raf = requestAnimationFrame(frame);
+  });
+  io.observe(el);
   raf = requestAnimationFrame(frame);
 
   return () => {
     cancelAnimationFrame(raf);
     ro.disconnect();
+    io.disconnect();
     mo.disconnect();
     mq.removeEventListener?.('change', readTokens);
     tiles.forEach((t) => t.remove());

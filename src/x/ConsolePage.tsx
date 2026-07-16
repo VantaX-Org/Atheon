@@ -1,47 +1,36 @@
 import './tokens.css';
 
-// Recovery Console — one cohesive screen. The reactor (animated river of the
-// business in the world) sits on top; Brief · Decisions · Ledger · Catalysts
-// flow beneath it. Shell pills and the left rail scroll, never route; the
-// scrollspy drives both the rail highlight and the reactor's focus lens.
+// Recovery Console — one cohesive screen. The net-recovered hero leads, the
+// reactor (animated river of the business in the world) sits under it;
+// Brief · Decisions · Ledger · Catalysts flow beneath. Shell pills scroll,
+// never route; the scrollspy drives the pills and the reactor's focus lens.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
+import { formatZarFull } from '@/lib/format-currency';
 import { Shell } from './Shell';
 import { Reactor } from './Reactor';
-import { XIcon } from './icons';
 import { useReactorInput } from './use-reactor-input';
-import { activePersona, type PersonaKey } from './persona';
+import { activePersona, roleCanApprove, type PersonaKey } from './persona';
 import type { SectionKey } from './reactor-graph';
 import { BriefSection } from './sections/BriefSection';
 import { DecisionsSection } from './sections/DecisionsSection';
 import { LedgerSection } from './sections/LedgerSection';
 import { CatalystsSection } from './sections/CatalystsSection';
 
-const RAIL: Array<{ id: string; label: string; section: SectionKey; sub?: boolean }> = [
-  { id: 'brief', label: 'Brief', section: 'brief' },
-  { id: 'world', label: 'The world', section: 'brief', sub: true },
-  { id: 'plumbing', label: 'The plumbing', section: 'brief', sub: true },
-  { id: 'leaks', label: 'Where it leaks', section: 'brief', sub: true },
-  { id: 'decisions', label: 'Decisions', section: 'decisions' },
-  { id: 'ledger', label: 'Ledger', section: 'ledger' },
-  { id: 'attribution', label: 'Attribution', section: 'ledger', sub: true },
-  { id: 'receipts', label: 'Receipts', section: 'ledger', sub: true },
-  { id: 'catalysts', label: 'Catalysts', section: 'catalysts' },
-];
-
-const SECTION_ICON = { brief: 'brief', decisions: 'decisions', ledger: 'ledger', catalysts: 'catalysts' } as const;
-
 export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // fresh login stores the tenant name on the user; activeTenantName is only
   // set when a multi-tenant user explicitly switches tenants
   const activeTenantName = useAppStore((s) => s.activeTenantName ?? s.user?.tenantName ?? null);
-  const { input } = useReactorInput();
+  const userRole = useAppStore((s) => s.user?.role);
+  const { input, loading } = useReactorInput();
   const [active, setActive] = useState<SectionKey>('brief');
-  const [decisionsCount, setDecisionsCount] = useState<number | null>(null);
   const [jeff, setJeff] = useState<{ ctx: string; key: number }>({ ctx: '', key: 0 });
+
+  // Decisions badge in the shell — same booked summary the reactor renders,
+  // so the badge and the gate node can never disagree.
+  const decisionsCount = input.gate?.pendingCount ?? null;
 
   const persona = useMemo(
     () => activePersona(searchParams.toString(), activeTenantName),
@@ -60,13 +49,6 @@ export function ConsolePage() {
 
   const onAskJeff = useCallback((ctx: string) => {
     setJeff((j) => ({ ctx: `surface:/x node:${ctx}`, key: j.key + 1 }));
-  }, []);
-
-  // Decisions badge in the shell — count only, the section owns the queue.
-  useEffect(() => {
-    api.erp.listAllActions({ status: 'pending_approval', limit: 50 })
-      .then((r) => setDecisionsCount(r.total ?? r.actions.length))
-      .catch(() => setDecisionsCount(null));
   }, []);
 
   // Scrollspy: the topmost visible section drives rail, pills, and reactor lens.
@@ -88,10 +70,11 @@ export function ConsolePage() {
     if (id) document.getElementById(id)?.scrollIntoView();
   }, []);
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-    history.replaceState(null, '', `#${id}`);
-  };
+  // Hero maths: net only exists when both sides are booked — never null→0.
+  const netZar = input.recovered && input.fee ? input.recovered.zar - input.fee.zar : null;
+  // The role decides whether Approve renders enabled; the persona lens can only
+  // grey further, never grant. The API stays the enforcement point.
+  const canApprove = roleCanApprove(userRole) && (persona ? persona.canApprove : true);
 
   return (
     <div className="rx">
@@ -104,30 +87,39 @@ export function ConsolePage() {
         jeffOpenKey={jeff.key}
       />
 
-      <nav className="rail" aria-label="On this page">
-        {RAIL.filter((r) => sections.includes(r.section)).map((r) => (
-          <button
-            key={r.id}
-            className={r.sub ? 'sub' : undefined}
-            aria-current={!r.sub && active === r.section ? 'true' : undefined}
-            onClick={() => scrollTo(r.id)}
-          >
-            {!r.sub && <XIcon name={SECTION_ICON[r.section]} size={14} />}
-            {r.label}
-          </button>
-        ))}
-      </nav>
-
       <main className="page">
-        <div className="head">
-          <h1>{persona ? persona.lens : 'The business, live'}</h1>
-          <p className="why">{persona ? persona.kicker : 'Everything on this screen traces to a booked API field.'}</p>
+        <div className="hero in">
+          <div>
+            <div className="kicker">{persona ? `Net recovered · ${persona.lens}` : 'Net recovered for you'}</div>
+            <div className="hero-big num">{loading ? '…' : formatZarFull(netZar)}</div>
+            {input.sourceCount != null && (
+              <span className="chip-up num">{input.sourceCount} source{input.sourceCount === 1 ? '' : 's'} connected · computed from booked fields</span>
+            )}
+          </div>
+          <div className="hero-side">
+            <div className="s">
+              <button className="num" onClick={() => onAskJeff(`recovered gross ${formatZarFull(input.recovered?.zar)}`)}>{formatZarFull(input.recovered?.zar)}</button>
+              <small>recovered gross</small>
+            </div>
+            <div className="s">
+              <button className="num" onClick={() => onAskJeff(`Atheon fee ${formatZarFull(input.fee?.zar)}`)}>{formatZarFull(input.fee?.zar)}</button>
+              <small>Atheon fee · all-time</small>
+            </div>
+            <div className="s act">
+              <button
+                className="num"
+                onClick={() => { document.getElementById('decisions')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#decisions'); }}
+                title="Open the decision queue"
+              >{formatZarFull(input.gate?.pendingZar)}</button>
+              <small>awaiting your signature</small>
+            </div>
+          </div>
         </div>
 
-        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} onAskJeff={onAskJeff} />
+        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} onAskJeff={onAskJeff} />
 
         {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
-        {sections.includes('decisions') && <DecisionsSection persona={persona} onAskJeff={onAskJeff} />}
+        {sections.includes('decisions') && <DecisionsSection persona={persona} canApprove={canApprove} onAskJeff={onAskJeff} />}
         {sections.includes('ledger') && <LedgerSection persona={persona} onAskJeff={onAskJeff} />}
         {sections.includes('catalysts') && <CatalystsSection persona={persona} onAskJeff={onAskJeff} />}
 

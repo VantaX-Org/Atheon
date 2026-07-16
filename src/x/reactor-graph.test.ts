@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildReactorGraph, type ReactorInput } from './reactor-graph';
 import { formatCompactCurrency } from '@/lib/format-currency';
 
-const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null };
+const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null };
 const FULL_INPUT: ReactorInput = {
   ops: {
     categories: [
@@ -13,8 +13,9 @@ const FULL_INPUT: ReactorInput = {
     totalZar: 5200000, totalCount: 18,
   },
   gate: { pendingCount: 4, pendingZar: 800000, reviewCount: 2, reviewZar: 100000, reversedCount: 1, reversedZar: 50000 },
-  recovered: { zar: 1200000 },
+  recovered: { zar: 1200000, mult: 4 },
   fee: { zar: 300000 },
+  sourceCount: 3,
 };
 
 describe('honesty law', () => {
@@ -27,23 +28,78 @@ describe('honesty law', () => {
     const g = buildReactorGraph(NULL_INPUT, 'ZAR', 'all');
     expect(g.nodes.some(n => /(^|\s)R?0(\s|$)/.test(n.value))).toBe(false);
   });
+  it('null-fed money edges are dashed (motion-free honesty channel)', () => {
+    const g = buildReactorGraph(NULL_INPUT, 'ZAR', 'all');
+    // the stage-to-stage grey thread is process shape, not money — exempt
+    const moneyEdges = g.edges.filter(e => !(e.from.startsWith('stage-') && e.to.startsWith('stage-')));
+    expect(moneyEdges.length).toBeGreaterThan(0);
+    expect(moneyEdges.every(e => e.dashed)).toBe(true);
+  });
   it('full input animates non-zero segments, gate edge pools', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
     const gateEdge = g.edges.find(e => e.to === 'gate');
     expect(gateEdge?.pool).toBe(true);
     expect(gateEdge!.particles).toBeGreaterThan(0);
   });
-  it('net = recovered − fee, and fee sub is % of collected', () => {
+  it('net = recovered − fee; fee carries its own scope, never a cross-scope %', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
     const net = g.nodes.find(n => n.id === 'net');
     const fee = g.nodes.find(n => n.id === 'fee');
     expect(net?.value).toBe(formatCompactCurrency(900000, 'ZAR'));
-    expect(fee?.sub).toBe('25% of collected');
+    expect(fee?.sub).toBe('platform fee · all-time');
   });
   it('fee null → net and fee render em-dash even when recovered is real', () => {
     const g = buildReactorGraph({ ...FULL_INPUT, fee: null }, 'ZAR', 'all');
     expect(g.nodes.find(n => n.id === 'net')?.value).toBe('—');
     expect(g.nodes.find(n => n.id === 'fee')?.value).toBe('—');
+  });
+  it('leak→recovered bridge is dashed: this leak is not that recovery', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    const bridge = g.edges.find(e => e.from === 'leak' && e.to === 'recovered');
+    expect(bridge?.dashed).toBe(true);
+  });
+});
+
+describe('seal gating', () => {
+  it('only booked fields are sealed; computed and estimated never are', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    for (const id of ['recovered', 'fee', 'gate', 'review', 'reversed']) {
+      expect(g.nodes.find(n => n.id === id)?.sealed, id).toBe(true);
+    }
+    expect(g.nodes.find(n => n.id === 'net')?.sealed).toBeFalsy();
+    expect(g.nodes.find(n => n.id === 'leak')?.sealed).toBeFalsy();
+    expect(g.nodes.find(n => n.id === 'stage-procure')?.sealed).toBeFalsy();
+  });
+  it('every money node carries a provenance sentence', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    for (const id of ['leak', 'recovered', 'net', 'fee', 'gate']) {
+      expect(g.nodes.find(n => n.id === id)?.prov, id).toBeTruthy();
+    }
+  });
+});
+
+describe('estimated fallback', () => {
+  const EST_INPUT: ReactorInput = {
+    ...FULL_INPUT,
+    ops: {
+      categories: [
+        { key: 'finance', label: 'Finance', count: 3, valueZar: 500000, unpriced: 1 },
+        { key: 'compliance', label: 'Compliance', count: 2, valueZar: 0, unpriced: 2 },
+      ],
+      totalZar: 500000, totalCount: 5, estimated: true, unpricedCount: 3,
+    },
+  };
+  it('estimated ops retitle the hub and surface unpriced counts', () => {
+    const g = buildReactorGraph(EST_INPUT, 'ZAR', 'all');
+    const leak = g.nodes.find(n => n.id === 'leak');
+    expect(leak?.kicker).toBe('Estimated leakage');
+    expect(leak?.sub).toContain('3 unpriced');
+  });
+  it('an all-unpriced stage shows an em-dash, never R 0', () => {
+    const g = buildReactorGraph(EST_INPUT, 'ZAR', 'all');
+    const tax = g.nodes.find(n => n.id === 'stage-tax'); // compliance folds here
+    expect(tax?.value).toBe('—');
+    expect(tax?.sub).toContain('2 unpriced');
   });
 });
 
@@ -78,5 +134,9 @@ describe('focus + persona lens', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'brief', ['procurement', 'supply_chain']);
     expect(g.nodes.find(n => n.id === 'stage-procure')?.dim).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'stage-pay')?.dim).toBe(true);
+  });
+  it('gate tag reflects approval rights', () => {
+    expect(buildReactorGraph(FULL_INPUT, 'ZAR', 'all', [], true).nodes.find(n => n.id === 'gate')?.tag).toBe('Your call');
+    expect(buildReactorGraph(FULL_INPUT, 'ZAR', 'all', [], false).nodes.find(n => n.id === 'gate')?.tag).toBe('Internal');
   });
 });
