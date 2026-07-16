@@ -24,7 +24,7 @@ let authToken: string | null = readToken('atheon_token');
 let refreshToken: string | null = readToken('atheon_refresh_token');
 let tenantOverrideId: string | null = localStorage.getItem('atheon_tenant_override');
 let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
+let refreshPromise: Promise<RefreshResult> | null = null;
 
 // M6: Rate limit state exposed to UI
 export interface RateLimitInfo {
@@ -136,21 +136,27 @@ function qs(params: Record<string, string | undefined>): string {
   return entries.length ? '?' + entries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&') : '';
 }
 
-// H4: Attempt to refresh the access token using the stored refresh token
-async function attemptTokenRefresh(): Promise<boolean> {
-  if (!refreshToken) return false;
+// H4: Attempt to refresh the access token using the stored refresh token.
+// 'fatal' = the refresh token itself is dead (rotated/expired) — session over.
+// 'transient' = rate limit / 5xx / network — the session may still be valid,
+// so callers must NOT clear tokens or force a re-login.
+type RefreshResult = 'refreshed' | 'fatal' | 'transient';
+async function attemptTokenRefresh(): Promise<RefreshResult> {
+  if (!refreshToken) return 'fatal';
   try {
     const res = await fetch(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    if (!res.ok) return false;
-    const data = await res.json() as { token: string; refreshToken?: string };
-    setToken(data.token, data.refreshToken || refreshToken);
-    return true;
+    if (res.ok) {
+      const data = await res.json() as { token: string; refreshToken?: string };
+      setToken(data.token, data.refreshToken || refreshToken);
+      return 'refreshed';
+    }
+    return res.status === 401 || res.status === 403 ? 'fatal' : 'transient';
   } catch {
-    return false;
+    return 'transient';
   }
 }
 
@@ -250,7 +256,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     const refreshed = await refreshPromise;
 
-    if (refreshed) {
+    if (refreshed === 'refreshed') {
       // Retry the original request with a fresh id + new token
       const retryRequestId = generateRequestId();
       headers['Authorization'] = `Bearer ${authToken}`;
@@ -263,14 +269,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         throw new ApiError(retryRes.status, body.error || retryRes.statusText, retryResponseId, body);
       }
       return retryRes.json() as Promise<T>;
-    } else {
-      // Refresh failed — clear tokens and redirect to login
+    }
+    if (refreshed === 'fatal') {
+      // Refresh token is dead — clear tokens and redirect to login
       setToken(null, null);
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
         window.location.href = '/login?session_expired=1';
       }
       throw new ApiError(401, 'Session expired. Please log in again.', responseRequestId);
     }
+    // 'transient' (rate limit / 5xx / network during refresh): keep the
+    // session and fall through to throw the original error below.
   }
 
   if (!res.ok) {

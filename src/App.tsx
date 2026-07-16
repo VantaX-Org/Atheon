@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { api, getToken, setToken } from "@/lib/api";
+import { api, ApiError, getToken, setToken } from "@/lib/api";
 
 // Eager-loaded — needed on first paint regardless of where the user lands:
 // app shell, public entry points, and a thin set of pages that we don't
@@ -118,7 +118,8 @@ function StandaloneAuthGate({ children }: { children: React.ReactNode }) {
             : { logoUrl: null, primaryColor: null, nameOverride: null },
         });
       })
-      .catch(() => setToken(null))
+      // Only a real 401 kills the session — transient /me failures keep tokens.
+      .catch((err) => { if (err instanceof ApiError && err.status === 401) setToken(null); })
       .finally(() => setChecking(false));
   }, [user, setUser]);
 

@@ -9,7 +9,7 @@ import { HelpButton } from "@/components/common/HelpButton";
 import { JeffLauncher } from "@/components/common/JeffLauncher";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
-import { api, getToken, setToken } from "@/lib/api";
+import { api, ApiError, getToken, setToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { clearChunkReloadGuard } from "@/lib/lazy-with-retry";
 
@@ -48,8 +48,11 @@ export function AppLayout() {
             : { logoUrl: null, primaryColor: null, nameOverride: null },
         });
       })
-      .catch(() => {
-        setToken(null);
+      .catch((err) => {
+        // Only a real 401 invalidates the session. 429/5xx/network failures
+        // on /me are transient — keep tokens so the next load recovers
+        // instead of destroying a valid session.
+        if (err instanceof ApiError && err.status === 401) setToken(null);
         navigate('/login', { replace: true });
       })
       .finally(() => setChecking(false));
