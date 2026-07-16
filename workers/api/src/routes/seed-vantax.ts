@@ -2031,7 +2031,6 @@ seed.post('/seed-vantax', async (c) => {
     // simulation (predicted/actual) so Trust & Performance has live calibration
     // data, and the monthly billable period totals trace back to real runs.
     let totalRealisedSavings = 0;
-    let totalPredictedSavings = 0;
     const archetypeRealised: Record<string, { realised: number; predicted: number; clusterId: string; subCatalystName: string }> = {};
     // Six runs per archetype at day offsets -25, -20, -15, -10, -5, 0.
     // Older runs have slightly lower match-rates so trend visualisation shows
@@ -2140,7 +2139,6 @@ seed.post('/seed-vantax', async (c) => {
         const residual = actualValue / predicted;
         archResiduals.push(residual);
         archLastObsAt = completedAt;
-        totalPredictedSavings += predicted;
         totalRealisedSavings += actualValue;
         const archKey = `${ra.clusterId}:${ra.subCatalystName}`;
         const prev = archetypeRealised[archKey];
