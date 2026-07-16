@@ -12,14 +12,15 @@ const CAT_LABEL: Record<string, string> = {
   cross_cutting: 'Cross-cutting', service_delivery: 'Service delivery',
 };
 
-export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null };
+export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null, macro: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
-  const [assessList, actions, roi, conns] = await Promise.allSettled([
+  const [assessList, actions, roi, conns, radar] = await Promise.allSettled([
     api.assessments.list(),
     api.erp.actionsSummary(),
     api.roi.get(),
     api.erp.connections(),
+    api.radar.signals(undefined, 10),
   ]);
 
   let ops: ReactorInput['ops'] = null;
@@ -61,6 +62,16 @@ async function fetchReactorInput(): Promise<ReactorInput> {
     // "live" means live: connected sources, not the all-time attribution list
     sourceCount: conns.status === 'fulfilled'
       ? conns.value.connections.filter((c) => ['connected', 'active'].includes(c.status.toLowerCase())).length
+      : null,
+    // external factors head node — most relevant first, top 5 in the drawer
+    macro: radar.status === 'fulfilled'
+      ? {
+          count: radar.value.total ?? radar.value.signals.length,
+          signals: [...radar.value.signals]
+            .sort((a, b) => b.relevanceScore - a.relevanceScore)
+            .slice(0, 5)
+            .map((s) => ({ title: s.title, source: s.sourceName, sentiment: s.sentiment, relevance: s.relevanceScore })),
+        }
       : null,
   };
 }

@@ -21,6 +21,9 @@ export interface RiverNode {
   dim?: boolean;
   sealed?: boolean; // figure is a directly booked API field — drawer may show the audit-chain seal
   prov?: string; // node-specific provenance sentence for the drawer
+  // drill-down payloads, rendered by the drawer (canvas never draws these):
+  rows?: Array<{ label: string; value: string; sub?: string }>; // what's inside this node
+  downstream?: Array<{ label: string; value: string; sub?: string }>; // impact on the stages after it
 }
 
 export interface RiverEdge {

@@ -116,7 +116,7 @@ export function ConsolePage() {
           </div>
         </div>
 
-        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} onAskJeff={onAskJeff} />
+        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} />
 
         {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
         {sections.includes('decisions') && <DecisionsSection persona={persona} canApprove={canApprove} onAskJeff={onAskJeff} />}

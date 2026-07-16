@@ -335,6 +335,12 @@
 .rx .rc-table th { text-align: left; font-weight: 600; font-size: 0.6rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); padding: 0.28rem 0; border-bottom: 1px solid var(--line); }
 .rx .rc-table td { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
 .rx .rc-table td:last-child, .rx .rc-table th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+/* drill-down rows: what's inside a stage + its downstream impact */
+.rx .rc-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.8rem; font-size: 0.76rem; padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+.rx .rc-row:last-child { border-bottom: 0; }
+.rx .rc-row-l { color: var(--ink); font-weight: 600; display: flex; flex-direction: column; }
+.rx .rc-row-l em { font-style: normal; font-weight: 400; font-size: 0.66rem; color: var(--faint); }
+.rx .rc-row .num { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rx .rc-meta { font-size: 0.76rem; color: var(--mut); line-height: 1.65; margin: 0; }
 .rx .rc-meta b { color: var(--ink); font-weight: 600; }
 

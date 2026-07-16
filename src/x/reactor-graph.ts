@@ -23,7 +23,38 @@ export interface ReactorInput {
   recovered: { zar: number; mult: number | null } | null;
   fee: { zar: number } | null;
   sourceCount: number | null; // live/connected ERP source systems
+  // External factors head node: live radar signals (macro, market, regulatory,
+  // supplier pressure). Null when the radar has not reported — em-dash node.
+  macro: {
+    count: number;
+    signals: Array<{ title: string; source: string | null; sentiment: string; relevance: number }>;
+  } | null;
 }
+
+// A role-specific value chain: same category buckets, re-cut and re-labelled
+// for how that role runs the business (persona.ts defines the C-suite chains).
+// Every chain must PARTITION the full bucket set so stages always sum to the
+// leak hub — no category silently dropped, none counted twice.
+export interface ChainStage {
+  id: string;
+  label: string;
+  buckets: string[];
+}
+
+// GAP-1 fix: the assessment emits finding-TYPE keys (duplicate_payment,
+// inventory_variance, …) alongside the canonical stage buckets. Each bucket
+// expands to every key that folds into it, so stages price real findings
+// instead of rendering em-dash while "Operate & deliver" swallows everything.
+export const CAT_KEYS: Record<string, string[]> = {
+  procurement: ['procurement', 'payment_terms', 'price_variance', 'supplier_risk'],
+  supply_chain: ['supply_chain', 'inventory_variance', 'dead_stock'],
+  service_delivery: ['service_delivery', 'process_issue'],
+  workforce: ['workforce', 'payroll_anomaly'],
+  cross_cutting: ['cross_cutting', 'data_issue'],
+  sales: ['sales'],
+  finance: ['finance', 'reconciliation', 'duplicate_payment'],
+  compliance: ['compliance', 'fraud_risk', 'security_risk'],
+};
 
 // Dominant finding_type → human leak descriptor (matches the artifact's stage
 // sub-labels). Plural form; live-demo stage counts are all >1.
@@ -32,22 +63,23 @@ const TYPE_LABEL: Record<string, string> = {
   data_quality: 'data-quality flags', process_delay: 'process delays', risk: 'risks',
 };
 
-// Fixed value-chain order; API categories fold into their stage. Unknown
-// category keys land in "Operate & deliver" so nothing is silently dropped.
-export const STAGES: Array<{ id: string; label: string; cats: string[] }> = [
-  { id: 'stage-procure', label: 'Procure & contract', cats: ['procurement'] },
-  { id: 'stage-receive', label: 'Receive & store', cats: ['supply_chain'] },
-  { id: 'stage-operate', label: 'Operate & deliver', cats: ['service_delivery', 'workforce', 'cross_cutting'] },
-  { id: 'stage-sell', label: 'Sell & invoice', cats: ['sales'] },
-  { id: 'stage-pay', label: 'Pay & account', cats: ['finance'] },
-  { id: 'stage-tax', label: 'Tax & filings', cats: ['compliance'] },
+// Canonical value-chain order (the whole-business lens: CEO, board, and any
+// persona without a role chain). API categories fold into their stage via
+// CAT_KEYS; unknown keys land in the cross_cutting stage so nothing drops.
+export const STAGES: ChainStage[] = [
+  { id: 'procure', label: 'Procure & contract', buckets: ['procurement'] },
+  { id: 'receive', label: 'Receive & store', buckets: ['supply_chain'] },
+  { id: 'operate', label: 'Operate & deliver', buckets: ['service_delivery', 'workforce', 'cross_cutting'] },
+  { id: 'sell', label: 'Sell & invoice', buckets: ['sales'] },
+  { id: 'pay', label: 'Pay & account', buckets: ['finance'] },
+  { id: 'tax', label: 'Tax & filings', buckets: ['compliance'] },
 ];
 
 const DIM: Record<ReactorFocus, (id: string) => boolean> = {
   all: () => false,
   brief: () => false,
-  decisions: (id) => id.startsWith('stage-') || id === 'leak' || ['recovered', 'net', 'fee'].includes(id),
-  ledger: (id) => id.startsWith('stage-') || ['gate', 'review', 'reversed'].includes(id),
+  decisions: (id) => id.startsWith('stage-') || id === 'macro' || id === 'leak' || ['recovered', 'net', 'fee'].includes(id),
+  ledger: (id) => id.startsWith('stage-') || id === 'macro' || ['gate', 'review', 'reversed'].includes(id),
   catalysts: (id) => ['net', 'fee', 'review', 'reversed'].includes(id),
 };
 
@@ -65,29 +97,37 @@ export function buildReactorGraph(
   focus: ReactorFocus,
   opsFirst: string[] = [],
   canApprove = false,
+  chain?: ChainStage[],
 ): { nodes: RiverNode[]; edges: RiverEdge[] } {
-  const { ops, gate, recovered, fee } = input;
+  const { ops, gate, recovered, fee, macro } = input;
   const money = (v: number | null) => formatCompactCurrency(v, currency);
   const net = recovered && fee ? recovered.zar - fee.zar : null;
 
+  const CHAIN = chain?.length ? chain : STAGES;
+  const expand = (buckets: string[]) => buckets.flatMap((b) => CAT_KEYS[b] ?? [b]);
+
   // Sum each category into its value-chain stage. topType = leak descriptor of
   // the heaviest contributing category (only present on the raw-findings path).
-  const known = new Set(STAGES.flatMap((s) => s.cats));
-  const stageSum = (cats: string[], fold: boolean) => {
+  const known = new Set(Object.values(CAT_KEYS).flat());
+  const stageSum = (keys: string[], fold: boolean) => {
     if (!ops) return null;
-    const mine = ops.categories.filter((c) => cats.includes(c.key) || (fold && !known.has(c.key)));
+    const mine = ops.categories.filter((c) => keys.includes(c.key) || (fold && !known.has(c.key)));
     const lead = [...mine].sort((a, b) => b.count - a.count)[0];
     return {
       valueZar: mine.reduce((s, c) => s + c.valueZar, 0),
       count: mine.reduce((s, c) => s + c.count, 0),
       unpriced: mine.reduce((s, c) => s + (c.unpriced ?? 0), 0),
       topType: lead?.topType,
+      cats: mine,
     };
   };
-  const stages = STAGES.map((s, i) => ({
+  // macro head node takes the leftmost slot; the chain spreads to its right
+  const foldIdx = Math.max(0, CHAIN.findIndex((s) => s.buckets.includes('cross_cutting')));
+  const stages = CHAIN.map((s, i) => ({
     ...s,
-    x: 0.07 + i * (0.84 / (STAGES.length - 1)),
-    sum: stageSum(s.cats, s.id === 'stage-operate'),
+    id: `stage-${s.id}`,
+    x: 0.17 + i * (0.74 / (CHAIN.length - 1)),
+    sum: stageSum(expand(s.buckets), i === foldIdx),
   }));
 
   // Recovery is all-time; a leak is this assessment. We never divide one by the
@@ -115,13 +155,57 @@ export function buildReactorGraph(
     ? `${ops.totalCount} findings · this assessment${(ops.unpricedCount ?? 0) > 0 ? ` · ${ops.unpricedCount} unpriced` : ''}`
     : undefined;
 
+  // Drill-down payloads: what leaks inside a stage (its real categories) and
+  // its impact on each stage after it (their real leak figures) — the chain
+  // relationship, priced from the same findings, never a modelled number.
+  const CAT_NAME: Record<string, string> = {
+    payment_terms: 'Payment terms', price_variance: 'Price variance', supplier_risk: 'Supplier risk',
+    duplicate_payment: 'Duplicate payments', reconciliation: 'Reconciliation', process_issue: 'Process issues',
+    payroll_anomaly: 'Payroll anomalies', data_issue: 'Data issues', inventory_variance: 'Inventory variance',
+    dead_stock: 'Dead stock', fraud_risk: 'Fraud risk', security_risk: 'Security risk',
+  };
+  const stageRows = (s: (typeof stages)[number]) =>
+    s.sum?.cats.length
+      ? [...s.sum.cats].sort((a, b) => b.valueZar - a.valueZar).map((c) => ({
+          label: CAT_NAME[c.key] ?? c.label,
+          value: c.valueZar > 0 ? money(c.valueZar) : '—',
+          sub: `${c.count} finding${c.count === 1 ? '' : 's'}`,
+        }))
+      : undefined;
+  const stageDownstream = (i: number) => {
+    const after = stages.slice(i + 1).filter((d) => d.sum);
+    return after.length
+      ? after.map((d) => ({
+          label: d.label,
+          value: d.sum!.count > 0 && d.sum!.valueZar === 0 ? '—' : money(d.sum!.valueZar),
+          sub: d.sum!.count > 0 ? `${d.sum!.count} finding${d.sum!.count === 1 ? '' : 's'} exposed` : 'running clean',
+        }))
+      : undefined;
+  };
+
   const nodes: RiverNode[] = [
-    ...stages.map((s): RiverNode => ({
+    {
+      id: 'macro', x: 0.05, y: 0.09, kicker: 'Macro & market',
+      value: macro ? `${macro.count} signal${macro.count === 1 ? '' : 's'}` : '—',
+      sub: macro?.signals[0]?.title,
+      tag: 'External', cls: 'stage',
+      prov: 'External signals read live from the radar feed — market, regulatory, and supplier pressure outside your walls. A dash means the radar has not reported.',
+      rows: macro?.signals.length
+        ? macro.signals.map((sg) => ({
+            label: sg.title,
+            value: `${Math.round(sg.relevance * 100)}% relevant`,
+            sub: [sg.source, sg.sentiment].filter(Boolean).join(' · '),
+          }))
+        : undefined,
+      downstream: stageDownstream(-1),
+    },
+    ...stages.map((s, i): RiverNode => ({
       id: s.id, x: s.x, y: 0.09, kicker: s.label,
       value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 && s.sum.unpriced > 0 ? '—' : money(s.sum.valueZar)) : '—',
       sub: stageSub(s.sum),
       cls: s.sum ? (s.sum.count > 0 ? 'stage leaky' : 'stage clean') : 'stage',
       anchor: 'leaks', prov: PROV_FINDING,
+      rows: stageRows(s), downstream: stageDownstream(i),
     })),
     { id: 'leak', x: 0.13, y: 0.52, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, anchor: 'leaks', prov: PROV_FINDING },
     { id: 'recovered', x: 0.52, y: 0.50, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
@@ -150,6 +234,9 @@ export function buildReactorGraph(
   };
 
   const edges: RiverEdge[] = [
+    // external pressure into the chain: dashed — macro signals are context,
+    // not a money flow, so the pipe never claims an amount
+    { from: 'macro', to: stages[0].id, amt: 0.18, colorVar: '--f-revw', particles: macro && macro.count > 0 ? 2 : 0, dashed: true },
     // thin grey process chain along the value chain
     ...stages.slice(1).map((s, i): RiverEdge => ({
       from: stages[i].id, to: s.id, amt: 0.18, colorVar: '--f-revw', particles: ops ? 2 : 0,
@@ -170,8 +257,8 @@ export function buildReactorGraph(
   // persona lens: on the full view, stages outside the persona's remit grey out
   const offBand = (id: string) => {
     if (!opsFirst.length || (focus !== 'brief' && focus !== 'all')) return false;
-    const stage = STAGES.find((s) => s.id === id);
-    return !!stage && !stage.cats.some((c) => opsFirst.includes(c));
+    const stage = stages.find((s) => s.id === id);
+    return !!stage && !stage.buckets.some((b) => opsFirst.includes(b));
   };
   nodes.forEach((n) => { if (dim(n.id) || offBand(n.id)) n.dim = true; });
   edges.forEach((e) => { if (dim(e.from) || dim(e.to)) e.dim = true; });

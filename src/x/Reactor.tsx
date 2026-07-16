@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenantCurrency } from '@/stores/appStore';
 import { mountRiver, type RiverNode } from './river';
-import { buildReactorGraph, REACTOR_LANES, type ReactorFocus, type ReactorInput } from './reactor-graph';
+import { buildReactorGraph, REACTOR_LANES, type ChainStage, type ReactorFocus, type ReactorInput } from './reactor-graph';
 import { SideDrawer } from './SideDrawer';
 
 const CONTEXT: Record<ReactorFocus, string> = {
@@ -31,12 +31,13 @@ const ANCHOR_LABEL: Record<string, string> = {
   ledger: 'the ledger', catalysts: 'the catalysts',
 };
 
-export function Reactor({ input, focus, opsFirst, canApprove, loading, onAskJeff }: {
+export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, onAskJeff }: {
   input: ReactorInput;
   focus: ReactorFocus;
   opsFirst?: string[];
   canApprove?: boolean;
   loading?: boolean;
+  chain?: ChainStage[];
   onAskJeff: (nodeContext: string) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -57,13 +58,13 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, onAskJeff
   useEffect(() => {
     const el = panelRef.current;
     if (!el || loading) return; // hold the river until the ledger has reported
-    const { nodes, edges } = buildReactorGraph(input, currency, focus, opsFirst, canApprove);
+    const { nodes, edges } = buildReactorGraph(input, currency, focus, opsFirst, canApprove, chain);
     return mountRiver(el, nodes, edges, {
       lanes: focus === 'all' || focus === 'brief' ? REACTOR_LANES : undefined,
       onNodeClick: setSel,
       onAskJeff: (n) => onAskJeff(`${n.kicker}: ${n.value}${n.sub ? ` (${n.sub})` : ''}`),
     });
-  }, [input, focus, currency, opsFirst, canApprove, loading, onAskJeff]);
+  }, [input, focus, currency, opsFirst, canApprove, chain, loading, onAskJeff]);
 
   const goTo = (anchor: string) => {
     setSel(null);
@@ -107,6 +108,28 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, onAskJeff
               <p className="rc-meta">
                 chained &amp; sealed{prov.created_at ? ` · ${new Date(prov.created_at).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
               </p>
+            </div>
+          )}
+          {!!sel.rows?.length && (
+            <div className="rc-sec">
+              <div className="rc-id">Inside this figure</div>
+              {sel.rows.map((r) => (
+                <div key={r.label} className="rc-row">
+                  <span className="rc-row-l">{r.label}{r.sub && <em>{r.sub}</em>}</span>
+                  <span className="num">{r.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!sel.downstream?.length && (
+            <div className="rc-sec">
+              <div className="rc-id">Impact downstream</div>
+              {sel.downstream.map((r) => (
+                <div key={r.label} className="rc-row">
+                  <span className="rc-row-l">{r.label}{r.sub && <em>{r.sub}</em>}</span>
+                  <span className="num">{r.value}</span>
+                </div>
+              ))}
             </div>
           )}
           <div className="rc-sec">
