@@ -355,6 +355,49 @@ function generateNarrative(metrics: Metric[], anomalies: AnomalyItem[], processe
   return narrative;
 }
 
+/* Process Conformance Map — the process-mining hero.
+   One dominant SVG reading the whole process portfolio at a glance:
+   each process is a lane, bar length ∝ conformance %, coloured by
+   threshold, worst-first (most urgent on top). Bottleneck count sits at
+   the right edge. Honest: conformance/bottlenecks come straight from
+   api.pulse.processes(); nothing is money, nothing is invented. */
+function conformanceBand(rate: number): string {
+  return rate >= 85 ? 'var(--positive)' : rate >= 70 ? 'var(--warning)' : 'var(--neg)';
+}
+
+function ProcessConformanceMap({ processes }: { processes: ProcessItem[] }) {
+  const rows = [...processes].sort((a, b) => a.conformanceRate - b.conformanceRate).slice(0, 12);
+  const W = 640, rowH = 30, labelW = 190, rightW = 74;
+  const barMax = W - labelW - rightW;
+  const H = rows.length * rowH + 6;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H }} role="img" aria-label="Process conformance by process, worst first">
+      <line x1={labelW} y1={0} x2={labelW} y2={H} stroke="var(--border-card)" strokeWidth={1} />
+      {rows.map((p, idx) => {
+        const y = idx * rowH + 3;
+        const w = (Math.max(0, Math.min(100, p.conformanceRate)) / 100) * barMax;
+        const color = conformanceBand(p.conformanceRate);
+        const bh = rowH - 12;
+        return (
+          <g key={p.id}>
+            <text x={labelW - 10} y={y + bh / 2 + 4} textAnchor="end" fontSize={12} fill="var(--text-secondary)">
+              {p.name.length > 26 ? p.name.slice(0, 25) + '…' : p.name}
+            </text>
+            <rect x={labelW} y={y} width={barMax} height={bh} rx={3} fill="var(--bg-secondary)" />
+            <rect x={labelW} y={y} width={w} height={bh} rx={3} fill={color} fillOpacity={0.85} />
+            <text x={labelW + w + 6} y={y + bh / 2 + 4} fontSize={11} fill="var(--text-muted)">{p.conformanceRate}%</text>
+            {p.bottlenecks.length > 0 && (
+              <text x={W} y={y + bh / 2 + 4} textAnchor="end" fontSize={11} fill="var(--neg)">
+                {p.bottlenecks.length} bottleneck{p.bottlenecks.length > 1 ? 's' : ''}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════
    PULSE PAGE
    ════════════════════════════════════════════════════════════ */
@@ -1964,6 +2007,23 @@ export function PulsePage() {
               <div className="flex items-center gap-3 py-6 px-4">
                 <GitBranch className="w-5 h-5 t-muted opacity-40 flex-shrink-0" />
                 <p className="text-sm t-muted">No process flows mapped yet</p>
+              </div>
+            )}
+
+            {/* Process-mining hero — one graphic reading the whole portfolio,
+                worst conformance first. Honest operational metrics, zero Rand. */}
+            {processes.length > 0 && (
+              <div className="card-hero p-6 md:p-8 overflow-hidden">
+                <p className="hero-eyebrow flex items-center gap-2 mb-4">
+                  <Workflow size={11} aria-hidden="true" />
+                  Process Conformance · worst first
+                </p>
+                <ProcessConformanceMap processes={processes} />
+                <div className="flex items-center gap-4 text-caption t-muted mt-3">
+                  <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'var(--positive)' }} /> On standard (85%+)</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'var(--warning)' }} /> Drifting</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="inline-block w-3 h-2 rounded-sm" style={{ background: 'var(--neg)' }} /> Off standard</span>
+                </div>
               </div>
             )}
 

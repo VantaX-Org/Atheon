@@ -44,12 +44,12 @@ const STANDARD_ROLES: UserRole[] = [...EXEC_ROLES, 'manager', 'analyst', 'operat
 // the sidebar speaking the same plain language. `needs` is the honest hint
 // shown when the signed-in role can't open the route.
 const STEP_TARGETS: Record<string, { route: string; cta: string; roles: UserRole[]; needs: string }> = {
-  connect_erp:      { route: '/data',              cta: 'Connect your data', roles: STANDARD_ROLES, needs: 'analyst access or higher' },
+  connect_erp:      { route: '/operations',        cta: 'Connect your data', roles: STANDARD_ROLES, needs: 'analyst access or higher' },
   deploy_catalyst:  { route: '/catalysts',         cta: 'Open Fixes',        roles: OPERATOR_ROLES, needs: 'operator access or higher' },
   run_catalyst:     { route: '/catalysts',         cta: 'Open Fixes',        roles: OPERATOR_ROLES, needs: 'operator access or higher' },
   review_action:    { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
   view_diagnostics: { route: '/findings',          cta: 'Review findings',   roles: STANDARD_ROLES, needs: 'analyst access or higher' },
-  generate_report:  { route: '/executive-summary', cta: 'Open Reports',      roles: EXEC_ROLES,     needs: 'executive access or higher' },
+  generate_report:  { route: '/brief',             cta: 'Open Brief',        roles: EXEC_ROLES,     needs: 'executive access or higher' },
   invite_user:      { route: '/iam',               cta: 'Open IAM · Users',  roles: ADMIN_ROLES,    needs: 'admin access' },
 };
 

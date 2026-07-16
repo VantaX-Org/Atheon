@@ -2,32 +2,35 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useAppStore } from "../appStore";
 
-describe('theme is pinned to light (Swiss Calm Authority)', () => {
+describe('theme (light | dark | auto)', () => {
   beforeEach(() => {
     localStorage.clear();
-    document.body.classList.remove('atheon-dark');
   });
 
-  // Note: the store is a singleton initialized at module load, so this asserts
-  // the hardcoded default rather than re-running init against cleared storage.
-  it('initial theme state is light', () => {
-    expect(useAppStore.getState().theme).toBe('light');
+  it('setTheme stamps data-theme on <html> and persists', () => {
+    useAppStore.getState().setTheme('dark');
+    expect(useAppStore.getState().theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(localStorage.getItem('atheon-theme')).toBe('dark');
+
+    useAppStore.getState().setTheme('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
-  it('toggleTheme keeps the theme light', () => {
+  it("auto resolves to a concrete data-theme (never leaves 'auto' on <html>)", () => {
+    useAppStore.getState().setTheme('auto');
+    expect(useAppStore.getState().theme).toBe('auto');
+    expect(['light', 'dark']).toContain(document.documentElement.getAttribute('data-theme'));
+  });
+
+  it('toggleTheme cycles light → dark → auto', () => {
+    useAppStore.getState().setTheme('light');
+    useAppStore.getState().toggleTheme();
+    expect(useAppStore.getState().theme).toBe('dark');
+    useAppStore.getState().toggleTheme();
+    expect(useAppStore.getState().theme).toBe('auto');
     useAppStore.getState().toggleTheme();
     expect(useAppStore.getState().theme).toBe('light');
-  });
-
-  it('setTheme("dark") is ignored and stays light', () => {
-    useAppStore.getState().setTheme('dark');
-    expect(useAppStore.getState().theme).toBe('light');
-  });
-
-  it('never applies the legacy .atheon-dark class', () => {
-    useAppStore.getState().setTheme('dark');
-    useAppStore.getState().toggleTheme();
-    expect(document.body.classList.contains('atheon-dark')).toBe(false);
   });
 });
 
@@ -43,7 +46,7 @@ describe("appStore", () => {
 
   it("initializes with default theme", () => {
     const state = useAppStore.getState();
-    expect(["dark", "light"]).toContain(state.theme);
+    expect(["dark", "light", "auto"]).toContain(state.theme);
   });
 
   it("initializes with default accent color", () => {

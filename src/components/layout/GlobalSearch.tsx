@@ -21,7 +21,7 @@ import type { UserRole } from '@/types';
 import {
   Search, ArrowRight,
   LayoutDashboard, Gem, Activity, Zap, Brain, MemoryStick, ShieldCheck, FileText, TrendingUp,
-  Network, Webhook, Inbox, Cable, PlugZap, BadgeCheck,
+  Network, Webhook, Inbox, Cable, BadgeCheck,
   KeyRound, UserCog, UserPlus, Building2, LifeBuoy, Settings,
   Cpu, Rocket, ClipboardList, HeartPulse, Bell, Flag,
   CreditCard, Headset, ListFilter, UserSearch,
@@ -51,7 +51,7 @@ interface RouteHit {
 const ROUTES: RouteHit[] = [
   // Intelligence — the journey rail (Home · Data · Findings · Fixes · Savings · Reports)
   { section: 'Intelligence', label: 'Home',          path: '/dashboard',         haystack: 'home dashboard overview journey', Icon: LayoutDashboard },
-  { section: 'Intelligence', label: 'Data',          path: '/data',              haystack: 'data connect sources erp sync connections freshness', Icon: Cable, roles: STANDARD_ROLES },
+  { section: 'Intelligence', label: 'Data',          path: '/operations',        haystack: 'data connect sources erp sync connections freshness integration health', Icon: Cable, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Findings',      path: '/findings',          haystack: 'findings detect exposure value at risk discrepancies', Icon: ClipboardList, roles: STANDARD_ROLES },
   { section: 'Intelligence', label: 'Executive',     path: '/apex',              haystack: 'apex executive intelligence briefing risks scenarios', Icon: Gem, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'Live Monitor',  path: '/pulse',             haystack: 'pulse live monitor process intelligence anomalies metrics', Icon: Activity, roles: STANDARD_ROLES },
@@ -59,34 +59,34 @@ const ROUTES: RouteHit[] = [
   { section: 'Intelligence', label: 'Mind',          path: '/mind',              haystack: 'mind ai model governance configuration', Icon: Brain, roles: PLATFORM_ADMIN_ROLES },
   { section: 'Intelligence', label: 'Memory',        path: '/memory',            haystack: 'memory knowledge graph entities relationships', Icon: MemoryStick, roles: MANAGER_ROLES },
   { section: 'Intelligence', label: 'Trust',         path: '/trust',             haystack: 'trust calibration provenance peers', Icon: ShieldCheck, roles: STANDARD_ROLES },
-  { section: 'Intelligence', label: 'Exec Briefing', path: '/executive-summary', haystack: 'executive summary one page briefing', Icon: FileText, roles: EXECUTIVE_ROLES },
+  { section: 'Intelligence', label: 'Exec Briefing', path: '/brief', haystack: 'executive summary one page briefing brief', Icon: FileText, roles: EXECUTIVE_ROLES },
   { section: 'Intelligence', label: 'ROI Dashboard', path: '/roi-dashboard',     haystack: 'roi financial proof savings shared', Icon: TrendingUp, roles: EXECUTIVE_ROLES },
-  // Data
-  { section: 'Data',         label: 'Integrations',       path: '/integrations',        haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Webhooks',           path: '/webhooks',            haystack: 'webhooks event subscriptions hmac', Icon: Webhook, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Operator Queue',     path: '/action-layer',        haystack: 'operator queue action layer dispatch erp approve reject', Icon: Inbox, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Connectivity',       path: '/connectivity',        haystack: 'connectivity live protocols sync', Icon: Cable, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Integration Health', path: '/integration-health',  haystack: 'integration health sync monitoring circuit breakers', Icon: PlugZap, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Data',         label: 'Compliance',         path: '/compliance',          haystack: 'compliance soc2 evidence audit governance dsar', Icon: BadgeCheck, roles: PLATFORM_ADMIN_ROLES },
-  // Administration
-  { section: 'Administration', label: 'IAM',          path: '/iam',             haystack: 'iam users roles policies access', Icon: KeyRound, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Custom Roles', path: '/custom-roles',    haystack: 'custom roles permissions builder', Icon: UserCog, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Bulk Users',   path: '/bulk-users',      haystack: 'bulk users csv import', Icon: UserPlus, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Administration', label: 'Clients',      path: '/tenants',         haystack: 'clients tenants management', Icon: Building2, roles: SUPERADMIN_ROLES },
-  { section: 'Administration', label: 'Support',      path: '/support-tickets', haystack: 'support tickets file track', Icon: LifeBuoy },
-  { section: 'Administration', label: 'Settings',     path: '/settings',        haystack: 'settings preferences account profile', Icon: Settings },
-  // Platform Ops
-  { section: 'Platform Ops',   label: 'Control Plane',     path: '/control-plane',    haystack: 'control plane agent deployments', Icon: Cpu, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Deployments',       path: '/deployments',      haystack: 'deployments hybrid on-premise', Icon: Rocket, roles: SUPERADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Assessments',       path: '/assessments',      haystack: 'assessments pre-sale discovery', Icon: ClipboardList, roles: SUPERADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Operations Health', path: '/platform-health',  haystack: 'operations platform health infrastructure', Icon: HeartPulse, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'System Alerts',     path: '/system-alerts',    haystack: 'system alerts rules silence', Icon: Bell, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Platform Ops',   label: 'Feature Flags',     path: '/feature-flags',    haystack: 'feature flags rollout tenants', Icon: Flag, roles: SUPERADMIN_ROLES },
-  // Admin Tooling
-  { section: 'Admin Tooling',  label: 'Revenue',         path: '/revenue',         haystack: 'revenue usage mrr plan llm', Icon: CreditCard, roles: SUPERADMIN_ROLES },
-  { section: 'Admin Tooling',  label: 'Support Console', path: '/support',         haystack: 'support console tenant cross', Icon: Headset, roles: SUPPORT_ROLES },
-  { section: 'Admin Tooling',  label: 'Support Triage',  path: '/support-triage',  haystack: 'support triage queue', Icon: ListFilter, roles: PLATFORM_ADMIN_ROLES },
-  { section: 'Admin Tooling',  label: 'Impersonate',     path: '/impersonate',     haystack: 'impersonate view-as user debug', Icon: UserSearch, roles: SUPPORT_ROLES },
+  // General — non-admin utility surfaces (everyone-can-file ticket queue + settings).
+  { section: 'General', label: 'Support',  path: '/support-tickets', haystack: 'support tickets file track', Icon: LifeBuoy },
+  { section: 'General', label: 'Settings', path: '/settings',        haystack: 'settings preferences account profile', Icon: Settings },
+  // Console — the platform-admin quarantine (v2 §10 step 5). Each admin surface
+  // is a deep-link into ConsolePage's ?section switcher; role gates match the
+  // per-section floors inside the Console, so search only surfaces what the
+  // user can actually reach.
+  { section: 'Console', label: 'Clients',          path: '/console?section=clients',        haystack: 'clients tenants management tenancy', Icon: Building2, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'Tenant Admin',     path: '/console?section=tenant-admin',   haystack: 'tenant admin management provisioning', Icon: Building2, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'Revenue',          path: '/console?section=revenue',        haystack: 'revenue usage mrr plan llm billing', Icon: CreditCard, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'IAM',              path: '/console?section=iam',            haystack: 'iam users roles policies access', Icon: KeyRound, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Custom Roles',     path: '/console?section=custom-roles',   haystack: 'custom roles permissions builder', Icon: UserCog, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Bulk Users',       path: '/console?section=bulk-users',     haystack: 'bulk users csv import', Icon: UserPlus, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Control Plane',    path: '/console?section=control-plane',  haystack: 'control plane agent deployments', Icon: Cpu, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Operations Health', path: '/console?section=health',       haystack: 'operations platform health infrastructure', Icon: HeartPulse, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'System Alerts',    path: '/console?section=alerts',         haystack: 'system alerts rules silence', Icon: Bell, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Deployments',      path: '/console?section=deployments',    haystack: 'deployments hybrid on-premise', Icon: Rocket, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'Assessments',      path: '/console?section=assessments',    haystack: 'assessments pre-sale discovery', Icon: ClipboardList, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'Feature Flags',    path: '/console?section=flags',          haystack: 'feature flags rollout tenants', Icon: Flag, roles: SUPERADMIN_ROLES },
+  { section: 'Console', label: 'Integrations',     path: '/console?section=integrations',   haystack: 'integrations connections erp adapters', Icon: Network, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Webhooks',         path: '/console?section=webhooks',       haystack: 'webhooks event subscriptions hmac', Icon: Webhook, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Operator Queue',   path: '/console?section=operator-queue', haystack: 'operator queue action layer dispatch erp approve reject', Icon: Inbox, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Support Console',  path: '/console?section=support-console', haystack: 'support console tenant cross', Icon: Headset, roles: SUPPORT_ROLES },
+  { section: 'Console', label: 'Support Triage',   path: '/console?section=support-triage', haystack: 'support triage queue', Icon: ListFilter, roles: PLATFORM_ADMIN_ROLES },
+  { section: 'Console', label: 'Impersonate',      path: '/console?section=impersonate',    haystack: 'impersonate view-as user debug', Icon: UserSearch, roles: SUPPORT_ROLES },
+  { section: 'Console', label: 'Compliance',       path: '/console?section=compliance',     haystack: 'compliance soc2 evidence audit governance dsar', Icon: BadgeCheck, roles: PLATFORM_ADMIN_ROLES },
 ];
 
 function scoreHit(query: string, h: RouteHit): number {

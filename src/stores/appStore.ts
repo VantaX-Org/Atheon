@@ -6,7 +6,7 @@ import type { ERPCompany } from '@/lib/api';
 const SELECTED_COMPANY_LS_KEY = 'atheon_selected_company_id';
 const CURRENCY_LS_KEY = 'atheon_tenant_currency';
 
-export type Theme = 'dark' | 'light';
+export type Theme = 'light' | 'dark' | 'auto';
 export type AccentColor = 'indigo' | 'blue' | 'violet' | 'emerald' | 'rose';
 
 // Swiss Calm Authority is single-accent (ledger green) + light-only. The
@@ -50,9 +50,9 @@ interface AppState {
   toggleSidebar: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
   setIndustry: (industry: IndustryVertical) => void;
-  /** @deprecated Dark mode retired — the `theme` argument is ignored; the app is permanently light. */
+  /** Set the theme (light | dark | auto) — persists and applies immediately. */
   setTheme: (theme: Theme) => void;
-  /** @deprecated Dark mode retired — keeps the theme light; kept only for existing call sites. */
+  /** Cycle light → dark → auto (single-button callers). */
   toggleTheme: () => void;
   setAccentColor: (color: AccentColor) => void;
   dismissOnboarding: () => void;
@@ -65,9 +65,25 @@ interface AppState {
   loadCurrency: () => Promise<void>;
 }
 
-// Swiss Calm Authority is light-only; the legacy .atheon-dark class is
-// never applied, so :root in index.css is the canonical (and only) theme.
-const initialTheme: Theme = 'light';
+// Theme: light | dark | auto. 'auto' follows the OS via prefers-color-scheme.
+// Components read only CSS vars, so flipping data-theme on <html> re-themes the
+// whole app (dark token set lives in index.css under :root[data-theme="dark"]).
+const THEME_LS_KEY = 'atheon-theme';
+const VALID_THEMES: readonly Theme[] = ['light', 'dark', 'auto'];
+const prefersDark = () =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+
+/** Resolve 'auto' to the concrete theme and stamp it on <html>. */
+function applyTheme(theme: Theme) {
+  if (typeof document === 'undefined') return;
+  const resolved = theme === 'auto' ? (prefersDark() ? 'dark' : 'light') : theme;
+  document.documentElement.setAttribute('data-theme', resolved);
+}
+
+const savedThemeRaw = typeof window !== 'undefined' ? localStorage.getItem(THEME_LS_KEY) : null;
+// Legacy value 'light' (from the retired light-lock) is honoured; anything else
+// invalid falls back to 'auto' so new users track their OS.
+const initialTheme: Theme = VALID_THEMES.includes(savedThemeRaw as Theme) ? (savedThemeRaw as Theme) : 'auto';
 // Migrate legacy accent values
 const rawAccent = typeof window !== 'undefined' ? localStorage.getItem('atheon-accent') : null;
 const legacyMap: Record<string, AccentColor> = { amber: 'indigo', teal: 'indigo', sky: 'blue', cyan: 'blue' };
@@ -78,9 +94,13 @@ const savedOnboarding = typeof window !== 'undefined' ? localStorage.getItem('at
 const savedSelectedCompanyId = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_COMPANY_LS_KEY) : null;
 const savedCurrency = (typeof window !== 'undefined' ? localStorage.getItem(CURRENCY_LS_KEY) : null) || 'ZAR';
 
-// Light-only (Swiss): defensively clear any persisted dark class on load.
-if (typeof document !== 'undefined') {
-  document.body.classList.remove('atheon-dark');
+// Apply the saved theme immediately (before first paint of store consumers).
+applyTheme(initialTheme);
+// Keep 'auto' live: re-apply when the OS scheme flips, but only while in auto.
+if (typeof window !== 'undefined' && window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (useAppStore.getState().theme === 'auto') applyTheme('auto');
+  });
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -111,13 +131,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   setIndustry: (industry) => set({ industry }),
-  setTheme: () => {
-    // Dark mode retired — the `theme` arg is ignored; always light.
-    localStorage.setItem('atheon-theme', 'light');
-    if (typeof document !== 'undefined') document.body.classList.remove('atheon-dark');
-    set({ theme: 'light' });
+  setTheme: (theme) => {
+    localStorage.setItem(THEME_LS_KEY, theme);
+    applyTheme(theme);
+    set({ theme });
   },
-  toggleTheme: () => get().setTheme('light'),
+  // Cycle light → dark → auto for the single-button legacy callers.
+  toggleTheme: () => {
+    const next: Theme = get().theme === 'light' ? 'dark' : get().theme === 'dark' ? 'auto' : 'light';
+    get().setTheme(next);
+  },
   setAccentColor: (color) => {
     // Single-accent (ledger green): selection is persisted for the settings
     // UI but no longer overrides the CSS accent token.

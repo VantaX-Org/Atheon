@@ -59,41 +59,66 @@ function channelLine(c: ExternalPulseChannel): string {
   return `${label} ${c.value} ${move}`.trim();
 }
 
-function pulseLine(p: NonNullable<PersonaInsightsResponse['external_pulse']>): string {
-  const bits = [p.fx, p.brent, p.cpi, p.gdp].filter((c): c is ExternalPulseChannel => !!c).map(channelLine);
-  if (p.news_latest) bits.push(`News: ${p.news_latest.title}`);
+/** Context strip. Market channels are context-only (no detail page exists —
+ * never fabricate a drill). The one real drill is the news headline: it links
+ * to its actual source URL, exactly as the source published it (no claim). */
+function PulseStrip({ p }: { p: NonNullable<PersonaInsightsResponse['external_pulse']> }) {
+  const channels = [p.fx, p.brent, p.cpi, p.gdp].filter((c): c is ExternalPulseChannel => !!c);
+  const bits = channels.map(channelLine);
   if (p.regulatory_latest) bits.push(`Reg: ${p.regulatory_latest.title}`);
-  return bits.join(' · ');
+  const text = bits.join(' · ');
+  return (
+    <p className="text-caption t-muted truncate max-w-full">
+      {text}
+      {p.news_latest && (
+        <>
+          {text && ' · '}
+          <a
+            href={p.news_latest.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent hover:underline"
+            // ponytail: source URL is real; label it as the source, make no claim
+            title={`${p.news_latest.domain} — ${p.news_latest.date}`}
+          >
+            {p.news_latest.title}
+          </a>
+        </>
+      )}
+    </p>
+  );
 }
 
+/** Whole card is the drill target (artifact "click any figure" pattern) —
+ * every insight already carries a real cta.route. Bottom label stays as the
+ * affordance; the outer Link owns the click so there's no nested anchor. */
 function PersonaInsightCard({ insight, currency }: { insight: PersonaInsight; currency: string }) {
   const unverified = insight.value_kind === 'potential_unverified';
   return (
-    <Card className="p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between gap-2">
-        <StatusPill status={insight.severity} size="sm" />
-        {unverified && <span className="text-caption t-muted">Potential (unverified)</span>}
-      </div>
-      {insight.value_zar !== null && (
-        <p className={`mt-2 text-headline-xl tnum ${unverified ? 't-muted' : 't-primary'}`}>
-          {formatCompactCurrency(insight.value_zar, currency)}
-        </p>
-      )}
-      <p className="mt-1 text-sm font-medium t-primary">{insight.headline}</p>
-      <p className="text-caption t-muted truncate">{insight.detail}</p>
-      {insight.external_context && (
-        <p className="mt-1 text-caption t-muted">
-          {ARROW[insight.external_context.direction] ?? ''} {insight.external_context.signal}{' '}
-          {insight.external_context.value} — {insight.external_context.note}
-        </p>
-      )}
-      <Link
-        to={insight.cta.route}
-        className="mt-auto pt-3 text-caption font-medium text-accent inline-flex items-center gap-1 hover:underline"
-      >
-        {insight.cta.label} <ArrowRight size={11} aria-hidden="true" />
-      </Link>
-    </Card>
+    <Link to={insight.cta.route} className="group h-full block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg">
+      <Card className="p-4 h-full flex flex-col transition-transform group-hover:-translate-y-px group-active:scale-[0.99]">
+        <div className="flex items-center justify-between gap-2">
+          <StatusPill status={insight.severity} size="sm" />
+          {unverified && <span className="text-caption t-muted">Potential (unverified)</span>}
+        </div>
+        {insight.value_zar !== null && (
+          <p className={`mt-2 text-headline-xl tnum ${unverified ? 't-muted' : 't-primary'}`}>
+            {formatCompactCurrency(insight.value_zar, currency)}
+          </p>
+        )}
+        <p className="mt-1 text-sm font-medium t-primary">{insight.headline}</p>
+        <p className="text-caption t-muted truncate">{insight.detail}</p>
+        {insight.external_context && (
+          <p className="mt-1 text-caption t-muted">
+            {ARROW[insight.external_context.direction] ?? ''} {insight.external_context.signal}{' '}
+            {insight.external_context.value} — {insight.external_context.note}
+          </p>
+        )}
+        <span className="mt-auto pt-3 text-caption font-medium text-accent inline-flex items-center gap-1 group-hover:underline">
+          {insight.cta.label} <ArrowRight size={11} aria-hidden="true" />
+        </span>
+      </Card>
+    </Link>
   );
 }
 
@@ -102,12 +127,16 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
   const setUser = useAppStore((s) => s.setUser);
   const currency = useTenantCurrency();
   const resolved = fixedPersona ?? defaultPersona(user);
-  const [persona, setPersona] = useState<Persona | null>(resolved);
+  // Controlled when the page owns the picker (fixedPersona) — the rail just
+  // follows it. Self-managed otherwise (own <select>, adopts default on hydrate).
+  const controlled = fixedPersona !== undefined;
+  const [selfPersona, setSelfPersona] = useState<Persona | null>(resolved);
+  const persona = controlled ? fixedPersona : selfPersona;
   const [data, setData] = useState<PersonaInsightsResponse | 'loading' | 'error'>('loading');
   const [savingDefault, setSavingDefault] = useState(false);
 
   // Store user can hydrate after first render — adopt the default once known.
-  useEffect(() => { if (!persona && resolved) setPersona(resolved); }, [persona, resolved]);
+  useEffect(() => { if (!controlled && !selfPersona && resolved) setSelfPersona(resolved); }, [controlled, selfPersona, resolved]);
 
   // Rail renders only for the executive/manager cohort with a resolvable
   // persona; fixedPersona (board digest) trusts the page's own route gate.
@@ -163,7 +192,7 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
               <select
                 aria-label="Your view"
                 value={persona}
-                onChange={(e) => setPersona(e.target.value as Persona)}
+                onChange={(e) => setSelfPersona(e.target.value as Persona)}
                 className="px-2 py-1 rounded-md border border-[var(--border-card)] text-xs bg-[var(--bg-secondary)] t-primary"
               >
                 {(Object.keys(PERSONA_LABELS) as Persona[]).map((p) => (
@@ -183,9 +212,7 @@ export function PersonaRail({ user, fixedPersona }: { user: User | null; fixedPe
             </>
           )}
         </div>
-        {loaded?.external_pulse && (
-          <p className="text-caption t-muted truncate">{pulseLine(loaded.external_pulse)}</p>
-        )}
+        {loaded?.external_pulse && <PulseStrip p={loaded.external_pulse} />}
       </div>
 
       {!loaded ? (

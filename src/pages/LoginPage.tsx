@@ -73,11 +73,11 @@ export function LoginPage() {
     // Persist MFA grace-period warning (if any) so the Dashboard / Settings pages can surface it.
     setMfaEnforcementWarning(res.mfaEnforcementWarning ?? null);
     // Role-aware landing — scoped read-only roles land on their own home
-    // (auditor → /compliance, board_member → /board-digest); everyone
+    // (auditor → /assurance, board_member → /board); everyone
     // else gets the operational dashboard as before.
     const landing =
-      res.user.role === 'auditor' ? '/compliance'
-      : res.user.role === 'board_member' ? '/board-digest'
+      res.user.role === 'auditor' ? '/assurance'
+      : res.user.role === 'board_member' ? '/board'
       : '/dashboard';
     navigate(landing);
   };
@@ -114,8 +114,8 @@ export function LoginPage() {
         setUser({ id: user.id, email: user.email, name: user.name, role: user.role as UserRole, tenantId: user.tenantId, tenantName: user.tenantName, permissions: user.permissions });
         window.history.replaceState({}, '', window.location.pathname);
         const landing =
-          user.role === 'auditor' ? '/compliance'
-          : user.role === 'board_member' ? '/board-digest'
+          user.role === 'auditor' ? '/assurance'
+          : user.role === 'board_member' ? '/board'
           : '/dashboard';
         navigate(landing);
       })
@@ -131,8 +131,8 @@ export function LoginPage() {
   useEffect(() => {
     if (existingUser && getToken()) {
       const landing =
-        existingUser.role === 'auditor' ? '/compliance'
-        : existingUser.role === 'board_member' ? '/board-digest'
+        existingUser.role === 'auditor' ? '/assurance'
+        : existingUser.role === 'board_member' ? '/board'
         : '/dashboard';
       navigate(landing, { replace: true });
     }

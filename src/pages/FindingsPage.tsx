@@ -60,7 +60,7 @@ export default function FindingsPage() {
           </p>
         ) : results === 'empty' ? (
           <p className="t-muted">
-            No completed analysis yet — <Link to="/data" className="text-accent hover:underline">connect your data</Link> to run one.
+            No completed analysis yet — <Link to="/operations" className="text-accent hover:underline">connect your data</Link> to run one.
           </p>
         ) : summary ? (
           <>

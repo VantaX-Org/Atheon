@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env, AppBindings } from './types';
 import { apiRateLimiter, authRateLimiter, aiRateLimiter, demoAuthRateLimiter, contactRateLimiter, dsarRateLimiter, dsarErasureRateLimiter, billingRateLimiter, licenseCheckRateLimiter } from './middleware/ratelimit';
@@ -523,11 +524,28 @@ for (const prefix of platformAdminPrefixes) {
   app.use(`/api/${prefix}/*`, requireRole('superadmin'));
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin'));
 }
-const platformAdminRoutePrefixes = ['iam', 'controlplane', 'erp', 'connectivity'];
+const platformAdminRoutePrefixes = ['iam', 'controlplane', 'connectivity'];
 for (const prefix of platformAdminRoutePrefixes) {
   app.use(`/api/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
 }
+// erp namespace is admin-gated, EXCEPT two read-only source-health GETs that
+// managers/executives need for the self-service data-flow surface (Operations
+// Overview + Integration health). Everything else under /erp — sync, connection
+// tests, circuit state, credential writes — stays admin-only. Loosening reads
+// must not loosen erp mutations.
+const ERP_MANAGER_READS = new Set(['connections', 'connections/health']);
+export function erpRolesFor(method: string, path: string): string[] {
+  const sub = path.replace(/^\/api\/(v1\/)?erp\//, '').replace(/\/+$/, '');
+  const managerRead = method === 'GET' && ERP_MANAGER_READS.has(sub);
+  return managerRead
+    ? ['superadmin', 'support_admin', 'admin', 'executive', 'manager']
+    : ['superadmin', 'support_admin', 'admin'];
+}
+const erpRoleGate = async (c: Context<AppBindings>, next: Next) =>
+  requireRole(...erpRolesFor(c.req.method, c.req.path))(c, next);
+app.use('/api/erp/*', erpRoleGate);
+app.use('/api/v1/erp/*', erpRoleGate);
 // Audit namespace: admins manage it, and the read-only `auditor` persona may
 // reach it too — the auditor's whole job is reading the audit trail. The
 // namespace gate only admits them past the door; the read handlers still gate

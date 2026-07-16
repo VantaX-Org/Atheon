@@ -25,6 +25,9 @@ import type { UserRole } from "@/types";
 // dependencies (heavy chart / table libs) blow up the main chunk if loaded
 // up-front. The named-to-default adapter is needed because most pages use
 // named exports.
+const BriefPage = lazyWithRetry(() => import("@/pages/BriefPage").then(m => ({ default: m.BriefPage })));
+const OutlookPage = lazyWithRetry(() => import("@/pages/OutlookPage").then(m => ({ default: m.OutlookPage })));
+const DecisionsPage = lazyWithRetry(() => import("@/pages/DecisionsPage").then(m => ({ default: m.DecisionsPage })));
 const ApexPage = lazyWithRetry(() => import("@/pages/ApexPage").then(m => ({ default: m.ApexPage })));
 const ROIDashboardPage = lazyWithRetry(() => import("@/pages/ROIDashboardPage"));
 const BoardDigestPage = lazyWithRetry(() => import("@/pages/BoardDigestPage"));
@@ -36,14 +39,13 @@ const AuditSharePage = lazyWithRetry(() => import("@/pages/AuditSharePage"));
 const StatusIncidentsAdminPage = lazyWithRetry(() => import("@/pages/admin/StatusIncidentsAdminPage"));
 // ApexBriefPage retired 2026-05-12 — duplicated ExecutiveSummaryPage with
 // a slimmer LLM-only layout. /apex/brief now redirects to /executive-summary.
-const DataPage = lazyWithRetry(() => import("@/pages/DataPage"));
 const FindingsPage = lazyWithRetry(() => import("@/pages/FindingsPage"));
 const PulsePage = lazyWithRetry(() => import("@/pages/PulsePage").then(m => ({ default: m.PulsePage })));
 const CatalystsPage = lazyWithRetry(() => import("@/pages/CatalystsPage").then(m => ({ default: m.CatalystsPage })));
 const CatalystRunDetailPage = lazyWithRetry(() => import("@/pages/CatalystRunDetailPage").then(m => ({ default: m.CatalystRunDetailPage })));
 const MindPage = lazyWithRetry(() => import("@/pages/MindPage").then(m => ({ default: m.MindPage })));
 const MemoryPage = lazyWithRetry(() => import("@/pages/MemoryPage").then(m => ({ default: m.MemoryPage })));
-const ConnectivityPage = lazyWithRetry(() => import("@/pages/ConnectivityPage").then(m => ({ default: m.ConnectivityPage })));
+const OperationsPage = lazyWithRetry(() => import("@/pages/OperationsPage").then(m => ({ default: m.OperationsPage })));
 // AuditPage no longer lazy-loaded here — CompliancePage imports it directly
 // and renders it inside the "Audit Log" tab (May 2026 merge).
 const TenantsPage = lazyWithRetry(() => import("@/pages/TenantsPage").then(m => ({ default: m.TenantsPage })));
@@ -56,7 +58,6 @@ const DeploymentsPage = lazyWithRetry(() => import("@/pages/DeploymentsPage").th
 const AssessmentsPage = lazyWithRetry(() => import("@/pages/AssessmentsPage").then(m => ({ default: m.AssessmentsPage })));
 const TenantManagementPage = lazyWithRetry(() => import("@/pages/TenantManagementPage").then(m => ({ default: m.TenantManagementPage })));
 const TenantLlmBudgetPage = lazyWithRetry(() => import("@/pages/admin/TenantLlmBudgetPage").then(m => ({ default: m.TenantLlmBudgetPage })));
-const ExecutiveSummaryPage = lazyWithRetry(() => import("@/pages/ExecutiveSummaryPage").then(m => ({ default: m.ExecutiveSummaryPage })));
 const PlatformHealthPage = lazyWithRetry(() => import("@/pages/PlatformHealthPage").then(m => ({ default: m.PlatformHealthPage })));
 const SupportConsolePage = lazyWithRetry(() => import("@/pages/SupportConsolePage").then(m => ({ default: m.SupportConsolePage })));
 // CompanyHealthPage no longer lazy-loaded here — PlatformHealthPage imports
@@ -68,7 +69,6 @@ const RevenueUsagePage = lazyWithRetry(() => import("@/pages/RevenueUsagePage").
 const FeatureFlagsPage = lazyWithRetry(() => import("@/pages/FeatureFlagsPage").then(m => ({ default: m.FeatureFlagsPage })));
 // DataGovernancePage no longer lazy-loaded here — CompliancePage imports it
 // directly and renders it inside the "Governance" tab (May 2026 merge).
-const IntegrationHealthPage = lazyWithRetry(() => import("@/pages/IntegrationHealthPage").then(m => ({ default: m.IntegrationHealthPage })));
 const SystemAlertsPage = lazyWithRetry(() => import("@/pages/SystemAlertsPage").then(m => ({ default: m.SystemAlertsPage })));
 const WebhooksPage = lazyWithRetry(() => import("@/pages/WebhooksPage").then(m => ({ default: m.WebhooksPage })));
 const SupportPage = lazyWithRetry(() => import("@/pages/SupportPage").then(m => ({ default: m.SupportPage })));
@@ -77,6 +77,8 @@ const SupportTriagePage = lazyWithRetry(() => import("@/pages/admin/SupportTriag
 const TrustPerformancePage = lazyWithRetry(() => import("@/pages/TrustPerformancePage"));
 const OnboardingWizardPage = lazyWithRetry(() => import("@/pages/OnboardingWizardPage"));
 const CompliancePage = lazyWithRetry(() => import("@/pages/CompliancePage"));
+const AssurancePage = lazyWithRetry(() => import("@/pages/AssurancePage").then(m => ({ default: m.AssurancePage })));
+const ConsolePage = lazyWithRetry(() => import("@/pages/ConsolePage").then(m => ({ default: m.ConsolePage })));
 
 /**
  * 3.10: Role-based frontend route protection
@@ -100,8 +102,11 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
  */
 function ScopedRoleRedirect({ children }: { children: React.ReactNode }) {
   const user = useAppStore((s) => s.user);
-  if (user?.role === 'auditor') return <Navigate to="/compliance" replace />;
-  if (user?.role === 'board_member') return <Navigate to="/board-digest" replace />;
+  // v2 §10 step 2.5: scoped roles land on their consolidated v2 surfaces.
+  // Both targets are gated to accept the redirected role (no lockout) so the
+  // old routes can 301 here in step 3.
+  if (user?.role === 'auditor') return <Navigate to="/assurance" replace />;
+  if (user?.role === 'board_member') return <Navigate to="/board" replace />;
   return <>{children}</>;
 }
 
@@ -177,7 +182,20 @@ export default function App() {
                 redirected to their own landing page instead of seeing
                 operational data they shouldn't have access to. */}
             <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
-            <Route path="/data" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><DataPage /></ProtectedRoute>} />
+            {/* v2 §10 step 1: the Brief — editorial exec landing that folds the
+                five summary screens into one honest column. Opt-in by route;
+                /dashboard keeps the classic JourneyHome. Exec+admin scope. */}
+            <Route path="/brief" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><BriefPage /></ProtectedRoute>} />
+            {/* C-suite external demand signals + their modelled impact + a
+                what-if simulation. Graphical, hero-grade. All modelled/context,
+                never counted in the confirmed money column (honesty §3.7). */}
+            <Route path="/outlook" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><OutlookPage /></ProtectedRoute>} />
+            {/* v2 §10 step 2: Decisions — the full DoA queue with inline
+                approve/reject. Same population that can already act on catalyst
+                approvals (OPERATOR_ROLES). Brief's "Review" links here. */}
+            <Route path="/decisions" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><DecisionsPage /></ProtectedRoute>} />
+            {/* /data folded into Operations Overview (v2 §6.3) — the CONNECT stage now lives at /operations, everyone-gated, admin tabs narrow client-side. */}
+            <Route path="/data" element={<Navigate to="/operations" replace />} />
             <Route path="/findings" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><FindingsPage /></ProtectedRoute>} />
             {/* Guided onboarding wizard — walks a new user through the week-1
                 stop-gates with deep-link CTAs into the journey stages. Linked
@@ -189,11 +207,15 @@ export default function App() {
             <Route path="/roi-dashboard" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ROIDashboardPage /></ProtectedRoute>} />
             {/* Phase AU: Quarterly digest for Board Members + Audit Committee.
                 Open to executives so they can preview what the board sees. */}
-            <Route path="/board-digest" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
-            {/* ApexBriefPage retired (see commit 2026-05-12 frontend
-                consolidation). Same data lives on /executive-summary
-                which uses a single backend endpoint + cleaner layout. */}
-            <Route path="/apex/brief" element={<Navigate to="/executive-summary" replace />} />
+            {/* v2 step 3: /board-digest folded into the scoped /board landing —
+                same BoardDigestPage surface, one canonical URL. */}
+            <Route path="/board-digest" element={<Navigate to="/board" replace />} />
+            {/* v2 board edition — board_member scoped landing (step 2.5). Renders the
+                board digest surface; /board-digest 301s here. */}
+            <Route path="/board" element={<ProtectedRoute allowedRoles={BOARD_DIGEST_ROLES}><BoardDigestPage /></ProtectedRoute>} />
+            {/* /apex/brief + /executive-summary both fold into the v2 Brief (same
+                api.executiveSummary source — Brief is the canonical exec read). */}
+            <Route path="/apex/brief" element={<Navigate to="/brief" replace />} />
             <Route path="/pulse" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><PulsePage /></ProtectedRoute>} />
             <Route path="/catalysts" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystsPage /></ProtectedRoute>} />
             <Route path="/catalysts/runs/:runId" element={<ProtectedRoute allowedRoles={OPERATOR_ROLES}><CatalystRunDetailPage /></ProtectedRoute>} />
@@ -202,7 +224,9 @@ export default function App() {
             {/* Backend gates /api/v1/connectivity to superadmin + support_admin + admin
                 (workers/api/src/index.ts platformAdminRoutePrefixes); aligning the
                 frontend guard so support_admin can reach the page. */}
-            <Route path="/connectivity" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConnectivityPage /></ProtectedRoute>} />
+            {/* v2 §6.3: connection status folded into Operations · Sources. */}
+            <Route path="/connectivity" element={<Navigate to="/operations" replace />} />
+            <Route path="/operations" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><OperationsPage /></ProtectedRoute>} />
             {/* /audit retired 2026-05-12 — now lives under /compliance Audit Log tab */}
             <Route path="/audit" element={<Navigate to="/compliance" replace />} />
             {/* SOC 2 control evidence pack — read-only aggregation over
@@ -210,12 +234,22 @@ export default function App() {
                 support_admin / superadmin for cross-tenant via the existing
                 tenant switcher. Backend enforces role + cross-tenant rules. */}
             <Route path="/compliance" element={<ProtectedRoute allowedRoles={COMPLIANCE_ROLES}><CompliancePage /></ProtectedRoute>} />
+            {/* v2 §7 Assurance — consolidated auditor landing (step 2.5 scoped landing). */}
+            <Route path="/assurance" element={<ProtectedRoute allowedRoles={COMPLIANCE_ROLES}><AssurancePage /></ProtectedRoute>} />
             {/* Trust & Performance — buyer-facing aggregation of calibration,
                 provenance, and federated peer patterns. Open to standard roles
                 so a salesperson with a viewer login can demo it. */}
             <Route path="/trust" element={<ProtectedRoute allowedRoles={STANDARD_ROLES}><TrustPerformancePage /></ProtectedRoute>} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/mfa" element={<MFASetupPage />} />
+            {/* v2 §10 step 5: Console — the platform-administration quarantine.
+                Folds every admin-world surface (tenancy, access, platform ops,
+                integrations, support, governance) behind one grouped left-nav
+                so the journey rail carries none of it. Floor is admin; each
+                mounted section narrows further by its own role. The old
+                top-level admin routes below stay live for drill-downs and old
+                deep-links — Console mounts the list surfaces via ?section=. */}
+            <Route path="/console" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><ConsolePage /></ProtectedRoute>} />
             <Route path="/admin/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantManagementPage /></ProtectedRoute>} />
             <Route path="/admin/tenants/:id/llm" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantLlmBudgetPage /></ProtectedRoute>} />
             <Route path="/tenants" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><TenantsPage /></ProtectedRoute>} />
@@ -233,7 +267,9 @@ export default function App() {
                 into the responsive ApexPage (mobile KPI strip, pull-to-refresh,
                 and tight 3-card above-fold layout). Redirect preserves old links. */}
             <Route path="/executive" element={<Navigate to="/apex" replace />} />
-            <Route path="/executive-summary" element={<ProtectedRoute allowedRoles={EXECUTIVE_ROLES}><ExecutiveSummaryPage /></ProtectedRoute>} />
+            {/* v2 step 3: ExecutiveSummaryPage was a pure duplicate of the Brief
+                (same api.executiveSummary.get() source) — folded into /brief. */}
+            <Route path="/executive-summary" element={<Navigate to="/brief" replace />} />
             {/* Admin Tooling Routes (ADMIN-001 to ADMIN-012) */}
             {/* /platform-health is the canonical "Operations Health" URL —
                 role-conditional inside the component: superadmin sees
@@ -251,7 +287,8 @@ export default function App() {
             <Route path="/feature-flags" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><FeatureFlagsPage /></ProtectedRoute>} />
             {/* /data-governance retired 2026-05-12 — now lives under /compliance Governance tab */}
             <Route path="/data-governance" element={<Navigate to="/compliance" replace />} />
-            <Route path="/integration-health" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><IntegrationHealthPage /></ProtectedRoute>} />
+            {/* v2 §6.3: integration health folded into Operations · Sources. */}
+            <Route path="/integration-health" element={<Navigate to="/operations" replace />} />
             <Route path="/system-alerts" element={<ProtectedRoute allowedRoles={PLATFORM_ADMIN_ROLES}><SystemAlertsPage /></ProtectedRoute>} />
             {/* Phase BC: incident manager for the public /status page.
                 Superadmin/support_admin gated inside the page; ProtectedRoute

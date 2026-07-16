@@ -30,20 +30,23 @@ const INDUSTRY_ADAPTERS = {
 
 // System prompt for Atheon Mind
 function buildSystemPrompt(tenantContext: string): string {
-  return `You are Atheon Mind, an enterprise intelligence AI assistant for the Atheon™ platform. You provide data-driven insights across business operations.
+  return `You are Jeff, the enterprise intelligence AI for the Atheon™ platform. You answer for this specific organisation from its own internal data and external signals — never generic advice.
 
 Your capabilities:
 - Financial analysis: revenue, margins, cash flow, forecasting
 - Supply chain intelligence: OTIF, logistics, inventory, procurement
 - Risk assessment: identify, quantify, and recommend mitigations
-- Catalyst (AI agent) status: monitoring autonomous agent performance
+- Catalyst runs: you have the recent run history below — reconciliations, discrepancies, exceptions, sign-off state
 - Process mining: efficiency metrics, anomalies, bottleneck detection
 - Knowledge graph queries: entity relationships and contextual data
 - Strategic radar: external signals, competitor tracking, regulatory events, market benchmarks
 - Root-cause diagnostics: L0-L5 causal chain analysis, diagnostic prescriptions
-- Catalyst intelligence: pattern discovery, effectiveness tracking, ROI calculation
 
-Always be specific with numbers, cite data sources, and provide actionable recommendations. Use South African Rand (ZAR) for currency. Format responses with markdown for readability.
+Honesty rules (absolute):
+- Answer ONLY from the tenant data context below and the retrieved knowledge. If a figure or fact is not in the context, say you don't have it — never invent a number, name, or trend.
+- Cite which data you used. When a run is not yet signed off, say so; do not present unconfirmed discrepancy values as recovered money.
+- A missing value is missing ("—"), not zero. Do not round a figure up to sound better.
+- Use each figure's own currency (default ZAR). Format responses with markdown for readability.
 
 ${tenantContext}`;
 }
@@ -59,6 +62,14 @@ async function getTenantContext(db: D1Database, tenantId: string): Promise<strin
   const signals = await db.prepare('SELECT title, category, sentiment, relevance_score FROM external_signals WHERE tenant_id = ? ORDER BY relevance_score DESC LIMIT 5').bind(tenantId).all();
   const activeRCAs = await db.prepare("SELECT metric_name, trigger_status, confidence FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active' ORDER BY generated_at DESC LIMIT 5").bind(tenantId).all();
   const roiData = await db.prepare('SELECT roi_multiple, total_discrepancy_value_recovered, total_person_hours_saved FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first();
+  // Jeff grounds on the actual catalyst run history (sub_catalyst_runs), not
+  // just the aggregate cluster stats — so "what did the last reconciliation
+  // find?" answers from real stored runs, never invention.
+  const runs = await db.prepare(
+    `SELECT sub_catalyst_name, run_number, status, mode, completed_at, matched, discrepancies,
+            exceptions_raised, avg_confidence, total_discrepancy_value, currency, sign_off_status, reasoning
+       FROM sub_catalyst_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 8`
+  ).bind(tenantId).all();
   const competitors = await db.prepare('SELECT name, market_share FROM competitors WHERE tenant_id = ? ORDER BY market_share DESC LIMIT 5').bind(tenantId).all();
   const regulatory = await db.prepare("SELECT title, compliance_deadline, readiness_score FROM regulatory_events WHERE tenant_id = ? AND status != 'expired' ORDER BY compliance_deadline ASC LIMIT 3").bind(tenantId).all();
 
@@ -122,6 +133,24 @@ async function getTenantContext(db: D1Database, tenantId: string): Promise<strin
   // V2: ROI context
   if (roiData) {
     context += `- ROI: ${roiData.roi_multiple}x multiple, R${(roiData.total_discrepancy_value_recovered as number || 0).toLocaleString()} recovered, ${roiData.total_person_hours_saved} person-hours saved\n`;
+  }
+  // Recent catalyst runs (Jeff's run memory). Honesty: a null discrepancy value
+  // is an em-dash, never coerced to 0; the sign-off state is stated so Jeff
+  // never presents an unconfirmed run as counted money.
+  if (runs.results.length > 0) {
+    context += '- Recent catalyst runs (most recent first):\n';
+    for (const rr of runs.results) {
+      const r = rr as Record<string, unknown>;
+      const dv = r.total_discrepancy_value;
+      const disc = typeof dv === 'number' && Number.isFinite(dv)
+        ? `${(r.currency as string) || 'ZAR'} ${Math.trunc(dv).toLocaleString('en-ZA')}`
+        : '—';
+      const when = r.completed_at ? ` on ${r.completed_at}` : '';
+      context += `  - ${r.sub_catalyst_name} #${r.run_number} [${r.status}/${r.mode}]${when}: ${r.matched} matched, ${r.discrepancies} discrepancies, ${r.exceptions_raised} exceptions, avg confidence ${r.avg_confidence}, discrepancy value ${disc}, sign-off: ${r.sign_off_status}\n`;
+      if (typeof r.reasoning === 'string' && r.reasoning.trim()) {
+        context += `    reasoning: ${(r.reasoning as string).slice(0, 240)}\n`;
+      }
+    }
   }
   return context;
 }

@@ -260,7 +260,7 @@ export default function ROIDashboardPage(): JSX.Element {
                 Open recovery ledger — every period, line item & audit pack <ArrowRight size={12} aria-hidden="true" />
               </Link>
               {billing.total_realised_savings > 0 && (
-                <Link to="/executive-summary" className="inline-flex items-center gap-1 text-caption font-medium text-accent hover:underline">
+                <Link to="/brief" className="inline-flex items-center gap-1 text-caption font-medium text-accent hover:underline">
                   Take it to the board — executive summary <ArrowRight size={12} aria-hidden="true" />
                 </Link>
               )}
