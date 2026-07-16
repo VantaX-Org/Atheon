@@ -18,7 +18,8 @@ type Evidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
 // LLM reasoning arrives as multi-paragraph markdown; cards get one plain
 // sentence, the review drawer keeps the full (de-markdowned) text.
 function plainReasoning(text: string): string {
-  return text.replace(/[*#_`]/g, '').replace(/\s+/g, ' ').trim();
+  // ponytail: underscores stay — they appear in identifiers like bank_fee_unallocated
+  return text.replace(/[*#`]/g, '').replace(/\s+/g, ' ').trim();
 }
 function briefReasoning(text: string): string {
   const plain = plainReasoning(text);
