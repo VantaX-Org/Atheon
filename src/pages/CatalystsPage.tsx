@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import type { ClusterItem, ActionItem, GovernanceData, SubCatalyst, DataSourceConfig, DataSourceType, ERPConnection, ExecutionLogEntry, FieldMapping, ExecutionConfig, ExecutionResult, HitlConfigListItem, IAMUser, RunAnalytics, RunAnalyticsAggregate, CatalystIntelligenceOverview, ROITrackingResponse, CatalystPrescriptionItem, SuccessStoriesResponse } from "@/lib/api";
 import { SuccessStoryCard } from "@/components/ui/success-story-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { ValueChainFlow } from "@/components/journey/ValueChainFlow";
 import { SharedSavingsStrip } from "@/components/SharedSavingsStrip";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Numeric } from "@/components/ui/numeric";
@@ -1160,6 +1161,8 @@ export function CatalystsPage() {
    </div>
   }
  />
+
+ <ValueChainFlow focus="fix" />
 
  {/* Hero band — the approver's ledger. Pending sign-offs (count + Rand at
      stake) dominate; completed count/value secondary; exceptions third.

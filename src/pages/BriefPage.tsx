@@ -25,6 +25,7 @@ import { useAppStore } from '@/stores/appStore';
 import {
   BriefColumn, Dateline, Figure, Sentence, DecisionCard, ProgressRule, BriefHeading,
 } from '@/components/brief/primitives';
+import { ValueChainFlow } from '@/components/journey/ValueChainFlow';
 
 type Approval = {
   id: string; clusterName: string; domain: string; catalystName: string;
@@ -116,6 +117,8 @@ export function BriefPage() {
         freshness={freshnessLine(fresh)}
         viewingAs={roleLabel && <span className="text-xs t-muted">Viewing as {roleLabel}</span>}
       />
+
+      <ValueChainFlow focus="report" />
 
       {firstRun ? (
         <section className="flex flex-col gap-3">
