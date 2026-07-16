@@ -2254,10 +2254,16 @@ seed.post('/seed-vantax', async (c) => {
     // ROI multiple regardless of which period range the page is asking for.
     const annualLicence = 580_000;
     const personHoursSaved = totalRunsSeeded * 18;
+    // Identified must equal what calculateROI re-derives from the seeded runs
+    // (Σ sourceTotalValue × 0.05 per run) — the recalc upsert supersedes these
+    // rows after any catalyst run, so a hand-picked number here drifts on day 1.
+    const identifiedFromRuns = Math.round(
+      runArchetypes.reduce((s, ra) => s + ra.sourceTotalValue, 0) * 0.05 * dayOffsets.length
+    );
     const roiPeriods: Array<{ period: string; mult: number; identified: number; recovered: number; minutesOld: number }> = [
-      { period: 'last_30d', mult: 1, identified: 2_600_000, recovered: 1_250_000, minutesOld: 2 },
-      { period: 'last_90d', mult: 3, identified: 7_200_000, recovered: 3_600_000, minutesOld: 1 },
-      { period: 'ytd', mult: 5.5, identified: 14_500_000, recovered: 7_012_400, minutesOld: 0 },
+      { period: 'last_30d', mult: 1, identified: Math.round(identifiedFromRuns * 0.18), recovered: 1_250_000, minutesOld: 2 },
+      { period: 'last_90d', mult: 3, identified: Math.round(identifiedFromRuns * 0.5), recovered: 3_600_000, minutesOld: 1 },
+      { period: 'ytd', mult: 5.5, identified: identifiedFromRuns, recovered: 7_012_400, minutesOld: 0 },
     ];
     for (const rp of roiPeriods) {
       const recovered = Math.min(rp.recovered, rp.identified);

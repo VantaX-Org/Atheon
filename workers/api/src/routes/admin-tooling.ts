@@ -63,8 +63,12 @@ adminTooling.get('/platform-health', async (c) => {
       const now = Date.now();
       const currentMinute = Math.floor(now / 60000);
       let totalMs = 0;
-      for (let m = currentMinute - 60; m <= currentMinute; m++) {
-        const raw = await c.env.CACHE.get(`perf:/api:${m}`);
+      // 61 sequential KV gets took 1.5-15s and hung the dashboard — fetch the
+      // whole hour in parallel instead.
+      const raws = await Promise.all(
+        Array.from({ length: 61 }, (_, i) => c.env.CACHE.get(`perf:/api:${currentMinute - 60 + i}`)),
+      );
+      for (const raw of raws) {
         if (raw) {
           const parsed = JSON.parse(raw) as { count: number; totalMs: number };
           totalRequests += parsed.count;

@@ -18,7 +18,10 @@ app.get('/', async (c) => {
   // Parallel queries for speed
   const [health, roi, activeRcas, pendingRx, signals, scoreHistory, targets, baseline] = await Promise.all([
     db.prepare('SELECT overall_score, dimensions FROM health_scores WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first(),
-    db.prepare('SELECT total_discrepancy_value_recovered, roi_multiple, platform_cost FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first(),
+    // licence_cost_annual, not platform_cost: /api/roi and the reactor fee node
+    // read licence_cost_annual, and calculateROI's recalc upsert only writes
+    // that column — platform_cost stays 0 and rendered "Atheon fee R0" on /brief.
+    db.prepare('SELECT total_discrepancy_value_recovered, roi_multiple, licence_cost_annual FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first(),
     db.prepare("SELECT COUNT(*) as cnt FROM root_cause_analyses WHERE tenant_id = ? AND status = 'active'").bind(tenantId).first<{ cnt: number }>(),
     db.prepare("SELECT COUNT(*) as cnt FROM diagnostic_prescriptions WHERE tenant_id = ? AND status = 'pending'").bind(tenantId).first<{ cnt: number }>(),
     db.prepare("SELECT COUNT(*) as cnt FROM external_signals WHERE tenant_id = ? AND detected_at >= datetime('now', '-7 days')").bind(tenantId).first<{ cnt: number }>(),
@@ -68,7 +71,7 @@ app.get('/', async (c) => {
     roi: {
       recovered: (roi?.total_discrepancy_value_recovered as number) || 0,
       multiple: roiMultiple,
-      cost: (roi?.platform_cost as number) || 0,
+      cost: (roi?.licence_cost_annual as number) || 0,
     },
     diagnostics: {
       activeRcas: activeRcas?.cnt || 0,

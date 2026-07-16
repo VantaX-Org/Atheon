@@ -196,8 +196,14 @@ export async function calculateROI(
     'SELECT SUM(total_discrepancy_value) as identified, COUNT(*) as total_runs, SUM(items_total) as total_items FROM sub_catalyst_runs WHERE tenant_id = ?'
   ).bind(tenantId).first<{ identified: number; total_runs: number; total_items: number }>();
 
+  // Recovered = booked money only: completed catalyst_actions whose ERP
+  // verification did not fail — the same source the ledger and receipts sum.
+  // Matched reconciliation volume (sub_catalyst_runs.total_matched_value) is
+  // throughput, not recovery, and inflated this figure ~24x before v67.
   const resolvedResult = await db.prepare(
-    'SELECT SUM(total_matched_value) as recovered FROM sub_catalyst_runs WHERE tenant_id = ?'
+    `SELECT SUM(value_zar) as recovered FROM catalyst_actions
+      WHERE tenant_id = ? AND status = 'completed'
+        AND (verification_status IS NULL OR verification_status != 'failed')`
   ).bind(tenantId).first<{ recovered: number }>();
 
   // Person-hours saved: total_items * 0.25 hours estimated manual effort
