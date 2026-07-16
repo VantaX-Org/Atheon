@@ -223,7 +223,18 @@ app.use('/api/*', auditEnrichment());
 
 // Rate limiting
 app.use('/api/auth/demo-login', demoAuthRateLimiter);
-app.use('/api/auth/*', authRateLimiter);
+// Brute-force limiter (10/5min) on credential + TOTP-guessing endpoints ONLY.
+// Session-lifecycle paths (/me, /refresh, /logout) fire on every page load —
+// the old blanket /api/auth/* mount meant ~10 rapid navigations exhausted the
+// budget, /me returned 429, and the client treated the session as dead and
+// logged the user out. Those paths now fall under the general 120/min limiter.
+for (const p of [
+  'login', 'register', 'forgot-password', 'reset-password', 'admin-reset',
+  'resend-verification', 'change-password', 'mfa/validate', 'mfa/verify',
+  'mfa/disable', 'mfa/regenerate-backup-codes', 'sso', 'sso/*',
+]) {
+  app.use(`/api/auth/${p}`, authRateLimiter);
+}
 app.use('/api/mind/*', aiRateLimiter);
 app.use('/api/contact', contactRateLimiter);
 
