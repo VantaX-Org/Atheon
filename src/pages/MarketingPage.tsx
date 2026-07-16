@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { MiniRiver } from "@/x/MiniRiver";
+import { journeyRiver } from "@/x/flows";
+
+// stable graph — the brand river, labels only (module-level so the canvas mounts once)
+const JOURNEY = journeyRiver();
 
 /* ============================================================
    ATHEON MARKETING PAGE — Luminous Editorial
@@ -280,20 +285,7 @@ const marketingCSS = `
   .mk5-chain-stage:hover { transform: translateY(-3px); box-shadow: 0 10px 24px -12px rgba(15, 17, 21, 0.25); }
 }
 
-/* The Atheon loop — ties the chain to the product's five-stage loop */
-.mk5-chain-loop {
-  margin-top: 1rem;
-  border: 1px solid var(--rule); border-radius: 4px;
-  background: var(--field-2);
-  padding: .85rem 1.1rem;
-  display: flex; align-items: center; gap: .5rem 1rem; flex-wrap: wrap;
-  font-family: 'Space Mono', monospace;
-  font-size: .6875rem; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--ink-2);
-}
-.mk5-chain-loop .lbl { color: var(--ink-3); letter-spacing: 0.2em; margin-right: .5rem; }
-.mk5-chain-loop .arrow { color: var(--chain-ok); }
-.mk5-chain-loop .end { color: var(--accent-c); }
+/* The Atheon loop — the brand river (MiniRiver) closes the chain */
 
 .mk5-hero-scroll {
   position: absolute; left: 3rem; bottom: 1.75rem;
@@ -1479,14 +1471,10 @@ export function MarketingPage() {
             <span className="rflow" aria-hidden />
             <span>&larr; Recovered back to your P&amp;L</span>
           </div>
-          <div className="mk5-chain-loop" aria-label="The Atheon loop">
-            <span className="lbl">The Atheon loop</span>
-            <span>Connect data</span><span className="arrow">&rarr;</span>
-            <span>Findings in Rand</span><span className="arrow">&rarr;</span>
-            <span>Approved fixes</span><span className="arrow">&rarr;</span>
-            <span>Verified savings</span><span className="arrow">&rarr;</span>
-            <span className="end">Board-ready reports</span>
-          </div>
+          <MiniRiver
+            graph={JOURNEY}
+            label="The Atheon loop: connect, detect, fix, recover, report"
+          />
         </div>
 
         <div className="mk5-hero-scroll">

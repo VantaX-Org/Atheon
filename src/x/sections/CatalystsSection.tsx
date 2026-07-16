@@ -1,10 +1,12 @@
 // Catalysts: the machines working the flows. Each card is a live catalyst
 // cluster — trust, throughput, and what its runs have returned this period.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ClusterItem } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
+import { catalystMiniRiver } from '../flows';
+import { MiniRiver } from '../MiniRiver';
 import type { Persona } from '../persona';
 
 type Ledger = Awaited<ReturnType<typeof api.catalysts.valueLedger>>;
@@ -33,12 +35,20 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
   }, [companyId]);
 
   const money = (v: number | null | undefined) => formatCompactCurrency(v ?? null, currency);
-  // valueLedger rows are per sub-catalyst; roll up to cluster
-  const runValue = new Map<string, { realized: number; runs: number }>();
-  for (const c of ledger?.catalysts ?? []) {
-    const cur = runValue.get(c.clusterId) ?? { realized: 0, runs: 0 };
-    runValue.set(c.clusterId, { realized: cur.realized + c.realizedSavingsZar, runs: cur.runs + c.runsCount });
-  }
+  // valueLedger rows are per sub-catalyst; roll up to cluster. Memoised so
+  // each card's mini-river graph is a stable reference (the canvas remounts
+  // on every new graph object).
+  const { runValue, rivers } = useMemo(() => {
+    const rv = new Map<string, { realized: number; runs: number }>();
+    for (const c of ledger?.catalysts ?? []) {
+      const cur = rv.get(c.clusterId) ?? { realized: 0, runs: 0 };
+      rv.set(c.clusterId, { realized: cur.realized + c.realizedSavingsZar, runs: cur.runs + c.runsCount });
+    }
+    const max = Math.max(...[...rv.values()].map((v) => v.realized), 0);
+    const rg = new Map<string, ReturnType<typeof catalystMiniRiver>>();
+    for (const c of clusters ?? []) rg.set(c.id, catalystMiniRiver(rv.get(c.id) ?? null, max));
+    return { runValue: rv, rivers: rg };
+  }, [clusters, ledger]);
 
   return (
     <section id="catalysts">
@@ -58,10 +68,18 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
       <div className="catgrid">
         {clusters?.map((c) => {
           const v = runValue.get(c.id);
+          const river = rivers.get(c.id);
           return (
             <div key={c.id} className="cat">
               <h3>{c.name} <span className={`pill ${c.status === 'active' ? 'ok' : 'grey'}`}>{c.status}</span></h3>
               <p className="desc">{c.description}</p>
+              {river && (
+                <MiniRiver
+                  graph={river}
+                  className="mini"
+                  label={v ? `Flow of realised value: ${money(v.realized)} over ${v.runs} runs, last 90 days` : 'No realised value flow yet'}
+                />
+              )}
               <div className="stats">
                 <div className="s">
                   <span className="num">{c.tasksCompleted.toLocaleString()}</span>
