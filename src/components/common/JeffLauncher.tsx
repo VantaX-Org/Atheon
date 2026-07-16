@@ -25,8 +25,14 @@ type Turn =
   | { role: 'jeff'; result: MindQueryResult }
   | { role: 'error'; text: string };
 
-export function JeffLauncher() {
+export function JeffLauncher({ context, variant = 'floating', openKey }: { context?: string; variant?: 'floating' | 'shell'; openKey?: number } = {}) {
   const [open, setOpen] = useState(false);
+
+  // Lets a host surface (e.g. reactor node "ask Jeff") pop the slide-over:
+  // bump openKey and Jeff opens with the current context already set.
+  useEffect(() => {
+    if (openKey) setOpen(true);
+  }, [openKey]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -46,7 +52,8 @@ export function JeffLauncher() {
     setTurns((t) => [...t, { role: 'user', text: q }]);
     setBusy(true);
     try {
-      const result = await api.mind.query(q, 'tier-1', activeTenantId || undefined, industry);
+      const q2 = context ? `Context: ${context}\n\n${q}` : q;
+      const result = await api.mind.query(q2, 'tier-1', activeTenantId || undefined, industry);
       setTurns((t) => [...t, { role: 'jeff', result }]);
     } catch (err) {
       const text =
@@ -63,15 +70,23 @@ export function JeffLauncher() {
 
   return (
     <>
-      {/* Floating launcher — stacked above the Help button (bottom-6). */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-[5.25rem] right-6 z-50 w-12 h-12 rounded-full bg-accent hover:bg-accent/80 text-[var(--text-on-accent)] shadow-lg shadow-accent/20 flex items-center justify-center transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] hover:scale-105 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-app)]"
-        aria-label="Ask Jeff — your assistant"
-        title="Ask Jeff"
-      >
-        <JeffLogo size={24} />
-      </button>
+      {variant === 'shell' ? (
+        /* Inline nav pill for the Recovery Console shell (.rx scope styles it). */
+        <button onClick={() => setOpen(true)} className="jeff-pill" aria-label="Ask Jeff — your assistant" title="Ask Jeff">
+          <JeffLogo size={16} spin={busy} />
+          <span>Jeff</span>
+        </button>
+      ) : (
+        /* Floating launcher — stacked above the Help button (bottom-6). */
+        <button
+          onClick={() => setOpen(true)}
+          className="fixed bottom-[5.25rem] right-6 z-50 w-12 h-12 rounded-full bg-accent hover:bg-accent/80 text-[var(--text-on-accent)] shadow-lg shadow-accent/20 flex items-center justify-center transition-[background-color,color,box-shadow,transform] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] hover:scale-105 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-app)]"
+          aria-label="Ask Jeff — your assistant"
+          title="Ask Jeff"
+        >
+          <JeffLogo size={24} />
+        </button>
+      )}
 
       {open && (
         <Portal><div className="fixed inset-0 z-[60] flex justify-end">

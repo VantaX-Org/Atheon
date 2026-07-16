@@ -4,6 +4,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 // Stub the three consolidated surfaces — Operations is a shell; its only logic
 // is the role-aware section switcher, so we don't drag in the children's API paths.
+// ValueChainFlow fetches journey inputs itself; stub it so page tests stay hermetic.
+vi.mock('@/components/journey/ValueChainFlow', () => ({ ValueChainFlow: () => null }));
 vi.mock('@/pages/DataPage', () => ({ default: () => <div>OVERVIEW_PANEL</div> }));
 vi.mock('@/pages/ConnectivityPage', () => ({ ConnectivityPage: () => <div>CONNECTIONS_PANEL</div> }));
 vi.mock('@/pages/IntegrationHealthPage', () => ({ IntegrationHealthPage: () => <div>HEALTH_PANEL</div> }));

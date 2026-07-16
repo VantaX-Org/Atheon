@@ -1,0 +1,136 @@
+// Recovery Console shell: wordmark, four section pills (scroll, don't route),
+// persona lens (demo tenant only), Jeff inline, avatar → identity menu.
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api, setToken, setTenantOverride } from '@/lib/api';
+import { useAppStore } from '@/stores/appStore';
+import { JeffLauncher } from '@/components/common/JeffLauncher';
+import { XIcon, type IconName } from './icons';
+import { PERSONAS, type Persona, type PersonaKey } from './persona';
+import type { SectionKey } from './reactor-graph';
+
+const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
+  { id: 'brief', label: 'Brief', icon: 'brief' },
+  { id: 'decisions', label: 'Decisions', icon: 'decisions' },
+  { id: 'ledger', label: 'Ledger', icon: 'ledger' },
+  { id: 'catalysts', label: 'Catalysts', icon: 'catalysts' },
+];
+
+export function Shell({ active, persona, onPersona, decisionsCount, jeffContext, jeffOpenKey }: {
+  active: SectionKey;
+  persona: Persona | null;
+  onPersona: (k: PersonaKey) => void;
+  decisionsCount: number | null;
+  jeffContext?: string;
+  jeffOpenKey?: number;
+}) {
+  const navigate = useNavigate();
+  const user = useAppStore((s) => s.user);
+  const companies = useAppStore((s) => s.companies);
+  const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const setSelectedCompanyId = useAppStore((s) => s.setSelectedCompanyId);
+  const setUser = useAppStore((s) => s.setUser);
+  const setActiveTenant = useAppStore((s) => s.setActiveTenant);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const signOut = async () => {
+    try { await api.auth.logout(); } catch { /* session cleared locally regardless */ }
+    setToken(null);
+    setTenantOverride(null);
+    setUser(null);
+    setActiveTenant(null, null, null);
+    navigate('/login', { replace: true });
+  };
+
+  const initial = (user?.name || user?.email || '?').charAt(0).toUpperCase();
+
+  return (
+    <div className="shell-wrap">
+      <div className="shell">
+        <span className="logo"><i>A</i>Atheon</span>
+        <nav className="tabs" aria-label="Sections">
+          {SECTIONS.filter((s) => !persona || persona.sections.includes(s.id)).map((s) => (
+            <button
+              key={s.id}
+              aria-current={active === s.id ? 'true' : undefined}
+              onClick={() => {
+                document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
+                history.replaceState(null, '', `#${s.id}`);
+              }}
+            >
+              <XIcon name={s.icon} size={14} /> {s.label}
+              {s.id === 'decisions' && decisionsCount != null && decisionsCount > 0 && (
+                <span className="badge">{decisionsCount}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="who">
+          <JeffLauncher variant="shell" openKey={jeffOpenKey} context={jeffContext ?? `surface:/x role:${persona?.key ?? 'user'}`} />
+          {persona && (
+            <select
+              className="role"
+              value={persona.key}
+              onChange={(e) => onPersona(e.target.value as PersonaKey)}
+              aria-label="Viewing as"
+            >
+              {Object.values(PERSONAS).map((p) => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </select>
+          )}
+          <div className="idwrap" ref={menuRef}>
+            <button className="avatar" onClick={() => setMenuOpen((v) => !v)} aria-label="Account menu" aria-expanded={menuOpen}>
+              {initial}
+            </button>
+            {menuOpen && (
+              <div className="idmenu" role="menu">
+                <div className="id-head">
+                  <b>{user?.name || user?.email}</b>
+                  {persona && <small>Viewing as {persona.label}</small>}
+                </div>
+                {companies.length > 0 && (
+                  <label className="id-row">
+                    <XIcon name="company" size={16} />
+                    <select
+                      value={selectedCompanyId ?? ''}
+                      onChange={(e) => setSelectedCompanyId(e.target.value || null)}
+                      aria-label="Company"
+                    >
+                      <option value="">All companies</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <button className="id-row" role="menuitem" onClick={() => navigate('/settings')}>
+                  <XIcon name="settings" size={16} /> Settings
+                </button>
+                <button className="id-row" role="menuitem" onClick={() => navigate('/mfa-setup')}>
+                  <XIcon name="mfa" size={16} /> Multi-factor auth
+                </button>
+                <button className="id-row" role="menuitem" onClick={() => navigate('/support')}>
+                  <XIcon name="support" size={16} /> Support
+                </button>
+                <button className="id-row" role="menuitem" onClick={signOut}>
+                  <XIcon name="signout" size={16} /> Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
