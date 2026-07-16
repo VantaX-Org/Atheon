@@ -45,7 +45,10 @@ export function ConsolePage() {
     () => activePersona(searchParams.toString(), activeTenantName),
     [searchParams, activeTenantName],
   );
-  const sections = persona?.sections ?? (['brief', 'decisions', 'ledger', 'catalysts'] as SectionKey[]);
+  const sections = useMemo(
+    () => persona?.sections ?? (['brief', 'decisions', 'ledger', 'catalysts'] as SectionKey[]),
+    [persona],
+  );
 
   const onPersona = (k: PersonaKey) => {
     const next = new URLSearchParams(searchParams);
@@ -81,7 +84,6 @@ export function ConsolePage() {
   useEffect(() => {
     const id = window.location.hash.slice(1);
     if (id) document.getElementById(id)?.scrollIntoView();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scrollTo = (id: string) => {

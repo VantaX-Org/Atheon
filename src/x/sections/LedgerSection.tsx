@@ -12,7 +12,7 @@ import type { Persona } from '../persona';
 type CompletedAction = Awaited<ReturnType<typeof api.erp.listAllActions>>['actions'][number];
 type Evidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
 
-export function LedgerSection({ persona: _persona, onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
+export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
   const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
   const [roi, setRoi] = useState<ROITrackingResponse | null>(null);

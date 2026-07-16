@@ -150,7 +150,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       ctx!.beginPath();
       for (let i = 0; i <= 36; i++) {
         const [x, y] = P(e, i / 36);
-        i ? ctx!.lineTo(x, y) : ctx!.moveTo(x, y);
+        if (i) ctx!.lineTo(x, y); else ctx!.moveTo(x, y);
       }
       const dimK = e.dim ? 0.25 : 1;
       ctx!.strokeStyle = String(TOK[e.colorVar] ?? '#888');

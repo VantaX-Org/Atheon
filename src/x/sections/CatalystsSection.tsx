@@ -9,7 +9,7 @@ import type { Persona } from '../persona';
 
 type Ledger = Awaited<ReturnType<typeof api.catalysts.valueLedger>>;
 
-export function CatalystsSection({ persona: _persona, onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
+export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
   const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
   const [clusters, setClusters] = useState<ClusterItem[] | null>(null);
