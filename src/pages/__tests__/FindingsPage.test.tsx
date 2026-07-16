@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+// ValueChainFlow fetches journey inputs itself; stub it so page tests stay hermetic.
+vi.mock('@/components/journey/ValueChainFlow', () => ({ ValueChainFlow: () => null }));
 vi.mock('@/lib/use-latest-findings', () => ({ useLatestFindings: () => [] }));
 vi.mock('@/lib/api', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/lib/api')>();
