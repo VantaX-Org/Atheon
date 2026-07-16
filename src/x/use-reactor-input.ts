@@ -49,10 +49,13 @@ async function fetchReactorInput(): Promise<ReactorInput> {
   return {
     world: ctx.status === 'fulfilled'
       ? {
-          headwinds: ctx.value.headwinds.length,
-          tailwinds: ctx.value.tailwinds.length,
-          regulatoryDeadlines: ctx.value.regulatoryDeadlines,
-          signalCount: ctx.value.topSignals.length,
+          headwinds: (ctx.value.headwinds ?? []).length,
+          tailwinds: (ctx.value.tailwinds ?? []).length,
+          // deploy-skew guard: older API returned the array itself, not a count
+          regulatoryDeadlines: Array.isArray(ctx.value.regulatoryDeadlines)
+            ? (ctx.value.regulatoryDeadlines as unknown[]).length
+            : ctx.value.regulatoryDeadlines ?? 0,
+          signalCount: (ctx.value.topSignals ?? []).length,
         }
       : null,
     health: ctx.status === 'fulfilled'
@@ -61,7 +64,7 @@ async function fetchReactorInput(): Promise<ReactorInput> {
     connections: conns.status === 'fulfilled'
       ? {
           total: conns.value.total,
-          broken: conns.value.connections.filter((c) => c.status === 'error' || c.status === 'failed').length,
+          broken: (conns.value.connections ?? []).filter((c) => c.status === 'error' || c.status === 'failed').length,
         }
       : null,
     ops,

@@ -161,7 +161,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
                 <p className="rc-meta"><b>{receipt.finding.title}</b> — {receipt.finding.description}</p>
               </div>
             )}
-            {receipt.execution_logs.length > 0 && (
+            {(receipt.execution_logs ?? []).length > 0 && (
               <div className="rc-sec">
                 <span className="kicker">Execution</span>
                 <table className="rc-table">

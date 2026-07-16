@@ -289,7 +289,9 @@ radar.get('/context', async (c) => {
       headwinds,
       tailwinds,
       competitorCount: v2.competitorCount,
-      regulatoryDeadlines: v2.regulatoryDeadlines,
+      regulatoryDeadlines: ((v2.regulatoryDeadlines as unknown[]) || []).length,
+      topSignals: signals,
+      contextNarrative: v2.contextNarrative ?? '',
     });
   } catch (err) {
     return c.json({ error: 'Failed to compute strategic context', detail: (err as Error).message }, 500);

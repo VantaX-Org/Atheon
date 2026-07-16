@@ -71,6 +71,10 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
     : null;
 
   const broken = connections?.filter((c) => c.status === 'error' || c.status === 'failed') ?? [];
+  // deploy-skew guard: older API returned the deadline array itself, not a count
+  const regDeadlines = ctx == null ? null
+    : Array.isArray(ctx.regulatoryDeadlines) ? (ctx.regulatoryDeadlines as unknown[]).length
+    : ctx.regulatoryDeadlines;
 
   return (
     <section id="brief">
@@ -103,8 +107,8 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
             <small>{broken.length > 0 ? `Systems connected · ${broken.length} broken` : 'Systems connected'}</small>
           </div>
           <div className="s">
-            <button className="num" onClick={() => onAskJeff(`${ctx?.regulatoryDeadlines ?? '—'} regulatory deadlines approaching`)}>
-              {ctx ? ctx.regulatoryDeadlines : '—'}
+            <button className="num" onClick={() => onAskJeff(`${regDeadlines ?? '—'} regulatory deadlines approaching`)}>
+              {regDeadlines ?? '—'}
             </button>
             <small>Regulatory deadlines</small>
           </div>
@@ -117,19 +121,19 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
           {ctx ? (
             <>
               {ctx.contextNarrative && <p className="rc-ai">{ctx.contextNarrative}</p>}
-              {ctx.headwinds.slice(0, 3).map((h) => (
+              {(ctx.headwinds ?? []).slice(0, 3).map((h) => (
                 <div key={h.id} className="rowline">
                   <span className="pill warn">headwind</span>
                   <p><b>{h.healthDimension}</b> — {h.recommendedResponse ?? `${h.impactTimeline} impact`}</p>
                 </div>
               ))}
-              {ctx.tailwinds.slice(0, 2).map((t) => (
+              {(ctx.tailwinds ?? []).slice(0, 2).map((t) => (
                 <div key={t.id} className="rowline">
                   <span className="pill ok">tailwind</span>
                   <p><b>{t.healthDimension}</b> — {t.recommendedResponse ?? `${t.impactTimeline} impact`}</p>
                 </div>
               ))}
-              {ctx.topSignals.slice(0, 3).map((s) => (
+              {(ctx.topSignals ?? []).slice(0, 3).map((s) => (
                 <div key={s.id} className="rowline">
                   <p>
                     <b>{s.title}</b>
