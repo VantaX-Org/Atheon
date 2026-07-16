@@ -323,7 +323,8 @@ export function ActionQueuePanel({
                               <p className="text-label t-muted mb-1 flex items-center gap-1.5">
                                 <FileText size={11} aria-hidden="true" /> Why this is recommended
                               </p>
-                              <p className="text-body-sm t-primary whitespace-pre-line">{a.reasoning}</p>
+                              {/* ponytail: LLM reasoning arrives as markdown; strip markers, keep line breaks */}
+                              <p className="text-body-sm t-primary whitespace-pre-line">{a.reasoning.replace(/[*#_`]/g, '')}</p>
                             </div>
                           )}
                           {out?.summary && (

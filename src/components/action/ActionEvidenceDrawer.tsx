@@ -261,7 +261,8 @@ export function ActionEvidenceDrawer({
               {action.reasoning ? (
                 <div className="pt-3 border-t" style={{ borderColor: 'var(--border-card)' }}>
                   <div className="text-caption t-muted mb-1">Reasoning</div>
-                  <p className="text-body-sm t-secondary whitespace-pre-line">{action.reasoning}</p>
+                  {/* ponytail: LLM reasoning arrives as markdown; strip markers, keep line breaks */}
+                  <p className="text-body-sm t-secondary whitespace-pre-line">{action.reasoning.replace(/[*#_`]/g, '')}</p>
                 </div>
               ) : null}
             </div>

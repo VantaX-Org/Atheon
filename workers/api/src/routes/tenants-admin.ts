@@ -33,7 +33,7 @@ tenants.get('/tenants', async (c) => {
   try {
     const queryResult = await c.env.DB.prepare(`
       SELECT 
-        id, name, slug, industry, plan, status, deployment_model, region,
+        id, name, slug, 'general' as industry, plan, status, deployment_model, region,
         created_at, updated_at,
         CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END as is_deleted,
         deleted_at
@@ -90,8 +90,8 @@ tenants.get('/tenants/:id', async (c) => {
   try {
     const tenant = await c.env.DB.prepare(`
       SELECT 
-        id, name, slug, industry, plan, status, deployment_model, region,
-        config, created_at, updated_at,
+        id, name, slug, 'general' as industry, plan, status, deployment_model, region,
+        created_at, updated_at,
         CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END as is_deleted,
         deleted_at, deleted_by
       FROM tenants

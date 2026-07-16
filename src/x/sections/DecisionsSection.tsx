@@ -15,6 +15,17 @@ import { SideDrawer } from '../SideDrawer';
 type PendingAction = Awaited<ReturnType<typeof api.erp.listAllActions>>['actions'][number];
 type Evidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
 
+// LLM reasoning arrives as multi-paragraph markdown; cards get one plain
+// sentence, the review drawer keeps the full (de-markdowned) text.
+function plainReasoning(text: string): string {
+  return text.replace(/[*#_`]/g, '').replace(/\s+/g, ' ').trim();
+}
+function briefReasoning(text: string): string {
+  const plain = plainReasoning(text);
+  const sentence = plain.split(/(?<=[.!?])\s/)[0] ?? plain;
+  return sentence.length > 140 ? `${sentence.slice(0, 139).trimEnd()}…` : sentence;
+}
+
 // Monday 00:00 local — the "this week" boundary for collected value.
 function weekStart(): number {
   const d = new Date();
@@ -161,7 +172,7 @@ export function DecisionsSection({ persona, canApprove, onAskJeff }: {
                 <b style={days >= 14 ? { color: 'var(--warn)' } : undefined}>
                   {days <= 0 ? 'raised today' : `waiting ${days} day${days === 1 ? '' : 's'}`}
                 </b>
-                {' · '}raised {new Date(a.created_at).toLocaleDateString()}{a.reasoning ? ` · ${a.reasoning}` : ''}
+                {' · '}raised {new Date(a.created_at).toLocaleDateString()}{a.reasoning ? ` · ${briefReasoning(a.reasoning)}` : ''}
               </p>
             </div>
             <div className="acts">
@@ -177,7 +188,7 @@ export function DecisionsSection({ persona, canApprove, onAskJeff }: {
           <p className="rc-meta">
             <b>{review.catalyst_name}</b> — {review.action_type.replace(/_/g, ' ')}
             <br />Raised {new Date(review.created_at).toLocaleDateString()}
-            {review.reasoning ? <><br />{review.reasoning}</> : null}
+            {review.reasoning ? <><br />{plainReasoning(review.reasoning)}</> : null}
           </p>
 
           <div className="rc-sec">

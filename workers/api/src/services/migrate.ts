@@ -1209,6 +1209,10 @@ export async function runMigrations(db: D1Database): Promise<MigrationResult> {
     { table: 'erp_customers',        column: 'dataset_id', definition: 'TEXT' },
     { table: 'erp_suppliers',        column: 'dataset_id', definition: 'TEXT' },
     { table: 'erp_products',         column: 'dataset_id', definition: 'TEXT' },
+    // v86: tenant soft-delete (tenants-admin.ts) — columns referenced since the
+    // feature shipped but never added to the live schema.
+    { table: 'tenants',              column: 'deleted_at', definition: 'TEXT' },
+    { table: 'tenants',              column: 'deleted_by', definition: 'TEXT' },
   ];
 
   // Column-heal — try the whole list as a single batch first. On a fresh
