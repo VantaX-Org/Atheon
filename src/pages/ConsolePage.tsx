@@ -27,7 +27,8 @@ import {
   Building2, Building, CreditCard,
   KeyRound, UserCog, UserPlus,
   Cpu, HeartPulse, Bell, Rocket, ClipboardList, Flag,
-  Network, Webhook, Inbox,
+  Network, Webhook, Inbox, Zap,
+  Share2, Sparkles,
   Headset, ListFilter, UserSearch, AlertTriangle,
   BadgeCheck,
   type LucideIcon,
@@ -52,6 +53,9 @@ const FeatureFlagsPage = lazyWithRetry(() => import('@/pages/FeatureFlagsPage').
 const IntegrationsPage = lazyWithRetry(() => import('@/pages/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const WebhooksPage = lazyWithRetry(() => import('@/pages/WebhooksPage').then(m => ({ default: m.WebhooksPage })));
 const ActionLayerPage = lazyWithRetry(() => import('@/pages/ActionLayerPage').then(m => ({ default: m.ActionLayerPage })));
+const CatalystsPage = lazyWithRetry(() => import('@/pages/CatalystsPage').then(m => ({ default: m.CatalystsPage })));
+const MemoryPage = lazyWithRetry(() => import('@/pages/MemoryPage').then(m => ({ default: m.MemoryPage })));
+const MindPage = lazyWithRetry(() => import('@/pages/MindPage').then(m => ({ default: m.MindPage })));
 const SupportConsolePage = lazyWithRetry(() => import('@/pages/SupportConsolePage').then(m => ({ default: m.SupportConsolePage })));
 const SupportTriagePage = lazyWithRetry(() => import('@/pages/admin/SupportTriagePage').then(m => ({ default: m.SupportTriagePage })));
 const ImpersonationPage = lazyWithRetry(() => import('@/pages/ImpersonationPage').then(m => ({ default: m.ImpersonationPage })));
@@ -109,6 +113,14 @@ const GROUPS: Group[] = [
       { key: 'integrations', label: 'Integrations', icon: Network, floor: 'admin', render: () => <IntegrationsPage /> },
       { key: 'webhooks', label: 'Webhooks', icon: Webhook, floor: 'admin', render: () => <WebhooksPage /> },
       { key: 'operator-queue', label: 'Operator queue', icon: Inbox, floor: 'admin', render: () => <ActionLayerPage /> },
+      { key: 'catalyst-ops', label: 'Catalyst ops', icon: Zap, floor: 'admin', render: () => <CatalystsPage /> },
+    ],
+  },
+  {
+    label: 'Intelligence',
+    sections: [
+      { key: 'memory', label: 'Knowledge graph', icon: Share2, floor: 'admin', render: () => <MemoryPage /> },
+      { key: 'mind', label: 'Models', icon: Sparkles, floor: 'admin', render: () => <MindPage /> },
     ],
   },
   {

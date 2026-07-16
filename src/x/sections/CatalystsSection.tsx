@@ -1,6 +1,7 @@
 // Catalysts: the machines working the flows. Each card is a live catalyst
 // cluster — trust, throughput, and what its runs have returned this period.
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ClusterItem } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
@@ -10,25 +11,29 @@ import { MiniRiver } from '../MiniRiver';
 import type { Persona } from '../persona';
 
 type Ledger = Awaited<ReturnType<typeof api.catalysts.valueLedger>>;
+type Runs = Awaited<ReturnType<typeof api.catalysts.runAnalytics>>;
 
 export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
   const companyId = useSelectedCompanyId();
   const currency = useTenantCurrency();
   const [clusters, setClusters] = useState<ClusterItem[] | null>(null);
   const [ledger, setLedger] = useState<Ledger | null>(null);
+  const [runs, setRuns] = useState<Runs | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const [cl, vl] = await Promise.allSettled([
+      const [cl, vl, ra] = await Promise.allSettled([
         api.catalysts.clusters(undefined, undefined, companyId ?? undefined),
         api.catalysts.valueLedger('last_90d', companyId ?? undefined),
+        api.catalysts.runAnalytics(undefined, undefined, 10),
       ]);
       if (cancelled) return;
       setClusters(cl.status === 'fulfilled' ? cl.value.clusters : null);
       setLedger(vl.status === 'fulfilled' ? vl.value : null);
+      setRuns(ra.status === 'fulfilled' ? ra.value : null);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -106,6 +111,29 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
             </div>
           );
         })}
+      </div>
+
+      {/* Recent runs — each row deep-links to the kept /catalysts/runs/:runId detail. */}
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <h3>Recent runs <span className="meta">last 10</span></h3>
+        {runs ? (
+          runs.runs.length === 0 ? <p className="flow-note">No runs yet.</p> : (
+            <>
+              <p className="rc-meta">
+                {runs.aggregate.totalRuns} runs · {runs.aggregate.totalCompleted.toLocaleString()}/{runs.aggregate.totalItems.toLocaleString()} items completed · {runs.aggregate.totalExceptions} exceptions · {runs.aggregate.automationRate}% automated
+              </p>
+              {runs.runs.map((r) => (
+                <Link key={r.id} to={`/catalysts/runs/${r.runId}`} className="lrow" style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <span className="d">{new Date(r.startedAt).toLocaleDateString()}</span>
+                  <p><b>{r.subCatalystName ?? r.clusterName ?? '—'}</b> — {r.summary.completed}/{r.summary.total} completed{r.summary.exceptions > 0 ? ` · ${r.summary.exceptions} exceptions` : ''}</p>
+                  <span className={`pill ${r.summary.exceptions > 0 ? 'warn' : r.status === 'completed' ? 'ok' : 'grey'}`}>{r.status.replace(/_/g, ' ')}</span>
+                </Link>
+              ))}
+            </>
+          )
+        ) : (
+          <p className="flow-note">{loading ? 'Loading…' : "— couldn't load recent runs"}</p>
+        )}
       </div>
     </section>
   );

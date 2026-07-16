@@ -2,15 +2,16 @@
 // Recovered and prevented are API facts; the platform fee is shown on its own
 // line (never netted into recovered); net is computed client-side and says so.
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { ROITrackingResponse } from '@/lib/api';
+import type { ForecastAccuracyResp, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import type { Persona } from '../persona';
 
 type CompletedAction = Awaited<ReturnType<typeof api.erp.listAllActions>>['actions'][number];
 type Evidence = Awaited<ReturnType<typeof api.erp.actionEvidence>>;
+type CalibrationSummary = Awaited<ReturnType<typeof api.catalysts.getCalibrationSummary>>;
+type ProvRoot = Awaited<ReturnType<typeof api.provenance.root>>;
 
 export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJeff: (ctx: string) => void }) {
   const companyId = useSelectedCompanyId();
@@ -19,19 +20,30 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
   const [receipts, setReceipts] = useState<CompletedAction[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [receipt, setReceipt] = useState<Evidence | 'loading' | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [busyExport, setBusyExport] = useState<'pdf' | 'digest' | 'report' | 'csv' | null>(null);
+  const [calib, setCalib] = useState<CalibrationSummary | null>(null);
+  const [fcast, setFcast] = useState<ForecastAccuracyResp | null>(null);
+  const [provRoot, setProvRoot] = useState<ProvRoot | null>(null);
+  // 'error' = verify call itself failed — distinct from a booked invalid result
+  const [verify, setVerify] = useState<ProvenanceVerifyResult | 'running' | 'error' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const [r, acts] = await Promise.allSettled([
+      const [r, acts, cal, fa, pr] = await Promise.allSettled([
         api.roi.get(),
         api.erp.listAllActions({ status: 'completed', limit: 20 }),
+        api.catalysts.getCalibrationSummary(),
+        api.insightsStats.forecastAccuracy(),
+        api.provenance.root(),
       ]);
       if (cancelled) return;
       setRoi(r.status === 'fulfilled' ? r.value : null);
       setReceipts(acts.status === 'fulfilled' ? acts.value.actions : null);
+      setCalib(cal.status === 'fulfilled' ? cal.value : null);
+      setFcast(fa.status === 'fulfilled' ? fa.value : null);
+      setProvRoot(pr.status === 'fulfilled' ? pr.value : null);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -50,23 +62,57 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     catch { setReceipt(null); }
   };
 
-  const exportPdf = async () => {
-    setExporting(true);
-    try {
-      const blob = await api.roi.exportPdf();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'atheon-value-ledger.pdf'; a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* button re-enables; nothing downloaded */ }
-    setExporting(false);
+  const verifyChain = async () => {
+    setVerify('running');
+    try { setVerify(await api.provenance.verify()); }
+    catch { setVerify('error'); }
   };
+
+  // one busy slot: exports are sequential by nature; failures re-enable, no toast
+  const runExport = async (kind: NonNullable<typeof busyExport>, fn: () => Promise<void>) => {
+    setBusyExport(kind);
+    try { await fn(); } catch { /* button re-enables; nothing downloaded */ }
+    setBusyExport(null);
+  };
+
+  const downloadBlob = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportPdf = () => runExport('pdf', async () => {
+    downloadBlob(await api.roi.exportPdf(), 'atheon-value-ledger.pdf');
+  });
+
+  const exportDigest = () => runExport('digest', async () => {
+    const d = await api.boardDigest.generate();
+    await api.boardDigest.downloadPdf(d.id, d.title);
+  });
+
+  const exportBoardReport = () => runExport('report', async () => {
+    const r = await api.boardReport.generate();
+    await api.boardReport.downloadPdf(r.id, r.title);
+  });
+
+  const exportCsv = () => runExport('csv', async () => {
+    const { export: rows } = await api.roi.exportCsv();
+    if (!rows?.length) return; // nothing booked → no file, button re-enables
+    const esc = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const keys = Object.keys(rows[0]);
+    const csv = [keys.join(','), ...rows.map((row) => keys.map((k) => esc(row[k])).join(','))].join('\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv' }), 'atheon-value-ledger.csv');
+  });
 
   const money = (v: number | null | undefined) => formatCompactCurrency(v ?? null, currency);
   const recovered = roi?.totalDiscrepancyValueRecovered ?? null;
   const fee = roi?.platformCost ?? null;
   const net = recovered != null && fee != null ? recovered - fee : null;
   const byConn = roi?.breakdown?.byConnection ?? [];
+  // both trace to booked API fields; failed fetch → null → '—', never 0
+  const accuracy = calib?.accuracyPct != null ? `${Math.round(calib.accuracyPct)}%` : '—';
+  const withinBand = fcast?.within_band_rate != null ? `${(fcast.within_band_rate * 100).toFixed(1)}%` : '—';
 
   return (
     <section id="ledger">
@@ -114,12 +160,49 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
           )}
         </div>
 
+        <div className="card" id="proof">
+          <h3>Proof <span className="meta">forecast trust</span></h3>
+          <div className="rowline">
+            <button className="amt num" onClick={() => onAskJeff(`Forecast accuracy: ${accuracy} across ${calib ? `${calib.simulationsWithOutcomes} of ${calib.totalSimulations}` : 'observed'} simulations, ${calib?.calibratedSubCatalysts ?? '—'} calibrated sub-catalysts`)}>
+              {loading ? '…' : accuracy}
+            </button>
+            <p><b>Forecast accuracy</b> — predicted vs booked
+              {calib && <span className="when">{calib.simulationsWithOutcomes}/{calib.totalSimulations} simulations observed · {calib.calibratedSubCatalysts} calibrated</span>}
+            </p>
+          </div>
+          <div className="rowline">
+            <button className="amt num" onClick={() => onAskJeff(`Forecasts landing within band: ${withinBand}${fcast ? ` over ${fcast.total_graded} graded, last ${fcast.lookback_days} days` : ''}`)}>
+              {loading ? '…' : withinBand}
+            </button>
+            <p><b>Within band</b> — forecasts that landed where promised
+              {fcast && <span className="when">{fcast.total_graded} graded · last {fcast.lookback_days} days</span>}
+            </p>
+          </div>
+          {provRoot?.root != null && (
+            <button className="rc-hash" style={{ display: 'block', width: '100%', marginTop: '0.5rem' }}
+              onClick={() => onAskJeff(`Provenance chain sealed at entry ${provRoot.seq}, merkle root ${provRoot.root}`)}>
+              Provenance chain sealed · entry {provRoot.seq} · {provRoot.root.slice(0, 12)}…
+            </button>
+          )}
+          <div className="acts" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.75rem' }}>
+            <button className="ghost" onClick={verifyChain} disabled={verify === 'running'}>{verify === 'running' ? 'Verifying…' : 'Verify chain'}</button>
+            {verify === 'error' && <span className="pill warn">couldn't verify</span>}
+            {verify && typeof verify === 'object' && (
+              verify.valid
+                ? <span className="pill ok">chain intact · {verify.total_entries} entries</span>
+                : <span className="pill warn">verification failed{verify.first_invalid_seq != null ? ` · entry ${verify.first_invalid_seq}` : ''}</span>
+            )}
+          </div>
+        </div>
+
         <div className="card">
           <h3>Sealed exports <span className="meta">board-ready</span></h3>
           <p className="rc-meta">Every figure in these exports traces to the receipts below.</p>
-          <div className="acts" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <button className="go" onClick={exportPdf} disabled={exporting}>{exporting ? 'Preparing…' : 'Value ledger PDF'}</button>
-            <Link className="ghost" to="/board" style={{ display: 'inline-flex', alignItems: 'center' }}>Board digest</Link>
+          <div className="acts" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+            <button className="go" onClick={exportPdf} disabled={busyExport === 'pdf'}>{busyExport === 'pdf' ? 'Preparing…' : 'Value ledger PDF'}</button>
+            <button className="ghost" onClick={exportDigest} disabled={busyExport === 'digest'}>{busyExport === 'digest' ? 'Preparing…' : 'Board digest PDF'}</button>
+            <button className="ghost" onClick={exportBoardReport} disabled={busyExport === 'report'}>{busyExport === 'report' ? 'Preparing…' : 'Board report PDF'}</button>
+            <button className="ghost" onClick={exportCsv} disabled={busyExport === 'csv'}>{busyExport === 'csv' ? 'Preparing…' : 'Ledger CSV'}</button>
           </div>
         </div>
       </div>
