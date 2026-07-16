@@ -16,11 +16,13 @@ const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
   { id: 'catalysts', label: 'Catalysts', icon: 'catalysts' },
 ];
 
-export function Shell({ active, persona, onPersona, decisionsCount }: {
+export function Shell({ active, persona, onPersona, decisionsCount, jeffContext, jeffOpenKey }: {
   active: SectionKey;
   persona: Persona | null;
   onPersona: (k: PersonaKey) => void;
   decisionsCount: number | null;
+  jeffContext?: string;
+  jeffOpenKey?: number;
 }) {
   const navigate = useNavigate();
   const user = useAppStore((s) => s.user);
@@ -57,7 +59,7 @@ export function Shell({ active, persona, onPersona, decisionsCount }: {
       <div className="shell">
         <span className="logo"><i>A</i>Atheon</span>
         <nav className="tabs" aria-label="Sections">
-          {SECTIONS.map((s) => (
+          {SECTIONS.filter((s) => !persona || persona.sections.includes(s.id)).map((s) => (
             <button
               key={s.id}
               aria-current={active === s.id ? 'true' : undefined}
@@ -74,7 +76,7 @@ export function Shell({ active, persona, onPersona, decisionsCount }: {
           ))}
         </nav>
         <div className="who">
-          <JeffLauncher variant="shell" context={`surface:/x role:${persona?.key ?? 'user'}`} />
+          <JeffLauncher variant="shell" openKey={jeffOpenKey} context={jeffContext ?? `surface:/x role:${persona?.key ?? 'user'}`} />
           {persona && (
             <select
               className="role"

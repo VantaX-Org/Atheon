@@ -112,7 +112,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
       </div>
 
       <div className="cards">
-        <div className="card">
+        <div className="card" id="world">
           <h3>The world <span className="meta">external signals</span></h3>
           {ctx ? (
             <>
@@ -147,7 +147,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
           )}
         </div>
 
-        <div className="card">
+        <div className="card" id="plumbing">
           <h3>The plumbing <span className="meta">connected systems</span></h3>
           {connections ? (
             connections.length === 0 ? (
@@ -171,7 +171,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <div className="card" id="leaks" style={{ marginTop: '1rem' }}>
         <h3>Where it leaks <span className="meta">{summary ? `${summary.total_count} findings` : ''}</span></h3>
         {topFindings ? (
           topFindings.map((f) => (

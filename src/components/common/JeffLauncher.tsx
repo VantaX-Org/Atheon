@@ -25,8 +25,14 @@ type Turn =
   | { role: 'jeff'; result: MindQueryResult }
   | { role: 'error'; text: string };
 
-export function JeffLauncher({ context, variant = 'floating' }: { context?: string; variant?: 'floating' | 'shell' } = {}) {
+export function JeffLauncher({ context, variant = 'floating', openKey }: { context?: string; variant?: 'floating' | 'shell'; openKey?: number } = {}) {
   const [open, setOpen] = useState(false);
+
+  // Lets a host surface (e.g. reactor node "ask Jeff") pop the slide-over:
+  // bump openKey and Jeff opens with the current context already set.
+  useEffect(() => {
+    if (openKey) setOpen(true);
+  }, [openKey]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);

@@ -98,7 +98,7 @@ export function LedgerSection({ persona: _persona, onAskJeff }: { persona: Perso
       {!loading && !roi && <p className="flow-note">— couldn't load the value ledger</p>}
 
       <div className="cards">
-        <div className="card">
+        <div className="card" id="attribution">
           <h3>Where recovery came from <span className="meta">by source system</span></h3>
           {byConn.length > 0 ? byConn.map((c) => (
             <div key={c.key} className="rowline">
@@ -124,7 +124,7 @@ export function LedgerSection({ persona: _persona, onAskJeff }: { persona: Perso
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <div className="card" id="receipts" style={{ marginTop: '1rem' }}>
         <h3>Receipts <span className="meta">completed actions</span></h3>
         {receipts ? (
           receipts.length === 0 ? <p className="flow-note">No completed actions yet.</p> :

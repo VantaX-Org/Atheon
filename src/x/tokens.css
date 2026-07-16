@@ -326,6 +326,7 @@
 .rx .rail button { display: flex; align-items: center; gap: 0.5rem; font-size: 0.72rem; font-weight: 600; color: var(--mut); padding: 0.45rem 0.7rem; border-radius: 12px; }
 .rx .rail button:hover { color: var(--ink); background: var(--card2); }
 .rx .rail button[aria-current] { color: var(--brand); background: var(--brand-soft); }
+.rx .rail button.sub { font-size: 0.66rem; font-weight: 500; padding: 0.3rem 0.7rem 0.3rem 2rem; }
 @media (max-width: 1420px) { .rx .rail { display: none; } }
 
 .rx .in { animation: rx-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards; }
