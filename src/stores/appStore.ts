@@ -81,9 +81,9 @@ function applyTheme(theme: Theme) {
 }
 
 const savedThemeRaw = typeof window !== 'undefined' ? localStorage.getItem(THEME_LS_KEY) : null;
-// Legacy value 'light' (from the retired light-lock) is honoured; anything else
-// invalid falls back to 'auto' so new users track their OS.
-const initialTheme: Theme = VALID_THEMES.includes(savedThemeRaw as Theme) ? (savedThemeRaw as Theme) : 'auto';
+// A saved preference (incl. legacy 'light') is honoured; new users with none
+// default to dark — the cinematic glowing-river look is the brand's home base.
+const initialTheme: Theme = VALID_THEMES.includes(savedThemeRaw as Theme) ? (savedThemeRaw as Theme) : 'dark';
 // Migrate legacy accent values
 const rawAccent = typeof window !== 'undefined' ? localStorage.getItem('atheon-accent') : null;
 const legacyMap: Record<string, AccentColor> = { amber: 'indigo', teal: 'indigo', sky: 'blue', cyan: 'blue' };

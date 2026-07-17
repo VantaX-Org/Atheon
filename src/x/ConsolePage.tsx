@@ -129,7 +129,7 @@ export function ConsolePage() {
         persona={persona}
         onPersona={onPersona}
         decisionsCount={decisionsCount}
-        jeffContext={jeff.ctx ? `role:${persona?.key ?? 'user'} ${jeff.ctx}` : undefined}
+        jeffContext={jeff.ctx ? `${persona ? `The reader is the ${persona.label} — answer through their lens (${persona.lens}). ` : ''}${jeff.ctx}` : undefined}
         jeffOpenKey={jeff.key}
       />
 

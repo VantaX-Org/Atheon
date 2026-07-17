@@ -10,7 +10,7 @@
  * for every authenticated user, mounted app-wide in AppLayout next to Help.
  */
 import { useState, useRef, useEffect } from 'react';
-import { Send, X } from 'lucide-react';
+import { Send, X, Mic, Volume2, VolumeX } from 'lucide-react';
 import { Portal } from '@/components/ui/portal';
 import { JeffLogo } from '@/components/common/JeffLogo';
 import { api, ApiError } from '@/lib/api';
@@ -43,9 +43,18 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [listening, setListening] = useState(false);
+  const [speakBack, setSpeakBack] = useState(false);
   const activeTenantId = useAppStore((s) => s.activeTenantId);
   const industry = useAppStore((s) => s.industry);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recogRef = useRef<any>(null);
+
+  // Voice is native — no dependency. Dictation via Web Speech (webkit-prefixed on
+  // Safari/Chrome), and Jeff can read his answer back via speechSynthesis. Both
+  // feature-detected: the buttons only render where the browser supports them.
+  const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+  const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   // Keep the newest turn in view as the thread grows.
   useEffect(() => {
@@ -74,6 +83,50 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
       setBusy(false);
     }
   };
+
+  // Dictation: fill the box live, and when the user stops talking, send it — a
+  // hands-free ask. onend fires once recognition settles; auto-send only if we
+  // captured final speech (not an aborted/empty session).
+  const toggleMic = () => {
+    if (!SR) return;
+    if (listening) { recogRef.current?.stop(); return; }
+    const r = new SR();
+    r.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-GB' : 'en-GB';
+    r.interimResults = true;
+    r.continuous = false;
+    let finalText = '';
+    r.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const seg = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += seg; else interim += seg;
+      }
+      setPrompt(finalText || interim);
+    };
+    r.onerror = () => setListening(false);
+    r.onend = () => {
+      setListening(false);
+      const q = finalText.trim();
+      if (q) { setPrompt(''); ask(q); }
+    };
+    recogRef.current = r;
+    setListening(true);
+    r.start();
+  };
+
+  // Read Jeff's newest answer aloud while speak-back is on. Cancel any in-flight
+  // utterance first so answers don't queue up; cancel on close/unmount too.
+  useEffect(() => {
+    if (!speakBack || !canSpeak) return;
+    const last = turns[turns.length - 1];
+    if (last?.role === 'jeff') {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(cleanJeffMarkdown(last.result.response)));
+    }
+  }, [turns, speakBack, canSpeak]);
+  useEffect(() => {
+    if (!open && canSpeak) window.speechSynthesis.cancel();
+  }, [open, canSpeak]);
 
   // A surface's "ask Jeff" / "explain" bumps openKey. That should KICK OFF the
   // conversation, not drop the user into an empty box. Fire once per bump, via
@@ -125,9 +178,22 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
                   <p className="text-[11px] t-muted">Grounded in your organisation's data — no guesses</p>
                 </div>
               </div>
-              <button onClick={() => setOpen(false)} className="t-muted hover:t-primary transition-colors" aria-label="Close Jeff">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-1">
+                {canSpeak && (
+                  <button
+                    onClick={() => { setSpeakBack((s) => { if (s) window.speechSynthesis.cancel(); return !s; }); }}
+                    className={`transition-colors ${speakBack ? 'text-accent' : 't-muted hover:t-primary'}`}
+                    aria-label={speakBack ? 'Mute Jeff’s voice' : 'Let Jeff speak answers aloud'}
+                    aria-pressed={speakBack}
+                    title={speakBack ? 'Jeff is reading answers aloud' : 'Read answers aloud'}
+                  >
+                    {speakBack ? <Volume2 size={17} /> : <VolumeX size={17} />}
+                  </button>
+                )}
+                <button onClick={() => setOpen(false)} className="t-muted hover:t-primary transition-colors" aria-label="Close Jeff">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Thread */}
@@ -188,8 +254,20 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
                   className="flex-1 resize-none rounded-md px-3 py-2 text-sm t-primary bg-[var(--bg-secondary)] focus:outline-none focus:ring-2 focus:ring-accent/40 max-h-32"
                   style={{ border: '1px solid var(--border-card)' }}
                 />
+                {SR && (
+                  <button
+                    onClick={toggleMic}
+                    className={`w-10 h-10 flex-shrink-0 rounded-md flex items-center justify-center transition-colors ${listening ? 'bg-accent text-[var(--text-on-accent)] animate-pulse' : 't-muted hover:t-primary'}`}
+                    style={listening ? undefined : { border: '1px solid var(--border-card)', background: 'var(--bg-secondary)' }}
+                    aria-label={listening ? 'Stop listening' : 'Speak to Jeff'}
+                    aria-pressed={listening}
+                    title={listening ? 'Listening — tap to stop' : 'Speak to Jeff'}
+                  >
+                    <Mic size={16} />
+                  </button>
+                )}
                 <button
-                  onClick={ask}
+                  onClick={() => ask()}
                   disabled={busy || !prompt.trim()}
                   className="w-10 h-10 flex-shrink-0 rounded-md bg-accent text-[var(--text-on-accent)] flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/80 transition-colors"
                   aria-label="Send to Jeff"
