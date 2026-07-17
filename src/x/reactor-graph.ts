@@ -106,7 +106,7 @@ const DIM: Record<ReactorFocus, (id: string) => boolean> = {
 // is carried per-node by tags (the rows mix scopes, so bands can't claim it).
 export const REACTOR_LANES = [
   { y: 0.015, label: 'Value chain — inside your business' },
-  { y: 0.3, label: 'Recovery flow — across the boundary' },
+  { y: 0.34, label: 'Recovery flow — across the boundary' },
   { y: 0.71, label: 'Decision queue — waiting on a signature' },
 ];
 
@@ -173,6 +173,18 @@ export function buildReactorGraph(
     ? `${ops.totalCount} findings · this assessment${(ops.unpricedCount ?? 0) > 0 ? ` · ${ops.unpricedCount} unpriced` : ''}`
     : undefined;
 
+  // Leak node drills into WHERE it leaks: each leaking stage, priced from the
+  // same findings, heaviest first. From here the stage's own tile opens the
+  // category breakdown, and "Open Leaks" reaches the finding-level list.
+  const leakRows = stages
+    .filter((s) => s.sum && s.sum.count > 0)
+    .sort((a, b) => b.sum!.valueZar - a.sum!.valueZar)
+    .map((s) => ({
+      label: s.label,
+      value: s.sum!.valueZar > 0 ? money(s.sum!.valueZar) : '—',
+      sub: `${s.sum!.count} finding${s.sum!.count === 1 ? '' : 's'}`,
+    }));
+
   // Drill-down payloads: what leaks inside a stage (its real categories) and
   // its impact on each stage after it (their real leak figures) — the chain
   // relationship, priced from the same findings, never a modelled number.
@@ -217,7 +229,7 @@ export function buildReactorGraph(
 
   const nodes: RiverNode[] = [
     {
-      id: 'macro', x: 0.085, y: 0.13, kicker: 'Macro & market',
+      id: 'macro', x: 0.085, y: 0.17, kicker: 'Macro & market',
       value: macro ? `${macro.count} signal${macro.count === 1 ? '' : 's'}` : '—',
       sub: macro?.signals[0]?.title,
       tag: 'External', cls: 'stage',
@@ -232,7 +244,7 @@ export function buildReactorGraph(
       downstream: stageDownstream(-1),
     },
     ...stages.map((s, i): RiverNode => ({
-      id: s.id, x: s.x, y: 0.13, kicker: s.label,
+      id: s.id, x: s.x, y: 0.17, kicker: s.label,
       value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 && s.sum.unpriced > 0 ? '—' : money(s.sum.valueZar)) : '—',
       sub: stageSub(s.sum),
       cls: s.sum ? (s.sum.count > 0 ? 'stage leaky' : 'stage clean') : 'stage',
@@ -240,7 +252,7 @@ export function buildReactorGraph(
       anchor: 'leaks', prov: PROV_FINDING,
       rows: stageRows(s), downstream: stageDownstream(i),
     })),
-    { id: 'leak', x: 0.14, y: 0.50, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, anchor: 'leaks', prov: PROV_FINDING },
+    { id: 'leak', x: 0.14, y: 0.50, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, rows: leakRows.length ? leakRows : undefined, anchor: 'leaks', prov: PROV_FINDING },
     { id: 'recovered', x: 0.86, y: 0.48, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
     { id: 'gate', x: 0.5, y: 0.8, kicker: 'Awaiting signature', value: money(gate?.pendingZar ?? null), tag: canApprove ? 'Your call' : 'Internal', sub: gate ? `${gate.pendingCount} decision${gate.pendingCount === 1 ? '' : 's'} open · now` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
     { id: 'review', x: 0.82, y: 0.87, kicker: 'In review', value: money(gate?.reviewZar ?? null), tag: 'Internal', sub: gate ? `${gate.reviewCount} previewed, not dispatched` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
