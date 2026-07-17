@@ -1774,6 +1774,8 @@ seed.post('/seed-vantax', async (c) => {
       { name: 'Cash Conversion Cycle', category: 'financial', value: 42, unit: 'days', source: 'SAICA Industry Metrics', percentile: 52 },
       { name: 'Employee Productivity', category: 'operational', value: 285000, unit: 'ZAR/employee', source: 'Stats SA Labour Report', percentile: 70 },
       { name: 'Digital Maturity Index', category: 'technology', value: 3.2, unit: '/5', source: 'McKinsey Digital SA', percentile: 40 },
+      // radar-engine-v2 compares healthScore only against /100 rows; without one the tower drops "vs industry"
+      { name: 'Business Health Index', category: 'composite', value: 68, unit: '/100', source: 'Atheon SA mid-market composite', percentile: 50 },
     ];
     for (const bm of benchmarks) {
       seedBatch.push(c.env.DB.prepare(

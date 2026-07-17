@@ -123,8 +123,10 @@ export async function computeStrategicContext(
     'SELECT * FROM external_signals WHERE tenant_id = ? ORDER BY relevance_score DESC LIMIT 5'
   ).bind(tenantId).all();
 
+  // only /100 rows are comparable to healthScore — filter in SQL so mixed-unit
+  // rows sharing one seed timestamp can't crowd the /100 row out of the LIMIT
   const benchmarks = await db.prepare(
-    'SELECT * FROM market_benchmarks WHERE tenant_id = ? ORDER BY measured_at DESC LIMIT 5'
+    "SELECT * FROM market_benchmarks WHERE tenant_id = ? AND benchmark_unit = '/100' ORDER BY measured_at DESC LIMIT 5"
   ).bind(tenantId).all();
 
   // tenants.industry is intentionally dropped by migrate.ts — reading it here
@@ -132,8 +134,7 @@ export async function computeStrategicContext(
   // global-only for now; revisit once the aggregator buckets per-tenant.
   const tenant: { industry: string } = { industry: 'general' };
 
-  // ponytail: rows mix units (%, days, ZAR, turns) — only /100 rows comparable to healthScore; null when none
-  const comparable = benchmarks.results.filter((b) => b.benchmark_unit === '/100');
+  const comparable = benchmarks.results;
   let industryBenchmark: number | null = null;
   if (comparable.length > 0) {
     industryBenchmark = Math.round(
