@@ -40,12 +40,6 @@ type Turn =
 
 export function JeffLauncher({ context, variant = 'floating', openKey }: { context?: string; variant?: 'floating' | 'shell'; openKey?: number } = {}) {
   const [open, setOpen] = useState(false);
-
-  // Lets a host surface (e.g. reactor node "ask Jeff") pop the slide-over:
-  // bump openKey and Jeff opens with the current context already set.
-  useEffect(() => {
-    if (openKey) setOpen(true);
-  }, [openKey]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -58,10 +52,10 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
     if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, busy, open]);
 
-  const ask = async () => {
-    const q = prompt.trim();
+  const ask = async (override?: string) => {
+    const q = (override ?? prompt).trim();
     if (!q || busy) return;
-    setPrompt('');
+    if (!override) setPrompt('');
     setTurns((t) => [...t, { role: 'user', text: q }]);
     setBusy(true);
     try {
@@ -80,6 +74,20 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
       setBusy(false);
     }
   };
+
+  // A surface's "ask Jeff" / "explain" bumps openKey. That should KICK OFF the
+  // conversation, not drop the user into an empty box. Fire once per bump, via
+  // a ref so it uses the latest ask closure (current context prop). Manual opens
+  // (the pill / floating button) never touch openKey, so they stay empty.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  const lastAsked = useRef(0);
+  useEffect(() => {
+    if (!openKey || openKey === lastAsked.current) return;
+    lastAsked.current = openKey;
+    setOpen(true);
+    askRef.current('Explain this in plain language.');
+  }, [openKey]);
 
   return (
     <>
