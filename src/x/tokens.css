@@ -297,7 +297,8 @@
 .rx .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-top: 0.9rem; }
 .rx .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh1); padding: 0.75rem 1rem; display: block; }
 .rx .kpi:hover { box-shadow: var(--sh2); }
-.rx .kpi b { font-family: "Schibsted Grotesk"; font-weight: 800; font-size: 1.25rem; color: var(--ink); display: block; letter-spacing: -0.02em; }
+.rx .kpi b, .rx .kpi .num { font-family: "Schibsted Grotesk"; font-weight: 800; font-size: 1.25rem; color: var(--ink); display: block; letter-spacing: -0.02em; margin-top: 0.2rem; text-align: left; }
+.rx .kpi button.num:hover { color: var(--brand); }
 .rx .kpi small { font-size: 0.68rem; color: var(--mut); line-height: 1.4; display: block; margin-top: 0.15rem; }
 @media (max-width: 760px) { .rx .kpis { grid-template-columns: 1fr 1fr; } }
 .rx .flow-note { font-size: 0.74rem; color: var(--faint); margin: 0.7rem 0 0; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
