@@ -77,6 +77,10 @@
 .rx .tabs button:hover { color: var(--ink); background: var(--card2); }
 .rx .tabs button[aria-current] { color: var(--brand); background: var(--brand-soft); }
 .rx .tabs button .badge { background: var(--brand); color: var(--card); border-radius: 10px; font-size: 0.62rem; padding: 0.05rem 0.4rem; margin-left: 0.3rem; vertical-align: 1px; }
+.rx .tabs .sep { width: 1px; height: 1.05rem; background: var(--line); margin: 0 0.35rem; align-self: center; flex: none; }
+.rx .tabs button.out { color: var(--faint); }
+.rx .tabs button.out:hover { color: var(--ink); }
+.rx .tabs .out-a { font-size: 0.62rem; margin-left: 0.25rem; opacity: 0.7; }
 .rx .who { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
 .rx .ent { font-size: 0.78rem; color: var(--mut); background: var(--card2); border-radius: 12px; padding: 0.42rem 0.9rem; white-space: nowrap; }
 .rx .ent b { color: var(--ink); font-weight: 600; }
@@ -180,7 +184,8 @@
 .rx .fnode.link:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); box-shadow: var(--sh2); transform: translate(-50%, -50%) scale(1.03); }
 .rx .fnode.link:hover .fv { color: var(--brand); }
 .rx .fnode.link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.rx .fnode .fs { font-size: 0.64rem; color: var(--faint); white-space: nowrap; }
+/* sub line ellipsizes: a long live signal title must never balloon the tile off-canvas */
+.rx .fnode .fs { font-size: 0.64rem; color: var(--faint); white-space: nowrap; display: block; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
 .rx .fnode.gold .fv { color: var(--ok); }
 .rx .fnode.gate { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent), var(--sh2); }
 .rx .fnode.gate .fv { color: var(--brand); }

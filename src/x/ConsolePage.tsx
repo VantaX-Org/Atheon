@@ -1,9 +1,11 @@
 import './tokens.css';
 
-// Recovery Console — one cohesive screen. The net-recovered hero leads, the
-// reactor (animated river of the business in the world) sits under it;
-// Brief · Decisions · Ledger · Catalysts flow beneath. Shell pills scroll,
-// never route; the scrollspy drives the pills and the reactor's focus lens.
+// Recovery Console — the org's own screen, and the one frontend. The
+// recovered hero leads, the reactor (animated river of the business in the
+// world) sits under it; Brief · Decisions · Ledger · Catalysts flow beneath.
+// Shell pills scroll, never route; the scrollspy drives the pills and the
+// reactor's focus lens. Everything else on the platform breaks out from the
+// shell.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
@@ -70,8 +72,6 @@ export function ConsolePage() {
     if (id) document.getElementById(id)?.scrollIntoView();
   }, []);
 
-  // Hero maths: net only exists when both sides are booked — never null→0.
-  const netZar = input.recovered && input.fee ? input.recovered.zar - input.fee.zar : null;
   // The role decides whether Approve renders enabled; the persona lens can only
   // grey further, never grant. The API stays the enforcement point.
   const canApprove = roleCanApprove(userRole) && (persona ? persona.canApprove : true);
@@ -90,21 +90,27 @@ export function ConsolePage() {
       <main className="page">
         <div className="hero in">
           <div>
-            <div className="kicker">{persona ? `Net recovered · ${persona.lens}` : 'Net recovered for you'}</div>
-            <div className="hero-big num">{loading ? '…' : formatZarFull(netZar)}</div>
+            <div className="kicker">{persona ? `Recovered · ${persona.lens}` : 'Recovered for your business'}</div>
+            <div className="hero-big num">{loading ? '…' : formatZarFull(input.recovered?.zar)}</div>
             {input.sourceCount != null && (
-              <span className="chip-up num">{input.sourceCount} source{input.sourceCount === 1 ? '' : 's'} connected · computed from booked fields</span>
+              <span className="chip-up num">{input.sourceCount} source{input.sourceCount === 1 ? '' : 's'} connected · every figure from booked fields</span>
             )}
           </div>
           <div className="hero-side">
             <div className="s">
-              <button className="num" onClick={() => onAskJeff(`recovered gross ${formatZarFull(input.recovered?.zar)}`)}>{formatZarFull(input.recovered?.zar)}</button>
-              <small>recovered gross</small>
+              <button
+                className="num"
+                onClick={() => { document.getElementById('leaks')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#leaks'); }}
+                title="Open the findings"
+              >{formatZarFull(input.ops?.totalZar)}</button>
+              <small>leakage detected · this assessment</small>
             </div>
-            <div className="s">
-              <button className="num" onClick={() => onAskJeff(`Atheon fee ${formatZarFull(input.fee?.zar)}`)}>{formatZarFull(input.fee?.zar)}</button>
-              <small>Atheon fee · all-time</small>
-            </div>
+            {input.recovered?.mult != null && input.recovered.mult > 0 && (
+              <div className="s">
+                <button className="num" onClick={() => onAskJeff(`ROI multiple ${Math.round(input.recovered!.mult!)}× (reported by the API)`)}>{Math.round(input.recovered.mult)}×</button>
+                <small>return on the programme · reported</small>
+              </div>
+            )}
             <div className="s act">
               <button
                 className="num"

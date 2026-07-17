@@ -1,7 +1,7 @@
 // The heart of the console: the animated river of the value chain. Stages
-// across the top leak into the hub; the recovery machine returns net-to-you
-// after the Atheon fee, with the gate pooling until someone signs. Clicking
-// any node opens the action sidebar; ✦ asks Jeff about it.
+// across the top leak into the hub; recovery lands at the gold terminal,
+// with the gate pooling until someone signs. Clicking any node opens the
+// action sidebar; ✦ asks Jeff about it.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenantCurrency } from '@/stores/appStore';
@@ -10,16 +10,15 @@ import { buildReactorGraph, REACTOR_LANES, type ChainStage, type ReactorFocus, t
 import { SideDrawer } from './SideDrawer';
 
 const CONTEXT: Record<ReactorFocus, string> = {
-  all: 'The value chain, where it leaks, and what the recovery engine returns.',
+  all: 'The value chain, where it leaks, and what the business gets back.',
   brief: 'Where each stage of the value chain leaks, and what recovery returns.',
   decisions: 'Recoveries pooling at the gate — waiting on a signature.',
-  ledger: 'Recovered value: net to you after the Atheon fee.',
+  ledger: 'Recovered value, booked back to the business — sealed receipts only.',
   catalysts: 'Catalysts working the leaks between the stages and the gate.',
 };
 
 const LEGEND: Array<{ label: string; token: string }> = [
   { label: 'Recovered', token: '--f-rec' },
-  { label: 'Atheon fee', token: '--f-fee' },
   { label: 'At the gate', token: '--f-gate' },
   { label: 'Leakage', token: '--f-leak' },
   { label: 'In review', token: '--f-revw' },
@@ -75,7 +74,7 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
   return (
     <div className="mscroll">
       {/* role=group: the tiles inside are real buttons — img would hide them from AT */}
-      <div ref={panelRef} className={`flowpanel${loading ? ' loading' : ''}`} role="group" aria-busy={loading || undefined} aria-label="Live flow of the value chain: stage leakage, the decision gate, and recovered value net of fee">
+      <div ref={panelRef} className={`flowpanel${loading ? ' loading' : ''}`} role="group" aria-busy={loading || undefined} aria-label="Live flow of the value chain: stage leakage, the decision gate, and recovered value">
         <canvas aria-hidden="true" />
         {loading && <span className="flow-loading">Reading the ledger…</span>}
       </div>

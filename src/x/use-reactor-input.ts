@@ -1,6 +1,6 @@
 // Single fetch for the reactor: operations categories (value-chain stages),
-// decision gate, recovered, and the Atheon fee. Honesty law: any failed fetch
-// leaves its field null (em-dash), never a fabricated zero.
+// decision gate, and recovered. Honesty law: any failed fetch leaves its
+// field null (em-dash), never a fabricated zero.
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { latestCompleteAssessment } from '@/lib/latest-assessment';
@@ -12,7 +12,7 @@ const CAT_LABEL: Record<string, string> = {
   cross_cutting: 'Cross-cutting', service_delivery: 'Service delivery',
 };
 
-export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null, macro: null };
+export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
   const [assessList, actions, roi, conns, radar] = await Promise.allSettled([
@@ -58,7 +58,6 @@ async function fetchReactorInput(): Promise<ReactorInput> {
         }
       : null,
     recovered: roi.status === 'fulfilled' ? { zar: roi.value.totalDiscrepancyValueRecovered, mult: roi.value.roiMultiple ?? null } : null,
-    fee: roi.status === 'fulfilled' && roi.value.platformCost != null ? { zar: roi.value.platformCost } : null,
     // "live" means live: connected sources, not the all-time attribution list
     sourceCount: conns.status === 'fulfilled'
       ? conns.value.connections.filter((c) => ['connected', 'active'].includes(c.status.toLowerCase())).length

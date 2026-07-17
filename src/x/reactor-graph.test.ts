@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildReactorGraph, type ReactorInput } from './reactor-graph';
-import { formatCompactCurrency } from '@/lib/format-currency';
 
-const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, fee: null, sourceCount: null };
+const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null };
 const FULL_INPUT: ReactorInput = {
   ops: {
     categories: [
@@ -14,8 +13,8 @@ const FULL_INPUT: ReactorInput = {
   },
   gate: { pendingCount: 4, pendingZar: 800000, reviewCount: 2, reviewZar: 100000, reversedCount: 1, reversedZar: 50000 },
   recovered: { zar: 1200000, mult: 4 },
-  fee: { zar: 300000 },
   sourceCount: 3,
+  macro: { count: 2, signals: [{ title: 'ZAR swings past R19', source: 'Reuters', sentiment: 'negative', relevance: 0.9 }] },
 };
 
 describe('honesty law', () => {
@@ -41,38 +40,41 @@ describe('honesty law', () => {
     expect(gateEdge?.pool).toBe(true);
     expect(gateEdge!.particles).toBeGreaterThan(0);
   });
-  it('net = recovered − fee; fee carries its own scope, never a cross-scope %', () => {
+  it('recovered is the gold terminal, scoped all-time with the reported ROI', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
-    const net = g.nodes.find(n => n.id === 'net');
-    const fee = g.nodes.find(n => n.id === 'fee');
-    expect(net?.value).toBe(formatCompactCurrency(900000, 'ZAR'));
-    expect(fee?.sub).toBe('platform fee · all-time');
+    const rec = g.nodes.find(n => n.id === 'recovered');
+    expect(rec?.tone).toBe('gold');
+    expect(rec?.sub).toBe('4× ROI (reported) · all-time');
   });
-  it('fee null → net and fee render em-dash even when recovered is real', () => {
-    const g = buildReactorGraph({ ...FULL_INPUT, fee: null }, 'ZAR', 'all');
-    expect(g.nodes.find(n => n.id === 'net')?.value).toBe('—');
-    expect(g.nodes.find(n => n.id === 'fee')?.value).toBe('—');
-  });
-  it('leak→recovered bridge is dashed: this leak is not that recovery', () => {
+  it('gate→recovered bridge is dashed: pending-now is not recovered-yet', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
-    const bridge = g.edges.find(e => e.from === 'leak' && e.to === 'recovered');
+    const bridge = g.edges.find(e => e.from === 'gate' && e.to === 'recovered');
     expect(bridge?.dashed).toBe(true);
+  });
+  it('no vendor plumbing: net and fee nodes do not exist', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    expect(g.nodes.some(n => n.id === 'net' || n.id === 'fee')).toBe(false);
+  });
+  it('macro edge is dashed context, never a money flow', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    const m = g.edges.find(e => e.from === 'macro');
+    expect(m?.dashed).toBe(true);
   });
 });
 
 describe('seal gating', () => {
   it('only booked fields are sealed; computed and estimated never are', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
-    for (const id of ['recovered', 'fee', 'gate', 'review', 'reversed']) {
+    for (const id of ['recovered', 'gate', 'review', 'reversed']) {
       expect(g.nodes.find(n => n.id === id)?.sealed, id).toBe(true);
     }
-    expect(g.nodes.find(n => n.id === 'net')?.sealed).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'leak')?.sealed).toBeFalsy();
+    expect(g.nodes.find(n => n.id === 'macro')?.sealed).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'stage-procure')?.sealed).toBeFalsy();
   });
   it('every money node carries a provenance sentence', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
-    for (const id of ['leak', 'recovered', 'net', 'fee', 'gate']) {
+    for (const id of ['leak', 'recovered', 'gate', 'macro']) {
       expect(g.nodes.find(n => n.id === id)?.prov, id).toBeTruthy();
     }
   });
@@ -125,9 +127,9 @@ describe('focus + persona lens', () => {
     expect(g.nodes.find(n => n.id === 'stage-procure')?.dim).toBe(true);
     expect(g.nodes.find(n => n.id === 'gate')?.dim).toBeFalsy();
   });
-  it('ledger focus keeps recovered/net/fee undimmed', () => {
+  it('ledger focus keeps recovered undimmed, dims the queue', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'ledger');
-    expect(g.nodes.find(n => n.id === 'net')?.dim).toBeFalsy();
+    expect(g.nodes.find(n => n.id === 'recovered')?.dim).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'gate')?.dim).toBe(true);
   });
   it('opsFirst greys stages outside the persona remit on the full view', () => {

@@ -16,6 +16,16 @@ const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
   { id: 'catalysts', label: 'Catalysts', icon: 'catalysts' },
 ];
 
+// One frontend: the console is the app; everything deeper on the platform
+// breaks out from here (navigate, not scroll). Role gates mirror App.tsx
+// routes — the route itself stays the enforcement point.
+const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; admin?: boolean }> = [
+  { to: '/operations', label: 'Operations', icon: 'ops' },
+  { to: '/assurance', label: 'Assurance', icon: 'seal', admin: true },
+  { to: '/console', label: 'Console', icon: 'gate', admin: true },
+];
+const ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
+
 export function Shell({ active, persona, onPersona, decisionsCount, jeffContext, jeffOpenKey }: {
   active: SectionKey;
   persona: Persona | null;
@@ -72,6 +82,12 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
               {s.id === 'decisions' && decisionsCount != null && decisionsCount > 0 && (
                 <span className="badge">{decisionsCount}</span>
               )}
+            </button>
+          ))}
+          <i className="sep" aria-hidden="true" />
+          {BREAKOUTS.filter((b) => !b.admin || ADMIN_ROLES.includes(user?.role ?? '')).map((b) => (
+            <button key={b.to} className="out" onClick={() => navigate(b.to)} title={`Open ${b.label}`}>
+              <XIcon name={b.icon} size={14} /> {b.label}<span className="out-a" aria-hidden="true">↗</span>
             </button>
           ))}
         </nav>

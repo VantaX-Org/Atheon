@@ -1,10 +1,9 @@
 // Builds the reactor river: the value chain across the top (stages leak into
-// the hub), then the recovery machine — recovered splits into net-to-you and
-// the Atheon fee, with the gate / review / reversed pools beneath. Geometry
-// lifted from the "Atheon — Recovery Console" artifact BRIEF flow.
+// the hub), recovery landing at the gold terminal on the right, with the
+// gate / review / reversed pools beneath. This is the org's own console —
+// no vendor framing, no fee plumbing on screen.
 // Honesty law: a null section renders em-dash nodes and static (0-particle)
-// edges — never a fabricated zero. Net is only computed when both recovered
-// and fee are real.
+// edges — never a fabricated zero.
 
 import { formatCompactCurrency } from '@/lib/format-currency';
 import type { RiverEdge, RiverNode } from './river';
@@ -21,7 +20,6 @@ export interface ReactorInput {
   } | null;
   gate: { pendingCount: number; pendingZar: number; reviewCount: number; reviewZar: number; reversedCount: number; reversedZar: number } | null;
   recovered: { zar: number; mult: number | null } | null;
-  fee: { zar: number } | null;
   sourceCount: number | null; // live/connected ERP source systems
   // External factors head node: live radar signals (macro, market, regulatory,
   // supplier pressure). Null when the radar has not reported — em-dash node.
@@ -78,9 +76,9 @@ export const STAGES: ChainStage[] = [
 const DIM: Record<ReactorFocus, (id: string) => boolean> = {
   all: () => false,
   brief: () => false,
-  decisions: (id) => id.startsWith('stage-') || id === 'macro' || id === 'leak' || ['recovered', 'net', 'fee'].includes(id),
+  decisions: (id) => id.startsWith('stage-') || id === 'macro' || id === 'leak' || id === 'recovered',
   ledger: (id) => id.startsWith('stage-') || id === 'macro' || ['gate', 'review', 'reversed'].includes(id),
-  catalysts: (id) => ['net', 'fee', 'review', 'reversed'].includes(id),
+  catalysts: (id) => ['review', 'reversed'].includes(id),
 };
 
 // C-suite lanes: each label names the band below its line. Internal/external
@@ -99,9 +97,8 @@ export function buildReactorGraph(
   canApprove = false,
   chain?: ChainStage[],
 ): { nodes: RiverNode[]; edges: RiverEdge[] } {
-  const { ops, gate, recovered, fee, macro } = input;
+  const { ops, gate, recovered, macro } = input;
   const money = (v: number | null) => formatCompactCurrency(v, currency);
-  const net = recovered && fee ? recovered.zar - fee.zar : null;
 
   const CHAIN = chain?.length ? chain : STAGES;
   const expand = (buckets: string[]) => buckets.flatMap((b) => CAT_KEYS[b] ?? [b]);
@@ -126,7 +123,7 @@ export function buildReactorGraph(
   const stages = CHAIN.map((s, i) => ({
     ...s,
     id: `stage-${s.id}`,
-    x: 0.17 + i * (0.74 / (CHAIN.length - 1)),
+    x: 0.21 + i * (0.72 / (CHAIN.length - 1)),
     sum: stageSum(expand(s.buckets), i === foldIdx),
   }));
 
@@ -185,7 +182,7 @@ export function buildReactorGraph(
 
   const nodes: RiverNode[] = [
     {
-      id: 'macro', x: 0.05, y: 0.09, kicker: 'Macro & market',
+      id: 'macro', x: 0.085, y: 0.13, kicker: 'Macro & market',
       value: macro ? `${macro.count} signal${macro.count === 1 ? '' : 's'}` : '—',
       sub: macro?.signals[0]?.title,
       tag: 'External', cls: 'stage',
@@ -200,20 +197,18 @@ export function buildReactorGraph(
       downstream: stageDownstream(-1),
     },
     ...stages.map((s, i): RiverNode => ({
-      id: s.id, x: s.x, y: 0.09, kicker: s.label,
+      id: s.id, x: s.x, y: 0.13, kicker: s.label,
       value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 && s.sum.unpriced > 0 ? '—' : money(s.sum.valueZar)) : '—',
       sub: stageSub(s.sum),
       cls: s.sum ? (s.sum.count > 0 ? 'stage leaky' : 'stage clean') : 'stage',
       anchor: 'leaks', prov: PROV_FINDING,
       rows: stageRows(s), downstream: stageDownstream(i),
     })),
-    { id: 'leak', x: 0.13, y: 0.52, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, anchor: 'leaks', prov: PROV_FINDING },
-    { id: 'recovered', x: 0.52, y: 0.50, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
-    { id: 'net', x: 0.88, y: 0.40, kicker: 'Net to you', value: money(net), tone: net != null ? 'gold' : 'none', tag: 'Internal', sub: net != null ? 'after the Atheon fee · computed' : undefined, anchor: 'ledger', prov: 'Computed on this screen as recovered minus the Atheon fee — both operands are booked fields, the subtraction is not itself a ledger row.' },
-    { id: 'fee', x: 0.88, y: 0.60, kicker: 'Atheon fee', value: money(fee?.zar ?? null), tag: 'External', sub: fee ? 'platform fee · all-time' : undefined, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
-    { id: 'gate', x: 0.54, y: 0.80, kicker: 'Awaiting signature', value: money(gate?.pendingZar ?? null), tag: canApprove ? 'Your call' : 'Internal', sub: gate ? `${gate.pendingCount} decision${gate.pendingCount === 1 ? '' : 's'} open · now` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
-    { id: 'review', x: 0.88, y: 0.84, kicker: 'In review', value: money(gate?.reviewZar ?? null), tag: 'Internal', sub: gate ? `${gate.reviewCount} previewed, not dispatched` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
-    { id: 'reversed', x: 0.30, y: 0.88, kicker: 'Rejected or failed', value: money(gate?.reversedZar ?? null), tone: gate && gate.reversedZar > 0 ? 'bad' : 'none', tag: 'Mixed', sub: gate ? `${gate.reversedCount} rejected (yours) or failed · all-time` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
+    { id: 'leak', x: 0.14, y: 0.50, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, anchor: 'leaks', prov: PROV_FINDING },
+    { id: 'recovered', x: 0.86, y: 0.48, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
+    { id: 'gate', x: 0.5, y: 0.8, kicker: 'Awaiting signature', value: money(gate?.pendingZar ?? null), tag: canApprove ? 'Your call' : 'Internal', sub: gate ? `${gate.pendingCount} decision${gate.pendingCount === 1 ? '' : 's'} open · now` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
+    { id: 'review', x: 0.82, y: 0.87, kicker: 'In review', value: money(gate?.reviewZar ?? null), tag: 'Internal', sub: gate ? `${gate.reviewCount} previewed, not dispatched` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
+    { id: 'reversed', x: 0.24, y: 0.87, kicker: 'Rejected or failed', value: money(gate?.reversedZar ?? null), tone: gate && gate.reversedZar > 0 ? 'bad' : 'none', tag: 'Mixed', sub: gate ? `${gate.reversedCount} rejected (yours) or failed · all-time` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
   ];
 
   // Per-zone width normalization: a global max let the all-time recovered figure
@@ -224,7 +219,6 @@ export function buildReactorGraph(
   // leak "became" the all-time recovery.
   const stageMax = Math.max(1, ...stages.map((s) => s.sum?.valueZar ?? 0));
   const queueMax = Math.max(1, gate?.pendingZar ?? 0, gate?.reviewZar ?? 0, gate?.reversedZar ?? 0);
-  const resultsMax = Math.max(1, recovered?.zar ?? 0, net ?? 0, fee?.zar ?? 0);
 
   const edge = (from: string, to: string, v: number | null, colorVar: string, zoneMax: number, pool?: boolean): RiverEdge => {
     const norm = v == null ? null : Math.sqrt(Math.min(1, v / zoneMax));
@@ -243,11 +237,10 @@ export function buildReactorGraph(
     })),
     // each leaking stage feeds the hub
     ...stages.filter((s) => (s.sum?.valueZar ?? 0) > 0).map((s) => edge(s.id, 'leak', s.sum!.valueZar, '--f-leak', stageMax)),
-    // bridge between scopes: thin dashed connector — this assessment's leak did
-    // NOT become the all-time recovery, so the pipe never claims a flow
-    { from: 'leak', to: 'recovered', amt: 0.2, colorVar: '--f-rec', particles: recovered && recovered.zar > 0 ? 2 : 0, dashed: true },
-    edge('recovered', 'net', net, '--f-rec', resultsMax),
-    edge('recovered', 'fee', fee?.zar ?? null, '--f-fee', resultsMax),
+    // bridge between scopes: thin dashed connector — what's signed at the gate
+    // eventually lands at the all-time terminal, but pending-now is NOT
+    // recovered-yet, so the pipe never claims a flow or an amount
+    { from: 'gate', to: 'recovered', amt: 0.2, colorVar: '--f-rec', particles: recovered && recovered.zar > 0 ? 2 : 0, dashed: true },
     edge('leak', 'gate', gate?.pendingZar ?? null, '--f-gate', queueMax, true),
     edge('leak', 'review', gate?.reviewZar ?? null, '--f-revw', queueMax),
     edge('leak', 'reversed', gate?.reversedZar ?? null, '--f-rev', queueMax),

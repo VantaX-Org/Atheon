@@ -1,6 +1,6 @@
-// Ledger: the commercial layer between Vantax and the customer.
-// Recovered and prevented are API facts; the platform fee is shown on its own
-// line (never netted into recovered); net is computed client-side and says so.
+// Ledger: what the business got back, receipt by receipt.
+// Recovered and prevented are API facts; the ROI multiple is the API's own
+// reported number, never a formula computed on this screen.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ForecastAccuracyResp, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
@@ -110,8 +110,6 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
   const money = useCallback((v: number | null | undefined) => formatCompactCurrency(v ?? null, currency), [currency]);
   const strip = useMemo(() => ledgerRiver(receipts, (v) => money(v), totals), [receipts, money, totals]);
   const recovered = roi?.totalDiscrepancyValueRecovered ?? null;
-  const fee = roi?.platformCost ?? null;
-  const net = recovered != null && fee != null ? recovered - fee : null;
   const byConn = roi?.breakdown?.byConnection ?? [];
   // both trace to booked API fields; failed fetch → null → '—', never 0
   const accuracy = calib?.accuracyPct != null ? `${Math.round(calib.accuracyPct)}%` : '—';
@@ -121,7 +119,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     <section id="ledger">
       <div className="head">
         <span className="kicker">Ledger</span>
-        <h2>What came back, and what it cost</h2>
+        <h2>What came back, receipt by receipt</h2>
       </div>
 
       <div className="kpis">
@@ -134,13 +132,15 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
           <button className="num" onClick={() => onAskJeff(`Prevented losses: ${money(roi?.totalPreventedLosses)}`)}>{loading ? '…' : money(roi?.totalPreventedLosses)}</button>
         </div>
         <div className="kpi">
-          <span className="kicker">Platform fee</span>
-          <button className="num" onClick={() => onAskJeff(`Platform fee: ${money(fee)} — shown separately, never netted from recovered`)}>{loading ? '…' : money(fee)}</button>
+          <span className="kicker">Return multiple · reported</span>
+          <button className="num" onClick={() => onAskJeff(`ROI multiple: ${roi?.roiMultiple != null ? `${roi.roiMultiple}×` : '—'} — the API's own reported number`)}>
+            {loading ? '…' : roi?.roiMultiple != null ? `${roi.roiMultiple}×` : '—'}
+          </button>
         </div>
         <div className="kpi">
-          <span className="kicker">Net to you · computed</span>
-          <button className="num" onClick={() => onAskJeff(`Net = recovered ${money(recovered)} minus fee ${money(fee)} = ${money(net)}${roi?.roiMultiple != null ? `; the API reports an ROI multiple of ${roi.roiMultiple}×` : ''}`)}>
-            {loading ? '…' : money(net)}{roi?.roiMultiple != null && <small style={{ fontSize: '0.75rem', color: 'var(--faint)' }}> · {roi.roiMultiple}×</small>}
+          <span className="kicker">Sealed receipts</span>
+          <button className="num" onClick={() => onAskJeff(`Sealed receipts: ${totals ? `${totals.count} completed actions worth ${money(totals.zar)}` : '—'}`)}>
+            {loading ? '…' : totals != null ? totals.count : '—'}
           </button>
         </div>
       </div>
