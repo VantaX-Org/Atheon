@@ -5,8 +5,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTenantCurrency } from '@/stores/appStore';
+import { formatCompactCurrency } from '@/lib/format-currency';
+import type { SignalImpact } from '@/lib/api';
 import { mountRiver, type RiverNode } from './river';
-import { buildReactorGraph, REACTOR_LANES, type ChainStage, type ReactorFocus, type ReactorInput } from './reactor-graph';
+import { BUCKET_DIM, buildReactorGraph, REACTOR_LANES, type ChainStage, type ReactorFocus, type ReactorInput } from './reactor-graph';
 import { SideDrawer } from './SideDrawer';
 
 const CONTEXT: Record<ReactorFocus, string> = {
@@ -30,6 +32,14 @@ const ANCHOR_LABEL: Record<string, string> = {
   ledger: 'the ledger', catalysts: 'the catalysts',
 };
 
+const DIM_LABEL: Record<string, string> = {
+  financial: 'Financial', revenue: 'Revenue', supply_chain: 'Supply chain',
+  compliance: 'Compliance', operational: 'Operations',
+};
+const TIMELINE_LABEL: Record<string, string> = {
+  immediate: 'immediate', 'near-term': 'near term', strategic: 'strategic',
+};
+
 export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, onAskJeff }: {
   input: ReactorInput;
   focus: ReactorFocus;
@@ -43,7 +53,31 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
   const currency = useTenantCurrency();
   const [sel, setSel] = useState<RiverNode | null>(null);
   const [prov, setProv] = useState<{ root: string | null; seq: number; created_at: string | null } | null>(null);
+  const [impacts, setImpacts] = useState<Array<SignalImpact & { signalTitle: string }> | null>(null);
   const closeSel = useCallback(() => setSel(null), []);
+
+  // Macro drawer: fetch the computed business impact per live signal. Empty
+  // impacts (engine has not attributed) → no section, never an invented one.
+  useEffect(() => {
+    if (sel?.id !== 'macro' || !input.macro?.signals.length) { setImpacts(null); return; }
+    let on = true;
+    Promise.allSettled(input.macro.signals.map((s) => api.radar.signalImpact(s.id))).then((rs) => {
+      if (!on) return;
+      setImpacts(rs.flatMap((r, i) => r.status === 'fulfilled'
+        ? r.value.impacts.map((im) => ({ ...im, signalTitle: input.macro!.signals[i].title }))
+        : []));
+    });
+    return () => { on = false; };
+  }, [sel, input.macro]);
+
+  // Transaction-grounded exposure: sum live finding value in the value-chain
+  // stages whose health dimension this impact hits. Null → line omitted.
+  const exposureFor = (dim: string): number | null => {
+    const v = (input.ops?.categories ?? [])
+      .filter((c) => BUCKET_DIM[c.key] === dim)
+      .reduce((a, c) => a + c.valueZar, 0);
+    return v > 0 ? v : null;
+  };
 
   // Seal the drawer with the live audit-chain root; a null root simply omits
   // the seal block — never a fabricated hash.
@@ -151,6 +185,30 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
                   <span className="num">{r.value}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {sel.id === 'macro' && !!impacts?.length && (
+            <div className="rc-sec">
+              <div className="rc-id">Potential business impact</div>
+              {impacts.map((im) => {
+                const exp = exposureFor(im.healthDimension);
+                return (
+                  <div key={im.id} className="rc-imp">
+                    <p className={`rc-imp-h ${im.impactDirection === 'tailwind' ? 'up' : 'down'}`}>
+                      {im.impactDirection === 'tailwind' ? '▲ Tailwind' : '▼ Headwind'}
+                      {' · '}{DIM_LABEL[im.healthDimension] ?? im.healthDimension}
+                      {' · '}{TIMELINE_LABEL[im.impactTimeline] ?? im.impactTimeline}
+                    </p>
+                    <p className="rc-meta">{im.signalTitle}</p>
+                    {exp != null && (
+                      <p className="rc-imp-exp num">
+                        ≈ {formatCompactCurrency(exp, currency)} in open findings across the stages this hits
+                      </p>
+                    )}
+                    {im.recommendedResponse && <p className="rc-meta">{im.recommendedResponse}</p>}
+                  </div>
+                );
+              })}
             </div>
           )}
           {!!sel.downstream?.length && (

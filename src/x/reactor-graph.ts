@@ -25,7 +25,7 @@ export interface ReactorInput {
   // supplier pressure). Null when the radar has not reported — em-dash node.
   macro: {
     count: number;
-    signals: Array<{ title: string; source: string | null; sentiment: string; relevance: number }>;
+    signals: Array<{ id: string; title: string; source: string | null; sentiment: string; relevance: number }>;
   } | null;
   // Live health dimensions (apex health engine). Null when the engine has not
   // reported — stages then carry no trend chip (absence, never a fabricated flat).
@@ -44,7 +44,7 @@ export interface ReactorInput {
 
 // Each category bucket reads its trend from the health dimension that actually
 // measures it. Buckets without an honest dimension are simply absent.
-const BUCKET_DIM: Record<string, string> = {
+export const BUCKET_DIM: Record<string, string> = {
   finance: 'financial', sales: 'revenue', supply_chain: 'supply_chain',
   compliance: 'compliance', procurement: 'operational',
   service_delivery: 'operational', workforce: 'operational', cross_cutting: 'operational',

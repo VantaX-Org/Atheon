@@ -233,7 +233,11 @@
 }
 .rx .fnode {
   position: absolute; transform: translate(-50%, -50%); z-index: 2;
-  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0.55rem 0.9rem; min-width: 128px;
+  /* glassy: the river must stay visible through the tiles */
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(9px) saturate(1.15);
+  backdrop-filter: blur(9px) saturate(1.15);
+  border: 1px solid var(--line); border-radius: 14px; padding: 0.55rem 0.9rem; min-width: 128px;
   box-shadow: var(--sh2);
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
@@ -428,6 +432,12 @@
 .rx .rc-trend.down { color: var(--bad); }
 .rx .rc-trend.flat { color: var(--mut); }
 .rx .rc-meta { font-size: 0.76rem; color: var(--mut); line-height: 1.65; margin: 0; }
+/* macro drawer: computed impact per live external signal */
+.rx .rc-imp { border-left: 2px solid var(--line); padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.rx .rc-imp-h { font-size: 0.76rem; font-weight: 700; margin: 0; }
+.rx .rc-imp-h.up { color: var(--ok); }
+.rx .rc-imp-h.down { color: var(--bad); }
+.rx .rc-imp-exp { font-size: 0.78rem; font-weight: 600; color: var(--ink); margin: 0; }
 .rx .rc-meta b { color: var(--ink); font-weight: 600; }
 
 /* per-sub-catalyst config rows in the drawer */

@@ -14,7 +14,7 @@ const FULL_INPUT: ReactorInput = {
   gate: { pendingCount: 4, pendingZar: 800000, reviewCount: 2, reviewZar: 100000, reversedCount: 1, reversedZar: 50000 },
   recovered: { zar: 1200000, mult: 4 },
   sourceCount: 3,
-  macro: { count: 2, signals: [{ title: 'ZAR swings past R19', source: 'Reuters', sentiment: 'negative', relevance: 0.9 }] },
+  macro: { count: 2, signals: [{ id: 'sig-1', title: 'ZAR swings past R19', source: 'Reuters', sentiment: 'negative', relevance: 0.9 }] },
   health: {
     overall: 73,
     dims: {

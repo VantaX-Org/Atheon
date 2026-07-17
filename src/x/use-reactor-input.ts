@@ -71,7 +71,7 @@ async function fetchReactorInput(): Promise<ReactorInput> {
           signals: [...radar.value.signals]
             .sort((a, b) => b.relevanceScore - a.relevanceScore)
             .slice(0, 5)
-            .map((s) => ({ title: s.title, source: s.sourceName, sentiment: s.sentiment, relevance: s.relevanceScore })),
+            .map((s) => ({ id: s.id, title: s.title, source: s.sourceName, sentiment: s.sentiment, relevance: s.relevanceScore })),
         }
       : null,
     // live health dimensions — trend chips on the value-chain tiles
