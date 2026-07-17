@@ -139,6 +139,57 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     ctx!.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
 
+  // Auto-spacing: tiles size to their content, then each row is re-spaced so
+  // nothing overlaps or clips. Caller x gives ORDER and rough position; the
+  // engine owns the final pixel. Rows of 4+ (the value chain) justify with
+  // equal gaps across the full band; sparse rows keep their semantic anchors,
+  // clamped inside the panel and pushed apart when they'd collide.
+  // Mutates n.x so the canvas edges follow the tiles; ox keeps caller intent
+  // stable across resizes.
+  const placed = nodes.filter((n) => n.kicker);
+  const ox = new Map(placed.map((n) => [n.id, n.x]));
+  function autoSpace() {
+    if (!W) return;
+    const pad = 14, gap = 16;
+    const setX = (n: RiverNode, d: HTMLElement, cx: number) => {
+      n.x = cx / W;
+      d.style.left = n.x * 100 + '%';
+    };
+    const rows = new Map<number, Array<{ n: RiverNode; d: HTMLElement; w: number }>>();
+    placed.forEach((n, i) => {
+      const key = Math.round(n.y * 12); // ~8% bands = one visual row
+      const arr = rows.get(key) ?? [];
+      arr.push({ n, d: tiles[i], w: tiles[i].offsetWidth });
+      rows.set(key, arr);
+    });
+    rows.forEach((row) => {
+      row.sort((a, b) => ox.get(a.n.id)! - ox.get(b.n.id)!);
+      const usable = W - pad * 2;
+      const widths = row.reduce((s, t) => s + t.w, 0);
+      if (row.length >= 4) {
+        // ponytail: gap floor 4px — at panel min-width a long chain may touch, never stack
+        const g = Math.max(4, (usable - widths) / (row.length - 1));
+        let x = pad + Math.max(0, (usable - widths - g * (row.length - 1)) / 2);
+        row.forEach((t) => { setX(t.n, t.d, x + t.w / 2); x += t.w + g; });
+      } else {
+        row.forEach((t) => {
+          const cx = Math.min(Math.max(ox.get(t.n.id)! * W, pad + t.w / 2), W - pad - t.w / 2);
+          setX(t.n, t.d, cx);
+        });
+        for (let i = 1; i < row.length; i++) {
+          const minC = row[i - 1].n.x * W + row[i - 1].w / 2 + gap + row[i].w / 2;
+          if (row[i].n.x * W < minC) setX(row[i].n, row[i].d, minC);
+        }
+        let bound = W - pad;
+        for (let i = row.length - 1; i >= 0; i--) {
+          const maxC = bound - row[i].w / 2;
+          if (row[i].n.x * W > maxC) setX(row[i].n, row[i].d, maxC);
+          bound = row[i].n.x * W - row[i].w / 2 - gap;
+        }
+      }
+    });
+  }
+
   function P(e: RiverEdge, t: number): [number, number] {
     const a = byId[e.from], b = byId[e.to];
     const x1 = a.x * W, y1 = a.y * H, x2 = b.x * W, y2 = b.y * H;
@@ -164,7 +215,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   function frame(ts: number) {
     raf = requestAnimationFrame(frame);
     if (!visible || !el.offsetParent) { last = 0; return; }
-    if (!W) layout();
+    if (!W) { layout(); autoSpace(); }
     if (!W) return;
     const dt = last ? Math.min((ts - last) / 1000, 0.05) : 0.016;
     last = ts;
@@ -232,8 +283,11 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     });
   }
 
-  layout();
-  const ro = new ResizeObserver(layout);
+  const relayout = () => { layout(); autoSpace(); };
+  relayout();
+  // web fonts change tile widths — re-space once they land
+  document.fonts?.ready.then(() => autoSpace()).catch(() => {});
+  const ro = new ResizeObserver(relayout);
   ro.observe(el);
   // stop the loop entirely while scrolled off-screen — restart resets `last`
   // in frame() so the first dt after re-entry stays sane

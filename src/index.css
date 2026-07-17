@@ -5,7 +5,7 @@
 /* ============================================================
    ATHEON DESIGN SYSTEM — Daylight
    Cool paper field (#f6f7f9), flat white cards on soft diffuse
-   shadow, cool near-black ink, vivid blue brand (#2453ff).
+   shadow, cool near-black ink, rx indigo brand (#4459d8).
    Schibsted Grotesk (display + amounts) + IBM Plex Sans (body)
    + Space Mono (uppercase letterspaced micro-labels). Depth via
    soft elevation only — no frosted glass, no field blooms.
@@ -44,8 +44,8 @@
     --radius-control: 0.5rem;  /* 8px — buttons, inputs, chips */
 
     /* ── Field ─────────────────────────────────────────── */
-    --bg-primary: #f6f7f9;     /* cool paper */
-    --bg-secondary: #f2f3f6;
+    --bg-primary: #f5f6fb;     /* rx field */
+    --bg-secondary: #eef0f9;
     /* Daylight is a flat field — no gradient blooms. */
     --field-gradient: none;
     --bg-pattern: none;
@@ -53,7 +53,7 @@
     /* ── Surfaces — flat white cards on soft shadow ────── */
     --bg-card: #ffffff;
     --bg-card-solid: #ffffff;
-    --bg-card-hover: #f2f3f6;
+    --bg-card-hover: #eef0f9;
     --bg-elevated: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-header: rgba(255, 255, 255, 0.88);
@@ -64,32 +64,32 @@
     /* ── Glass (legacy) — resolves to flat Daylight card ─ */
     --glass-bg: #ffffff;
     --glass-bg-strong: #ffffff;
-    --glass-border: #eef0f4;
+    --glass-border: rgba(84, 98, 156, 0.10);
     --glass-blur: 0px;
     --glass-shadow: 0 1px 2px rgba(23, 25, 33, 0.05), 0 8px 24px rgba(23, 25, 33, 0.06);
     --glass-shadow-hover: 0 2px 6px rgba(23, 25, 33, 0.08), 0 10px 24px rgba(23, 25, 33, 0.08);
 
     /* ── Borders / rules ───────────────────────────────── */
-    --border-primary: #e5e8ef;
-    --border-card: #e5e8ef;
-    --border-subtle: #eef0f4;
-    --divider: #eef0f4;
-    --line-strong: #101322;     /* 1.5px section/header rule — ink */
+    --border-primary: rgba(84, 98, 156, 0.14);
+    --border-card: rgba(84, 98, 156, 0.14);
+    --border-subtle: rgba(84, 98, 156, 0.10);
+    --divider: rgba(84, 98, 156, 0.10);
+    --line-strong: #101528;     /* 1.5px section/header rule — ink */
 
     /* ── Text ──────────────────────────────────────────── */
-    --text-primary: #101322;    /* cool near-black ink */
-    --text-secondary: #40434e;  /* body */
-    --text-muted: #6a6f7e;      /* muted — eyebrow/label/scale */
+    --text-primary: #101528;    /* rx ink */
+    --text-secondary: #3f4560;  /* body */
+    --text-muted: #646b8a;      /* muted — eyebrow/label/scale */
     --text-on-accent: #ffffff;
 
     /* ── Brand accent: Daylight blue (NOT a status colour) ── */
-    --accent: #2453ff;
-    --accent-rgb: 36, 83, 255;
-    --accent-hover: #1c46e0;
-    --accent-glow: rgba(36, 83, 255, 0.14);
+    --accent: #4459d8;
+    --accent-rgb: 68, 89, 216;
+    --accent-hover: #3a4ec5;
+    --accent-glow: rgba(91, 118, 247, 0.16);
     --accent-subtle: #eef2ff;
     --accent-dark: #14309e;
-    --sage: #2453ff;            /* legacy alias → blue brand */
+    --sage: #4459d8;            /* legacy alias → blue brand */
     --sage-b: #14309e;          /* legacy alias → blue brand dark */
     --bronze: #9a6200;          /* chart tertiary / warning family */
     --sky: #6c7a8e;             /* chart secondary / slate */
@@ -148,7 +148,7 @@
     --warning-rgb: var(--rag-watch-rgb);
     --critical: var(--rag-risk);
     --info: #6c7a8e;
-    --teal: #2453ff;            /* legacy alias → blue brand */
+    --teal: #4459d8;            /* legacy alias → blue brand */
     --teal-light: rgba(36, 86, 214, 0.07);
     --teal-dark: #16357f;
 
@@ -187,50 +187,50 @@
     color-scheme: dark;
 
     /* Field */
-    --bg-primary: #0f1115;
-    --bg-secondary: #14161c;
+    --bg-primary: #0a0d17;
+    --bg-secondary: #0e1322;
     --field-gradient: none;
     --bg-pattern: none;
 
     /* Surfaces */
-    --bg-card: #191c23;
-    --bg-card-solid: #191c23;
-    --bg-card-hover: #20242d;
-    --bg-elevated: #20242d;
-    --bg-sidebar: #14161c;
-    --bg-header: rgba(20, 22, 28, 0.88);
-    --bg-input: #1c1f27;
-    --bg-input-focus: #20242d;
-    --bg-modal: #191c23;
+    --bg-card: #10152a;
+    --bg-card-solid: #10152a;
+    --bg-card-hover: #141b32;
+    --bg-elevated: #141b32;
+    --bg-sidebar: #0d1220;
+    --bg-header: rgba(13, 18, 32, 0.88);
+    --bg-input: #121933;
+    --bg-input-focus: #141b32;
+    --bg-modal: #10152a;
 
     /* Glass (legacy → flat dark card) */
-    --glass-bg: #191c23;
-    --glass-bg-strong: #20242d;
-    --glass-border: #262a34;
+    --glass-bg: #10152a;
+    --glass-bg-strong: #141b32;
+    --glass-border: rgba(148, 163, 214, 0.12);
     --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.45);
     --glass-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.5);
 
     /* Borders / rules */
-    --border-primary: #262a34;
-    --border-card: #262a34;
-    --border-subtle: #1f232b;
-    --divider: #1f232b;
-    --line-strong: #f2f3f6;
+    --border-primary: rgba(148, 163, 214, 0.14);
+    --border-card: rgba(148, 163, 214, 0.14);
+    --border-subtle: rgba(148, 163, 214, 0.09);
+    --divider: rgba(148, 163, 214, 0.09);
+    --line-strong: #eef1fb;
 
     /* Text */
-    --text-primary: #f2f3f6;
-    --text-secondary: #b6bac6;
-    --text-muted: #858b99;
+    --text-primary: #eef1fb;
+    --text-secondary: #a6aecb;
+    --text-muted: #8b93b3;
     --text-on-accent: #ffffff;
 
     /* Brand accent — royal blue, brightened for a dark field */
-    --accent: #5b82ff;
-    --accent-rgb: 91, 130, 255;
-    --accent-hover: #7595ff;
-    --accent-glow: rgba(91, 130, 255, 0.22);
+    --accent: #7c9bff;
+    --accent-rgb: 124, 155, 255;
+    --accent-hover: #92adff;
+    --accent-glow: rgba(124, 155, 255, 0.22);
     --accent-subtle: #182036;
     --accent-dark: #14309e;
-    --sage: #5b82ff;
+    --sage: #7c9bff;
     --sage-b: #7595ff;
 
     /* RAG — nudged brighter so status reads on dark */
@@ -252,16 +252,16 @@
 
     /* Form & interaction */
     --placeholder: #6a6f7e;
-    --option-bg: #191c23;
+    --option-bg: #10152a;
     --scrollbar-thumb: rgba(242, 243, 246, 0.18);
     --scrollbar-thumb-hover: rgba(242, 243, 246, 0.32);
     --toggle-bg: #2a2f3a;
-    --ring-focus: rgba(91, 130, 255, 0.55);
+    --ring-focus: rgba(124, 155, 255, 0.55);
 
     /* Charts */
     --chart-grid: rgba(242, 243, 246, 0.08);
-    --chart-tooltip-bg: rgba(25, 28, 35, 0.95);
-    --teal-light: rgba(91, 130, 255, 0.12);
+    --chart-tooltip-bg: rgba(16, 21, 42, 0.95);
+    --teal-light: rgba(124, 155, 255, 0.12);
   }
 
   * { border-color: var(--divider); }

@@ -11,9 +11,9 @@
   --ok: #0b7f50; --ok-soft: rgba(16, 157, 99, 0.10);
   --warn: #7f5800; --warn-soft: rgba(232, 180, 74, 0.18);
   --bad: #d63b57; --bad-soft: rgba(240, 100, 124, 0.10);
-  --f-rec: #10b981; --f-fee: #0d9488; --f-gate: #5b76f7; --f-revw: #a7aec5; --f-rev: #e0455a; --f-leak: #d99a2b;
-  --glow: 0;
-  --bloom1: rgba(91, 118, 247, 0.06); --bloom2: rgba(16, 157, 99, 0.04);
+  --f-rec: #04c47e; --f-fee: #0d9488; --f-gate: #4f6df8; --f-revw: #9aa3c4; --f-rev: #f03a56; --f-leak: #f59e0b;
+  --glow: 4;
+  --bloom1: rgba(91, 118, 247, 0.09); --bloom2: rgba(4, 196, 126, 0.06);
   --sh1: 0 1px 2px rgba(23, 25, 33, 0.05), 0 8px 24px rgba(23, 25, 33, 0.06);
   --sh2: 0 2px 6px rgba(23, 25, 33, 0.08), 0 10px 24px rgba(23, 25, 33, 0.08);
 }
@@ -27,8 +27,8 @@
     --ok: #34d399; --ok-soft: rgba(52, 211, 153, 0.12);
     --warn: #e8b44a; --warn-soft: rgba(232, 180, 74, 0.13);
     --bad: #f0647c; --bad-soft: rgba(240, 100, 124, 0.13);
-    --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #5d6478; --f-rev: #f0647c; --f-leak: #e8b44a;
-    --glow: 7;
+    --f-rec: #2fe3a0; --f-fee: #3fb3ac; --f-gate: #86a3ff; --f-revw: #646c85; --f-rev: #ff6480; --f-leak: #ffc24d;
+    --glow: 10;
     --bloom1: rgba(91, 118, 247, 0.11); --bloom2: rgba(52, 211, 153, 0.05);
     --sh1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
     --sh2: 0 2px 8px rgba(0, 0, 0, 0.45), 0 14px 40px rgba(0, 0, 0, 0.5);
@@ -42,8 +42,8 @@
   --ok: #34d399; --ok-soft: rgba(52, 211, 153, 0.12);
   --warn: #e8b44a; --warn-soft: rgba(232, 180, 74, 0.13);
   --bad: #f0647c; --bad-soft: rgba(240, 100, 124, 0.13);
-  --f-rec: #34d399; --f-fee: #3fb3ac; --f-gate: #7c9bff; --f-revw: #5d6478; --f-rev: #f0647c; --f-leak: #e8b44a;
-  --glow: 7;
+  --f-rec: #2fe3a0; --f-fee: #3fb3ac; --f-gate: #86a3ff; --f-revw: #646c85; --f-rev: #ff6480; --f-leak: #ffc24d;
+  --glow: 10;
   --bloom1: rgba(91, 118, 247, 0.11); --bloom2: rgba(52, 211, 153, 0.05);
   --sh1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
   --sh2: 0 2px 8px rgba(0, 0, 0, 0.45), 0 14px 40px rgba(0, 0, 0, 0.5);
@@ -143,7 +143,9 @@
 .rx .flowpanel {
   position: relative; height: clamp(400px, 44vw, 480px); min-width: 860px;
   background:
-    radial-gradient(620px 320px at 72% 18%, rgba(124, 155, 255, 0.07), transparent 62%),
+    radial-gradient(620px 320px at 72% 18%, rgba(124, 155, 255, 0.08), transparent 62%),
+    radial-gradient(460px 280px at 88% 48%, rgba(4, 196, 126, 0.07), transparent 60%),
+    radial-gradient(420px 260px at 12% 52%, rgba(245, 158, 11, 0.06), transparent 60%),
     linear-gradient(180deg, var(--card), var(--card2));
   border: 1px solid var(--line); border-radius: 22px;
   box-shadow: var(--sh1); margin-top: 1.3rem;
@@ -187,6 +189,10 @@
 /* sub line ellipsizes: a long live signal title must never balloon the tile off-canvas */
 .rx .fnode .fs { font-size: 0.64rem; color: var(--faint); white-space: nowrap; display: block; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
 .rx .fnode.gold .fv { color: var(--ok); }
+.rx .fnode.gold {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 20%, transparent), var(--sh2);
+}
 .rx .fnode.gate { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent), var(--sh2); }
 .rx .fnode.gate .fv { color: var(--brand); }
 .rx .fnode.bad .fv { color: var(--bad); }
