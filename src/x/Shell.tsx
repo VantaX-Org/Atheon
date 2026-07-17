@@ -41,8 +41,12 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
   const setSelectedCompanyId = useAppStore((s) => s.setSelectedCompanyId);
   const setUser = useAppStore((s) => s.setUser);
   const setActiveTenant = useAppStore((s) => s.setActiveTenant);
+  const theme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // ponytail: resolved once per render; after first click theme is explicit anyway
+  const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -93,6 +97,14 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
         </nav>
         <div className="who">
           <JeffLauncher variant="shell" openKey={jeffOpenKey} context={jeffContext ?? `surface:/x role:${persona?.key ?? 'user'}`} />
+          <button
+            className="theme-btn"
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Light mode' : 'Dark mode'}
+          >
+            {isDark ? '☀' : '☾'}
+          </button>
           {persona && (
             <select
               className="role"

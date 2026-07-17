@@ -96,6 +96,11 @@
   background: var(--brand-soft); border-radius: 12px; padding: 0.42rem 0.8rem; white-space: nowrap;
 }
 .rx .jeff-pill:hover { background: var(--line); }
+.rx .theme-btn {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--card2); color: var(--mut);
+  font-size: 0.9rem; line-height: 1; display: grid; place-items: center;
+}
+.rx .theme-btn:hover { background: var(--line); color: var(--ink); }
 .rx .idwrap { position: relative; }
 .rx .avatar {
   width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #5b76f7, #7c5bf7); color: #fff;

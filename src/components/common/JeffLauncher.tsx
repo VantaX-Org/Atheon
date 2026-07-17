@@ -20,6 +20,19 @@ import { useAppStore } from '@/stores/appStore';
 const BUDGET_EXCEEDED_MESSAGE =
   "Your tenant's LLM budget has been reached for this month. Contact your admin to increase it.";
 
+// Jeff answers arrive as markdown; the slide-over is plain text (whitespace-pre-line),
+// so raw '####' and '**' leak as literal characters. Strip the emphasis/heading
+// markers but keep newlines (paragraphs) and underscores (identifiers like bank_fee).
+// ponytail: not a full markdown renderer — just unwrap the tokens that show up raw.
+function cleanJeffMarkdown(t: string): string {
+  return t
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
 type Turn =
   | { role: 'user'; text: string }
   | { role: 'jeff'; result: MindQueryResult }
@@ -138,7 +151,7 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
                 return (
                   <div key={i} className="space-y-2">
                     <div className="max-w-[92%] rounded-lg rounded-bl-sm px-3.5 py-2.5 text-sm t-primary leading-relaxed whitespace-pre-line" style={{ background: 'var(--bg-secondary)' }}>
-                      {r.response}
+                      {cleanJeffMarkdown(r.response)}
                     </div>
                     {/* Honest provenance — real model + measured latency + real citations only. */}
                     <div className="flex flex-wrap items-center gap-1.5 pl-1">
