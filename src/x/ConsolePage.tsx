@@ -211,7 +211,7 @@ export function ConsolePage() {
                 onClick={() => goSection('decisions')}
                 title="Open the decision queue"
               >{formatZarFull(input.gate?.pendingZar)}</button>
-              <small>awaiting your signature</small>
+              <small>{canApprove ? 'awaiting your signature' : 'awaiting sign-off'}</small>
             </div>
           </div>
         </div>

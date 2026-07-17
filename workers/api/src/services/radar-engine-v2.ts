@@ -132,11 +132,12 @@ export async function computeStrategicContext(
   // global-only for now; revisit once the aggregator buckets per-tenant.
   const tenant: { industry: string } = { industry: 'general' };
 
-  // Compute industry benchmark score from market_benchmarks
-  let industryBenchmark = 0;
-  if (benchmarks.results.length > 0) {
+  // ponytail: rows mix units (%, days, ZAR, turns) — only /100 rows comparable to healthScore; null when none
+  const comparable = benchmarks.results.filter((b) => b.benchmark_unit === '/100');
+  let industryBenchmark: number | null = null;
+  if (comparable.length > 0) {
     industryBenchmark = Math.round(
-      benchmarks.results.reduce((s, b) => s + (b.benchmark_value as number || 0), 0) / benchmarks.results.length
+      comparable.reduce((s, b) => s + (b.benchmark_value as number || 0), 0) / comparable.length
     );
   }
 
