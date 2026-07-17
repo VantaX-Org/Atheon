@@ -6,7 +6,7 @@ describe('activePersona', () => {
     const p = activePersona('?as=cpo', 'Vantax Demo');
     expect(p?.key).toBe('cpo');
     expect(p?.kicker).toBe('Recovered from your suppliers');
-    expect(p?.opsFirst?.slice(0, 2)).toEqual(['procurement', 'supply_chain']);
+    expect(p?.opsFirst?.slice(0, 2)).toEqual(['procurement', 'finance']);
     expect(p?.canApprove).toBe(false);
   });
   it('?as=cpo on a real tenant → null (no switcher)', () => {

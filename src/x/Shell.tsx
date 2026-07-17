@@ -26,10 +26,11 @@ const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; admin?: bool
 ];
 const ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
-export function Shell({ active, persona, onPersona, decisionsCount, jeffContext, jeffOpenKey }: {
+export function Shell({ active, persona, onPersona, onSection, decisionsCount, jeffContext, jeffOpenKey }: {
   active: SectionKey;
   persona: Persona | null;
   onPersona: (k: PersonaKey) => void;
+  onSection: (id: SectionKey) => void;
   decisionsCount: number | null;
   jeffContext?: string;
   jeffOpenKey?: number;
@@ -77,10 +78,7 @@ export function Shell({ active, persona, onPersona, decisionsCount, jeffContext,
             <button
               key={s.id}
               aria-current={active === s.id ? 'true' : undefined}
-              onClick={() => {
-                document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
-                history.replaceState(null, '', `#${s.id}`);
-              }}
+              onClick={() => onSection(s.id)}
             >
               <XIcon name={s.icon} size={14} /> {s.label}
               {s.id === 'decisions' && decisionsCount != null && decisionsCount > 0 && (

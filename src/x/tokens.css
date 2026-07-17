@@ -463,3 +463,46 @@
 .rx .in { animation: rx-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards; }
 @keyframes rx-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .rx .in { animation: none !important; } .rx .drawer, .rx .scrim { transition: none !important; } }
+
+/* ---------- control tower: fixed-viewport command center ----------
+   One vantage: mast (instruments) left, radar (river) + deck (active
+   section) right. Below the breakpoint the stacked scroll layout above
+   applies untouched — the tower is additive, pure CSS. */
+@media (min-width: 1100px) and (min-height: 620px) {
+  .rx.tower { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  .rx.tower .shell-wrap { position: static; max-width: none; padding-top: 0.7rem; }
+  .rx.tower .page {
+    flex: 1; min-height: 0; max-width: none;
+    display: grid; grid-template-columns: minmax(270px, 330px) 1fr;
+    gap: 1.2rem; padding: 0.8rem 1.5rem 1rem;
+  }
+
+  /* mast — the instrument stack */
+  .rx.tower .mast { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; }
+  .rx.tower .hero { padding-top: 0.3rem; display: block; }
+  .rx.tower .hero-big { font-size: clamp(1.9rem, 2.4vw, 2.7rem); }
+  .rx.tower .pulse-strip { flex-direction: column; align-items: flex-start; gap: 0.35rem; margin-top: 0.9rem; padding: 0.7rem 0.9rem; background: var(--card); border: 1px solid var(--line); border-radius: 14px; width: 100%; }
+  .rx.tower .pulse-strip:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
+  .rx.tower .hero-side { flex-direction: column; gap: 0.7rem; padding: 0.9rem 0 0; flex-wrap: nowrap; }
+  .rx.tower .hero-side .s { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0.65rem 0.9rem; }
+  .rx.tower .hero-side .s:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
+  .rx.tower .hero-side .s.act { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 7%, var(--card)), var(--card)); }
+  .rx.tower .hero-side .s button { font-size: 1.45rem; }
+  .rx.tower .jeff-brief { margin-top: 0.9rem; flex-direction: column; gap: 0.5rem; }
+
+  /* radar + deck column */
+  .rx.tower .tower-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .rx.tower .mscroll { flex: none; overflow-x: visible; }
+  .rx.tower .ticker { margin-top: 0; min-width: 0; }
+  .rx.tower .flowpanel, .rx.tower .flowpanel.short, .rx.tower .flowpanel.mid, .rx.tower .flowpanel.tall { min-width: 0; height: clamp(280px, 40vh, 460px); margin-top: 0.6rem; }
+  .rx.tower .flow-note { margin: 0.45rem 0 0; }
+
+  /* deck — one section at a time, internal scroll; siblings hidden */
+  .rx.tower .deck { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0.7rem; border-top: 1px solid var(--line); scrollbar-width: thin; }
+  .rx.tower .deck .head { padding-top: 0.9rem; }
+  .rx.tower .footnote { margin: 1rem 0 1.2rem; }
+  .rx.tower .page[data-active="brief"] .deck section:not(#brief) { display: none; }
+  .rx.tower .page[data-active="decisions"] .deck section:not(#decisions) { display: none; }
+  .rx.tower .page[data-active="ledger"] .deck section:not(#ledger) { display: none; }
+  .rx.tower .page[data-active="catalysts"] .deck section:not(#catalysts) { display: none; }
+}

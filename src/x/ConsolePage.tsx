@@ -66,6 +66,12 @@ function JeffBrief({ personaKey, personaLabel }: { personaKey: string; personaLa
   );
 }
 
+// Anchors that live inside a section map to their owner so the tower deck
+// can switch before scrolling (fallback layout just scrolls the page).
+const ANCHOR_SECTION: Record<string, SectionKey> = {
+  brief: 'brief', leaks: 'brief', decisions: 'decisions', ledger: 'ledger', catalysts: 'catalysts',
+};
+
 export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   // fresh login stores the tenant name on the user; activeTenantName is only
@@ -99,6 +105,21 @@ export function ConsolePage() {
     setJeff((j) => ({ ctx: `surface:/x node:${ctx}`, key: j.key + 1 }));
   }, []);
 
+  // One navigation path for pills, hero figures, and drawer buttons: switch
+  // the deck (tower) then scroll — the deck scrolls internally in tower mode,
+  // the page scrolls in the stacked fallback.
+  const goSection = useCallback((anchor: string) => {
+    const sec = ANCHOR_SECTION[anchor];
+    if (sec) setActive(sec);
+    history.replaceState(null, '', `#${anchor}`);
+    requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' }));
+  }, []);
+
+  // Persona switch may drop the active section — snap to its first.
+  useEffect(() => {
+    if (!sections.includes(active)) setActive(sections[0]);
+  }, [sections, active]);
+
   // Scrollspy: the topmost visible section drives rail, pills, and reactor lens.
   useEffect(() => {
     const els = sections.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
@@ -112,10 +133,13 @@ export function ConsolePage() {
     return () => io.disconnect();
   }, [sections]);
 
-  // #hash deep link scrolls once the sections exist.
+  // #hash deep link: open the owning deck, then scroll once sections exist.
   useEffect(() => {
     const id = window.location.hash.slice(1);
-    if (id) document.getElementById(id)?.scrollIntoView();
+    if (!id) return;
+    const sec = ANCHOR_SECTION[id];
+    if (sec) setActive(sec);
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView());
   }, []);
 
   // The role decides whether Approve renders enabled; the persona lens can only
@@ -123,17 +147,19 @@ export function ConsolePage() {
   const canApprove = roleCanApprove(userRole) && (persona ? persona.canApprove : true);
 
   return (
-    <div className="rx">
+    <div className="rx tower">
       <Shell
         active={active}
         persona={persona}
         onPersona={onPersona}
+        onSection={goSection}
         decisionsCount={decisionsCount}
         jeffContext={jeff.ctx ? `${persona ? `The reader is the ${persona.label} — answer through their lens (${persona.lens}). ` : ''}${jeff.ctx}` : undefined}
         jeffOpenKey={jeff.key}
       />
 
-      <main className="page">
+      <main className="page" data-active={active}>
+        <aside className="mast">
         <div className="hero in">
           <div>
             <div className="kicker">{persona ? `Recovered · ${persona.lens}` : 'Recovered for your business'}</div>
@@ -144,7 +170,7 @@ export function ConsolePage() {
             {(input.pulse || input.health) && (
               <button
                 className="pulse-strip num"
-                onClick={() => { document.getElementById('brief')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#brief'); }}
+                onClick={() => goSection('brief')}
                 title="Open the brief"
               >
                 <span className="ps-k">Since last period</span>
@@ -168,7 +194,7 @@ export function ConsolePage() {
             <div className="s">
               <button
                 className="num"
-                onClick={() => { document.getElementById('leaks')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#leaks'); }}
+                onClick={() => goSection('leaks')}
                 title="Open the findings"
               >{formatZarFull(input.ops?.totalZar)}</button>
               <small>leakage detected · this assessment</small>
@@ -182,7 +208,7 @@ export function ConsolePage() {
             <div className="s act">
               <button
                 className="num"
-                onClick={() => { document.getElementById('decisions')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#decisions'); }}
+                onClick={() => goSection('decisions')}
                 title="Open the decision queue"
               >{formatZarFull(input.gate?.pendingZar)}</button>
               <small>awaiting your signature</small>
@@ -191,18 +217,23 @@ export function ConsolePage() {
         </div>
 
         <JeffBrief personaKey={persona?.key ?? 'user'} personaLabel={persona?.label ?? 'executive team'} />
+        </aside>
 
-        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} />
+        <div className="tower-main">
+        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} onGoTo={goSection} />
 
-        {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
-        {sections.includes('decisions') && <DecisionsSection persona={persona} canApprove={canApprove} onAskJeff={onAskJeff} />}
-        {sections.includes('ledger') && <LedgerSection persona={persona} onAskJeff={onAskJeff} />}
-        {sections.includes('catalysts') && <CatalystsSection persona={persona} onAskJeff={onAskJeff} />}
+        <div className="deck">
+          {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
+          {sections.includes('decisions') && <DecisionsSection persona={persona} canApprove={canApprove} onAskJeff={onAskJeff} />}
+          {sections.includes('ledger') && <LedgerSection persona={persona} onAskJeff={onAskJeff} />}
+          {sections.includes('catalysts') && <CatalystsSection persona={persona} onAskJeff={onAskJeff} />}
 
-        <p className="footnote">
-          Every figure on this screen traces to a booked API field; a dash means
-          the source has not reported. AI commentary is marked and attributed.
-        </p>
+          <p className="footnote">
+            Every figure on this screen traces to a booked API field; a dash means
+            the source has not reported. AI commentary is marked and attributed.
+          </p>
+        </div>
+        </div>
       </main>
     </div>
   );

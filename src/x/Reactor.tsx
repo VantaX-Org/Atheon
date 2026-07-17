@@ -40,7 +40,7 @@ const TIMELINE_LABEL: Record<string, string> = {
   immediate: 'immediate', 'near-term': 'near term', strategic: 'strategic',
 };
 
-export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, onAskJeff }: {
+export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, onAskJeff, onGoTo }: {
   input: ReactorInput;
   focus: ReactorFocus;
   opsFirst?: string[];
@@ -48,6 +48,7 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
   loading?: boolean;
   chain?: ChainStage[];
   onAskJeff: (nodeContext: string) => void;
+  onGoTo?: (anchor: string) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const currency = useTenantCurrency();
@@ -110,6 +111,7 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
 
   const goTo = (anchor: string) => {
     setSel(null);
+    if (onGoTo) { onGoTo(anchor); return; } // tower: switch the deck first
     document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' });
     history.replaceState(null, '', `#${anchor}`);
   };
