@@ -161,7 +161,7 @@ export function CompliancePage(): JSX.Element {
  * a sub-component so the parent CompliancePage can compose it with the
  * Audit Log and Governance tabs without rewriting state management here.
  */
-function ComplianceEvidence(): JSX.Element {
+export function ComplianceEvidence(): JSX.Element {
   const toast = useToast();
   const activeTenantId = useAppStore(s => s.activeTenantId);
   // Share-link mint/list/revoke endpoints are platform-admin only (see

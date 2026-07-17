@@ -23,6 +23,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
             by_severity: {}, by_category: {}, recommended_catalysts: [],
           } },
         }),
+        findings: vi.fn().mockResolvedValue({ findings: [], total: 0 }),
       },
     },
   };

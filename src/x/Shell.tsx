@@ -22,7 +22,7 @@ const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
 const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; roles?: string[] }> = [
   { to: '/x/ops', label: 'Operations', icon: 'ops' },
   { to: '/x/assurance', label: 'Assurance', icon: 'seal', roles: ['superadmin', 'support_admin', 'admin', 'auditor'] },
-  { to: '/console', label: 'Console', icon: 'gate', roles: ['superadmin', 'support_admin', 'admin'] },
+  { to: '/console', label: 'Admin', icon: 'gate', roles: ['superadmin', 'support_admin', 'admin'] },
 ];
 
 export function Shell({ active, persona, onPersona, onSection, decisionsCount, jeffContext, jeffOpenKey }: {

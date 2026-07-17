@@ -121,7 +121,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
       <div className="head">
         <span className="kicker">Ledger</span>
         <h2>What came back, receipt by receipt</h2>
-        <Link className="go" to="/x/findings">Every finding, line by line →</Link>
+        <Link className="drill" to="/x/findings">Every finding, line by line →</Link>
       </div>
 
       <div className="kpis">

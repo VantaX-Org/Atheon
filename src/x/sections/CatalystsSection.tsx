@@ -177,7 +177,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
             <span className="meta"> {ledger.summary.totalRuns} runs · {money(ledger.summary.totalRealizedSavingsZar)} realised · last 90 days</span>
           )}
         </h2>
-        <Link className="go" to="/x/fixes">All catalysts, runs & approvals →</Link>
+        <Link className="drill" to="/x/fixes">All catalysts, runs & approvals →</Link>
       </div>
 
       {loading && <p className="flow-note">Loading…</p>}

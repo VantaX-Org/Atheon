@@ -58,7 +58,10 @@
     var(--bg);
   color: var(--body); font-family: "IBM Plex Sans", -apple-system, sans-serif; font-size: 13.5px; line-height: 1.55; -webkit-font-smoothing: antialiased;
 }
-.rx button { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
+/* button reset for shell chrome only — legacy pages under .xlegacy keep their
+   own component styling (the reset's .rx button specificity would beat their
+   Tailwind utilities and wash out primary buttons) */
+.rx button:not(.xlegacy *) { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
 .rx button:focus-visible, .rx a:focus-visible, .rx select:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
 .rx .num { font-variant-numeric: tabular-nums; }
 .rx .kicker { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
@@ -511,13 +514,15 @@
 /* ---------- subpage — deep surfaces under the same shell ---------- */
 .rx.sub { display: flex; flex-direction: column; }
 .rx.sub .subpage { max-width: 1180px; width: 100%; margin: 0 auto; padding: 1.1rem 1.5rem 3rem; }
-.rx.sub .sub-head { display: flex; align-items: baseline; gap: 1rem; margin: 0.4rem 0 1.1rem; }
-.rx.sub .sub-head h1 { font-size: 1.25rem; }
+/* breadcrumb line — pages render their own hero title, so this stays quiet */
+.rx.sub .sub-head { display: flex; align-items: center; gap: 0.55rem; margin: 0.4rem 0 0.9rem; }
+.rx.sub .sub-head h1 { font-size: 0.78rem; font-weight: 600; color: var(--faint); }
+.rx.sub .sub-head h1::before { content: '/'; margin-right: 0.55rem; opacity: 0.45; }
 .rx.sub .sub-back { font-size: 0.78rem; font-weight: 600; color: var(--faint); white-space: nowrap; }
 .rx.sub .sub-back:hover { color: var(--brand); }
 /* legacy pages keep their own (Tailwind) styling; the wrapper only isolates them */
 .rx.sub .xlegacy { min-width: 0; }
 
 /* section drill: quiet link from a tower section to its deep surface */
-.rx .head .go { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--faint); text-decoration: none; }
-.rx .head .go:hover { color: var(--brand); }
+.rx .head .drill { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--faint); text-decoration: none; }
+.rx .head .drill:hover { color: var(--brand); }

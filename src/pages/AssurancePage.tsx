@@ -14,32 +14,36 @@
  */
 import { useState } from 'react';
 import { ShieldCheck, ScrollText, Database, Gauge } from 'lucide-react';
-import { CompliancePage } from '@/pages/CompliancePage';
+import { ComplianceEvidence } from '@/pages/CompliancePage';
 import { AuditPage } from '@/pages/AuditPage';
 import { DataGovernancePage } from '@/pages/DataGovernancePage';
 import { TrustPerformancePage } from '@/pages/TrustPerformancePage';
+import { useAppStore } from '@/stores/appStore';
 
 const SECTIONS = [
-  { key: 'evidence', label: 'Evidence & audit log', icon: ShieldCheck, render: () => <CompliancePage /> },
-  { key: 'trail', label: 'Audit trail', icon: ScrollText, render: () => <AuditPage /> },
-  { key: 'governance', label: 'Data governance', icon: Database, render: () => <DataGovernancePage /> },
+  { key: 'evidence', label: 'Evidence pack', icon: ShieldCheck, render: () => <ComplianceEvidence /> },
+  { key: 'trail', label: 'Audit log', icon: ScrollText, render: () => <AuditPage /> },
+  { key: 'governance', label: 'Governance', icon: Database, render: () => <DataGovernancePage /> },
   { key: 'trust', label: 'Trust & performance', icon: Gauge, render: () => <TrustPerformancePage /> },
 ] as const;
 
 export function AssurancePage() {
   const [active, setActive] = useState<(typeof SECTIONS)[number]['key']>('evidence');
-  const current = SECTIONS.find((s) => s.key === active) ?? SECTIONS[0];
+  // Governance API is admin+ (workers/api/src/routes/governance.ts) — hide the
+  // tab from auditors rather than render a guaranteed 403.
+  const isAuditor = useAppStore((s) => s.user?.role) === 'auditor';
+  const sections = SECTIONS.filter((s) => !(isAuditor && s.key === 'governance'));
+  const current = sections.find((s) => s.key === active) ?? sections[0];
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2 pb-1">
-        <p className="text-sm font-semibold t-primary">Assurance</p>
+      <header className="pb-1">
         <p className="text-sm t-secondary">Read-only evidence, audit trail, and governance records.</p>
       </header>
 
       {/* Section switcher — one surface at a time; each owns its data. */}
       <nav className="flex flex-wrap gap-1 border-b border-[var(--border-card)] -mb-px" role="tablist" aria-label="Assurance sections">
-        {SECTIONS.map((s) => {
+        {sections.map((s) => {
           const on = s.key === active;
           const Icon = s.icon;
           return (
