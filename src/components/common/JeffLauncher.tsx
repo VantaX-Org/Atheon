@@ -38,6 +38,19 @@ type Turn =
   | { role: 'jeff'; result: MindQueryResult }
   | { role: 'error'; text: string };
 
+// Web Speech API isn't in the TS DOM lib — just the surface we touch.
+type SpeechRecognitionResultsLike = {
+  resultIndex: number;
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+};
+type SpeechRecognitionLike = {
+  lang: string; interimResults: boolean; continuous: boolean;
+  onresult: ((e: SpeechRecognitionResultsLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void; stop(): void;
+};
+
 export function JeffLauncher({ context, variant = 'floating', openKey }: { context?: string; variant?: 'floating' | 'shell'; openKey?: number } = {}) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -48,12 +61,13 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
   const activeTenantId = useAppStore((s) => s.activeTenantId);
   const industry = useAppStore((s) => s.industry);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recogRef = useRef<any>(null);
+  const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
   // Voice is native — no dependency. Dictation via Web Speech (webkit-prefixed on
   // Safari/Chrome), and Jeff can read his answer back via speechSynthesis. Both
   // feature-detected: the buttons only render where the browser supports them.
-  const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+  const w = typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>) : null;
+  const SR = (w?.SpeechRecognition ?? w?.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null;
   const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   // Keep the newest turn in view as the thread grows.
@@ -95,7 +109,7 @@ export function JeffLauncher({ context, variant = 'floating', openKey }: { conte
     r.interimResults = true;
     r.continuous = false;
     let finalText = '';
-    r.onresult = (e: any) => {
+    r.onresult = (e) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const seg = e.results[i][0].transcript;
