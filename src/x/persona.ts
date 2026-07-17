@@ -92,7 +92,9 @@ export const PERSONAS: Record<PersonaKey, Persona> = {
     key: 'cpo', label: 'Chief Procurement Officer', kicker: 'Recovered from your suppliers',
     lens: 'Supplier-side leakage: procurement and supply-chain findings first.',
     sections: ALL, canApprove: false,
-    opsFirst: ['procurement', 'supply_chain'],
+    // CPO remit = suppliers + what you pay them: contracts (procurement),
+    // purchases & payments (finance), and supply chain stay lit; the rest greys.
+    opsFirst: ['procurement', 'finance', 'supply_chain'],
     chain: CPO_CHAIN,
   },
   controller: {

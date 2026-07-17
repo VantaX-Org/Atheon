@@ -144,8 +144,11 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
   return (
     <section id="brief">
       <div className="head">
-        <span className="kicker">Brief</span>
-        <h2>What is happening to the business</h2>
+        <span className="kicker">Brief{persona ? ` · ${persona.label}` : ''}</span>
+        {/* Per-role framing: the CPO reads a supplier brief, the CFO a cash
+            brief — same figures, the role's own lens on top. */}
+        <h2>{persona ? persona.kicker : 'What is happening to the business'}</h2>
+        {persona && <p className="flow-note">{persona.lens}</p>}
       </div>
 
       <div className="hero">
