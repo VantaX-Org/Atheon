@@ -132,6 +132,38 @@
 .rx .hero { padding-top: 2.2rem; display: flex; align-items: flex-end; gap: 2.5rem; flex-wrap: wrap; }
 .rx .hero-big { font-family: "Schibsted Grotesk"; font-weight: 800; letter-spacing: -0.03em; font-size: clamp(2.6rem, 5vw, 4.5rem); line-height: 1.05; margin: 0.2rem 0 0; color: var(--ink); }
 .rx .chip-up { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--ok-soft); color: var(--ok); font-size: 0.76rem; font-weight: 600; border-radius: 20px; padding: 0.3rem 0.8rem; margin-top: 0.55rem; }
+/* since-last-period pulse — one honest line under the hero figure */
+.rx .pulse-strip {
+  display: flex; align-items: baseline; gap: 1.1rem; flex-wrap: wrap;
+  margin-top: 0.7rem; padding: 0; font-size: 0.76rem; color: var(--mut);
+  text-align: left; cursor: pointer;
+}
+.rx .pulse-strip:hover span { color: var(--body); }
+.rx .pulse-strip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.rx .pulse-strip .ps-k {
+  font-family: "Space Mono", monospace; font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+}
+.rx .pulse-strip em { font-style: normal; font-weight: 700; }
+.rx .pulse-strip em.up { color: var(--ok); }
+.rx .pulse-strip em.down { color: var(--bad); }
+
+/* Jeff's login brief — marked AI commentary, typed in under the hero */
+.rx .jeff-brief {
+  display: flex; align-items: flex-start; gap: 0.9rem; margin-top: 1.3rem;
+  padding: 0.85rem 1.1rem; border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--line));
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 6%, var(--card)), var(--card));
+}
+.rx .jeff-brief .jb-tag {
+  flex: none; font-family: "Space Mono", monospace; font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand);
+  padding-top: 0.2rem; white-space: nowrap;
+}
+.rx .jeff-brief p { margin: 0; font-size: 0.88rem; line-height: 1.65; color: var(--body); }
+.rx .jeff-brief .jb-wait { color: var(--faint); animation: rx-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .rx .jeff-brief .jb-wait { animation: none; } }
+
 .rx .hero-side { display: flex; gap: 2rem; padding-bottom: 0.4rem; flex-wrap: wrap; }
 .rx .hero-side .s button { font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 1.3rem; color: var(--ink); display: block; }
 .rx .hero-side .s button:hover { color: var(--brand); text-decoration: underline; }
@@ -140,6 +172,37 @@
 
 /* ---------- flow panel ---------- */
 .rx .mscroll { overflow-x: auto; }
+
+/* ---------- external signal ticker — the world scrolling over the river ---------- */
+.rx .ticker {
+  display: flex; align-items: center; gap: 0.8rem; width: 100%; min-width: 860px;
+  margin-top: 1.3rem; padding: 0.4rem 0.9rem;
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  border: 1px solid var(--line); border-radius: 12px;
+  overflow: hidden; cursor: pointer; text-align: left;
+}
+.rx .ticker:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
+.rx .ticker:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.rx .ticker + .flowpanel { margin-top: 0.6rem; }
+.rx .tk-live {
+  display: inline-flex; align-items: center; gap: 0.4rem; flex: none;
+  font-family: "Space Mono", monospace; font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand);
+}
+.rx .tk-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); animation: rx-pulse 1.6s ease-in-out infinite; }
+@keyframes rx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.rx .tk-tape { flex: 1; display: flex; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); }
+.rx .tk-run { display: inline-flex; flex: none; animation: rx-tick 36s linear infinite; }
+.rx .ticker:hover .tk-run { animation-play-state: paused; }
+@keyframes rx-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.rx .tk-item { flex: none; font-size: 0.72rem; color: var(--body); padding-right: 2.4rem; white-space: nowrap; }
+.rx .tk-item b { font-size: 0.5rem; vertical-align: 0.2em; color: var(--mut); margin-right: 0.3rem; }
+.rx .tk-item.neg b { color: var(--bad); }
+.rx .tk-item.pos b { color: var(--ok); }
+@media (prefers-reduced-motion: reduce) {
+  .rx .tk-run { animation: none; }
+  .rx .tk-live i { animation: none; }
+}
 .rx .flowpanel {
   position: relative; height: clamp(400px, 44vw, 480px); min-width: 860px;
   background:
@@ -203,6 +266,14 @@
 .rx .fnode.stage.leaky .fs { color: var(--warn); font-weight: 600; }
 .rx .fnode.stage.clean .fs { color: var(--ok); font-weight: 600; }
 .rx .fnode.dim { opacity: 0.35; }
+/* live health chip on the value line — score + direction from the health engine */
+.rx .fnode .ftr {
+  font-family: "Space Mono", monospace; font-size: 0.6rem; font-weight: 700;
+  margin-left: 0.4rem; vertical-align: 0.15em; letter-spacing: 0;
+}
+.rx .fnode .ftr.up { color: var(--ok); }
+.rx .fnode .ftr.down { color: var(--bad); }
+.rx .fnode .ftr.flat { color: var(--mut); }
 .rx .fnode .fask {
   position: absolute; top: -0.5rem; right: -0.5rem; width: 1.5rem; height: 1.5rem;
   border-radius: 50%; background: var(--brand-soft); color: var(--brand);
@@ -352,6 +423,10 @@
 .rx .rc-row-l { color: var(--ink); font-weight: 600; display: flex; flex-direction: column; }
 .rx .rc-row-l em { font-style: normal; font-weight: 400; font-size: 0.66rem; color: var(--faint); }
 .rx .rc-row .num { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rx .rc-trend { font-size: 0.78rem; font-weight: 600; margin: 0.3rem 0 0; }
+.rx .rc-trend.up { color: var(--ok); }
+.rx .rc-trend.down { color: var(--bad); }
+.rx .rc-trend.flat { color: var(--mut); }
 .rx .rc-meta { font-size: 0.76rem; color: var(--mut); line-height: 1.65; margin: 0; }
 .rx .rc-meta b { color: var(--ink); font-weight: 600; }
 

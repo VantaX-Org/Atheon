@@ -12,15 +12,17 @@ const CAT_LABEL: Record<string, string> = {
   cross_cutting: 'Cross-cutting', service_delivery: 'Service delivery',
 };
 
-export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null };
+export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null, health: null, pulse: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
-  const [assessList, actions, roi, conns, radar] = await Promise.allSettled([
+  const [assessList, actions, roi, conns, radar, health, briefing] = await Promise.allSettled([
     api.assessments.list(),
     api.erp.actionsSummary(),
     api.roi.get(),
     api.erp.connections(),
     api.radar.signals(undefined, 10),
+    api.apex.health(),
+    api.apex.briefing(),
   ]);
 
   let ops: ReactorInput['ops'] = null;
@@ -70,6 +72,24 @@ async function fetchReactorInput(): Promise<ReactorInput> {
             .sort((a, b) => b.relevanceScore - a.relevanceScore)
             .slice(0, 5)
             .map((s) => ({ title: s.title, source: s.sourceName, sentiment: s.sentiment, relevance: s.relevanceScore })),
+        }
+      : null,
+    // live health dimensions — trend chips on the value-chain tiles
+    health: health.status === 'fulfilled'
+      ? {
+          overall: health.value.overall,
+          dims: Object.fromEntries(Object.entries(health.value.dimensions).map(
+            ([k, d]) => [k, { score: d.score, trend: d.trend, delta: d.delta ?? null }],
+          )),
+        }
+      : null,
+    // since-last-period pulse — the hero delta strip; null fields simply don't render
+    pulse: briefing.status === 'fulfilled'
+      ? {
+          healthDelta: briefing.value.healthDelta,
+          redMetricCount: briefing.value.redMetricCount,
+          anomalyCount: briefing.value.anomalyCount,
+          activeRiskCount: briefing.value.activeRiskCount,
         }
       : null,
   };

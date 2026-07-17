@@ -20,6 +20,8 @@ export interface RiverNode {
   anchor?: string; // section this node deep-links to
   dim?: boolean;
   sealed?: boolean; // figure is a directly booked API field — drawer may show the audit-chain seal
+  // live health chip: score + direction from the health engine; absent = engine silent
+  trend?: { dir: 'up' | 'down' | 'flat'; score: number; delta: number | null };
   prov?: string; // node-specific provenance sentence for the drawer
   // drill-down payloads, rendered by the drawer (canvas never draws these):
   rows?: Array<{ label: string; value: string; sub?: string }>; // what's inside this node
@@ -98,12 +100,21 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     fv.className = 'fv num';
     fv.textContent = n.value;
     d.appendChild(fv);
+    if (n.trend) {
+      const tr = document.createElement('span');
+      tr.className = `ftr ${n.trend.dir}`;
+      const arrow = n.trend.dir === 'up' ? '▲' : n.trend.dir === 'down' ? '▼' : '●';
+      tr.textContent = `${arrow} ${n.trend.score}`;
+      const word = n.trend.dir === 'up' ? 'improving' : n.trend.dir === 'down' ? 'declining' : 'steady';
+      tr.title = `Health ${n.trend.score}/100 · ${word}${n.trend.delta != null ? ` (${n.trend.delta > 0 ? '+' : ''}${n.trend.delta} this period)` : ''}`;
+      fv.appendChild(tr);
+    }
     if (opts.onNodeClick) {
       // whole tile is the drill-through target, not just the number
       d.classList.add('link');
       d.setAttribute('role', 'button');
       d.tabIndex = 0;
-      d.setAttribute('aria-label', `${n.kicker} ${n.value} — open details`);
+      d.setAttribute('aria-label', `${n.kicker} ${n.value}${n.trend ? `, health ${n.trend.score} ${n.trend.dir === 'up' ? 'improving' : n.trend.dir === 'down' ? 'declining' : 'steady'}` : ''} — open details`);
       d.addEventListener('click', () => opts.onNodeClick?.(n));
       d.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); opts.onNodeClick?.(n); }

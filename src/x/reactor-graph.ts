@@ -27,7 +27,28 @@ export interface ReactorInput {
     count: number;
     signals: Array<{ title: string; source: string | null; sentiment: string; relevance: number }>;
   } | null;
+  // Live health dimensions (apex health engine). Null when the engine has not
+  // reported — stages then carry no trend chip (absence, never a fabricated flat).
+  health: {
+    overall: number;
+    dims: Record<string, { score: number; trend: string; delta: number | null }>;
+  } | null;
+  // Since-last-period pulse from the apex briefing — the hero delta strip.
+  pulse: {
+    healthDelta: number | null;
+    redMetricCount: number | null;
+    anomalyCount: number | null;
+    activeRiskCount: number | null;
+  } | null;
 }
+
+// Each category bucket reads its trend from the health dimension that actually
+// measures it. Buckets without an honest dimension are simply absent.
+const BUCKET_DIM: Record<string, string> = {
+  finance: 'financial', sales: 'revenue', supply_chain: 'supply_chain',
+  compliance: 'compliance', procurement: 'operational',
+  service_delivery: 'operational', workforce: 'operational', cross_cutting: 'operational',
+};
 
 // A role-specific value chain: same category buckets, re-cut and re-labelled
 // for how that role runs the business (persona.ts defines the C-suite chains).
@@ -97,7 +118,7 @@ export function buildReactorGraph(
   canApprove = false,
   chain?: ChainStage[],
 ): { nodes: RiverNode[]; edges: RiverEdge[] } {
-  const { ops, gate, recovered, macro } = input;
+  const { ops, gate, recovered, macro, health } = input;
   const money = (v: number | null) => formatCompactCurrency(v, currency);
 
   const CHAIN = chain?.length ? chain : STAGES;
@@ -169,6 +190,20 @@ export function buildReactorGraph(
           sub: `${c.count} finding${c.count === 1 ? '' : 's'}`,
         }))
       : undefined;
+  // Stage health chip: first bucket with a live dimension speaks for the stage.
+  // improving/declining come from the health engine verbatim; anything else is flat.
+  const stageTrend = (buckets: string[]) => {
+    if (!health) return undefined;
+    for (const b of buckets) {
+      const d = health.dims[BUCKET_DIM[b] ?? ''];
+      if (d) {
+        const dir = d.trend === 'improving' ? 'up' as const : d.trend === 'declining' ? 'down' as const : 'flat' as const;
+        return { dir, score: Math.round(d.score), delta: d.delta };
+      }
+    }
+    return undefined;
+  };
+
   const stageDownstream = (i: number) => {
     const after = stages.slice(i + 1).filter((d) => d.sum);
     return after.length
@@ -201,6 +236,7 @@ export function buildReactorGraph(
       value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 && s.sum.unpriced > 0 ? '—' : money(s.sum.valueZar)) : '—',
       sub: stageSub(s.sum),
       cls: s.sum ? (s.sum.count > 0 ? 'stage leaky' : 'stage clean') : 'stage',
+      trend: stageTrend(s.buckets),
       anchor: 'leaks', prov: PROV_FINDING,
       rows: stageRows(s), downstream: stageDownstream(i),
     })),

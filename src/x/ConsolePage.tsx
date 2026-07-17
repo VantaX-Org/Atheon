@@ -9,6 +9,7 @@ import './tokens.css';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
+import { api } from '@/lib/api';
 import { formatZarFull } from '@/lib/format-currency';
 import { Shell } from './Shell';
 import { Reactor } from './Reactor';
@@ -19,6 +20,51 @@ import { BriefSection } from './sections/BriefSection';
 import { DecisionsSection } from './sections/DecisionsSection';
 import { LedgerSection } from './sections/LedgerSection';
 import { CatalystsSection } from './sections/CatalystsSection';
+
+// Jeff's login brief: role-aware, generated once per persona per session (Jeff
+// is slow and priced — the cache stops persona flips from re-billing). AI
+// commentary, marked as Jeff's. A failed call renders nothing — never canned text.
+const briefCache = new Map<string, string>();
+
+function JeffBrief({ personaKey, personaLabel }: { personaKey: string; personaLabel: string }) {
+  const [text, setText] = useState<string | null>(briefCache.get(personaKey) ?? null);
+  const [failed, setFailed] = useState(false);
+  const [shown, setShown] = useState(briefCache.has(personaKey) ? Infinity : 0);
+
+  useEffect(() => {
+    const cached = briefCache.get(personaKey);
+    if (cached) { setText(cached); setShown(Infinity); setFailed(false); return; }
+    setText(null); setShown(0); setFailed(false);
+    let on = true;
+    api.mind.query(
+      `Brief the ${personaLabel} in exactly three short sentences: what the recovery programme has returned to date, the single biggest leak right now, and the one decision that most needs their attention today. Plain prose — no lists, no headings, no preamble.`,
+      'tier-1',
+    ).then((r) => {
+      if (!on) return;
+      briefCache.set(personaKey, r.response);
+      setText(r.response);
+    }).catch(() => { if (on) setFailed(true); });
+    return () => { on = false; };
+  }, [personaKey, personaLabel]);
+
+  // typewriter reveal — presentational only; reduced-motion users get it whole
+  useEffect(() => {
+    if (!text || shown >= text.length) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setShown(Infinity); return; }
+    const t = setInterval(() => setShown((s) => s + 3), 24);
+    return () => clearInterval(t);
+  }, [text, shown]);
+
+  if (failed) return null;
+  return (
+    <div className="jeff-brief in" aria-live="polite">
+      <span className="jb-tag">✦ Jeff · AI brief</span>
+      {text
+        ? <p>{shown >= text.length ? text : text.slice(0, shown)}</p>
+        : <p className="jb-wait">Jeff is reading your ledger and preparing today&apos;s brief…</p>}
+    </div>
+  );
+}
 
 export function ConsolePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -95,6 +141,28 @@ export function ConsolePage() {
             {input.sourceCount != null && (
               <span className="chip-up num">{input.sourceCount} source{input.sourceCount === 1 ? '' : 's'} connected · every figure from booked fields</span>
             )}
+            {(input.pulse || input.health) && (
+              <button
+                className="pulse-strip num"
+                onClick={() => { document.getElementById('brief')?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#brief'); }}
+                title="Open the brief"
+              >
+                <span className="ps-k">Since last period</span>
+                {input.health && (
+                  <span>
+                    health {input.health.overall}
+                    {input.pulse?.healthDelta != null && (
+                      <em className={input.pulse.healthDelta >= 0 ? 'up' : 'down'}>
+                        {' '}{input.pulse.healthDelta >= 0 ? '▲' : '▼'}{Math.abs(input.pulse.healthDelta)}
+                      </em>
+                    )}
+                  </span>
+                )}
+                {input.pulse?.redMetricCount != null && <span><em className="down">{input.pulse.redMetricCount}</em> metrics red</span>}
+                {input.pulse?.anomalyCount != null && <span><em className="down">{input.pulse.anomalyCount}</em> open anomalies</span>}
+                {input.pulse?.activeRiskCount != null && <span><em className="down">{input.pulse.activeRiskCount}</em> risk alerts</span>}
+              </button>
+            )}
           </div>
           <div className="hero-side">
             <div className="s">
@@ -121,6 +189,8 @@ export function ConsolePage() {
             </div>
           </div>
         </div>
+
+        <JeffBrief personaKey={persona?.key ?? 'user'} personaLabel={persona?.label ?? 'executive team'} />
 
         <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} />
 

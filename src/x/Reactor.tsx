@@ -65,6 +65,15 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
     });
   }, [input, focus, currency, opsFirst, canApprove, chain, loading, onAskJeff]);
 
+  // Ticker click drills into the macro node: rebuild the graph (pure, cheap)
+  // and open its drawer — same rows the head tile shows.
+  const openMacro = () => {
+    const { nodes } = buildReactorGraph(input, currency, focus, opsFirst, canApprove, chain);
+    const m = nodes.find((n) => n.id === 'macro');
+    if (m) setSel(m);
+  };
+  const SENT: Record<string, string> = { positive: 'pos', negative: 'neg' };
+
   const goTo = (anchor: string) => {
     setSel(null);
     document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' });
@@ -73,6 +82,23 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
 
   return (
     <div className="mscroll">
+      {!!input.macro?.signals.length && (
+        <button className="ticker" onClick={openMacro} aria-label={`${input.macro.count} live external signals — open details`}>
+          <span className="tk-live"><i />Live signals</span>
+          <span className="tk-tape" aria-hidden="true">
+            {/* duplicated run = seamless loop; screen readers get the count above */}
+            {[0, 1].map((run) => (
+              <span className="tk-run" key={run}>
+                {input.macro!.signals.map((s, i) => (
+                  <span className={`tk-item ${SENT[s.sentiment] ?? ''}`} key={i}>
+                    <b>●</b> {s.title}{s.source ? ` — ${s.source}` : ''}
+                  </span>
+                ))}
+              </span>
+            ))}
+          </span>
+        </button>
+      )}
       {/* role=group: the tiles inside are real buttons — img would hide them from AT */}
       <div ref={panelRef} className={`flowpanel${loading ? ' loading' : ''}`} role="group" aria-busy={loading || undefined} aria-label="Live flow of the value chain: stage leakage, the decision gate, and recovered value">
         <canvas aria-hidden="true" />
@@ -100,6 +126,13 @@ export function Reactor({ input, focus, opsFirst, canApprove, loading, chain, on
           {sel.sealed && prov?.root && <div className="kicker">{sel.kicker}</div>}
           <div className="rc-amt num">{sel.value}</div>
           {sel.sub && <p className="rc-meta">{sel.sub}</p>}
+          {sel.trend && (
+            <p className={`rc-trend ${sel.trend.dir}`}>
+              {sel.trend.dir === 'up' ? '▲' : sel.trend.dir === 'down' ? '▼' : '●'} Health {sel.trend.score}/100
+              {' · '}{sel.trend.dir === 'up' ? 'improving' : sel.trend.dir === 'down' ? 'declining' : 'steady'}
+              {sel.trend.delta != null && ` (${sel.trend.delta > 0 ? '+' : ''}${sel.trend.delta} this period)`}
+            </p>
+          )}
           {sel.sealed && prov?.root && (
             <div className="rc-sec">
               <div className="rc-id">Audit chain · seq {prov.seq}</div>

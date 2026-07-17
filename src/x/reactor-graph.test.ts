@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildReactorGraph, type ReactorInput } from './reactor-graph';
 
-const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null };
+const NULL_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null, health: null, pulse: null };
 const FULL_INPUT: ReactorInput = {
   ops: {
     categories: [
@@ -15,6 +15,15 @@ const FULL_INPUT: ReactorInput = {
   recovered: { zar: 1200000, mult: 4 },
   sourceCount: 3,
   macro: { count: 2, signals: [{ title: 'ZAR swings past R19', source: 'Reuters', sentiment: 'negative', relevance: 0.9 }] },
+  health: {
+    overall: 73,
+    dims: {
+      financial: { score: 69, trend: 'declining', delta: -21 },
+      operational: { score: 94, trend: 'improving', delta: 4 },
+      supply_chain: { score: 58, trend: 'declining', delta: -4.8 },
+    },
+  },
+  pulse: { healthDelta: 1, redMetricCount: 9, anomalyCount: 10, activeRiskCount: 15 },
 };
 
 describe('honesty law', () => {
@@ -118,6 +127,30 @@ describe('value-chain stages', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
     expect(g.edges.some(e => e.from === 'stage-procure' && e.to === 'leak')).toBe(true);
     expect(g.edges.some(e => e.from === 'stage-tax' && e.to === 'leak')).toBe(false);
+  });
+});
+
+describe('stage health trend', () => {
+  it('stages read their trend from the mapped health dimension', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    const pay = g.nodes.find(n => n.id === 'stage-pay'); // finance → financial
+    expect(pay?.trend).toEqual({ dir: 'down', score: 69, delta: -21 });
+    const receive = g.nodes.find(n => n.id === 'stage-receive'); // supply_chain
+    expect(receive?.trend?.dir).toBe('down');
+    const operate = g.nodes.find(n => n.id === 'stage-operate'); // operational
+    expect(operate?.trend).toEqual({ dir: 'up', score: 94, delta: 4 });
+  });
+  it('a silent dimension leaves the stage without a trend chip', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    expect(g.nodes.find(n => n.id === 'stage-sell')?.trend).toBeUndefined(); // revenue dim absent
+  });
+  it('null health → no trend anywhere, never a fabricated flat', () => {
+    const g = buildReactorGraph(NULL_INPUT, 'ZAR', 'all');
+    expect(g.nodes.every(n => n.trend === undefined)).toBe(true);
+  });
+  it('macro head carries no trend — it is not a health-scored stage', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    expect(g.nodes.find(n => n.id === 'macro')?.trend).toBeUndefined();
   });
 });
 
