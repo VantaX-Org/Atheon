@@ -22,7 +22,7 @@ type AuthMode= 'login' | 'register';
  * else lands on the v2 Recovery Console at /x — the app's default surface.
  */
 function landingFor(role: string): string {
-  if (role === 'auditor') return '/assurance';
+  if (role === 'auditor') return '/x/assurance';
   if (role === 'board_member') return '/board';
   if (role === 'viewer') return '/dashboard';
   return '/x';

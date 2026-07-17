@@ -41,7 +41,7 @@ interface TraceabilityModalProps {
 export function TraceabilityModal({ data, type, onClose }: TraceabilityModalProps) {
   const navigate = useNavigate();
   const navigateToRun = (runId?: string) => {
-    if (runId) navigate(`/catalysts/runs/${runId}`);
+    if (runId) navigate(`/x/runs/${runId}`);
   };
   const [expandedSection, setExpandedSection] = useState<string | null>('source');
 

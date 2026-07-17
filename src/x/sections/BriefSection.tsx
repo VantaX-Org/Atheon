@@ -149,6 +149,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
             brief — same figures, the role's own lens on top. */}
         <h2>{persona ? persona.kicker : 'What is happening to the business'}</h2>
         {persona && <p className="flow-note">{persona.lens}</p>}
+        <Link className="go" to="/x/pulse">Live pulse & anomalies →</Link>
       </div>
 
       <div className="hero">

@@ -2,6 +2,7 @@
 // Recovered and prevented are API facts; the ROI multiple is the API's own
 // reported number, never a formula computed on this screen.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ForecastAccuracyResp, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
@@ -120,6 +121,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
       <div className="head">
         <span className="kicker">Ledger</span>
         <h2>What came back, receipt by receipt</h2>
+        <Link className="go" to="/x/findings">Every finding, line by line →</Link>
       </div>
 
       <div className="kpis">

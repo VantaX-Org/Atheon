@@ -177,6 +177,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
             <span className="meta"> {ledger.summary.totalRuns} runs · {money(ledger.summary.totalRealizedSavingsZar)} realised · last 90 days</span>
           )}
         </h2>
+        <Link className="go" to="/x/fixes">All catalysts, runs & approvals →</Link>
       </div>
 
       {loading && <p className="flow-note">Loading…</p>}
@@ -229,7 +230,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
         })}
       </div>
 
-      {/* Recent runs — each row deep-links to the kept /catalysts/runs/:runId detail. */}
+      {/* Recent runs — each row deep-links to the run detail at /x/runs/:runId. */}
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3>Recent runs <span className="meta">last 10</span></h3>
         {runs ? (
@@ -239,7 +240,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
                 {runs.aggregate.totalRuns} runs · {runs.aggregate.totalCompleted.toLocaleString()}/{runs.aggregate.totalItems.toLocaleString()} items completed · {runs.aggregate.totalExceptions} exceptions · {runs.aggregate.automationRate}% automated
               </p>
               {runs.runs.map((r) => (
-                <Link key={r.id} to={`/catalysts/runs/${r.runId}`} className="lrow" style={{ color: 'inherit', textDecoration: 'none' }}>
+                <Link key={r.id} to={`/x/runs/${r.runId}`} className="lrow" style={{ color: 'inherit', textDecoration: 'none' }}>
                   <span className="d">{new Date(r.startedAt).toLocaleDateString()}</span>
                   <p><b>{r.subCatalystName ?? r.clusterName ?? '—'}</b> — {r.summary.completed}/{r.summary.total} completed{r.summary.exceptions > 0 ? ` · ${r.summary.exceptions} exceptions` : ''}</p>
                   <span className={`pill ${r.summary.exceptions > 0 ? 'warn' : r.status === 'completed' ? 'ok' : 'grey'}`}>{r.status.replace(/_/g, ' ')}</span>

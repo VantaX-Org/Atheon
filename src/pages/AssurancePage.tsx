@@ -13,15 +13,17 @@
  * originals still stand.
  */
 import { useState } from 'react';
-import { ShieldCheck, ScrollText, Database } from 'lucide-react';
+import { ShieldCheck, ScrollText, Database, Gauge } from 'lucide-react';
 import { CompliancePage } from '@/pages/CompliancePage';
 import { AuditPage } from '@/pages/AuditPage';
 import { DataGovernancePage } from '@/pages/DataGovernancePage';
+import { TrustPerformancePage } from '@/pages/TrustPerformancePage';
 
 const SECTIONS = [
   { key: 'evidence', label: 'Evidence & audit log', icon: ShieldCheck, render: () => <CompliancePage /> },
   { key: 'trail', label: 'Audit trail', icon: ScrollText, render: () => <AuditPage /> },
   { key: 'governance', label: 'Data governance', icon: Database, render: () => <DataGovernancePage /> },
+  { key: 'trust', label: 'Trust & performance', icon: Gauge, render: () => <TrustPerformancePage /> },
 ] as const;
 
 export function AssurancePage() {

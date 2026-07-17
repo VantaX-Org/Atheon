@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { useAppStore } from '@/stores/appStore';
@@ -10,50 +10,50 @@ function renderAs(role: string) {
   render(<MemoryRouter><Sidebar /></MemoryRouter>);
 }
 
-describe('Sidebar journey nav', () => {
+// Single frontend (2026-07): journey pages live in /x; the rail is Console +
+// Workspace + Admin + Settings. Labels render twice (desktop + mobile drawer).
+describe('Sidebar single-frontend rail', () => {
   beforeEach(() => useAppStore.setState({ user: null as never }));
 
-  it('analyst sees the plain-language journey rail (no Fixes/Savings/Reports)', () => {
+  it('analyst sees Console + Settings only — no journey rail, no admin', () => {
     renderAs('analyst');
-    for (const label of ['Home', 'Data', 'Findings', 'Settings']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Console').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Settings').length).toBeGreaterThan(0);
+    for (const gone of ['Data', 'Findings', 'Fixes', 'Brief', 'Outlook', 'Admin', 'Workspace']) {
+      expect(screen.queryByText(gone)).toBeNull();
     }
-    expect(screen.queryByText('Savings')).toBeNull();
-    expect(screen.queryByText('Reports')).toBeNull();
-    expect(screen.queryByText('Fixes')).toBeNull();
-    expect(screen.queryByText('Catalysts')).toBeNull(); // renamed
   });
 
-  it('executive sees the journey items labeled plainly (Reports folded into Brief, v2 step 3)', () => {
+  it('executive sees Console + Workspace (Board Digest, Memory) but not Mind/Admin', () => {
     renderAs('executive');
-    for (const label of ['Home', 'Data', 'Findings', 'Savings']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
-    }
-    expect(screen.queryByText('Reports')).toBeNull();
+    expect(screen.getAllByText('Console').length).toBeGreaterThan(0);
+    // Workspace disclosure is collapsed by default — open it to see children.
+    screen.getAllByText('Workspace').forEach((el) => fireEvent.click(el));
+    expect(screen.getAllByText('Board Digest').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Memory').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Mind')).toBeNull();
+    expect(screen.queryByText('Admin')).toBeNull();
   });
 
-  it('executive sees the v2 Brief; analyst does not', () => {
-    renderAs('executive');
-    expect(screen.getAllByText('Brief').length).toBeGreaterThan(0);
+  it('admin sees the Admin row and Mind', () => {
+    renderAs('admin');
+    expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
+    screen.getAllByText('Workspace').forEach((el) => fireEvent.click(el));
+    expect(screen.getAllByText('Mind').length).toBeGreaterThan(0);
   });
 
-  it('analyst does not see the Brief (exec-scoped)', () => {
-    renderAs('analyst');
-    expect(screen.queryByText('Brief')).toBeNull();
+  it('auditor gets the scoped rail: Assurance + Support, no Console/Admin', () => {
+    renderAs('auditor');
+    expect(screen.getAllByText('Assurance').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Support').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Console')).toBeNull();
+    expect(screen.queryByText('Admin')).toBeNull();
   });
 
-  it('operator sees Fixes and Decisions (not Catalysts)', () => {
-    renderAs('operator');
-    expect(screen.getAllByText('Fixes').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Decisions').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Catalysts')).toBeNull();
-  });
-
-  it('executive sees the C-suite Outlook; analyst does not', () => {
-    renderAs('executive');
-    expect(screen.getAllByText('Outlook').length).toBeGreaterThan(0);
-    useAppStore.setState({ user: null as never });
-    renderAs('analyst');
-    expect(screen.queryByText('Outlook')).toBeNull();
+  it('board_member gets the scoped rail: Reports + Support, no Console', () => {
+    renderAs('board_member');
+    expect(screen.getAllByText('Reports').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Support').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Console')).toBeNull();
   });
 });

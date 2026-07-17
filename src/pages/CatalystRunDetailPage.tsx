@@ -312,7 +312,7 @@ export function CatalystRunDetailPage() {
       toastRef.current.success('Retry queued', 'A new run has been spawned from this one');
       // If a redirect target were present we'd nav to it; today we refresh.
       if ((res as { run_id?: string }).run_id) {
-        navigate(`/catalysts/runs/${(res as { run_id?: string }).run_id}`);
+        navigate(`/x/runs/${(res as { run_id?: string }).run_id}`);
       } else {
         await Promise.all([loadRun(), loadItems(0), loadInsights()]);
       }
@@ -913,7 +913,7 @@ export function CatalystRunDetailPage() {
                   <span className="t-muted text-xs">←</span>
                   <button
                     type="button"
-                    onClick={() => navigate(`/catalysts/runs/${ancestor.id}`)}
+                    onClick={() => navigate(`/x/runs/${ancestor.id}`)}
                     className="inline-flex items-center gap-2 px-2.5 py-1 border text-xs hover:bg-[var(--bg-primary)] transition-colors"
                     style={{ borderRadius: '2px', borderColor: 'var(--border-card)', color: 'var(--text-secondary)' }}
                     aria-label={`View ancestor run from ${new Date(ancestor.started_at).toLocaleDateString()}`}
@@ -956,7 +956,7 @@ export function CatalystRunDetailPage() {
                   definition: 'Number of source records this run successfully matched against their target row(s). High match rate is the "no surprises" signal.',
                   query: 'matched FROM sub_catalyst_runs WHERE id = ?',
                   sample: run.matched ?? 0,
-                  drillTo: `/catalysts/runs/${runId}?status=matched`,
+                  drillTo: `/x/runs/${runId}?status=matched`,
                 }} />
                 <CheckCircle2 size={16} style={{ color: 'var(--positive)' }} />
               </div>
@@ -974,7 +974,7 @@ export function CatalystRunDetailPage() {
                   definition: 'Source/target pairs whose values disagree by more than the configured tolerance. Each is a candidate for a write-back action.',
                   query: 'discrepancies FROM sub_catalyst_runs WHERE id = ?',
                   sample: run.discrepancies ?? 0,
-                  drillTo: `/catalysts/runs/${runId}?status=discrepancy`,
+                  drillTo: `/x/runs/${runId}?status=discrepancy`,
                 }} />
                 <AlertCircle size={16} style={{ color: 'var(--warning)' }} />
               </div>
@@ -992,7 +992,7 @@ export function CatalystRunDetailPage() {
                   definition: 'Items the catalyst could not auto-classify — they need an operator decision before a write-back can be proposed.',
                   query: 'exceptions FROM sub_catalyst_runs WHERE id = ?',
                   sample: run.exceptions ?? 0,
-                  drillTo: `/catalysts/runs/${runId}?status=exception`,
+                  drillTo: `/x/runs/${runId}?status=exception`,
                 }} />
                 <XCircle size={16} style={{ color: 'var(--neg)' }} />
               </div>

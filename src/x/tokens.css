@@ -507,3 +507,17 @@
   .rx.tower .page[data-active="ledger"] .deck section:not(#ledger) { display: none; }
   .rx.tower .page[data-active="catalysts"] .deck section:not(#catalysts) { display: none; }
 }
+
+/* ---------- subpage — deep surfaces under the same shell ---------- */
+.rx.sub { display: flex; flex-direction: column; }
+.rx.sub .subpage { max-width: 1180px; width: 100%; margin: 0 auto; padding: 1.1rem 1.5rem 3rem; }
+.rx.sub .sub-head { display: flex; align-items: baseline; gap: 1rem; margin: 0.4rem 0 1.1rem; }
+.rx.sub .sub-head h1 { font-size: 1.25rem; }
+.rx.sub .sub-back { font-size: 0.78rem; font-weight: 600; color: var(--faint); white-space: nowrap; }
+.rx.sub .sub-back:hover { color: var(--brand); }
+/* legacy pages keep their own (Tailwind) styling; the wrapper only isolates them */
+.rx.sub .xlegacy { min-width: 0; }
+
+/* section drill: quiet link from a tower section to its deep surface */
+.rx .head .go { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--faint); text-decoration: none; }
+.rx .head .go:hover { color: var(--brand); }

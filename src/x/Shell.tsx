@@ -1,7 +1,7 @@
 // Recovery Console shell: wordmark, four section pills (scroll, don't route),
 // persona lens (demo tenant only), Jeff inline, avatar → identity menu.
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api, setToken, setTenantOverride } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
 import { JeffLauncher } from '@/components/common/JeffLauncher';
@@ -16,18 +16,17 @@ const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
   { id: 'catalysts', label: 'Catalysts', icon: 'catalysts' },
 ];
 
-// One frontend: the console is the app; everything deeper on the platform
-// breaks out from here (navigate, not scroll). Role gates mirror App.tsx
-// routes — the route itself stays the enforcement point.
-const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; admin?: boolean }> = [
-  { to: '/operations', label: 'Operations', icon: 'ops' },
-  { to: '/assurance', label: 'Assurance', icon: 'seal', admin: true },
-  { to: '/console', label: 'Console', icon: 'gate', admin: true },
+// One frontend: the console is the app; deep surfaces live under /x with this
+// same shell (navigate, not scroll). Role gates mirror App.tsx routes — the
+// route itself stays the enforcement point.
+const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; roles?: string[] }> = [
+  { to: '/x/ops', label: 'Operations', icon: 'ops' },
+  { to: '/x/assurance', label: 'Assurance', icon: 'seal', roles: ['superadmin', 'support_admin', 'admin', 'auditor'] },
+  { to: '/console', label: 'Console', icon: 'gate', roles: ['superadmin', 'support_admin', 'admin'] },
 ];
-const ADMIN_ROLES = ['superadmin', 'support_admin', 'admin'];
 
 export function Shell({ active, persona, onPersona, onSection, decisionsCount, jeffContext, jeffOpenKey }: {
-  active: SectionKey;
+  active?: SectionKey;
   persona: Persona | null;
   onPersona: (k: PersonaKey) => void;
   onSection: (id: SectionKey) => void;
@@ -36,6 +35,7 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
   jeffOpenKey?: number;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const user = useAppStore((s) => s.user);
   const companies = useAppStore((s) => s.companies);
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
@@ -87,9 +87,15 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
             </button>
           ))}
           <i className="sep" aria-hidden="true" />
-          {BREAKOUTS.filter((b) => !b.admin || ADMIN_ROLES.includes(user?.role ?? '')).map((b) => (
-            <button key={b.to} className="out" onClick={() => navigate(b.to)} title={`Open ${b.label}`}>
-              <XIcon name={b.icon} size={14} /> {b.label}<span className="out-a" aria-hidden="true">↗</span>
+          {BREAKOUTS.filter((b) => !b.roles || b.roles.includes(user?.role ?? '')).map((b) => (
+            <button
+              key={b.to}
+              className="out"
+              aria-current={pathname.startsWith(b.to) ? 'true' : undefined}
+              onClick={() => navigate(b.to)}
+              title={`Open ${b.label}`}
+            >
+              <XIcon name={b.icon} size={14} /> {b.label}
             </button>
           ))}
         </nav>
@@ -142,10 +148,10 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
                     </select>
                   </label>
                 )}
-                <button className="id-row" onClick={() => navigate('/settings')}>
+                <button className="id-row" onClick={() => navigate('/x/settings')}>
                   <XIcon name="settings" size={16} /> Settings
                 </button>
-                <button className="id-row" onClick={() => navigate('/settings/mfa')}>
+                <button className="id-row" onClick={() => navigate('/x/settings/mfa')}>
                   <XIcon name="mfa" size={16} /> Multi-factor auth
                 </button>
                 <button className="id-row" onClick={() => navigate('/support')}>

@@ -1,29 +1,18 @@
 /**
- * Sidebar — the plain-language journey rail.
+ * Sidebar — the AppLayout rail for what's left outside the /x console.
  *
- * The primary navigation walks the five-stage value loop in loop order —
- * CONNECT → DETECT → FIX → RECOVER → REPORT (spec 2026-07-03) — labelled in
- * everyday words rather than product nouns:
+ * Single frontend (2026-07): the journey pages (Brief/Data/Findings/Fixes/
+ * Savings/Reports) live inside the /x control tower now. This rail only
+ * serves surfaces still under AppLayout:
  *
- *   HOME · DATA · FINDINGS · FIXES · SAVINGS · REPORTS · SETTINGS
- *
- * Each row is a small outline icon + a Space-Mono UPPERCASE label. The active
- * row gets a brand-soft pill wash (Daylight
- * Editorial brand-active state). The header is the ATHEON wordmark + triangle;
- * the footer is the signed-in identity ("EXECUTIVE USER" in the mockup).
- *
- * The app has ~50 routes the six-item mockup can't show. Rather than lose them,
- * the non-core pages live below the primary rail as:
- *
- *   WORKSPACE → Executive · Live Monitor · Board Digest · Memory · Mind (collapsed)
- *   CONSOLE   → one row → the platform-admin quarantine (PLATFORM_ADMIN+)
- *
- * Executives see a clean six-item rail (+ Workspace where roled); admins get
- * one extra Console row that opens the whole admin world in its own left-nav.
+ *   CONSOLE   → /x (the app itself, for STANDARD_ROLES)
+ *   WORKSPACE → Board Digest · Memory · Mind (collapsed, role-gated)
+ *   ADMIN     → /console platform-admin quarantine (PLATFORM_ADMIN+)
+ *   SETTINGS  → /x/settings
  *
  * Scoped read-only roles keep their narrow landing:
- *   auditor       → ASSURANCE (/compliance) + SUPPORT + SETTINGS
- *   board_member  → REPORTS (/board-digest) + SUPPORT + SETTINGS
+ *   auditor       → ASSURANCE (/x/assurance) + SUPPORT + SETTINGS
+ *   board_member  → REPORTS (/board) + SUPPORT + SETTINGS
  *
  * Two layouts: desktop 240px sticky column, mobile drawer (Header burger).
  */
@@ -33,9 +22,9 @@ import { useAppStore } from "@/stores/appStore";
 import { Link, useLocation } from "react-router-dom";
 import {
   X, ChevronDown,
-  LayoutDashboard, ShieldCheck, PiggyBank, ClipboardCheck, FileText, Settings,
-  Gem, Activity, LayoutGrid, MemoryStick, Brain,
-  Cable, ClipboardList, LifeBuoy, Newspaper, Gavel, Radar, Wrench,
+  LayoutDashboard, ShieldCheck, FileText, Settings,
+  LayoutGrid, MemoryStick, Brain,
+  LifeBuoy, Wrench,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/types";
@@ -46,9 +35,7 @@ const MONO = "'Space Mono', ui-monospace, monospace";
 // Role groups
 // ──────────────────────────────────────────────────────────────
 const PLATFORM_ADMIN_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin'];
-const EXECUTIVE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive'];
 const MANAGER_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager'];
-const OPERATOR_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'operator'];
 const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'manager', 'analyst', 'operator'];
 const BOARD_DIGEST_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'board_member'];
 
@@ -73,18 +60,11 @@ interface NavGroup {
 
 // The journey rail — the five-stage value loop in plain language, in loop
 // order: CONNECT → DETECT → FIX → RECOVER → REPORT (spec 2026-07-03).
+// Single frontend (2026-07): the journey pages live in the /x console now.
+// This rail only serves the surfaces still under AppLayout: the admin world
+// (/console + drill-downs), scoped read-only roles, and the viewer home.
 const PRIMARY: NavItem[] = [
-  // v2 §10: the Brief — exec editorial landing. Sits above Home; execs read the
-  // day here first. Non-exec roles don't see it and keep Home as their start.
-  { path: '/brief',             label: 'Brief',    icon: Newspaper,       roles: EXECUTIVE_ROLES },
-  { path: '/dashboard',         label: 'Home',     icon: LayoutDashboard, roles: STANDARD_ROLES },
-  { path: '/operations',        label: 'Data',     icon: Cable,           roles: STANDARD_ROLES },
-  { path: '/findings',          label: 'Findings', icon: ClipboardList,   roles: STANDARD_ROLES },
-  { path: '/decisions',         label: 'Decisions', icon: Gavel,          roles: OPERATOR_ROLES },
-  { path: '/catalysts',         label: 'Fixes',    icon: ClipboardCheck,  roles: OPERATOR_ROLES },
-  { path: '/outlook',           label: 'Outlook',  icon: Radar,           roles: EXECUTIVE_ROLES },
-  { path: '/roi-dashboard',     label: 'Savings',  icon: PiggyBank,       roles: EXECUTIVE_ROLES },
-  // Reports (/executive-summary) folded into /brief (v2 step 3) — same source, dropped to avoid a duplicate rail item.
+  { path: '/x',                 label: 'Console',  icon: LayoutDashboard, roles: STANDARD_ROLES },
 ];
 
 // Product pages beyond the core six — collapsed by default so the rail stays
@@ -93,12 +73,9 @@ const WORKSPACE: NavGroup = {
   key: 'workspace',
   label: 'Workspace',
   children: [
-    { path: '/trust',        label: 'Trust',        icon: ShieldCheck, roles: STANDARD_ROLES },
-    { path: '/apex',         label: 'Executive',    icon: Gem,         roles: EXECUTIVE_ROLES },
-    { path: '/pulse',        label: 'Live Monitor', icon: Activity,    roles: STANDARD_ROLES },
-    { path: '/board', label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
-    { path: '/memory',       label: 'Memory',       icon: MemoryStick, roles: MANAGER_ROLES },
-    { path: '/mind',         label: 'Mind',         icon: Brain,       roles: PLATFORM_ADMIN_ROLES },
+    { path: '/board',  label: 'Board Digest', icon: LayoutGrid,  roles: BOARD_DIGEST_ROLES },
+    { path: '/memory', label: 'Memory',       icon: MemoryStick, roles: MANAGER_ROLES },
+    { path: '/mind',   label: 'Mind',         icon: Brain,       roles: PLATFORM_ADMIN_ROLES },
   ],
 };
 
@@ -107,9 +84,9 @@ const WORKSPACE: NavGroup = {
 // left-nav lives inside ConsolePage. Gated to platform admins; sections narrow
 // further by role inside the Console. (`/support-tickets` is the everyone-can-
 // file ticket queue — it is NOT admin tooling and stays out of the Console.)
-const CONSOLE_ITEM: NavItem = { path: '/console', label: 'Console', icon: Wrench, roles: PLATFORM_ADMIN_ROLES };
+const CONSOLE_ITEM: NavItem = { path: '/console', label: 'Admin', icon: Wrench, roles: PLATFORM_ADMIN_ROLES };
 
-const SETTINGS_ITEM: NavItem = { path: '/settings', label: 'Settings', icon: Settings };
+const SETTINGS_ITEM: NavItem = { path: '/x/settings', label: 'Settings', icon: Settings };
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -227,7 +204,7 @@ export function Sidebar() {
   const primaryItems = useMemo<NavItem[]>(() => {
     if (userRole === 'auditor') {
       return [
-        { path: '/assurance', label: 'Assurance', icon: ShieldCheck },
+        { path: '/x/assurance', label: 'Assurance', icon: ShieldCheck },
         { path: '/support-tickets', label: 'Support', icon: LifeBuoy },
       ];
     }
@@ -245,7 +222,7 @@ export function Sidebar() {
 
   // Logo target is role-aware — scoped roles land on their own home.
   const homeTarget =
-    userRole === 'auditor' ? '/assurance'
+    userRole === 'auditor' ? '/x/assurance'
     : userRole === 'board_member' ? '/board'
     : '/dashboard';
 
