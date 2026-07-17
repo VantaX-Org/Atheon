@@ -61,7 +61,9 @@
 /* button reset for shell chrome only — legacy pages under .xlegacy keep their
    own component styling (the reset's .rx button specificity would beat their
    Tailwind utilities and wash out primary buttons) */
-.rx button:not(.xlegacy *) { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
+/* :where keeps the reset at class-level specificity so single-class rules
+   (.avatar, .theme-btn, .id-row) can restyle shell buttons without qualifiers */
+.rx :where(button:not(.xlegacy *)) { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; text-align: inherit; }
 .rx button:focus-visible, .rx a:focus-visible, .rx select:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
 .rx .num { font-variant-numeric: tabular-nums; }
 .rx .kicker { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
