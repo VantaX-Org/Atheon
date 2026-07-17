@@ -17,6 +17,18 @@ const JOURNEY = journeyRiver();
 type AuthMode= 'login' | 'register';
 
 /**
+ * Role-aware landing. Scoped read-only roles keep their consolidated v2
+ * surfaces; viewer keeps the classic dashboard (no /x access); everyone
+ * else lands on the v2 Recovery Console at /x — the app's default surface.
+ */
+function landingFor(role: string): string {
+  if (role === 'auditor') return '/assurance';
+  if (role === 'board_member') return '/board';
+  if (role === 'viewer') return '/dashboard';
+  return '/x';
+}
+
+/**
  * The MFA challenge input accepts either a 6-digit TOTP or a backup code in xxxx-xxxx format.
  * Returns the parsed code (normalized) plus its format type, or null if invalid.
  */
@@ -77,14 +89,7 @@ export function LoginPage() {
     setIndustry((res.user.tenantIndustry || 'general') as IndustryVertical);
     // Persist MFA grace-period warning (if any) so the Dashboard / Settings pages can surface it.
     setMfaEnforcementWarning(res.mfaEnforcementWarning ?? null);
-    // Role-aware landing — scoped read-only roles land on their own home
-    // (auditor → /assurance, board_member → /board); everyone
-    // else gets the operational dashboard as before.
-    const landing =
-      res.user.role === 'auditor' ? '/assurance'
-      : res.user.role === 'board_member' ? '/board'
-      : '/dashboard';
-    navigate(landing);
+    navigate(landingFor(res.user.role));
   };
 
   useEffect(() => {
@@ -118,11 +123,7 @@ export function LoginPage() {
         setActiveTenant(null, null, null);
         setUser({ id: user.id, email: user.email, name: user.name, role: user.role as UserRole, tenantId: user.tenantId, tenantName: user.tenantName, permissions: user.permissions });
         window.history.replaceState({}, '', window.location.pathname);
-        const landing =
-          user.role === 'auditor' ? '/assurance'
-          : user.role === 'board_member' ? '/board'
-          : '/dashboard';
-        navigate(landing);
+        navigate(landingFor(user.role));
       })
       .catch((err) => {
         setToken('', null);
@@ -135,11 +136,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (existingUser && getToken()) {
-      const landing =
-        existingUser.role === 'auditor' ? '/assurance'
-        : existingUser.role === 'board_member' ? '/board'
-        : '/dashboard';
-      navigate(landing, { replace: true });
+      navigate(landingFor(existingUser.role), { replace: true });
     }
   }, [existingUser, navigate]);
 

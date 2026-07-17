@@ -159,6 +159,17 @@ function ScopedRoleRedirect({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * The whole UI is the v2 Recovery Console: /dashboard forwards standard roles
+ * to /x. Viewer has no /x access (STANDARD_ROLES excludes it), so it keeps the
+ * classic JourneyHome instead of hitting a 403.
+ */
+function DashboardLanding() {
+  const role = useAppStore((s) => s.user?.role);
+  if (role && role !== 'viewer') return <Navigate to="/x" replace />;
+  return <JourneyHome />;
+}
+
 /** Lightweight loader shown while a lazy-loaded route's chunk is fetching. */
 function RouteLoader() {
   return (
@@ -233,7 +244,7 @@ export default function App() {
                 scoped read-only ones (auditor, board_member), which get
                 redirected to their own landing page instead of seeing
                 operational data they shouldn't have access to. */}
-            <Route path="/dashboard" element={<ScopedRoleRedirect><JourneyHome /></ScopedRoleRedirect>} />
+            <Route path="/dashboard" element={<ScopedRoleRedirect><DashboardLanding /></ScopedRoleRedirect>} />
             {/* v2 §10 step 1: the Brief — editorial exec landing that folds the
                 five summary screens into one honest column. Opt-in by route;
                 /dashboard keeps the classic JourneyHome. Exec+admin scope. */}

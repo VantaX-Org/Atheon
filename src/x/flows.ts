@@ -180,6 +180,37 @@ export function ledgerRiver(
   return { nodes, edges };
 }
 
+// Dashboard value chain — canvas-only (empty kickers; the React stage cards
+// above carry every number). Anchors sit under the five card columns so the
+// streams read as the chain: blue in and pooling at the fix gate, an amber
+// spur leaking off findings, green landing past recover. Honesty law: a
+// segment only carries particles when its underlying field is non-zero.
+export function valueChainRiver(a: { flow: boolean; leak: boolean; pool: boolean; land: boolean }): RiverGraph {
+  const col = (i: number) => 0.1 + i * 0.2; // stage centre x, 5 columns
+  const y = 0.72;
+  return {
+    nodes: [
+      { id: 'in', x: 0.01, y, kicker: '', value: '' },
+      { id: 'data', x: col(0), y, kicker: '', value: '' },
+      { id: 'findings', x: col(1), y, kicker: '', value: '' },
+      { id: 'leak', x: col(1) + 0.06, y: 0.97, kicker: '', value: '' },
+      { id: 'fixes', x: col(2), y, kicker: '', value: '' },
+      { id: 'savings', x: col(3), y, kicker: '', value: '' },
+      { id: 'reports', x: col(4), y, kicker: '', value: '' },
+      { id: 'out', x: 0.99, y, kicker: '', value: '' },
+    ],
+    edges: [
+      { from: 'in', to: 'data', amt: a.flow ? 0.5 : 0.12, colorVar: '--f-gate', particles: a.flow ? 3 : 0, dashed: !a.flow },
+      { from: 'data', to: 'findings', amt: a.flow ? 0.5 : 0.12, colorVar: '--f-gate', particles: a.flow ? 3 : 0 },
+      { from: 'findings', to: 'leak', amt: a.leak ? 0.45 : 0.1, colorVar: '--f-leak', particles: a.leak ? 4 : 0, dim: !a.leak },
+      { from: 'findings', to: 'fixes', amt: a.pool ? 0.55 : 0.2, colorVar: '--f-gate', particles: a.pool ? 6 : a.flow ? 2 : 0, pool: a.pool },
+      { from: 'fixes', to: 'savings', amt: a.land ? 0.6 : 0.15, colorVar: '--f-rec', particles: a.land ? 4 : 0 },
+      { from: 'savings', to: 'reports', amt: a.land ? 0.55 : 0.15, colorVar: '--f-rec', particles: a.land ? 3 : 0 },
+      { from: 'reports', to: 'out', amt: a.land ? 0.5 : 0.12, colorVar: '--f-rec', particles: a.land ? 2 : 0 },
+    ],
+  };
+}
+
 // Catalyst card mini — canvas-only (empty kicker skips the tile), so the card
 // keeps its own stats and the river is pure motion. Flow strength and
 // particles derive from the cluster's real realized value; a null or zero
