@@ -989,7 +989,10 @@ function calculateNextRunScheduled(
 async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, env: ScheduledEnv): Promise<void> {
   // Get all active clusters with sub-catalysts
   const clusters = await db.prepare(
-    "SELECT id, name, domain, industry, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active'"
+    // ponytail: no `industry` column on catalyst_clusters — selecting it threw
+    // "no such column" every tick, runStep swallowed it, scheduler never ran.
+    // Executor falls back to 'general' when cluster.industry is undefined.
+    "SELECT id, name, domain, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active'"
   ).bind(tenantId).all();
 
   const now = new Date();
