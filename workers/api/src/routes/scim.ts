@@ -205,10 +205,16 @@ function parseScimFilter(filter: string | undefined): { sql: string; bindings: u
   if (column === 'status') {
     return { sql: `status ${value === 'true' ? '=' : '!='} 'active'`, bindings: [] };
   }
+  // userName is stored lowercased (payloadToColumns), and SCIM userName
+  // matching is case-insensitive (RFC 7644 — caseExact false). Fold the
+  // filter value to match so an IdP probing with original case finds the
+  // user instead of getting 0 results and creating a duplicate. external_id
+  // is opaque and stays case-sensitive.
+  const matchVal = column === 'email' ? value.toLowerCase() : value;
   if (op.toLowerCase() === 'sw') {
-    return { sql: `${column} LIKE ?`, bindings: [`${value}%`] };
+    return { sql: `${column} LIKE ?`, bindings: [`${matchVal}%`] };
   }
-  return { sql: `${column} = ?`, bindings: [value] };
+  return { sql: `${column} = ?`, bindings: [matchVal] };
 }
 
 async function writeAudit(

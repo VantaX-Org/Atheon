@@ -190,8 +190,10 @@ describe('Phase 8-4 — post-action verification', () => {
     const res = await authedGet('/api/v1/roi', tokenJson.token);
     expect(res.status).toBe(200);
     const body = await res.json() as { breakdown: { byActionState: { automated_value_zar: number; automated_count: number } } };
-    // Only verified + deferred should count toward automated; failed excluded.
-    expect(body.breakdown.byActionState.automated_value_zar).toBe(150000);
-    expect(body.breakdown.byActionState.automated_count).toBe(2);
+    // Only verified counts toward automated. failed (ERP repudiated) and
+    // deferred (verifier could not confirm) are both excluded — matching
+    // billing's verified-only rule and pattern-engine-v2 recovered.
+    expect(body.breakdown.byActionState.automated_value_zar).toBe(100000);
+    expect(body.breakdown.byActionState.automated_count).toBe(1);
   });
 });

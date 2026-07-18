@@ -40,15 +40,18 @@ async function computeActionAttribution(
     open_value_zar: 0,
   };
   try {
-    // v66: exclude actions with verification_status = 'failed' from the
-    // automated bucket. They completed dispatch but the ERP did not
-    // record the change — billing them as "automated by Atheon" would
-    // be incorrect. Stub-mode and verified actions both count.
+    // Exclude 'failed' (dispatched but ERP didn't record the change),
+    // 'skipped' (stub/preview — no ERP write happened), and 'deferred'
+    // (verifier could not confirm) from the automated bucket. Billing them
+    // as "automated by Atheon" would overstate realised value. NULL
+    // (seeded/legacy, pre-verifier) and 'verified' count — matching
+    // pattern-engine-v2.calculateROI so recovered means the same thing here.
     const rows = await db.prepare(
       `SELECT status, COUNT(*) as count, COALESCE(SUM(value_zar), 0) as value_zar
          FROM catalyst_actions
         WHERE tenant_id = ?
-          AND (verification_status IS NULL OR verification_status != 'failed')
+          AND (verification_status IS NULL
+               OR verification_status NOT IN ('failed', 'skipped', 'deferred'))
         GROUP BY status`
     ).bind(tenantId).all<{ status: string; count: number; value_zar: number }>();
     for (const r of rows.results || []) {

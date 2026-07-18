@@ -610,6 +610,11 @@ export function extractCompanyKey(
 
   const asKey = (v: unknown): string | undefined => {
     if (v === null || v === undefined) return undefined;
+    // Never key off a nested object/array — String({...}) is "[object Object]",
+    // which would swallow the explicit nested-field fallbacks below (e.g. SAP
+    // raw.CompanyCode.CompanyCode). Branches that hold nested handles unwrap to
+    // a primitive before calling asKey.
+    if (typeof v === 'object') return undefined;
     const str = String(v).trim();
     return str === '' || str === 'false' ? undefined : str;
   };

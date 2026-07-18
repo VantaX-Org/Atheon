@@ -198,12 +198,16 @@ export async function calculateROI(
 
   // Recovered = booked money only: completed catalyst_actions whose ERP
   // verification did not fail — the same source the ledger and receipts sum.
+  // Excludes 'skipped' (stub/preview — no ERP write happened) and 'deferred'
+  // (verifier could not confirm) so preview-mode actions never inflate
+  // recovered value; NULL (seeded/legacy, pre-verifier) and 'verified' count.
   // Matched reconciliation volume (sub_catalyst_runs.total_matched_value) is
   // throughput, not recovery, and inflated this figure ~24x before v67.
   const resolvedResult = await db.prepare(
     `SELECT SUM(value_zar) as recovered FROM catalyst_actions
       WHERE tenant_id = ? AND status = 'completed'
-        AND (verification_status IS NULL OR verification_status != 'failed')`
+        AND (verification_status IS NULL
+             OR verification_status NOT IN ('failed', 'skipped', 'deferred'))`
   ).bind(tenantId).first<{ recovered: number }>();
 
   // Person-hours saved: total_items * 0.25 hours estimated manual effort
