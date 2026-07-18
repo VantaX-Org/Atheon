@@ -972,7 +972,11 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, en
       continue;
     }
 
-    let updated = false;
+    // subName -> new schedule metadata, applied against a FRESH re-read after
+    // the loop. runSubCatalystExecution writes last_execution into the cluster's
+    // sub_catalysts JSON; persisting the stale in-memory `subs` here would clobber
+    // that snapshot, so we merge schedule fields into the DB's current copy instead.
+    const scheduleUpdates = new Map<string, { last_run: string; next_run?: string }>();
 
     for (const sub of subs) {
       // Skip disabled, manual, or unscheduled sub-catalysts
@@ -1012,22 +1016,40 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, en
         ).run().catch(() => {});
       }
 
-      // Update last_run and next_run
-      sub.schedule.last_run = now.toISOString();
-      sub.schedule.next_run = calculateNextRunScheduled(
-        sub.schedule.frequency,
-        sub.schedule.day_of_week,
-        sub.schedule.day_of_month,
-        sub.schedule.time_of_day,
-      );
-      updated = true;
+      // Record new schedule metadata (applied against a fresh re-read below).
+      scheduleUpdates.set(sub.name, {
+        last_run: now.toISOString(),
+        next_run: calculateNextRunScheduled(
+          sub.schedule.frequency,
+          sub.schedule.day_of_week,
+          sub.schedule.day_of_month,
+          sub.schedule.time_of_day,
+        ),
+      });
     }
 
-    // Persist schedule updates back to DB
-    if (updated) {
+    // Persist schedule updates by merging into the DB's CURRENT sub_catalysts
+    // (which already holds any last_execution the executor just wrote).
+    if (scheduleUpdates.size > 0) {
+      const fresh = await db.prepare(
+        'SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+      ).bind(clusterRow.id as string, tenantId).first<{ sub_catalysts: string }>();
+      let freshSubs: SubCatalystData[];
+      try {
+        freshSubs = JSON.parse(fresh?.sub_catalysts || '[]');
+      } catch {
+        freshSubs = subs; // fall back to in-memory copy if re-read is unparseable
+      }
+      for (const fs of freshSubs) {
+        const upd = scheduleUpdates.get(fs.name);
+        if (upd && fs.schedule) {
+          fs.schedule.last_run = upd.last_run;
+          fs.schedule.next_run = upd.next_run;
+        }
+      }
       await db.prepare(
         'UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?'
-      ).bind(JSON.stringify(subs), clusterRow.id as string, tenantId).run();
+      ).bind(JSON.stringify(freshSubs), clusterRow.id as string, tenantId).run();
     }
   }
 }
