@@ -986,6 +986,51 @@ function calculateNextRunScheduled(
   return '';
 }
 
+// Bound one awaited promise so a hung sub-catalyst execution can't consume the
+// whole cron step budget. Like runStep, Promise.race only frees the await — it
+// does not cancel the hung work.
+function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    p.finally(() => { if (timer !== undefined) clearTimeout(timer); }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`sub-catalyst execution timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
+// Advance a single sub-catalyst's schedule via a fresh read-modify-write, so the
+// claim is durable before its (possibly slow/hung) execution runs. Merging into
+// the DB's current sub_catalysts — rather than a stale in-memory copy — preserves
+// any last_execution the executor writes for a sibling in the same cluster.
+async function advanceSubSchedule(
+  db: D1Database, clusterId: string, tenantId: string,
+  subName: string, lastRunIso: string, nextRunIso: string,
+): Promise<void> {
+  const fresh = await db.prepare(
+    'SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
+  ).bind(clusterId, tenantId).first<{ sub_catalysts: string }>();
+  let arr: SubCatalystData[];
+  try {
+    arr = JSON.parse(fresh?.sub_catalysts || '[]');
+  } catch {
+    return;
+  }
+  let changed = false;
+  for (const s of arr) {
+    if (s.name === subName && s.schedule) {
+      s.schedule.last_run = lastRunIso;
+      if (nextRunIso) s.schedule.next_run = nextRunIso;
+      changed = true;
+    }
+  }
+  if (changed) {
+    await db.prepare(
+      'UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?'
+    ).bind(JSON.stringify(arr), clusterId, tenantId).run();
+  }
+}
+
 async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, env: ScheduledEnv): Promise<void> {
   // Get all active clusters with sub-catalysts
   const clusters = await db.prepare(
@@ -1008,12 +1053,6 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, en
       continue;
     }
 
-    // subName -> new schedule metadata, applied against a FRESH re-read after
-    // the loop. runSubCatalystExecution writes last_execution into the cluster's
-    // sub_catalysts JSON; persisting the stale in-memory `subs` here would clobber
-    // that snapshot, so we merge schedule fields into the DB's current copy instead.
-    const scheduleUpdates = new Map<string, { last_run: string; next_run?: string }>();
-
     for (const sub of subs) {
       // Skip disabled, manual, or unscheduled sub-catalysts
       if (!sub.enabled || !sub.schedule || sub.schedule.frequency === 'manual') continue;
@@ -1022,26 +1061,26 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, en
       const nextRun = sub.schedule.next_run ? new Date(sub.schedule.next_run) : null;
       if (!nextRun || nextRun > now) continue;
 
-      // Needs at least one data source to run — same precondition the manual
-      // route enforces. Skip (but still advance next_run below) if unconfigured.
+      // CLAIM BEFORE RUN: advance this sub's schedule and persist it NOW, before
+      // any slow execution. The advance used to batch after the whole cluster
+      // loop, so a single hung sub (the 120s step timeout orphaned the function)
+      // lost every advance — the completed sub then reprocessed every tick and
+      // starved its siblings. Claiming first makes each sub crash-safe: the
+      // executor re-reads fresh and its last_execution write preserves this advance.
+      await advanceSubSchedule(
+        db, clusterRow.id as string, tenantId, sub.name, now.toISOString(),
+        calculateNextRunScheduled(
+          sub.schedule.frequency,
+          sub.schedule.day_of_week,
+          sub.schedule.day_of_month,
+          sub.schedule.time_of_day,
+        ),
+      );
+
+      // Needs at least one data source to run — same precondition the manual route enforces.
       const record = sub as unknown as SubCatalystRecord;
       const hasSources = (record.data_sources && record.data_sources.length > 0) || !!record.data_source;
-      if (hasSources) {
-        // Run the SAME executor the manual "Execute" button uses — full engine:
-        // mode dispatch, LLM analysis, exceptions, run recording, downstream
-        // fan-out, analytics, insights. A scheduled run now does real work.
-        try {
-          await runSubCatalystExecution(db, env.AI, env.CATALYST_QUEUE, {
-            cluster: clusterRow,
-            sub: record,
-            clusterId: clusterRow.id as string,
-            tenantId,
-            source: 'schedule',
-          });
-        } catch (err) {
-          console.error(`Scheduled execution failed for sub-catalyst ${sub.name} in cluster ${clusterRow.id}:`, err);
-        }
-      } else {
+      if (!hasSources) {
         await db.prepare(
           "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
         ).bind(
@@ -1050,42 +1089,28 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, en
           JSON.stringify({ sub_catalyst: sub.name, frequency: sub.schedule.frequency, reason: 'no_data_sources' }),
           'success'
         ).run().catch(() => {});
+        continue;
       }
 
-      // Record new schedule metadata (applied against a fresh re-read below).
-      scheduleUpdates.set(sub.name, {
-        last_run: now.toISOString(),
-        next_run: calculateNextRunScheduled(
-          sub.schedule.frequency,
-          sub.schedule.day_of_week,
-          sub.schedule.day_of_month,
-          sub.schedule.time_of_day,
-        ),
-      });
-    }
-
-    // Persist schedule updates by merging into the DB's CURRENT sub_catalysts
-    // (which already holds any last_execution the executor just wrote).
-    if (scheduleUpdates.size > 0) {
-      const fresh = await db.prepare(
-        'SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?'
-      ).bind(clusterRow.id as string, tenantId).first<{ sub_catalysts: string }>();
-      let freshSubs: SubCatalystData[];
+      // Run the SAME executor the manual "Execute" button uses (mode dispatch,
+      // LLM analysis, exceptions, run recording, fan-out, insights) — but bound
+      // it: one hung validation (LLM) sub must not consume the whole step budget
+      // and starve the reconciliation subs after it. Promise.race frees the await;
+      // any run row the executor already wrote stays.
       try {
-        freshSubs = JSON.parse(fresh?.sub_catalysts || '[]');
-      } catch {
-        freshSubs = subs; // fall back to in-memory copy if re-read is unparseable
+        await raceTimeout(
+          runSubCatalystExecution(db, env.AI, env.CATALYST_QUEUE, {
+            cluster: clusterRow,
+            sub: record,
+            clusterId: clusterRow.id as string,
+            tenantId,
+            source: 'schedule',
+          }),
+          20000,
+        );
+      } catch (err) {
+        console.error(`Scheduled execution failed/timed out for sub-catalyst ${sub.name} in cluster ${clusterRow.id}:`, err);
       }
-      for (const fs of freshSubs) {
-        const upd = scheduleUpdates.get(fs.name);
-        if (upd && fs.schedule) {
-          fs.schedule.last_run = upd.last_run;
-          fs.schedule.next_run = upd.next_run;
-        }
-      }
-      await db.prepare(
-        'UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?'
-      ).bind(JSON.stringify(freshSubs), clusterRow.id as string, tenantId).run();
     }
   }
 }
