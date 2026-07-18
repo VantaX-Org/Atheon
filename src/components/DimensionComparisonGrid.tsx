@@ -126,7 +126,9 @@ export function DimensionComparisonGrid({ selectedDimensions, onRemove, risks, c
                   </div>
                   <Progress
                     value={result.score ?? 0}
-                    color={(result.score ?? 0) >= 80 ? "emerald" : (result.score ?? 0) >= 60 ? "amber" : "red"}
+                    // unmeasured (null) → empty neutral bar, never a red one that
+                    // reads as a real failing score. RAG colour only when scored.
+                    color={result.score == null ? "blue" : result.score >= 80 ? "emerald" : result.score >= 60 ? "amber" : "red"}
                     size="sm"
                   />
                   {sparklinePoints.length >= 2 && (

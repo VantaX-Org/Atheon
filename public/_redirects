@@ -1,1 +1,7 @@
-/* /index.html 200
+# SPA client routing: every path Pages has no static file for renders the app
+# shell. A stale client asking for a chunk a newer deploy removed gets this
+# index.html (200) too — its wrong MIME + `nosniff` makes the dynamic import
+# reject, which fires `vite:preloadError`; main.tsx reloads once to the current
+# shell. (Pages does not honour a 404 status on a rewrite, so recovery is
+# client-side, not via this file.)
+/*  /index.html  200

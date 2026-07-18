@@ -1174,6 +1174,8 @@ export const api = {
       request<{ entries: ProvenanceEntry[]; total: number }>(`/api/audit/provenance${qs({ limit: options?.limit?.toString(), offset: options?.offset?.toString(), order: options?.order, type: options?.type })}`),
     verify: () => request<ProvenanceVerifyResult>('/api/audit/provenance/verify', { method: 'POST' }),
     root: () => request<{ root: string | null; seq: number; created_at: string | null }>('/api/audit/provenance/root'),
+    byAction: (actionId: string) =>
+      request<{ entry: ProvenanceEntry | null }>(`/api/audit/provenance/by-action/${encodeURIComponent(actionId)}`),
   },
 
   // ── Federated peer patterns (PR P — DP cross-tenant intelligence) ─
@@ -4904,7 +4906,7 @@ export interface ExecutiveSummaryResponse {
   atheonScore: number;
   healthScore: number;
   dimensions: Record<string, { score: number; trend?: string }>;
-  roi: { recovered: number; multiple: number; cost: number };
+  roi: { recovered: number | null; multiple: number | null; cost: number | null };
   diagnostics: { activeRcas: number; pendingPrescriptions: number };
   signals: { newThisWeek: number };
   topRisks: { title: string; severity: string; impactValue: number }[];

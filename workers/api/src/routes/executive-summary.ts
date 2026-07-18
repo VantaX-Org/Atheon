@@ -68,11 +68,15 @@ app.get('/', async (c) => {
     atheonScore,
     healthScore,
     dimensions,
-    roi: {
-      recovered: (roi?.total_discrepancy_value_recovered as number) || 0,
-      multiple: roiMultiple,
-      cost: (roi?.licence_cost_annual as number) || 0,
-    },
+    // Report nulls when no ROI snapshot exists — the hero renders '—' and
+    // "No recovered value confirmed yet" rather than a fabricated R0 / 0×.
+    // (roiMultiple stays 0 for the Atheon Score math above; that's a score
+    // weighting, not a displayed money figure.)
+    roi: roi ? {
+      recovered: (roi.total_discrepancy_value_recovered as number | null) ?? null,
+      multiple: (roi.roi_multiple as number | null) ?? null,
+      cost: (roi.licence_cost_annual as number | null) ?? null,
+    } : { recovered: null, multiple: null, cost: null },
     diagnostics: {
       activeRcas: activeRcas?.cnt || 0,
       pendingPrescriptions: pendingRx?.cnt || 0,

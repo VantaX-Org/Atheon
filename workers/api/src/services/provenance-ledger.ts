@@ -328,6 +328,31 @@ export async function listChain(
   };
 }
 
+/**
+ * Resolve one recovery to its own sealed chain entry.
+ *
+ * The receipt drawer needs to bind a specific `catalyst_actions.id` to the
+ * `action.sealed` provenance entry that seals it — so a skeptical reader can
+ * see THIS recovery's seq / payload_hash / signature, not just the tenant-wide
+ * root. Returns null when the action hasn't been sealed yet (next cron tick),
+ * so the UI shows an honest "not yet sealed" instead of a fabricated hash.
+ */
+export async function sealForAction(
+  env: AppBindings['Bindings'],
+  tenantId: string,
+  actionId: string,
+): Promise<ProvenanceEntry | null> {
+  const row = await env.DB.prepare(
+    `SELECT id, tenant_id, seq, parent_id, payload_type, payload_hash, payload_json,
+            signed_by_user_id, signature, merkle_root_after, created_at
+       FROM provenance_chain
+      WHERE tenant_id = ? AND payload_type = 'action.sealed'
+        AND json_extract(payload_json, '$.action_id') = ?
+      ORDER BY seq DESC LIMIT 1`,
+  ).bind(tenantId, actionId).first<ProvenanceEntry>();
+  return row ?? null;
+}
+
 /** Read the current Merkle tip — useful for "we last updated to root X" attestations. */
 export async function getCurrentRoot(
   env: AppBindings['Bindings'],

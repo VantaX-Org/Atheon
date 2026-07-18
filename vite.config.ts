@@ -4,9 +4,14 @@ import { defineConfig } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 
 // PWA strategy:
-//   • registerType 'prompt' — the service worker installs silently, but the
-//     refresh-to-update step is gated behind an in-app toast so users don't
-//     get a jarring reload mid-task. UpdatePrompt.tsx consumes the prompt.
+//   • registerType 'autoUpdate' — a new deploy's SW calls skipWaiting +
+//     clientsClaim and takes over immediately, purging stale precache. This is
+//     deliberate: under the old 'prompt' strategy a user whose shell failed to
+//     mount saw a blank screen AND couldn't accept the in-app "Refresh" prompt
+//     (the prompt lives in the app that never rendered) — a deadlock only a
+//     manual cache-clear escaped. autoUpdate self-heals on the next load.
+//     UpdatePrompt.tsx still renders the offline-ready hint; its needRefresh
+//     branch is inert under autoUpdate.
 //   • includeAssets — non-fingerprinted public/ files that the SW should
 //     precache so the install screen + offline shell render without network.
 //   • runtime caching — Google Fonts CSS + WOFF2 served stale-while-revalidate
@@ -20,7 +25,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       injectRegister: "auto",
       includeAssets: [
         "atheon-icon.svg",

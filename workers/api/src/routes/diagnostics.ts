@@ -231,6 +231,57 @@ diagnostics.get('/cost-of-inaction', async (c) => {
   });
 });
 
+// GET /api/diagnostics/analyses/:analysisId — one stored RCA assembled into the
+// detail shape the Pulse UI expands (analysis + causal chain + fixes). Reuses
+// the same tables as /rca/:id/chain; registered before /:metricId so the literal
+// 'analyses' segment isn't swallowed by the metric catch-all.
+diagnostics.get('/analyses/:analysisId', async (c) => {
+  const tenantId = getTenantId(c);
+  const rcaId = c.req.param('analysisId');
+  const rca = await c.env.DB.prepare(
+    `SELECT rca.*, pm.value AS metric_value, pm.status AS metric_status
+       FROM root_cause_analyses rca
+       LEFT JOIN process_metrics pm ON pm.id = rca.metric_id AND pm.tenant_id = rca.tenant_id
+      WHERE rca.id = ? AND rca.tenant_id = ?`,
+  ).bind(rcaId, tenantId).first<Record<string, unknown>>();
+  if (!rca) return c.json({ error: 'Analysis not found' }, 404);
+
+  // real trigger severity, applied per-factor (no per-factor priority column exists)
+  const sev = String(rca.trigger_status ?? '');
+  const fixPriority = sev === 'red' || sev === 'critical' ? 'critical'
+    : sev === 'amber' || sev === 'high' ? 'high' : 'medium';
+  // confidence is stored 0–1 in some rows, 0–100 in others; normalise to a percent
+  const pct = (v: unknown) => { const n = Number(v) || 0; return n <= 1 ? Math.round(n * 100) : Math.round(n); };
+
+  const factors = await c.env.DB.prepare(
+    'SELECT * FROM causal_factors WHERE rca_id = ? AND tenant_id = ? ORDER BY layer ASC, created_at ASC',
+  ).bind(rcaId, tenantId).all();
+  const prescriptions = await c.env.DB.prepare(
+    "SELECT * FROM diagnostic_prescriptions WHERE rca_id = ? AND tenant_id = ? ORDER BY CASE priority WHEN 'immediate' THEN 1 WHEN 'short-term' THEN 2 ELSE 3 END",
+  ).bind(rcaId, tenantId).all();
+
+  return c.json({
+    analysis: {
+      id: rca.id, metricId: rca.metric_id, metricName: rca.metric_name,
+      metricValue: Number(rca.metric_value) || 0, metricStatus: rca.metric_status ?? rca.trigger_status,
+      triggerType: 'auto', status: 'completed',
+      createdAt: rca.generated_at, completedAt: rca.resolved_at ?? rca.generated_at,
+    },
+    causalChain: factors.results.map((f: Record<string, unknown>) => ({
+      id: f.id, level: f.layer, causeType: f.factor_type,
+      title: f.title, description: f.description, confidence: pct(f.confidence),
+      evidence: [], relatedMetrics: [], recommendedFix: undefined,
+      fixPriority, fixEffort: 'medium', createdAt: f.created_at,
+    })),
+    fixes: prescriptions.results.map((p: Record<string, unknown>) => ({
+      id: p.id, chainId: p.rca_id, analysisId: rca.id, chainTitle: p.title,
+      fixPriority: p.priority, fixEffort: p.effort_level, metricName: rca.metric_name,
+      status: p.status === 'pending' ? 'proposed' : p.status,
+      createdAt: p.created_at, completedAt: p.completed_at,
+    })),
+  });
+});
+
 // GET /api/diagnostics/:metricId — RCAs for a specific metric (MUST be LAST among GET routes)
 diagnostics.get('/:metricId', async (c) => {
   const tenantId = getTenantId(c);

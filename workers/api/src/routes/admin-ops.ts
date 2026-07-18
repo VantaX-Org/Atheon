@@ -16,6 +16,7 @@ import type { Env, AppBindings } from '../types';
 import { runPhase10ChainForTenant } from '../services/phase-10-analytics-runner';
 import { verifyCompletedActions } from '../services/erp-action-verification';
 import { sealCompletedActions } from '../services/seal-completions';
+import { timingSafeEqual } from '../utils/timing-safe';
 
 const adminOps = new Hono<AppBindings>();
 
@@ -29,7 +30,7 @@ async function gate(
 ): Promise<{ tenantId: string; body: Record<string, unknown> } | Response> {
   const env = c.env as Env;
   const secret = c.req.header('X-Setup-Secret');
-  if (!env.SETUP_SECRET || !secret || secret !== env.SETUP_SECRET) {
+  if (!env.SETUP_SECRET || !secret || !timingSafeEqual(secret, env.SETUP_SECRET)) {
     return c.json({ error: 'unauthorized' }, 401);
   }
   let body: Record<string, unknown> = {};

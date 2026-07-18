@@ -135,7 +135,7 @@ billing.get('/plans', async (c) => {
 });
 
 // GET /api/billing/subscription - Get current subscription
-billing.get('/subscription', async (c) => {
+billing.get('/subscription', requireRole('admin', 'support_admin', 'superadmin', 'system_admin'), async (c) => {
   const auth = c.get('auth') as AuthContext;
   const tenantId = auth.tenantId;
 
@@ -275,7 +275,7 @@ billing.post('/portal', async (c) => {
 });
 
 // POST /api/billing/cancel - Cancel subscription
-billing.post('/cancel', async (c) => {
+billing.post('/cancel', requireRole('admin', 'support_admin', 'superadmin', 'system_admin'), async (c) => {
   const auth = c.get('auth') as AuthContext;
 
   await c.env.DB.prepare(
@@ -291,7 +291,7 @@ billing.post('/cancel', async (c) => {
 });
 
 // GET /api/billing/usage - Get usage metrics
-billing.get('/usage', async (c) => {
+billing.get('/usage', requireRole('admin', 'support_admin', 'superadmin', 'system_admin'), async (c) => {
   const auth = c.get('auth') as AuthContext;
   const tenantId = auth.tenantId;
 
@@ -312,7 +312,7 @@ billing.get('/usage', async (c) => {
 });
 
 // GET /api/billing/invoices - List invoices
-billing.get('/invoices', async (c) => {
+billing.get('/invoices', requireRole('admin', 'support_admin', 'superadmin', 'system_admin'), async (c) => {
   const auth = c.get('auth') as AuthContext;
 
   // Invoices are a billing artefact: cap the returned rows but expose the true
@@ -351,20 +351,23 @@ billing.post('/webhook', async (c) => {
   // for parsing. Hono's c.req.json() can't be called after c.req.text().
   const bodyText = await c.req.text();
 
-  // Verify Stripe signature when STRIPE_WEBHOOK_SECRET is configured.
-  // Without the secret set, we accept unsigned events — only safe in dev.
-  if (c.env.STRIPE_WEBHOOK_SECRET) {
-    const sigHeader = c.req.header('stripe-signature') || '';
-    const { verifyWebhookSignature } = await import('../services/stripe');
-    const verdict = await verifyWebhookSignature({
-      bodyText,
-      signatureHeader: sigHeader,
-      secret: c.env.STRIPE_WEBHOOK_SECRET,
-    });
-    if (!verdict.valid) {
-      console.warn('Stripe webhook signature rejected:', verdict.reason);
-      return c.json({ error: 'Invalid Stripe signature', details: verdict.reason }, 400);
-    }
+  // Fail CLOSED: without STRIPE_WEBHOOK_SECRET we cannot verify the signature,
+  // and an unsigned event can forge a subscription grant. Refuse rather than
+  // trust it. Prod must set the secret; this 503 is the signal it isn't.
+  if (!c.env.STRIPE_WEBHOOK_SECRET) {
+    console.error('Stripe webhook received but STRIPE_WEBHOOK_SECRET is unset — refusing unsigned event');
+    return c.json({ error: 'Webhook verification not configured' }, 503);
+  }
+  const sigHeader = c.req.header('stripe-signature') || '';
+  const { verifyWebhookSignature } = await import('../services/stripe');
+  const verdict = await verifyWebhookSignature({
+    bodyText,
+    signatureHeader: sigHeader,
+    secret: c.env.STRIPE_WEBHOOK_SECRET,
+  });
+  if (!verdict.valid) {
+    console.warn('Stripe webhook signature rejected:', verdict.reason);
+    return c.json({ error: 'Invalid Stripe signature', details: verdict.reason }, 400);
   }
 
   let body: { type: string; data: { object: Record<string, unknown> } };

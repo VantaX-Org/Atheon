@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import type { Env, AppBindings } from '../types';
 import { seedSapEccDemo, type SeedResult } from '../services/demo-sap-ecc-seeder';
 import { runPhase10ChainForTenant, type Phase10RunResult } from '../services/phase-10-analytics-runner';
+import { timingSafeEqual } from '../utils/timing-safe';
 
 const demoSeed = new Hono<AppBindings>();
 
@@ -30,7 +31,7 @@ interface SeedBody {
 demoSeed.post('/seed-sap-ecc-demo', async (c) => {
   const env = c.env as Env;
   const secret = c.req.header('X-Setup-Secret');
-  if (!env.SETUP_SECRET || !secret || secret !== env.SETUP_SECRET) {
+  if (!env.SETUP_SECRET || !secret || !timingSafeEqual(secret, env.SETUP_SECRET)) {
     return c.json({ error: 'unauthorized' }, 401);
   }
 

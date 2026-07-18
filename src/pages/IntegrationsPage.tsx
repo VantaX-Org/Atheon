@@ -1420,9 +1420,14 @@ export function IntegrationsPage() {
                             <Badge variant="info" size="sm">{baselineByConn[conn.id].vendor}</Badge>
                             <span className="text-xs t-muted">{baselineByConn[conn.id].product}</span>
                             <span className="ml-auto text-xs">
-                              <Badge variant={(baselineByConn[conn.id].alignment_score || 0) >= 0.8 ? 'success' : (baselineByConn[conn.id].alignment_score || 0) >= 0.5 ? 'warning' : 'danger'} size="sm">
-                                Alignment: {Math.round((baselineByConn[conn.id].alignment_score || 0) * 100)}%
-                              </Badge>
+                              {baselineByConn[conn.id].alignment_score == null ? (
+                                // not measured yet — neutral, never a red "0%" that reads as a real failing score
+                                <Badge variant="default" size="sm">Alignment: —</Badge>
+                              ) : (
+                                <Badge variant={baselineByConn[conn.id].alignment_score! >= 0.8 ? 'success' : baselineByConn[conn.id].alignment_score! >= 0.5 ? 'warning' : 'danger'} size="sm">
+                                  Alignment: {Math.round(baselineByConn[conn.id].alignment_score! * 100)}%
+                                </Badge>
+                              )}
                             </span>
                           </div>
 

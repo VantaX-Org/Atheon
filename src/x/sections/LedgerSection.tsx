@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { ForecastAccuracyResp, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
+import type { ForecastAccuracyResp, ProvenanceEntry, ProvenanceVerifyResult, ROITrackingResponse } from '@/lib/api';
 import { useSelectedCompanyId, useTenantCurrency } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import type { Persona } from '../persona';
@@ -24,7 +24,10 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
   const [receipts, setReceipts] = useState<CompletedAction[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [receipt, setReceipt] = useState<Evidence | 'loading' | null>(null);
-  const [busyExport, setBusyExport] = useState<'pdf' | 'digest' | 'report' | 'csv' | null>(null);
+  // the sealed chain entry for the open receipt — binds THIS recovery to its
+  // own seq/hash/signature. null = not yet sealed (honest, never fabricated).
+  const [seal, setSeal] = useState<ProvenanceEntry | null>(null);
+  const [busyExport, setBusyExport] = useState<'digest' | 'report' | 'csv' | null>(null);
   const [calib, setCalib] = useState<CalibrationSummary | null>(null);
   const [fcast, setFcast] = useState<ForecastAccuracyResp | null>(null);
   const [provRoot, setProvRoot] = useState<ProvRoot | null>(null);
@@ -61,8 +64,12 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
 
   const openReceipt = async (id: string) => {
     setReceipt('loading');
-    try { setReceipt(await api.erp.actionEvidence(id)); }
-    catch { setReceipt(null); }
+    setSeal(null);
+    // evidence + this recovery's own chain entry, in parallel; a missing seal
+    // just hides the seal block (not yet sealed), never blocks the receipt.
+    const [ev, sl] = await Promise.allSettled([api.erp.actionEvidence(id), api.provenance.byAction(id)]);
+    setReceipt(ev.status === 'fulfilled' ? ev.value : null);
+    setSeal(sl.status === 'fulfilled' ? sl.value.entry : null);
   };
 
   const verifyChain = async () => {
@@ -84,10 +91,6 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
     a.href = url; a.download = name; a.click();
     URL.revokeObjectURL(url);
   };
-
-  const exportPdf = () => runExport('pdf', async () => {
-    downloadBlob(await api.roi.exportPdf(), 'atheon-value-ledger.pdf');
-  });
 
   const exportDigest = () => runExport('digest', async () => {
     const d = await api.boardDigest.generate();
@@ -206,8 +209,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
           <h3>Sealed exports <span className="meta">board-ready</span></h3>
           <p className="rc-meta">Every figure in these exports traces to the receipts below.</p>
           <div className="acts" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-            <button className="go" onClick={exportPdf} disabled={busyExport === 'pdf'}>{busyExport === 'pdf' ? 'Preparing…' : 'Value ledger PDF'}</button>
-            <button className="ghost" onClick={exportDigest} disabled={busyExport === 'digest'}>{busyExport === 'digest' ? 'Preparing…' : 'Board digest PDF'}</button>
+            <button className="go" onClick={exportDigest} disabled={busyExport === 'digest'}>{busyExport === 'digest' ? 'Preparing…' : 'Board digest PDF'}</button>
             <button className="ghost" onClick={exportBoardReport} disabled={busyExport === 'report'}>{busyExport === 'report' ? 'Preparing…' : 'Board report PDF'}</button>
             <button className="ghost" onClick={exportCsv} disabled={busyExport === 'csv'}>{busyExport === 'csv' ? 'Preparing…' : 'Ledger CSV'}</button>
           </div>
@@ -240,7 +242,25 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
               <p className="rc-title">{receipt.action.catalyst_name} — {receipt.action.action_type.replace(/_/g, ' ')}</p>
               <p className="rc-amt num">{money(receipt.action.value_zar)}</p>
               <p className="rc-id">{receipt.action.id}{receipt.action.approved_by ? ` · approved by ${receipt.action.approved_by}` : ''}</p>
-              {receipt.action.idempotency_key && <p className="rc-hash">{receipt.action.idempotency_key}</p>}
+              {seal ? (
+                <div className="rc-sec">
+                  <span className="kicker">Cryptographic seal</span>
+                  <p className="rc-meta">This recovery is bound to chain entry <b>#{seal.seq}</b> — tamper any figure and the chain fails to re-derive.</p>
+                  <p className="rc-hash" title="Payload hash — SHA-256 of this recovery's sealed record">hash {seal.payload_hash.slice(0, 24)}…</p>
+                  {seal.signature && <p className="rc-hash" title="HMAC signature over the merkle root">sig {seal.signature.slice(0, 24)}…</p>}
+                  <div className="acts" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                    <button className="ghost" onClick={verifyChain} disabled={verify === 'running'}>{verify === 'running' ? 'Verifying…' : 'Verify this seal'}</button>
+                    {verify && typeof verify === 'object' && (
+                      verify.valid
+                        ? <span className="pill ok">chain intact · entry #{seal.seq} verified</span>
+                        : <span className="pill warn">verification failed{verify.first_invalid_seq != null ? ` · entry ${verify.first_invalid_seq}` : ''}</span>
+                    )}
+                    {verify === 'error' && <span className="pill warn">couldn't verify</span>}
+                  </div>
+                </div>
+              ) : (
+                <p className="rc-meta">Not yet sealed to the provenance chain — sealing runs on reconciliation.</p>
+              )}
               {receipt.finding && (
                 <div className="rc-sec">
                   <span className="kicker">Source finding</span>

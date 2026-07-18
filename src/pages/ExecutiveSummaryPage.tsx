@@ -183,7 +183,7 @@ export function ExecutiveSummaryPage() {
             </p>
             <p className="text-body-sm t-muted mt-3">
               {data.roi?.multiple
-                ? `${data.roi.multiple.toFixed(1)}× return${data.roi.cost > 0 ? ` on ${formatCompactCurrency(data.roi.cost, currency)} in fees (billed separately, never deducted)` : ''}`
+                ? `${data.roi.multiple.toFixed(1)}× return${data.roi.cost != null && data.roi.cost > 0 ? ` on ${formatCompactCurrency(data.roi.cost, currency)} in fees (billed separately, never deducted)` : ''}`
                 : 'No recovered value confirmed yet'}
             </p>
           </div>

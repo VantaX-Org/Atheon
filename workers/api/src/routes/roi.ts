@@ -89,7 +89,10 @@ roi.get('/', async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
   const row = await c.env.DB.prepare('SELECT * FROM roi_tracking WHERE tenant_id = ? ORDER BY calculated_at DESC LIMIT 1').bind(tenantId).first();
-  if (!row) return c.json({ id: '', totalDiscrepancyValueIdentified: 0, totalDiscrepancyValueRecovered: 0, totalPreventedLosses: 0, totalPersonHoursSaved: 0, roiMultiple: 0, platformCost: 0, calculatedAt: '', breakdown: { byCluster: [], byConnection: [] } });
+  // No ROI ever computed for this tenant. Return nulls, NOT zeros — a fresh
+  // tenant hasn't *measured* R0 recovered, it has measured nothing. The /x
+  // cards render null as an honest em-dash; a 0 would be a fabricated figure.
+  if (!row) return c.json({ id: null, totalDiscrepancyValueIdentified: null, totalDiscrepancyValueRecovered: null, totalPreventedLosses: null, totalPersonHoursSaved: null, roiMultiple: null, platformCost: null, calculatedAt: null, breakdown: { byCluster: [], byConnection: [] } });
 
   // §9.4 CSV export
   if (c.req.query('format') === 'csv') {

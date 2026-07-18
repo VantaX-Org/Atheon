@@ -179,4 +179,14 @@ audit.get('/provenance/root', async (c) => {
   return c.json(result);
 });
 
+// GET /api/audit/provenance/by-action/:actionId — the sealed entry for one
+// recovery, so a receipt can show its own seq / hash / signature. Returns
+// { entry: null } when not yet sealed (honest, never a fabricated hash).
+audit.get('/provenance/by-action/:actionId', async (c) => {
+  const { sealForAction } = await import('../services/provenance-ledger');
+  const tenantId = getTenantId(c);
+  const entry = await sealForAction(c.env, tenantId, c.req.param('actionId'));
+  return c.json({ entry });
+});
+
 export default audit;
