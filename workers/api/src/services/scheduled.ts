@@ -60,23 +60,28 @@ export async function handleScheduled(
     const tenantId = tenant.id as string;
 
     try {
+      // Each early step is isolated so a failure in one (e.g. an AI briefing
+      // timeout) cannot abort the rest of the tenant's cron work. Previously
+      // these five shared one try, so a briefing/process-mining error silently
+      // skipped sub-catalyst scheduled execution below.
+
       // 3.6: Health score recalculation
-      await recalculateHealthScore(db, tenantId);
+      try { await recalculateHealthScore(db, tenantId); } catch (e) { console.error(`Health recalc failed for ${tenantId}:`, e); }
 
       // 3.7: Executive briefing generation
-      await generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY, env.CACHE);
+      try { await generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY, env.CACHE); } catch (e) { console.error(`Briefing gen failed for ${tenantId}:`, e); }
 
       // 3.8: Memory auto-population from ERP data
-      await autoPopulateMemory(db, tenantId);
+      try { await autoPopulateMemory(db, tenantId); } catch (e) { console.error(`Memory autopopulate failed for ${tenantId}:`, e); }
 
       // 3.9: Process mining refresh + 5.4: event-driven catalyst triggers
-      await refreshProcessMining(db, tenantId, env.CATALYST_QUEUE);
+      try { await refreshProcessMining(db, tenantId, env.CATALYST_QUEUE); } catch (e) { console.error(`Process mining failed for ${tenantId}:`, e); }
 
       // 5.4: Agent lifecycle — heartbeat check & status updates
-      await checkAgentLifecycle(db, cache, tenantId);
+      try { await checkAgentLifecycle(db, cache, tenantId); } catch (e) { console.error(`Agent lifecycle failed for ${tenantId}:`, e); }
 
       // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts
-      await executeScheduledSubCatalysts(db, tenantId, env);
+      try { await executeScheduledSubCatalysts(db, tenantId, env); } catch (e) { console.error(`Scheduled sub-catalysts failed for ${tenantId}:`, e); }
 
       // V2: Radar scan — analyse unprocessed signals
       try { await runScheduledRadarScan(db, tenantId, env); } catch (e) { console.error(`Radar scan failed for ${tenantId}:`, e); }
