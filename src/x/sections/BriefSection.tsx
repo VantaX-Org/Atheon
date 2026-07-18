@@ -10,6 +10,7 @@ import { useSelectedCompanyId } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import { useTenantCurrency } from '@/stores/appStore';
 import type { Persona } from '../persona';
+import { OvernightReceipt } from './OvernightReceipt';
 
 // display subset — findings come from the /findings endpoint (DB truth)
 type BriefFinding = Pick<AssessmentFinding, 'id' | 'title' | 'severity' | 'affected_count'> & {
@@ -143,6 +144,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
 
   return (
     <section id="brief">
+      <OvernightReceipt />
       <div className="head">
         <span className="kicker">Brief{persona ? ` · ${persona.label}` : ''}</span>
         {/* Per-role framing: the CPO reads a supplier brief, the CFO a cash

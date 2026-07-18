@@ -136,6 +136,79 @@ roi.get('/', async (c) => {
   });
 });
 
+// GET /api/roi/overnight — the Overnight Recovery Receipt.
+// What Atheon's autonomous (scheduled) sub-catalysts did since `since`
+// (default: last 24h). triggered_by='schedule' ONLY — this is the "while you
+// were away, the platform worked" proof, so manual runs are excluded. Honest
+// empty state when nothing ran; recoveredZar can be 0 while identifiedZar > 0
+// (found discrepancies, no verified write-back yet) — never fabricated.
+roi.get('/overnight', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return c.json({ error: 'tenant_id required' }, 400);
+  const sinceParam = c.req.query('since');
+  const since = sinceParam && /^\d{4}-\d{2}-\d{2}T/.test(sinceParam)
+    ? sinceParam
+    : new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const runsRes = await c.env.DB.prepare(
+    `SELECT id, sub_catalyst_name, cluster_id, status, matched, discrepancies,
+            exceptions_raised, actions_created, total_source_value,
+            total_discrepancy_value, currency, started_at, completed_at
+       FROM sub_catalyst_runs
+      WHERE tenant_id = ? AND triggered_by = 'schedule'
+        AND COALESCE(completed_at, started_at) >= ?
+      ORDER BY COALESCE(completed_at, started_at) DESC`
+  ).bind(tenantId, since).all<{
+    id: string; sub_catalyst_name: string; cluster_id: string; status: string;
+    matched: number; discrepancies: number; exceptions_raised: number;
+    actions_created: number; total_source_value: number;
+    total_discrepancy_value: number; currency: string;
+    started_at: string; completed_at: string | null;
+  }>();
+  const runs = runsRes.results || [];
+
+  // Recovered = verified/completed write-back value from actions those runs
+  // created. Same honesty filter as computeActionAttribution: exclude
+  // failed/skipped/deferred — the ERP did not confirm the change.
+  let recoveredZar = 0, actionsCompleted = 0, actionsPending = 0;
+  if (runs.length) {
+    const ids = runs.map((r) => r.id);
+    const ph = ids.map(() => '?').join(',');
+    const actRes = await c.env.DB.prepare(
+      `SELECT status, COUNT(*) AS n, COALESCE(SUM(value_zar), 0) AS v
+         FROM catalyst_actions
+        WHERE tenant_id = ? AND run_id IN (${ph})
+          AND (verification_status IS NULL
+               OR verification_status NOT IN ('failed', 'skipped', 'deferred'))
+        GROUP BY status`
+    ).bind(tenantId, ...ids).all<{ status: string; n: number; v: number }>();
+    for (const a of actRes.results || []) {
+      if (a.status === 'completed') { recoveredZar += a.v; actionsCompleted += a.n; }
+      else if (a.status === 'pending_approval') { actionsPending += a.n; }
+    }
+  }
+
+  const identifiedZar = runs.reduce((s, r) => s + (Number(r.total_discrepancy_value) || 0), 0);
+  const currency = runs.find((r) => r.currency)?.currency || 'ZAR';
+
+  return c.json({
+    since,
+    runCount: runs.length,
+    recoveredZar,
+    identifiedZar,
+    actionsCompleted,
+    actionsPending,
+    currency,
+    runs: runs.map((r) => ({
+      id: r.id, name: r.sub_catalyst_name, clusterId: r.cluster_id,
+      status: r.status, matched: r.matched, discrepancies: r.discrepancies,
+      exceptions: r.exceptions_raised, actionsCreated: r.actions_created,
+      identifiedZar: r.total_discrepancy_value, sourceValue: r.total_source_value,
+      startedAt: r.started_at, completedAt: r.completed_at,
+    })),
+  });
+});
+
 // GET /api/roi/history — ROI history
 roi.get('/history', async (c) => {
   const tenantId = getTenantId(c);

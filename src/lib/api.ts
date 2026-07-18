@@ -1891,6 +1891,8 @@ export const api = {
       request<ROISummary>('/api/roi'),
     history: (limit?: number) =>
       request<{ history: ROISummary[]; total: number }>(`/api/roi/history${qs({ limit: limit?.toString() })}`),
+    overnight: (since?: string) =>
+      request<OvernightReceipt>(`/api/roi/overnight${qs({ since })}`),
     exportPdf: async () => {
       const requestId = generateRequestId();
       const headers: Record<string, string> = { 'X-Request-ID': requestId };
@@ -4569,6 +4571,32 @@ export interface PlatformTotals {
 }
 
 // §4.4 ROI & Board Report Types
+export interface OvernightReceiptRun {
+  id: string;
+  name: string;
+  clusterId: string;
+  status: string;
+  matched: number;
+  discrepancies: number;
+  exceptions: number;
+  actionsCreated: number;
+  identifiedZar: number | null;
+  sourceValue: number | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface OvernightReceipt {
+  since: string;
+  runCount: number;
+  recoveredZar: number;
+  identifiedZar: number;
+  actionsCompleted: number;
+  actionsPending: number;
+  currency: string;
+  runs: OvernightReceiptRun[];
+}
+
 export interface ROISummary {
   identified: number;
   recovered: number;

@@ -528,3 +528,37 @@
 /* section drill: quiet link from a tower section to its deep surface */
 .rx .head .drill { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--faint); text-decoration: none; }
 .rx .head .drill:hover { color: var(--brand); }
+
+/* Overnight recovery — the returning-user hero band. A brand-tinted "sealed
+   receipt" that sits above the Brief. Only rendered when a real scheduled run
+   landed, so it reads as an event, not a permanent chrome element. */
+.rx .overnight-receipt {
+  background:
+    linear-gradient(135deg, var(--brand-soft), transparent 60%),
+    var(--card);
+  border: 1px solid var(--line); border-left: 3px solid var(--brand);
+  border-radius: 18px; box-shadow: var(--sh1); margin-bottom: 1.1rem; overflow: hidden;
+}
+.rx .overnight-receipt .or-main {
+  display: flex; align-items: center; gap: 0.95rem; width: 100%;
+  padding: 0.95rem 1.2rem; text-align: left; background: none; border: none; cursor: pointer;
+}
+.rx .overnight-receipt .or-main:hover { background: var(--brand-soft); }
+.rx .overnight-receipt .or-seal {
+  flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  font-size: 0.9rem; color: #fff; background: linear-gradient(135deg, #5b76f7, #7c5bf7);
+  box-shadow: 0 2px 10px var(--brand-soft);
+}
+.rx .overnight-receipt .or-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.rx .overnight-receipt .or-kicker { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.rx .overnight-receipt .or-headline { font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 1.05rem; color: var(--ink); letter-spacing: -0.01em; }
+.rx .overnight-receipt .or-headline b { color: var(--brand-dk); }
+.rx .overnight-receipt .or-sub { font-size: 0.76rem; color: var(--mut); }
+.rx .overnight-receipt .or-caret { flex: none; color: var(--faint); font-size: 0.8rem; }
+.rx .overnight-receipt .or-runs { padding: 0 1.2rem 0.6rem; border-top: 1px solid var(--line); }
+.rx .overnight-receipt .or-run { display: flex; align-items: baseline; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.rx .overnight-receipt .or-run-name { font-weight: 600; font-size: 0.82rem; color: var(--ink); flex: none; min-width: 12ch; }
+.rx .overnight-receipt .or-run-stats { flex: 1; font-size: 0.74rem; color: var(--mut); }
+.rx .overnight-receipt .or-run-val { font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 0.9rem; color: var(--ink); }
+.rx .overnight-receipt .or-proof { display: inline-block; margin-top: 0.7rem; font-size: 0.78rem; font-weight: 600; color: var(--brand); text-decoration: none; }
+.rx .overnight-receipt .or-proof:hover { text-decoration: underline; }
