@@ -50,7 +50,8 @@ export type ProvenanceType =
   | 'license.provisioned'
   | 'license.suspended'
   | 'license.renewed'
-  | 'config.pushed';
+  | 'config.pushed'
+  | 'action.sealed';
 
 export interface ProvenanceEntry {
   id: string;
@@ -69,6 +70,12 @@ export interface ProvenanceEntry {
 export interface AppendOptions {
   /** Set when a human approver signed off (HITL). */
   signedByUserId?: string;
+  /** ISO timestamp to stamp the entry with. Defaults to now. Set when
+   *  back-sealing a past event (e.g. an action that completed earlier) so
+   *  the chain's created_at reflects when the thing happened, not when the
+   *  seal was written. Chain integrity is seq-ordered, not time-ordered, so
+   *  a past timestamp is safe. */
+  createdAt?: string;
 }
 
 // ── Hashing primitives ────────────────────────────────────────────────────
@@ -173,14 +180,15 @@ export async function appendEvent(
   const signature = await hmacHex(env.JWT_SECRET, `${parentRoot ?? ''}|${payloadHash}|${merkleRootAfter}`);
 
   const id = `prov-${tenantId.slice(0, 8)}-${seq.toString(36).padStart(6, '0')}-${Math.random().toString(36).slice(2, 8)}`;
+  const createdAt = options.createdAt ?? new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO provenance_chain
        (id, tenant_id, seq, parent_id, payload_type, payload_hash, payload_json,
         signed_by_user_id, signature, merkle_root_after, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     id, tenantId, seq, parentId, payloadType, payloadHash, payloadJson,
-    options.signedByUserId ?? null, signature, merkleRootAfter,
+    options.signedByUserId ?? null, signature, merkleRootAfter, createdAt,
   ).run();
 
   return {
@@ -188,7 +196,7 @@ export async function appendEvent(
     payload_hash: payloadHash, payload_json: payloadJson,
     signed_by_user_id: options.signedByUserId ?? null, signature,
     merkle_root_after: merkleRootAfter,
-    created_at: new Date().toISOString(),
+    created_at: createdAt,
   };
 }
 

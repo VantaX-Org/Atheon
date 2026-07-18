@@ -16,6 +16,7 @@ import { processDueWebhooks } from './webhook-delivery';
 import { detectErpSchemaDrift } from './erp-drift-detector';
 import { escalateStaleActions } from './erp-hitl-sla';
 import { verifyCompletedActions } from './erp-action-verification';
+import { sealCompletedActions } from './seal-completions';
 import { sweepExternalSignals } from './external-signals-feed';
 import { discoverIndustryPatterns } from './cross-tenant-pattern-discovery';
 import { runPhase10ChainForTenant } from './phase-10-analytics-runner';
@@ -157,6 +158,11 @@ export async function handleScheduled(
       // customer + ROI attribution downgrades to never bill on writes the
       // ERP didn't actually record. Best-effort.
       await runStep('Action verification', tenantId, 30000, () => verifyCompletedActions(db, tenantId));
+
+      // Seal completed recoveries into the provenance chain. Back-seals any
+      // completion that predates this step and catches every future one —
+      // makes the ledger's "sealed / verify the chain" claim real. Idempotent.
+      await runStep('Seal completions', tenantId, 30000, () => sealCompletedActions(env, tenantId));
 
       // Phase 10-21 — fan-out the Phase 10 analytical chain via queue
       // when CATALYST_QUEUE is bound AND tenant count crosses the

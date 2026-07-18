@@ -15,6 +15,7 @@ import type { Context } from 'hono';
 import type { Env, AppBindings } from '../types';
 import { runPhase10ChainForTenant } from '../services/phase-10-analytics-runner';
 import { verifyCompletedActions } from '../services/erp-action-verification';
+import { sealCompletedActions } from '../services/seal-completions';
 
 const adminOps = new Hono<AppBindings>();
 
@@ -129,6 +130,16 @@ adminOps.post('/run-action-verification', async (c) => {
   if (g instanceof Response) return g;
   const counts = await verifyCompletedActions((c.env as Env).DB, g.tenantId);
   return c.json({ ok: true, counts });
+});
+
+// POST /run-seal-completions { tenant_slug } — same fn the cron calls.
+// Back-seals genuine completed recoveries into the provenance chain so the
+// "sealed / verify the chain" ledger promise reflects real entries.
+adminOps.post('/run-seal-completions', async (c) => {
+  const g = await gate(c);
+  if (g instanceof Response) return g;
+  const result = await sealCompletedActions(c.env as Env, g.tenantId);
+  return c.json({ ok: true, result });
 });
 
 export default adminOps;
