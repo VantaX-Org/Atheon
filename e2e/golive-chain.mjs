@@ -25,8 +25,9 @@ await page.goto(`${BASE}/x#ledger`, { waitUntil: 'domcontentloaded', timeout: 45
 await page.waitForFunction(() => (document.body?.innerText || '').replace(/\s+/g, '').length > 400, { timeout: 15000 }).catch(() => {});
 await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
 
-// Sealed provenance root visible?
+// Sealed provenance root visible? (loads via async api.provenance.root())
 const rootBtn = page.locator('.rc-hash', { hasText: /provenance chain sealed/i });
+await rootBtn.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
 const hasRoot = await rootBtn.count() > 0;
 ok('sealed provenance root shown', hasRoot, hasRoot ? (await rootBtn.first().innerText()).trim() : '');
 
@@ -52,7 +53,10 @@ if (await verifyBtn.count() > 0) {
 const firstReceipt = page.locator('#receipts .lrow .amt').first();
 if (await firstReceipt.count() > 0) {
   await firstReceipt.click();
-  await page.waitForTimeout(800);
+  // openReceipt does an async actionEvidence fetch — wait for the id to render,
+  // not a fixed delay (the drawer shows a 'loading' state first).
+  await page.waitForSelector('.rc-id', { timeout: 15000 }).catch(() => {});
+  await page.waitForFunction(() => (document.querySelector('.rc-id')?.textContent || '').trim().length > 6, { timeout: 15000 }).catch(() => {});
   const drawer = await page.evaluate(() => document.querySelector('.rc-id')?.textContent || '');
   ok('sealed receipt drawer carries an action id', drawer.trim().length > 6, drawer.trim().slice(0, 48));
 } else {
