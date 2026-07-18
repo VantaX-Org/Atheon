@@ -11,7 +11,7 @@
   --ok: #0b7f50; --ok-soft: rgba(16, 157, 99, 0.10);
   --warn: #7f5800; --warn-soft: rgba(232, 180, 74, 0.18);
   --bad: #d63b57; --bad-soft: rgba(240, 100, 124, 0.10);
-  --f-rec: #04c47e; --f-fee: #0d9488; --f-gate: #4f6df8; --f-revw: #9aa3c4; --f-rev: #f03a56; --f-leak: #f59e0b;
+  --f-rec: #059666; --f-fee: #0e7d74; --f-gate: #3949c4; --f-revw: #8089a8; --f-rev: #d62945; --f-leak: #cf7a06;
   --glow: 4;
   --bloom1: rgba(91, 118, 247, 0.09); --bloom2: rgba(4, 196, 126, 0.06);
   --sh1: 0 1px 2px rgba(23, 25, 33, 0.05), 0 8px 24px rgba(23, 25, 33, 0.06);
@@ -27,8 +27,8 @@
     --ok: #34d399; --ok-soft: rgba(52, 211, 153, 0.12);
     --warn: #e8b44a; --warn-soft: rgba(232, 180, 74, 0.13);
     --bad: #f0647c; --bad-soft: rgba(240, 100, 124, 0.13);
-    --f-rec: #2fe3a0; --f-fee: #3fb3ac; --f-gate: #86a3ff; --f-revw: #646c85; --f-rev: #ff6480; --f-leak: #ffc24d;
-    --glow: 10;
+    --f-rec: #10f5a3; --f-fee: #29d3e6; --f-gate: #7d9dff; --f-revw: #8089a8; --f-rev: #ff5a7c; --f-leak: #ffc23a;
+    --glow: 13;
     --bloom1: rgba(91, 118, 247, 0.11); --bloom2: rgba(52, 211, 153, 0.05);
     --sh1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
     --sh2: 0 2px 8px rgba(0, 0, 0, 0.45), 0 14px 40px rgba(0, 0, 0, 0.5);
@@ -70,14 +70,14 @@
 .rx h1, .rx h2, .rx h3, .rx .hero-big { font-family: "Schibsted Grotesk"; color: var(--ink); margin: 0; letter-spacing: -0.015em; font-variant-numeric: normal; font-feature-settings: normal; }
 
 /* ---------- shell ---------- */
-.rx .shell-wrap { max-width: 1180px; margin: 0 auto; padding: 1rem 1.5rem 0; position: sticky; top: 0.6rem; z-index: 30; }
+.rx .shell-wrap { max-width: 1180px; width: 100%; margin: 0 auto; padding: 1rem 1.5rem 0; position: sticky; top: 0.6rem; z-index: 30; min-width: 0; }
 .rx .shell {
   background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh1);
   display: flex; align-items: center; gap: 0.9rem; padding: 0.6rem 1.1rem; flex-wrap: wrap;
 }
 .rx .logo { font-family: "Schibsted Grotesk"; font-weight: 800; font-size: 1rem; color: var(--ink); display: flex; align-items: center; gap: 0.5rem; }
 .rx .logo i { width: 24px; height: 24px; border-radius: 7px; font-style: normal; display: grid; place-items: center; font-size: 0.72rem; background: linear-gradient(135deg, #5b76f7, #7c5bf7); color: #fff; }
-.rx .tabs { display: flex; gap: 0.15rem; overflow-x: auto; }
+.rx .tabs { display: flex; gap: 0.15rem; overflow-x: auto; min-width: 0; }
 .rx .tabs button { font-size: 0.8rem; font-weight: 600; color: var(--mut); padding: 0.42rem 0.9rem; border-radius: 12px; white-space: nowrap; }
 .rx .tabs button:hover { color: var(--ink); background: var(--card2); }
 .rx .tabs button[aria-current] { color: var(--brand); background: var(--brand-soft); }
@@ -245,10 +245,11 @@
 }
 .rx .fnode {
   position: absolute; transform: translate(-50%, -50%); z-index: 2;
-  /* glassy: the river must stay visible through the tiles */
-  background: color-mix(in srgb, var(--card) 72%, transparent);
-  -webkit-backdrop-filter: blur(9px) saturate(1.15);
-  backdrop-filter: blur(9px) saturate(1.15);
+  /* glassy: the river must stay visible through the tiles — kept translucent so
+     the (now brighter) flow and its labels read straight through the glass */
+  background: color-mix(in srgb, var(--card) 58%, transparent);
+  -webkit-backdrop-filter: blur(13px) saturate(1.35);
+  backdrop-filter: blur(13px) saturate(1.35);
   border: 1px solid var(--line); border-radius: 14px; padding: 0.55rem 0.9rem; min-width: 128px;
   box-shadow: var(--sh2);
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
@@ -310,6 +311,19 @@
 .rx .legend { display: inline-flex; gap: 0.8rem; margin-left: auto; }
 .rx .legend-chip { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .rx .legend-chip i { width: 14px; height: 6px; border-radius: 3px; border: 1px solid var(--line); display: inline-block; }
+
+/* PWA / narrow: the river keeps a gentle scroll but the tiles shrink so they are
+   proportionate to the screen rather than desktop-sized. autoSpace() re-fits the
+   chain to whatever width the panel resolves to. */
+@media (max-width: 820px) {
+  .rx .ticker, .rx .flowpanel { min-width: 600px; }
+  .rx .fnode { min-width: 88px; padding: 0.4rem 0.6rem; border-radius: 12px; }
+  .rx .fnode .fv { font-size: 0.98rem; }
+  .rx .fnode .fk { font-size: 0.56rem; }
+  .rx .fnode.stage { min-width: 76px; padding: 0.35rem 0.5rem; }
+  .rx .fnode.stage .fv { font-size: 0.78rem; }
+  .rx .fnode .fs { max-width: 16ch; font-size: 0.6rem; }
+}
 
 /* ---------- embedded AI ---------- */
 .rx .ask { font-size: 0.78rem; font-weight: 600; color: var(--brand); background: var(--brand-soft); border-radius: 12px; padding: 0.42rem 0.9rem; white-space: nowrap; }
