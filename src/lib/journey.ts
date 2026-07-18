@@ -29,12 +29,15 @@ export interface JourneyStage {
   current: boolean;
 }
 
+// Canonical targets — point straight at the v2 surfaces instead of the legacy
+// redirect stubs (/operations, /findings, /catalysts, /roi-dashboard, /brief all
+// Navigate-replace elsewhere in App.tsx). Skipping the hop kills the redirect flash.
 export const STAGE_ROUTES: Record<StageKey, string> = {
-  connect: '/operations',
-  detect: '/findings',
-  fix: '/catalysts',
-  recover: '/roi-dashboard',
-  report: '/brief',
+  connect: '/x/ops',
+  detect: '/x/findings',
+  fix: '/x/fixes',
+  recover: '/x#ledger',
+  report: '/x',
 };
 
 /**
