@@ -1906,20 +1906,20 @@ export function CatalystsPage() {
  <div className="space-y-3">
  <div className="p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-xs t-secondary">Total Actions</span>
- <p className="text-lg font-bold text-accent">{governance?.totalActions ?? 0}</p>
+ <p className="text-lg font-bold text-accent">{governance == null ? '—' : governance.totalActions}</p>
  <p className="text-caption t-muted">All catalyst executions</p>
  </div>
  <div className="p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-xs t-secondary">Pending Approvals</span>
- <p className="text-lg font-bold text-accent">{governance?.pendingApprovals ?? 0}</p>
+ <p className="text-lg font-bold text-accent">{governance == null ? '—' : governance.pendingApprovals}</p>
  <p className="text-caption t-muted">Awaiting human review</p>
  </div>
  <div className="p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-card)]">
  <span className="text-xs t-secondary">Approved / Rejected</span>
  <p className="text-lg font-bold t-primary">
- <span style={{ color: 'var(--positive)' }}>{governance?.approved ?? 0}</span>
+ <span style={{ color: 'var(--positive)' }}>{governance == null ? '—' : governance.approved}</span>
  {' / '}
- <span style={{ color: 'var(--neg)' }}>{governance?.rejected ?? 0}</span>
+ <span style={{ color: 'var(--neg)' }}>{governance == null ? '—' : governance.rejected}</span>
  </p>
  <p className="text-caption t-muted">Human override decisions</p>
  </div>
@@ -3094,7 +3094,7 @@ export function CatalystsPage() {
           </div>
          </div>
          <p className="text-caption t-muted mt-2">
-          Of {formatCompactCurrency(roiData.totalDiscrepancyValueIdentified || 0, currency)} identified, the split shows where each rand sits in the realisation pipeline.
+          Of {roiData?.totalDiscrepancyValueIdentified == null ? '—' : formatCompactCurrency(roiData.totalDiscrepancyValueIdentified, currency)} identified, the split shows where each rand sits in the realisation pipeline.
          </p>
         </div>
        )}

@@ -1060,7 +1060,7 @@ export function IntegrationsPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                     <div className="p-3 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                       <span className="text-caption t-muted">Records Synced</span>
-                      <p className="text-lg font-bold t-primary">{(conn.recordsSynced || 0).toLocaleString()}</p>
+                      <p className="text-lg font-bold t-primary">{conn.recordsSynced == null ? '—' : conn.recordsSynced.toLocaleString()}</p>
                     </div>
                     <div className="p-3 rounded bg-[var(--bg-secondary)] border border-[var(--border-card)]">
                       <span className="text-caption t-muted">Sync Frequency</span>

@@ -89,7 +89,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
               ? raw.map((f) => ({
                   id: f.id, title: f.title, severity: f.severity,
                   value_at_risk_zar: f.financial_impact ?? null,
-                  affected_count: f.affected_records || 0,
+                  affected_count: f.affected_records ?? null,
                   category: f.domain,
                 }))
               : detail.results?.findings ?? null;
@@ -326,7 +326,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
         </div>
       </div>
 
-      <div className="card" id="leaks" style={{ marginTop: '1rem' }}>
+      <div className="card leaks" id="leaks">
         <h3>Where it leaks <span className="meta">{summary ? `${summary.total_count} findings` : ''}</span></h3>
         {topFindings ? (
           topFindings.map((f) => (
@@ -335,7 +335,7 @@ export function BriefSection({ persona, onAskJeff }: { persona: Persona | null; 
                 {money(f.value_at_risk_zar)}
               </button>
               <p>
-                <b>{f.title}</b> — {f.affected_count.toLocaleString()} records affected
+                <b>{f.title}</b> — {f.affected_count != null ? f.affected_count.toLocaleString() : '—'} records affected
                 <span className="when">{f.category.replace('_', ' ')}{f.evidence_quality ? ` · evidence ${f.evidence_quality}` : ''}</span>
               </p>
               <span className={`pill ${f.severity === 'critical' || f.severity === 'high' ? 'warn' : 'grey'}`}>{f.severity}</span>

@@ -245,7 +245,7 @@ export function buildReactorGraph(
     },
     ...stages.map((s, i): RiverNode => ({
       id: s.id, x: s.x, y: 0.17, kicker: s.label,
-      value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 && s.sum.unpriced > 0 ? '—' : money(s.sum.valueZar)) : '—',
+      value: s.sum ? (s.sum.count > 0 && s.sum.valueZar === 0 ? '—' : money(s.sum.valueZar)) : '—',
       sub: stageSub(s.sum),
       cls: s.sum ? (s.sum.count > 0 ? 'stage leaky' : 'stage clean') : 'stage',
       trend: stageTrend(s.buckets),

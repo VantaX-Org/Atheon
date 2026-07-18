@@ -188,6 +188,7 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
         {clusters?.map((c) => {
           const v = runValue.get(c.id);
           const river = rivers.get(c.id);
+          const hasRun = c.tasksCompleted > 0 || c.tasksInProgress > 0;
           return (
             <div key={c.id} className="cat">
               <h3>{c.name} <span className={`pill ${c.status === 'active' ? 'ok' : 'grey'}`}>{c.status}</span></h3>
@@ -201,15 +202,15 @@ export function CatalystsSection({ onAskJeff }: { persona: Persona | null; onAsk
               )}
               <div className="stats">
                 <div className="s">
-                  <span className="num">{c.tasksCompleted.toLocaleString()}</span>
+                  <span className="num">{hasRun ? c.tasksCompleted.toLocaleString() : '—'}</span>
                   <small>done{c.tasksInProgress > 0 ? ` · ${c.tasksInProgress} running` : ''}</small>
                 </div>
                 <div className="s">
-                  <span className="num">{Math.round(c.successRate)}%</span>
+                  <span className="num">{hasRun ? `${Math.round(c.successRate)}%` : '—'}</span>
                   <small>success</small>
                 </div>
                 <div className="s">
-                  <span className="num">{Math.round(c.trustScore)}</span>
+                  <span className="num">{hasRun ? Math.round(c.trustScore) : '—'}</span>
                   <small>trust · {c.autonomyTier}</small>
                 </div>
                 <div className="s blue">

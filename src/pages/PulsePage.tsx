@@ -2512,7 +2512,7 @@ export function PulsePage() {
                     <Play className="w-5 h-5 text-accent" />
                   </div>
                   <div>
-                    <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{catalystSummary.reduce((s, c) => s + (c.totalRuns as number || 0), 0)}</p>
+                    <p className="text-headline-lg font-bold t-primary tabular-nums font-mono">{catalystSummary.length ? catalystSummary.reduce((s, c) => s + (c.totalRuns as number || 0), 0) : '—'}</p>
                     <p className="text-xs t-muted">Total Runs</p>
                   </div>
                 </div>
