@@ -1177,7 +1177,7 @@ type ExecutionResultRecord = {
   };
 };
 
-type SubCatalystRecord = {
+export type SubCatalystRecord = {
   name: string;
   enabled: boolean;
   description?: string;
@@ -1652,6 +1652,193 @@ catalysts.put('/clusters/:clusterId/sub-catalysts/:subName/execution-config', as
   return c.json({ success: true, subCatalyst: subs[idx] });
 });
 
+/**
+ * Execute one sub-catalyst against its data sources and run the FULL
+ * post-processing pipeline: mode dispatch, LLM analysis, last_execution write,
+ * execution_logs, exception raising, run recording, downstream DAG fan-out,
+ * run-analytics, and insight generation. Shared by the manual HTTP execute
+ * route and the cron scheduler so a scheduled run does exactly the same work
+ * as a manual one. Callers must have already checked the sub-catalyst is
+ * enabled and has >=1 data source. Never throws — on engine error it returns a
+ * result whose `status` is 'failed'.
+ */
+export async function runSubCatalystExecution(
+  db: D1Database,
+  ai: Ai,
+  queue: Queue<import('../services/scheduled').CatalystQueueMessage> | undefined,
+  params: {
+    cluster: Record<string, unknown>;
+    sub: SubCatalystRecord;
+    clusterId: string;
+    tenantId: string;
+    companyId?: string;
+    source: 'manual' | 'schedule';
+  },
+): Promise<ExecutionResultRecord> {
+  const { cluster, sub, clusterId, tenantId, companyId: scopedCompanyId, source } = params;
+  const subName = sub.name;
+  const sources = sub.data_sources || [];
+  const mappings = sub.field_mappings || [];
+  const execConfig = sub.execution_config || { mode: 'reconciliation' };
+  const startTime = Date.now();
+
+  let result: ExecutionResultRecord;
+  try {
+    if (execConfig.mode === 'reconciliation' && sources.length >= 2 && mappings.length > 0) {
+      result = await performReconciliation(sub, sources, mappings, clusterId, tenantId, db, scopedCompanyId);
+    } else if (execConfig.mode === 'validation') {
+      result = await performValidation(sub, sources, clusterId, tenantId, db, scopedCompanyId);
+    } else if (execConfig.mode === 'compare' && sources.length >= 2) {
+      result = await performComparison(sub, sources, mappings, clusterId, tenantId, db, scopedCompanyId);
+    } else {
+      // Default: extract/analyze mode — pull data from sources and report
+      result = await performExtraction(sub, sources, clusterId, tenantId, db, scopedCompanyId);
+    }
+
+    result.duration_ms = Date.now() - startTime;
+
+    // ── LLM-powered analysis: send data sample + results to Atheon model ──
+    try {
+      const clusterDomain = (cluster.domain as string) || 'finance';
+      const clusterIndustry = (cluster.industry as string) || 'general';
+      const llmResult = await llmAnalyzeExecution(
+        result, sub.name, clusterDomain, clusterIndustry, execConfig.mode,
+        tenantId, db, ai,
+      );
+      if (llmResult) {
+        result.llm_analysis = llmResult;
+        result.reasoning = llmResult.reasoning;
+        result.recommendations = llmResult.recommendations;
+      }
+    } catch (llmErr) {
+      console.error('LLM analysis failed (non-critical, rules-based results preserved):', llmErr);
+    }
+  } catch (err) {
+    result = {
+      id: crypto.randomUUID(),
+      sub_catalyst: subName,
+      cluster_id: clusterId,
+      executed_at: new Date().toISOString(),
+      duration_ms: Date.now() - startTime,
+      status: 'failed',
+      mode: execConfig.mode,
+      summary: { total_records_source: 0, total_records_target: 0, matched: 0, unmatched_source: 0, unmatched_target: 0, discrepancies: 0 },
+      error: (err as Error).message,
+    };
+  }
+
+  // Re-read cluster to avoid overwriting concurrent changes (execution may take a while)
+  const freshCluster = await db.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?')
+    .bind(clusterId, tenantId).first<{ sub_catalysts: string }>();
+  const freshSubs = JSON.parse(freshCluster?.sub_catalysts || '[]') as SubCatalystRecord[];
+  const freshIdx = freshSubs.findIndex(s => s.name === subName);
+  if (freshIdx !== -1) {
+    freshSubs[freshIdx].last_execution = result;
+    await db.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
+      .bind(JSON.stringify(freshSubs), clusterId, tenantId).run();
+  }
+
+  // Store execution in execution_logs for history
+  await writeLog(db, tenantId, result.id, 1, `${subName} — ${execConfig.mode}`, result.status, JSON.stringify(result.summary), result.duration_ms);
+
+  // Audit log
+  await db.prepare(
+    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    crypto.randomUUID(), tenantId, 'catalyst.sub_catalyst.executed', 'catalysts', clusterId,
+    JSON.stringify({ sub_catalyst: subName, mode: execConfig.mode, status: result.status, summary: result.summary, source }),
+    result.status === 'failed' ? 'failure' : 'success'
+  ).run().catch(() => {});
+
+  // ── Skip post-processing pipeline for failed runs — no fake data in analytics ──
+  if (result.status === 'failed') return result;
+
+  // ── Exception pipeline: auto-raise exceptions for problematic results ──
+  const exceptionIds = await raiseExecutionExceptions(db, tenantId, clusterId, subName, result, execConfig);
+  if (exceptionIds.length > 0) {
+    (result as Record<string, unknown>).exceptions_raised = exceptionIds.length;
+    (result as Record<string, unknown>).exception_ids = exceptionIds;
+  }
+
+  // ── Record run in sub_catalyst_runs + items (Phase 4) ──
+  let runId: string | undefined;
+  try {
+    runId = await recordRun(db, tenantId, clusterId, subName, result, source);
+    (result as Record<string, unknown>).run_id = runId;
+  } catch (err) {
+    console.error('recordRun failed:', err);
+  }
+
+  // ── DAG: fire downstream dependents when the run completed successfully. ──
+  try {
+    await triggerDownstream({
+      tenantId,
+      upstreamClusterId: clusterId,
+      upstreamSubCatalystName: subName,
+      chainDepth: 0,
+      parentContext: { runId, source: source === 'schedule' ? 'sub_catalyst_scheduled' : 'sub_catalyst_http' },
+      companyId: scopedCompanyId,
+    }, db, queue);
+  } catch (err) {
+    console.error('[DAG] downstream trigger failed (non-fatal):', err);
+  }
+
+  // ── Auto-populate catalyst_run_analytics from the execution result ──
+  try {
+    const summary = result.summary || {} as Record<string, number>;
+    const matched = typeof summary.matched === 'number' ? summary.matched : 0;
+    const unmatchedSource = typeof summary.unmatched_source === 'number' ? summary.unmatched_source : 0;
+    const unmatchedTarget = typeof summary.unmatched_target === 'number' ? summary.unmatched_target : 0;
+    const discrepancyCount = typeof summary.discrepancies === 'number' ? summary.discrepancies : 0;
+    const totalRecSource = typeof summary.total_records_source === 'number' ? summary.total_records_source : 0;
+    const totalRecTarget = typeof summary.total_records_target === 'number' ? summary.total_records_target : 0;
+    const totalItems = matched + unmatchedSource + unmatchedTarget + discrepancyCount || Math.max(totalRecSource, totalRecTarget, 1);
+    const completedItems = matched;
+    const exceptionItems = (result as Record<string, unknown>).exceptions_raised as number || 0;
+    const escalatedItems = 0;
+    const pendingItems = 0;
+    const autoApprovedItems = matched;
+    const matchRate = totalItems > 0 ? matched / totalItems : 0;
+    const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
+    if (matchRate > 0) dist['80-100'] = completedItems;
+    if (exceptionItems > 0) dist['0-20'] = exceptionItems;
+    const insights: string[] = [];
+    if (matchRate >= 0.9) insights.push(`High match rate (${(matchRate * 100).toFixed(0)}%) — most items processed automatically.`);
+    if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
+    if (discrepancyCount > 0) insights.push(`${discrepancyCount} discrepancy(ies) detected — review and resolve.`);
+    if (unmatchedSource > 0) insights.push(`${unmatchedSource} unmatched source record(s) need attention.`);
+    if (totalRecSource === 0 && totalRecTarget === 0 && matched === 0) insights.push('No items were processed — check data source configuration.');
+    // Append LLM-generated reasoning and recommendations to analytics insights
+    if (result.llm_analysis) {
+      if (result.llm_analysis.reasoning) insights.push(`AI Analysis: ${result.llm_analysis.reasoning}`);
+      for (const rec of result.llm_analysis.recommendations) insights.push(`AI Recommendation: ${rec}`);
+      for (const risk of result.llm_analysis.risk_factors) insights.push(`AI Risk: ${risk}`);
+      if (result.llm_analysis.industry_context) insights.push(`Industry Context: ${result.llm_analysis.industry_context}`);
+    }
+    const analyticsId = crypto.randomUUID();
+    await db.prepare(
+      `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      analyticsId, tenantId, clusterId, subName, runId || result.id,
+      result.duration_ms, totalItems, completedItems, exceptionItems, escalatedItems, pendingItems, autoApprovedItems,
+      Math.round(matchRate * 1000) / 1000, 0, matchRate > 0 ? 1 : 0,
+      JSON.stringify(dist), result.status, JSON.stringify(insights),
+    ).run();
+  } catch (err) {
+    console.error('auto run-analytics insert failed:', err, JSON.stringify({ clusterId, subName, runId }));
+  }
+
+  // ── Generate Apex/Pulse/Dashboard insights from this catalyst run ──
+  try {
+    const clusterDomain = (cluster.domain as string) || 'finance';
+    await generateInsightsForTenant(db, tenantId, subName, clusterDomain, undefined, runId, clusterId, subName);
+  } catch (err) {
+    console.error('Insight generation after sub-catalyst execution failed (non-critical):', err);
+  }
+
+  return result;
+}
+
 // POST /api/catalysts/clusters/:clusterId/sub-catalysts/:subName/execute - Execute sub-catalyst against its data sources
 catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) => {
   const clusterId = c.req.param('clusterId');
@@ -1693,172 +1880,11 @@ catalysts.post('/clusters/:clusterId/sub-catalysts/:subName/execute', async (c) 
       .bind(clusterId, targetTenant).run();
   }
 
-  const mappings = sub.field_mappings || [];
-  const execConfig = sub.execution_config || { mode: 'reconciliation' };
-  const startTime = Date.now();
-
-  // Perform execution based on mode
-  let result: ExecutionResultRecord;
-
-  try {
-    if (execConfig.mode === 'reconciliation' && sources.length >= 2 && mappings.length > 0) {
-      result = await performReconciliation(sub, sources, mappings, clusterId, targetTenant, c.env.DB, scopedCompanyId);
-    } else if (execConfig.mode === 'validation') {
-      result = await performValidation(sub, sources, clusterId, targetTenant, c.env.DB, scopedCompanyId);
-    } else if (execConfig.mode === 'compare' && sources.length >= 2) {
-      result = await performComparison(sub, sources, mappings, clusterId, targetTenant, c.env.DB, scopedCompanyId);
-    } else {
-      // Default: extract/analyze mode — pull data from sources and report
-      result = await performExtraction(sub, sources, clusterId, targetTenant, c.env.DB, scopedCompanyId);
-    }
-
-    result.duration_ms = Date.now() - startTime;
-
-    // ── LLM-powered analysis: send data sample + results to Atheon model ──
-    try {
-      const clusterDomain = (cluster.domain as string) || 'finance';
-      const clusterIndustry = (cluster.industry as string) || 'general';
-      const llmResult = await llmAnalyzeExecution(
-        result, sub.name, clusterDomain, clusterIndustry, execConfig.mode,
-        targetTenant, c.env.DB, c.env.AI,
-      );
-      if (llmResult) {
-        result.llm_analysis = llmResult;
-        result.reasoning = llmResult.reasoning;
-        result.recommendations = llmResult.recommendations;
-      }
-    } catch (llmErr) {
-      console.error('LLM analysis failed (non-critical, rules-based results preserved):', llmErr);
-    }
-  } catch (err) {
-    result = {
-      id: crypto.randomUUID(),
-      sub_catalyst: subName,
-      cluster_id: clusterId,
-      executed_at: new Date().toISOString(),
-      duration_ms: Date.now() - startTime,
-      status: 'failed',
-      mode: execConfig.mode,
-      summary: { total_records_source: 0, total_records_target: 0, matched: 0, unmatched_source: 0, unmatched_target: 0, discrepancies: 0 },
-      error: (err as Error).message,
-    };
-  }
-
-  // Re-read cluster to avoid overwriting concurrent changes (execution may take a while)
-  const freshCluster = await c.env.DB.prepare('SELECT sub_catalysts FROM catalyst_clusters WHERE id = ? AND tenant_id = ?')
-    .bind(clusterId, targetTenant).first<{ sub_catalysts: string }>();
-  const freshSubs = JSON.parse(freshCluster?.sub_catalysts || '[]') as SubCatalystRecord[];
-  const freshIdx = freshSubs.findIndex(s => s.name === subName);
-  if (freshIdx !== -1) {
-    freshSubs[freshIdx].last_execution = result;
-    await c.env.DB.prepare('UPDATE catalyst_clusters SET sub_catalysts = ? WHERE id = ? AND tenant_id = ?')
-      .bind(JSON.stringify(freshSubs), clusterId, targetTenant).run();
-  }
-
-  // Store execution in execution_logs for history
-  await writeLog(c.env.DB, targetTenant, result.id, 1, `${subName} — ${execConfig.mode}`, result.status, JSON.stringify(result.summary), result.duration_ms);
-
-  // Audit log
-  await c.env.DB.prepare(
-    'INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(
-    crypto.randomUUID(), targetTenant, 'catalyst.sub_catalyst.executed', 'catalysts', clusterId,
-    JSON.stringify({ sub_catalyst: subName, mode: execConfig.mode, status: result.status, summary: result.summary }),
-    result.status === 'failed' ? 'failure' : 'success'
-  ).run().catch(() => {});
-
-  // ── Skip post-processing pipeline for failed runs — no fake data in analytics ──
-  if (result.status === 'failed') {
-    return c.json(result, 200);
-  }
-
-  // ── Exception pipeline: auto-raise exceptions for problematic results ──
-  const exceptionIds = await raiseExecutionExceptions(c.env.DB, targetTenant, clusterId, subName, result, execConfig);
-  if (exceptionIds.length > 0) {
-    (result as Record<string, unknown>).exceptions_raised = exceptionIds.length;
-    (result as Record<string, unknown>).exception_ids = exceptionIds;
-  }
-
-  // ── Record run in sub_catalyst_runs + items (Phase 4) ──
-  let runId: string | undefined;
-  try {
-    runId = await recordRun(c.env.DB, targetTenant, clusterId, subName, result, 'manual');
-    (result as Record<string, unknown>).run_id = runId;
-  } catch (err) {
-    console.error('recordRun failed:', err);
-  }
-
-  // ── DAG: fire downstream dependents when the run completed successfully.
-  // This HTTP path is always user-initiated so chainDepth starts at 0; DAG
-  // hops thereafter go via the catalyst-tasks queue → executeTask and carry
-  // their own chainDepth. triggerDownstream caps at MAX_CHAIN_DEPTH.
-  try {
-    await triggerDownstream({
-      tenantId: targetTenant,
-      upstreamClusterId: clusterId,
-      upstreamSubCatalystName: subName,
-      chainDepth: 0,
-      parentContext: { runId, source: 'sub_catalyst_http' },
-      companyId: scopedCompanyId,
-    }, c.env.DB, c.env.CATALYST_QUEUE as Queue<import('../services/scheduled').CatalystQueueMessage> | undefined);
-  } catch (err) {
-    console.error('[DAG] downstream trigger failed (non-fatal):', err);
-  }
-
-  // ── Auto-populate catalyst_run_analytics from the execution result ──
-  try {
-    const summary = result.summary || {} as Record<string, number>;
-    const matched = typeof summary.matched === 'number' ? summary.matched : 0;
-    const unmatchedSource = typeof summary.unmatched_source === 'number' ? summary.unmatched_source : 0;
-    const unmatchedTarget = typeof summary.unmatched_target === 'number' ? summary.unmatched_target : 0;
-    const discrepancyCount = typeof summary.discrepancies === 'number' ? summary.discrepancies : 0;
-    const totalRecSource = typeof summary.total_records_source === 'number' ? summary.total_records_source : 0;
-    const totalRecTarget = typeof summary.total_records_target === 'number' ? summary.total_records_target : 0;
-    const totalItems = matched + unmatchedSource + unmatchedTarget + discrepancyCount || Math.max(totalRecSource, totalRecTarget, 1);
-    const completedItems = matched;
-    const exceptionItems = (result as Record<string, unknown>).exceptions_raised as number || 0;
-    const escalatedItems = 0;
-    const pendingItems = 0;
-    const autoApprovedItems = matched;
-    const matchRate = totalItems > 0 ? matched / totalItems : 0;
-    const dist: Record<string, number> = { '0-20': 0, '20-40': 0, '40-60': 0, '60-80': 0, '80-100': 0 };
-    if (matchRate > 0) dist['80-100'] = completedItems;
-    if (exceptionItems > 0) dist['0-20'] = exceptionItems;
-    const insights: string[] = [];
-    if (matchRate >= 0.9) insights.push(`High match rate (${(matchRate * 100).toFixed(0)}%) — most items processed automatically.`);
-    if (matchRate < 0.5 && totalItems > 0) insights.push(`Low match rate (${(matchRate * 100).toFixed(0)}%) — review data quality or field mappings.`);
-    if (discrepancyCount > 0) insights.push(`${discrepancyCount} discrepancy(ies) detected — review and resolve.`);
-    if (unmatchedSource > 0) insights.push(`${unmatchedSource} unmatched source record(s) need attention.`);
-    if (totalRecSource === 0 && totalRecTarget === 0 && matched === 0) insights.push('No items were processed — check data source configuration.');
-    // Append LLM-generated reasoning and recommendations to analytics insights
-    if (result.llm_analysis) {
-      if (result.llm_analysis.reasoning) insights.push(`AI Analysis: ${result.llm_analysis.reasoning}`);
-      for (const rec of result.llm_analysis.recommendations) insights.push(`AI Recommendation: ${rec}`);
-      for (const risk of result.llm_analysis.risk_factors) insights.push(`AI Risk: ${risk}`);
-      if (result.llm_analysis.industry_context) insights.push(`Industry Context: ${result.llm_analysis.industry_context}`);
-    }
-    const analyticsId = crypto.randomUUID();
-    console.log(`[run-analytics] Inserting analytics for ${subName} run=${runId || result.id}, totalItems=${totalItems}, matched=${matched}, status=${result.status}`);
-    await c.env.DB.prepare(
-      `INSERT INTO catalyst_run_analytics (id, tenant_id, cluster_id, sub_catalyst_name, run_id, completed_at, duration_ms, total_items, completed_items, exception_items, escalated_items, pending_items, auto_approved_items, avg_confidence, min_confidence, max_confidence, confidence_distribution, status, insights) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      analyticsId, targetTenant, clusterId, subName, runId || result.id,
-      result.duration_ms, totalItems, completedItems, exceptionItems, escalatedItems, pendingItems, autoApprovedItems,
-      Math.round(matchRate * 1000) / 1000, 0, matchRate > 0 ? 1 : 0,
-      JSON.stringify(dist), result.status, JSON.stringify(insights),
-    ).run();
-    console.log(`[run-analytics] Successfully inserted analytics ${analyticsId}`);
-  } catch (err) {
-    console.error('auto run-analytics insert failed:', err, JSON.stringify({ clusterId, subName, runId, resultKeys: Object.keys(result), summaryKeys: result.summary ? Object.keys(result.summary) : 'no summary' }));
-  }
-
-  // ── Generate Apex/Pulse/Dashboard insights from this catalyst run ──
-  try {
-    const clusterDomain = (cluster.domain as string) || 'finance';
-    await generateInsightsForTenant(c.env.DB, targetTenant, subName, clusterDomain, undefined, runId, clusterId, subName);
-  } catch (err) {
-    console.error('Insight generation after sub-catalyst execution failed (non-critical):', err);
-  }
+  const result = await runSubCatalystExecution(
+    c.env.DB, c.env.AI,
+    c.env.CATALYST_QUEUE as Queue<import('../services/scheduled').CatalystQueueMessage> | undefined,
+    { cluster, sub, clusterId, tenantId: targetTenant, companyId: scopedCompanyId, source: 'manual' },
+  );
 
   // Always return 200 so the client can read the detailed result (status field indicates success/failure)
   return c.json(result, 200);

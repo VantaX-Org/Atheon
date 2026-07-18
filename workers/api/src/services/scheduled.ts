@@ -21,6 +21,8 @@ import { discoverIndustryPatterns } from './cross-tenant-pattern-discovery';
 import { runPhase10ChainForTenant } from './phase-10-analytics-runner';
 import { enqueueAnalyticsSweeps, shouldFanOut } from './analytics-fanout';
 import { advanceRunsForTenant } from './orchestration-engine';
+import { runSubCatalystExecution } from '../routes/catalysts';
+import type { SubCatalystRecord } from '../routes/catalysts';
 
 interface ScheduledEnv extends Env {
   CATALYST_QUEUE?: Queue<CatalystQueueMessage>;
@@ -74,7 +76,7 @@ export async function handleScheduled(
       await checkAgentLifecycle(db, cache, tenantId);
 
       // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts
-      await executeScheduledSubCatalysts(db, tenantId);
+      await executeScheduledSubCatalysts(db, tenantId, env);
 
       // V2: Radar scan — analyse unprocessed signals
       try { await runScheduledRadarScan(db, tenantId, env); } catch (e) { console.error(`Radar scan failed for ${tenantId}:`, e); }
@@ -951,10 +953,10 @@ function calculateNextRunScheduled(
   return '';
 }
 
-async function executeScheduledSubCatalysts(db: D1Database, tenantId: string): Promise<void> {
+async function executeScheduledSubCatalysts(db: D1Database, tenantId: string, env: ScheduledEnv): Promise<void> {
   // Get all active clusters with sub-catalysts
   const clusters = await db.prepare(
-    "SELECT id, name, domain, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active'"
+    "SELECT id, name, domain, industry, sub_catalysts, autonomy_tier FROM catalyst_clusters WHERE tenant_id = ? AND status = 'active'"
   ).bind(tenantId).all();
 
   const now = new Date();
@@ -980,41 +982,34 @@ async function executeScheduledSubCatalysts(db: D1Database, tenantId: string): P
       const nextRun = sub.schedule.next_run ? new Date(sub.schedule.next_run) : null;
       if (!nextRun || nextRun > now) continue;
 
-      // Execute: create a catalyst action for this sub-catalyst
-      const actionId = crypto.randomUUID();
-      const inputData = JSON.stringify({
-        scheduled: true,
-        frequency: sub.schedule.frequency,
-        sub_catalyst: sub.name,
-        triggered_at: now.toISOString(),
-      });
-
-      try {
-        await db.prepare(
-          "INSERT INTO catalyst_actions (id, cluster_id, tenant_id, catalyst_name, action, status, confidence, input_data, reasoning, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))"
-        ).bind(
-          actionId,
-          clusterRow.id as string,
-          tenantId,
-          sub.name,
-          `Scheduled ${sub.schedule.frequency} execution`,
-          'pending',
-          0.90,
-          inputData,
-          `Automatic scheduled execution (${sub.schedule.frequency}). Sub-catalyst: ${sub.name}.`
-        ).run();
-
-        // Log the scheduled execution
+      // Needs at least one data source to run — same precondition the manual
+      // route enforces. Skip (but still advance next_run below) if unconfigured.
+      const record = sub as unknown as SubCatalystRecord;
+      const hasSources = (record.data_sources && record.data_sources.length > 0) || !!record.data_source;
+      if (hasSources) {
+        // Run the SAME executor the manual "Execute" button uses — full engine:
+        // mode dispatch, LLM analysis, exceptions, run recording, downstream
+        // fan-out, analytics, insights. A scheduled run now does real work.
+        try {
+          await runSubCatalystExecution(db, env.AI, env.CATALYST_QUEUE, {
+            cluster: clusterRow,
+            sub: record,
+            clusterId: clusterRow.id as string,
+            tenantId,
+            source: 'schedule',
+          });
+        } catch (err) {
+          console.error(`Scheduled execution failed for sub-catalyst ${sub.name} in cluster ${clusterRow.id}:`, err);
+        }
+      } else {
         await db.prepare(
           "INSERT INTO audit_log (id, tenant_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)"
         ).bind(
-          crypto.randomUUID(), tenantId, 'catalyst.sub_catalyst.scheduled_execution', 'catalysts',
+          crypto.randomUUID(), tenantId, 'catalyst.sub_catalyst.scheduled_skipped', 'catalysts',
           clusterRow.id as string,
-          JSON.stringify({ sub_catalyst: sub.name, frequency: sub.schedule.frequency, action_id: actionId }),
+          JSON.stringify({ sub_catalyst: sub.name, frequency: sub.schedule.frequency, reason: 'no_data_sources' }),
           'success'
         ).run().catch(() => {});
-      } catch (err) {
-        console.error(`Scheduled execution failed for sub-catalyst ${sub.name} in cluster ${clusterRow.id}:`, err);
       }
 
       // Update last_run and next_run
