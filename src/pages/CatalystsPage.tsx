@@ -3022,7 +3022,7 @@ export function CatalystsPage() {
        <div className="flex items-center gap-2 mb-3">
         <TrendingUp size={16} style={{ color: 'var(--positive)' }} />
         <h3 className="text-sm font-semibold t-primary">ROI Summary</h3>
-        <Badge variant="success" size="sm">{roiData.roiMultiple}x return</Badge>
+        <Badge variant="success" size="sm">{roiData.roiMultiple != null ? `${roiData.roiMultiple}x return` : '— return'}</Badge>
        </div>
        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
@@ -3034,7 +3034,7 @@ export function CatalystsPage() {
          <p className="text-caption t-muted">Prevented</p>
         </div>
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">
-         <p className="text-lg font-bold font-mono tabular-nums t-primary">{roiData.totalPersonHoursSaved}h</p>
+         <p className="text-lg font-bold font-mono tabular-nums t-primary">{roiData.totalPersonHoursSaved != null ? `${roiData.totalPersonHoursSaved}h` : '—'}</p>
          <p className="text-caption t-muted">Hours Saved</p>
         </div>
         <div className="text-center p-2 rounded-md bg-[var(--bg-secondary)]">

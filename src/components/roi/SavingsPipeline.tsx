@@ -47,6 +47,8 @@ export function SavingsPipeline() {
   if (!roi) {
     return <div className="h-44 rounded animate-pulse" style={{ background: 'var(--border-card)' }} aria-hidden="true" />;
   }
+  // Honesty law: no snapshot reported → render nothing rather than a fabricated zero funnel.
+  if (roi.totalDiscrepancyValueIdentified == null) return null;
 
   const identified = roi.totalDiscrepancyValueIdentified ?? 0;
   const recovered = roi.totalDiscrepancyValueRecovered ?? 0;
