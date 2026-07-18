@@ -37,6 +37,32 @@ export interface CatalystQueueMessage {
 
 // Main scheduled handler — dispatched by Cron Triggers
 // Configured in wrangler.toml: [triggers] crons = ["every 15 minutes"]
+/**
+ * Run one cron step bounded by a timeout. A step that HANGS — e.g. an AI or
+ * ERP network await that never resolves — would otherwise consume the whole
+ * scheduled-handler budget and starve every later step. A plain try/catch
+ * cannot rescue a hang, only a throw, which is why isolating each step in its
+ * own try still let a hung briefing skip sub-catalyst execution. Races the
+ * step against a timer and swallows both timeout and error so the tenant's
+ * remaining steps always run. Note: Promise.race does not cancel the hung
+ * work; it frees the await so the priority steps proceed.
+ */
+async function runStep(name: string, tenantId: string, ms: number, fn: () => Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`step timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } catch (e) {
+    console.error(`${name} failed for ${tenantId}:`, e);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export async function handleScheduled(
   _event: ScheduledController,
   env: ScheduledEnv,
@@ -66,38 +92,42 @@ export async function handleScheduled(
       // skipped sub-catalyst scheduled execution below.
 
       // 3.6: Health score recalculation
-      try { await recalculateHealthScore(db, tenantId); } catch (e) { console.error(`Health recalc failed for ${tenantId}:`, e); }
+      await runStep('Health recalc', tenantId, 20000, () => recalculateHealthScore(db, tenantId));
 
-      // 3.7: Executive briefing generation
-      try { await generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY, env.CACHE); } catch (e) { console.error(`Briefing gen failed for ${tenantId}:`, e); }
+      // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts.
+      // Ordered right after health (before the AI/network steps) so the
+      // autonomous money-work is never starved by a hanging briefing or
+      // process-mining call. Generous bound: it runs the full LLM executor
+      // per due sub-catalyst, but must still return the tenant loop.
+      await runStep('Scheduled sub-catalysts', tenantId, 120000, () => executeScheduledSubCatalysts(db, tenantId, env));
+
+      // 3.7: Executive briefing generation (AI — the historical hang culprit)
+      await runStep('Briefing gen', tenantId, 30000, () => generateBriefing(db, env.AI, tenantId, env.OLLAMA_API_KEY, env.CACHE));
 
       // 3.8: Memory auto-population from ERP data
-      try { await autoPopulateMemory(db, tenantId); } catch (e) { console.error(`Memory autopopulate failed for ${tenantId}:`, e); }
+      await runStep('Memory autopopulate', tenantId, 20000, () => autoPopulateMemory(db, tenantId));
 
       // 3.9: Process mining refresh + 5.4: event-driven catalyst triggers
-      try { await refreshProcessMining(db, tenantId, env.CATALYST_QUEUE); } catch (e) { console.error(`Process mining failed for ${tenantId}:`, e); }
+      await runStep('Process mining', tenantId, 30000, () => refreshProcessMining(db, tenantId, env.CATALYST_QUEUE));
 
       // 5.4: Agent lifecycle — heartbeat check & status updates
-      try { await checkAgentLifecycle(db, cache, tenantId); } catch (e) { console.error(`Agent lifecycle failed for ${tenantId}:`, e); }
-
-      // 6.0: Sub-catalyst scheduled execution — run due sub-catalysts
-      try { await executeScheduledSubCatalysts(db, tenantId, env); } catch (e) { console.error(`Scheduled sub-catalysts failed for ${tenantId}:`, e); }
+      await runStep('Agent lifecycle', tenantId, 15000, () => checkAgentLifecycle(db, cache, tenantId));
 
       // V2: Radar scan — analyse unprocessed signals
-      try { await runScheduledRadarScan(db, tenantId, env); } catch (e) { console.error(`Radar scan failed for ${tenantId}:`, e); }
+      await runStep('Radar scan', tenantId, 30000, () => runScheduledRadarScan(db, tenantId, env));
 
       // §9.1 — Overdue prescription checks
-      try { await checkOverduePrescriptions(db, tenantId); } catch (e) { console.error(`Overdue checks failed for ${tenantId}:`, e); }
+      await runStep('Overdue checks', tenantId, 15000, () => checkOverduePrescriptions(db, tenantId));
 
       // §9.1 — Weekly digest email (Monday mornings)
-      try { await generateWeeklyDigest(db, tenantId); } catch (e) { console.error(`Weekly digest failed for ${tenantId}:`, e); }
+      await runStep('Weekly digest', tenantId, 20000, () => generateWeeklyDigest(db, tenantId));
 
       // §11.3 — Goal achievement checks
-      try { await checkGoalAchievements(db, tenantId); } catch (e) { console.error(`Goal achievement check failed for ${tenantId}:`, e); }
+      await runStep('Goal achievement check', tenantId, 15000, () => checkGoalAchievements(db, tenantId));
 
       // V2: Effectiveness + ROI recalculation
       // OPTIMIZED: Fetch id + sub_catalysts in one query (was 2 queries per cluster — N+1)
-      try {
+      await runStep('Effectiveness/ROI calc', tenantId, 45000, async () => {
         const clusters = await db.prepare('SELECT id, name, sub_catalysts FROM catalyst_clusters WHERE tenant_id = ?').bind(tenantId).all();
         for (const cl of clusters.results) {
           const clRow = cl as Record<string, unknown>;
@@ -109,24 +139,24 @@ export async function handleScheduled(
           }
         }
         await calculateROI(db, tenantId);
-      } catch (e) { console.error(`Effectiveness/ROI calc failed for ${tenantId}:`, e); }
+      });
 
       // v59 ERP schema drift detection — flag any per-connection schema
       // that has gained or lost fields since the last drift sweep. Surface
       // as a notification so the customer can confirm the change before
       // the auto-mapper acts on stale assumptions. Best-effort.
-      try { await detectErpSchemaDrift(db, tenantId); } catch (e) { console.error(`ERP drift detection failed for ${tenantId}:`, e); }
+      await runStep('ERP drift detection', tenantId, 30000, () => detectErpSchemaDrift(db, tenantId));
 
       // v65 HITL SLA — sweep pending_approval write-back actions; warn
       // at 24h, escalate at 48h, auto-reject at 7 days. Keeps the queue
       // bounded + customer in the loop. Best-effort.
-      try { await escalateStaleActions(db, tenantId); } catch (e) { console.error(`HITL SLA sweep failed for ${tenantId}:`, e); }
+      await runStep('HITL SLA sweep', tenantId, 20000, () => escalateStaleActions(db, tenantId));
 
       // v66 post-action verification — re-read the ERP for recently-
       // completed actions; mark verification_status. Failures notify the
       // customer + ROI attribution downgrades to never bill on writes the
       // ERP didn't actually record. Best-effort.
-      try { await verifyCompletedActions(db, tenantId); } catch (e) { console.error(`Action verification failed for ${tenantId}:`, e); }
+      await runStep('Action verification', tenantId, 30000, () => verifyCompletedActions(db, tenantId));
 
       // Phase 10-21 — fan-out the Phase 10 analytical chain via queue
       // when CATALYST_QUEUE is bound AND tenant count crosses the
@@ -134,7 +164,7 @@ export async function handleScheduled(
       // The runner is idempotent and best-effort per step, so retries
       // from queue redelivery don't cause duplicate writes.
       if (!shouldFanOut(env, tenants.results.length)) {
-        try { await runPhase10ChainForTenant(db, tenantId); } catch (e) { console.error(`Phase 10 chain failed for ${tenantId}:`, e); }
+        await runStep('Phase 10 chain', tenantId, 60000, () => runPhase10ChainForTenant(db, tenantId));
       }
       // When fan-out is in effect, the per-tenant analytics work
       // happens via handleQueueMessage instead. Enqueueing happens
@@ -142,14 +172,12 @@ export async function handleScheduled(
 
       // Phase 10-22 — advance any active orchestration runs by one
       // step. Pull-based engine; idempotent. Best-effort.
-      try {
-        await advanceRunsForTenant(db, tenantId, {
-          cache: env.CACHE,
-          ai: env.AI,
-          ollamaApiKey: env.OLLAMA_API_KEY,
-          queue: env.CATALYST_QUEUE,
-        });
-      } catch (e) { console.error(`Orchestration advance failed for ${tenantId}:`, e); }
+      await runStep('Orchestration advance', tenantId, 45000, () => advanceRunsForTenant(db, tenantId, {
+        cache: env.CACHE,
+        ai: env.AI,
+        ollamaApiKey: env.OLLAMA_API_KEY,
+        queue: env.CATALYST_QUEUE,
+      }));
     } catch (err) {
       logError('scheduled.tenant.failed', err, {
         requestId: runId,
