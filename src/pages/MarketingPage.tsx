@@ -1,9 +1,60 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { MotionConfig, motion, useScroll, useSpring, useInView, animate, type Variants } from "motion/react";
 import { MiniRiver } from "@/x/MiniRiver";
 import { journeyRiver } from "@/x/flows";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
+
+// three.js stays out of the main bundle — loaded only when the hero mounts.
+const MarketingHero3D = lazyWithRetry(() => import("./MarketingHero3D"));
+
+// hero entrance — parent staggers, children spring up
+const heroRise: Variants = {
+  hide: { opacity: 0, y: 22 },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 170, damping: 26 } },
+};
 
 // stable graph — the brand river, labels only (module-level so the canvas mounts once)
 const JOURNEY = journeyRiver();
+
+/* The brand river on a 3D stage — pointer parallax tilts the card, idle float
+   keeps it alive. Tilt is written to CSS custom properties so React never
+   re-renders on mouse move. Reduced-motion drops the float via CSS. */
+function RiverHero3D() {
+  const tiltRef = useRef<HTMLDivElement | null>(null);
+
+  function onMove(e: React.MouseEvent<HTMLDivElement>) {
+    const el = tiltRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width;   // 0..1
+    const py = (e.clientY - r.top) / r.height;   // 0..1
+    el.style.setProperty("--ry", `${(px - 0.5) * 16}deg`);
+    el.style.setProperty("--rx", `${9 - (py - 0.5) * 14}deg`);
+  }
+  function onLeave() {
+    const el = tiltRef.current;
+    if (!el) return;
+    el.style.setProperty("--ry", "-7deg");
+    el.style.setProperty("--rx", "9deg");
+  }
+
+  return (
+    <div className="mk5-river-stage" onMouseMove={onMove} onMouseLeave={onLeave}>
+      <div className="mk5-river-3d" ref={tiltRef}>
+        <div className="mk5-river-head">
+          <span>The Atheon loop</span>
+          <span className="dim">Connect &middot; Detect &middot; Fix &middot; Recover &middot; Report</span>
+        </div>
+        <MiniRiver
+          graph={JOURNEY}
+          className="flowpanel mid"
+          label="The Atheon loop: connect, detect, fix, recover, report"
+        />
+        <div className="mk5-river-floor" aria-hidden />
+      </div>
+    </div>
+  );
+}
 
 /* ============================================================
    ATHEON MARKETING PAGE — Luminous Editorial
@@ -13,20 +64,23 @@ const JOURNEY = journeyRiver();
 
 const marketingCSS = `
 .mk5-body {
-  --field: #fbfaf7;
-  --field-2: #f4f2ec;
-  --paper: #ffffff;
-  --paper-hover: #f7f6f1;
-  --ink: #0f1115;
-  --ink-2: #6c7079;
-  --ink-3: #9a9ea6;
-  --rule: #e4e2db;
-  --rule-strong: #0f1115;
-  --accent-c: var(--accent, #2456d6);
-  --accent-hover-c: var(--accent-hover, #1c46ad);
-  --accent-tint: var(--accent-subtle, rgba(36, 86, 214, 0.07));
-  --bronze: #9a6b1f;
-  --neg-c: #b03423;
+  /* Reskinned onto the product .rx design system (tokens.css).
+     --ink is inherited from the .rx token set on this same element; the rest
+     alias the product tokens so every .mk5-* rule follows the live theme
+     (light default, navy dark via OS / data-theme). */
+  --field: var(--bg);
+  --field-2: var(--card2);
+  --paper: var(--card);
+  --paper-hover: var(--card2);
+  --ink-2: var(--body);
+  --ink-3: var(--mut);
+  --rule: var(--line);
+  --rule-strong: var(--ink);
+  --accent-c: var(--brand);
+  --accent-hover-c: var(--brand-dk);
+  --accent-tint: var(--brand-soft);
+  --bronze: var(--warn);
+  --neg-c: var(--bad);
   font-family: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-feature-settings: "ss01", "ss02";
   background: var(--field);
@@ -38,9 +92,9 @@ const marketingCSS = `
 .mk5-body ::selection { background: var(--accent-c); color: #fff; }
 .mk5-body a { color: inherit; text-decoration: none; }
 .mk5-body h1, .mk5-body h2, .mk5-body h3, .mk5-body h4 {
-  font-family: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  font-weight: 500;
-  letter-spacing: -0.018em;
+  font-family: 'Schibsted Grotesk', 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--ink);
 }
 .mk5-body em, .mk5-body i { font-style: italic; font-weight: 500; color: var(--accent-c); }
@@ -58,7 +112,7 @@ const marketingCSS = `
   position: sticky; top: 0; width: 100%; z-index: 60;
   display: flex; justify-content: space-between; align-items: center;
   padding: 1.25rem 3rem;
-  background: rgba(251, 250, 247, 0.92);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: saturate(140%) blur(8px);
   -webkit-backdrop-filter: saturate(140%) blur(8px);
   border-bottom: 1px solid var(--rule);
@@ -277,15 +331,78 @@ const marketingCSS = `
   .mk5-chain-stage::after { animation: mk5-drip 1s linear infinite; }
   .mk5-recover-rail { animation: mk5-rise .55s cubic-bezier(0.23, 1, 0.32, 1) .5s both; }
   .mk5-recover-rail .rflow { animation: mk5-flow-back 1.2s linear infinite; }
-  .mk5-hero-left { animation: mk5-rise .55s cubic-bezier(0.23, 1, 0.32, 1) both; }
 }
+
+/* ---- Motion layer: scroll progress bar + three.js hero backdrop ---- */
+.mk5-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent-c); transform-origin: 0 50%; z-index: 70;
+}
+.mk5-hero-3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.mk5-hero-3d canvas { width: 100%; height: 100%; display: block; }
+.mk5-hero-left, .mk5-hero-scroll { position: relative; z-index: 1; }
+.mk5-river-stage { z-index: 1; }
 @media (hover: hover) {
   .mk5-chain-stage { transition: opacity 250ms ease, transform 250ms ease, box-shadow 250ms ease; }
   .mk5-chain-row:has(.mk5-chain-stage:hover) .mk5-chain-stage:not(:hover) { opacity: .45; }
   .mk5-chain-stage:hover { transform: translateY(-3px); box-shadow: 0 10px 24px -12px rgba(15, 17, 21, 0.25); }
 }
 
-/* The Atheon loop — the brand river (MiniRiver) closes the chain */
+/* ---- 3D RIVER HERO — the brand river as the centrepiece, on a tilting stage ---- */
+.mk5-river-stage {
+  position: relative;
+  width: 100%;
+  perspective: 1500px;
+  perspective-origin: 50% 32%;
+}
+.mk5-river-3d {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx, 9deg)) rotateY(var(--ry, -7deg));
+  transition: transform 500ms cubic-bezier(0.23, 1, 0.32, 1);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: linear-gradient(158deg, color-mix(in srgb, var(--accent-c) 7%, var(--paper)) 0%, var(--paper) 58%);
+  box-shadow:
+    0 55px 95px -50px color-mix(in srgb, var(--accent-c) 55%, transparent),
+    0 20px 44px -26px rgba(15, 17, 21, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  padding: 1.4rem 1.5rem 1.15rem;
+  will-change: transform;
+}
+.mk5-river-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: .4rem;
+  transform: translateZ(46px);
+  font-family: 'Space Mono', monospace;
+  font-size: .625rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.mk5-river-head .dim { color: var(--ink-3); letter-spacing: 0.13em; }
+/* canvas panel floats a touch forward off the card face for real depth */
+.mk5-river-3d .rx { transform: translateZ(30px); }
+/* brand-lit floor reflection under the tilted card */
+.mk5-river-floor {
+  position: absolute; left: 8%; right: 8%; bottom: -7%; height: 46px;
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent-c) 32%, transparent), transparent 70%);
+  filter: blur(15px); opacity: .5; z-index: -1;
+}
+@keyframes mk5-river-float {
+  0%, 100% { transform: translateY(0) rotateZ(0deg); }
+  50%      { transform: translateY(-11px) rotateZ(-0.28deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mk5-river-stage { animation: mk5-river-float 11s ease-in-out infinite; }
+}
+
+/* Value-chain band (moved out of the hero, below the river) */
+.mk5-vchain { padding: 5rem 3rem; border-bottom: 1px solid var(--rule); }
+.mk5-vchain-intro { max-width: 44rem; margin-bottom: 2.25rem; }
+.mk5-vchain-intro h2 {
+  font-size: clamp(1.75rem, 3.4vw, 2.75rem); line-height: 1.02;
+  letter-spacing: -0.025em; font-weight: 300; color: var(--ink); margin-bottom: 1rem;
+}
+.mk5-vchain-intro p { font-size: 1.0625rem; line-height: 1.55; color: var(--ink-2); }
 
 .mk5-hero-scroll {
   position: absolute; left: 3rem; bottom: 1.75rem;
@@ -1045,7 +1162,7 @@ const marketingCSS = `
   font-family: 'Space Mono', monospace;
   font-size: .75rem; color: var(--neg-c);
   padding: .75rem; border: 1px solid var(--neg-c);
-  background: rgba(176, 52, 35, 0.04);
+  background: var(--bad-soft);
   border-radius: 2px;
 }
 .mk5-contact-success {
@@ -1089,8 +1206,9 @@ const marketingCSS = `
 }
 
 /* ANIMATIONS — restrained */
-.mk5-reveal { opacity: 0; transform: translateY(8px); transition: opacity 400ms cubic-bezier(0.23, 1, 0.32, 1), transform 400ms cubic-bezier(0.23, 1, 0.32, 1); }
+.mk5-reveal { opacity: 0; transform: translateY(18px) scale(.985); transition: opacity 600ms cubic-bezier(0.23, 1, 0.32, 1), transform 600ms cubic-bezier(0.22, 1.15, 0.36, 1); }
 .mk5-reveal.visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .mk5-reveal { opacity: 1; transform: none; transition: none; } }
 .mk5-rd1 { transition-delay: 80ms; }
 .mk5-rd2 { transition-delay: 160ms; }
 .mk5-rd3 { transition-delay: 240ms; }
@@ -1099,6 +1217,11 @@ const marketingCSS = `
 @media(max-width: 1100px) {
   .mk5-hero { gap: 2.5rem; padding: 4rem 2rem 3rem; min-height: 0; }
   .mk5-hero-scroll { display: none; }
+  .mk5-vchain { padding: 3.5rem 2rem; }
+  /* flatten the 3D card on narrow screens — tilt clips and reads noisy on touch */
+  .mk5-river-stage { perspective: none; animation: none; }
+  .mk5-river-3d { transform: none !important; }
+  .mk5-river-head, .mk5-river-3d .rx { transform: none; }
   .mk5-chain-row { flex-direction: column; }
   .mk5-chain-link { align-self: flex-start; padding: .35rem 0 .35rem 1.1rem; }
   .mk5-chain-link svg { transform: rotate(90deg); }
@@ -1153,6 +1276,20 @@ const marketingCSS = `
   .mk5-fr { text-align: left; }
   .mk5-big-stmt { padding: 6rem 1.25rem; }
 }
+
+/* FAQ */
+.mk5-faq { padding: 7rem 3rem; border-top: 1px solid var(--rule); }
+.mk5-faq-inner { max-width: 56rem; margin: 0 auto; }
+.mk5-faq h2 { font-size: clamp(1.8rem, 3.5vw, 2.6rem); line-height: 1.1; margin-bottom: 2.5rem; color: var(--ink); }
+.mk5-faq-item { border-bottom: 1px solid var(--rule); }
+.mk5-faq-item summary { cursor: pointer; padding: 1.15rem 0; font-weight: 600; font-size: 1rem; color: var(--ink); list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.mk5-faq-item summary::-webkit-details-marker { display: none; }
+.mk5-faq-item summary::after { content: "+"; color: var(--accent-c); font-weight: 400; flex-shrink: 0; }
+.mk5-faq-item[open] summary::after { content: "\\2013"; }
+.mk5-faq-item p { color: var(--ink-2); font-size: 0.9rem; line-height: 1.65; padding: 0 0 1.3rem; max-width: 44rem; }
+@media(max-width: 768px) {
+  .mk5-faq { padding: 4rem 1.25rem; }
+}
 `;
 
 /* ---- SVG Components ---- */
@@ -1183,33 +1320,6 @@ const chainStages: { name: string; leak: string; sev: "warn" | "bad"; fix: strin
   { name: "Tax & Recover", leak: "VAT errors and unclaimed input credits sit with the revenue authority.", sev: "warn", fix: "Input VAT reclaimed" },
 ];
 
-/* ---- Static layer pictogram (replaces dark canvas) ---- */
-
-function LayerPictogram({ tier }: { tier: 1 | 2 | 3 }) {
-  const rows = tier === 1 ? 1 : tier === 2 ? 2 : 3;
-  return (
-    <svg viewBox="0 0 240 180" width="100%" height="100%" aria-hidden>
-      {Array.from({ length: rows }).map((_, r) => {
-        const y = 60 + r * 32;
-        const dots = 7 + r * 4;
-        const spread = 40 + r * 24;
-        return (
-          <g key={r}>
-            {Array.from({ length: dots }).map((_, i) => {
-              const cx = 120 + ((i - (dots - 1) / 2) * spread) / (dots - 1);
-              return <circle key={i} cx={cx} cy={y} r="1.6" fill="var(--accent, #2456d6)" opacity={0.55 - r * 0.12} />;
-            })}
-            <line x1="40" y1={y} x2="200" y2={y} stroke="var(--border-card, #e4e2db)" strokeWidth="1" />
-          </g>
-        );
-      })}
-      <text x="200" y="170" fontFamily="Space Mono, monospace" fontSize="9" letterSpacing="0.18em" fill="var(--text-muted, #9a9ea6)" textAnchor="end">
-        L{tier.toString().padStart(2, "0")}
-      </text>
-    </svg>
-  );
-}
-
 /* ---- Scroll Reveal Hook ---- */
 
 function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
@@ -1223,6 +1333,24 @@ function useReveal(ref: React.RefObject<HTMLDivElement | null>) {
     el.querySelectorAll(".mk5-reveal, .mk5-layer-block").forEach((child) => obs.observe(child));
     return () => obs.disconnect();
   }, [ref]);
+}
+
+/* ---- Count-up stat — animates to the real (verified) number on scroll into view ---- */
+
+function CountUp({ to }: { to: number }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  useEffect(() => {
+    const el = ref.current;
+    if (!inView || !el) return;
+    const ctrl = animate(0, to, {
+      duration: 1.4,
+      ease: [0.23, 1, 0.32, 1],
+      onUpdate: (v) => { el.textContent = String(Math.round(v)); },
+    });
+    return () => ctrl.stop();
+  }, [inView, to]);
+  return <span ref={ref}>{to}</span>;
 }
 
 /* ---- Contact Form (wired to POST /api/contact) ---- */
@@ -1312,7 +1440,12 @@ function ContactForm() {
 export function MarketingPage() {
   const mainRef = useRef<HTMLDivElement>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [reducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useReveal(mainRef);
+
+  // page scroll progress — springy bar pinned above the nav
+  const { scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, { stiffness: 140, damping: 26, mass: 0.3 });
 
   useEffect(() => {
     if (!document.getElementById("mk5-css")) {
@@ -1323,7 +1456,20 @@ export function MarketingPage() {
     }
   }, []);
 
-  const tickerItems = ["Catalyst", "Not an Agent", "Three Layers", "Governed", "Correlated", "One Truth"];
+  // Marketing is a brand surface: always the navy river look, regardless of
+  // the visitor's stored in-app theme preference. Restored on unmount so the
+  // app keeps honouring their choice after login/navigation.
+  useEffect(() => {
+    const root = document.documentElement;
+    const prev = root.getAttribute("data-theme");
+    root.setAttribute("data-theme", "dark");
+    return () => {
+      if (prev) root.setAttribute("data-theme", prev);
+      else root.removeAttribute("data-theme");
+    };
+  }, []);
+
+  const tickerItems = ["Duplicate invoices", "Price creep", "Short deliveries", "Unclaimed VAT", "Erroneous payments", "Recovered"];
 
   const integrations = [
     { icon: "◆", name: "SAP S/4HANA", type: "ERP" },
@@ -1343,24 +1489,19 @@ export function MarketingPage() {
     { icon: "❐", name: "Webhooks", type: "Custom" },
   ];
 
-  const coverageDomains = [
-    { icon: "◆", name: "Finance & Controlling", desc: "AP, AR, reconciliation, cash flow, budget vs actual, cost allocation, and inventory valuation.", catalysts: "Finance · Finance Ops · Treasury · Tax · Audit · GL Close" },
-    { icon: "◇", name: "Supply Chain & Operations", desc: "Procurement, supplier risk, inventory optimisation, 3-way matching, and production scheduling.", catalysts: "Procurement · Supplier · Inventory · Production · Logistics" },
-    { icon: "◆", name: "Commercial & Revenue", desc: "Pipeline hygiene, quote-to-cash, pricing intelligence, trade promotion, and revenue ops.", catalysts: "Sales · Pricing · Trade Promotion · CDP · Customer Success" },
-    { icon: "◆", name: "People & Workforce", desc: "Recruitment funnel, engagement signals, payroll variance, and workforce planning.", catalysts: "HR · Recruitment · Engagement · Payroll · Workforce Planning" },
-    { icon: "◇", name: "Governance, Risk & Compliance", desc: "Audit trails, tax compliance, regulatory reporting, policy monitoring, and DSAR handling.", catalysts: "Audit · Tax · Compliance · ESG · Risk" },
-    { icon: "◆", name: "Data Quality & MDM", desc: "Master data hygiene, duplicate detection, entity resolution, and reference data governance.", catalysts: "DQ/MDM · Reference Data · Entity Resolution" },
-    { icon: "◇", name: "Lean / Continuous Improvement", desc: "Process mining, bottleneck detection, cycle-time reduction, and waste elimination.", catalysts: "Lean/CI · Process Mining · Cycle Time" },
-    { icon: "◆", name: "Sustainability & ESG", desc: "Scope 1/2/3 tracking, energy and water intensity, and sustainability disclosures.", catalysts: "ESG · Energy · Emissions · Disclosures" },
-    { icon: "○", name: "IT, Platform & Security", desc: "Connectivity health, integration monitoring, and security posture across the estate.", catalysts: "Integration Health · Security Posture · Platform Health" },
-  ];
-
+  // The ten roles Atheon ships a live console for — each is a real persona in the
+  // product (src/x/persona.ts), switchable in the demo tenant via ?as=<role>.
   const personas = [
-    { role: "Executive", name: "Chief Financial Officer", desc: "Owns the shared-savings ledger. Needs a single living truth across legal entities, with every claim traceable to a source record.", want: "Realised savings, weekly" },
-    { role: "Finance", name: "Group Controller", desc: "Closes the books across subsidiaries. Wants reconciliation, cost variance, and inventory valuation visible before audit asks.", want: "Variance with citation" },
-    { role: "Assurance", name: "Internal Auditor", desc: "Tests the controls behind every autonomous decision. Needs the audit trail, confidence band, and reviewer record for every catalyst run.", want: "Append-only audit log" },
-    { role: "Governance", name: "Board Member", desc: "Reviews material risk and capital allocation. Needs a one-page synthesis with the underlying evidence one click away.", want: "Board-ready synthesis" },
-    { role: "Operations", name: "VP Operations", desc: "Runs the catalysts that actually move cash. Wants schedules, autonomy tiers, and recommendations grounded in ERP signal.", want: "Run health, by domain" },
+    { role: "Oversight", name: "Board member", desc: "Independent oversight of health, recovered-to-date, and what is stuck at the gate.", want: "Health vs benchmark" },
+    { role: "Executive", name: "Chief Executive", desc: "The whole business on one screen — external pressure, internal health, what the engine returned.", want: "One-screen health" },
+    { role: "Executive", name: "Chief Financial Officer", desc: "Owns the shared-savings ledger — confirmed leakage, decisions awaiting sign-off, cash recovered to the P&L.", want: "Recovered to P&L" },
+    { role: "Executive", name: "Chief Operating Officer", desc: "Operations end to end — where value leaks and which catalysts are running on it.", want: "Run health, by domain" },
+    { role: "Executive", name: "Chief Procurement Officer", desc: "Supplier-side leakage first — procurement and supply-chain findings, recovered from your suppliers.", want: "Recovered from suppliers" },
+    { role: "Finance", name: "Financial Controller", desc: "Every entry reconciled — findings by category, evidence per action, a receipt for every recovery.", want: "Receipt per recovery" },
+    { role: "Finance", name: "Finance Manager", desc: "The approval queue, with evidence attached. Approve the fix or send it back.", want: "Decisions, with evidence" },
+    { role: "Finance", name: "Accounts Payable", desc: "Duplicate and mispriced supplier payments caught before — and after — they leave.", want: "Duplicates caught" },
+    { role: "Compliance", name: "Tax & Compliance", desc: "Compliance findings, regulatory deadlines, and VAT recovery runs.", want: "VAT recovered, on time" },
+    { role: "Operations", name: "Operations Manager", desc: "Service and supply findings, and the catalysts working through them day to day.", want: "Day-to-day running" },
   ];
 
   const proofRows = [
@@ -1371,7 +1512,9 @@ export function MarketingPage() {
   ];
 
   return (
-    <div ref={mainRef} className="mk5-body">
+    <MotionConfig reducedMotion="user">
+    <div ref={mainRef} className="rx mk5-body">
+      <motion.div className="mk5-progress" style={{ scaleX: progress }} aria-hidden />
 
       {/* NAV */}
       <nav className="mk5-nav">
@@ -1380,18 +1523,17 @@ export function MarketingPage() {
           Atheon
         </a>
         <div className="mk5-nav-links">
-          <a href="#layers">Architecture</a>
-          <a href="#personas">Roles</a>
-          <a href="#coverage">Coverage</a>
-          <a href="#features">Features</a>
+          <a href="#how">How it works</a>
+          <a href="#valuechain">Where it leaks</a>
+          <a href="#product">Product</a>
+          <a href="#pricing">Pricing</a>
           <a href="#security">Security</a>
-          <a href="#compare">Compare</a>
-          <a href="#proof">Proof</a>
+          <a href="#faq">FAQ</a>
           <a href="/login" className="mk5-nav-cta quiet" style={{ marginRight: '0.25rem' }}>
             <span>Login</span>
           </a>
           <a href="#cta-s" className="mk5-nav-cta primary" onClick={(e) => { e.preventDefault(); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
-            <span>Early Access</span>
+            <span>Get started</span>
           </a>
         </div>
         <button className={`mk5-hamburger ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Menu">
@@ -1401,46 +1543,67 @@ export function MarketingPage() {
 
       {/* MOBILE MENU */}
       <div className={`mk5-mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
-        <a href="#layers" onClick={() => setMobileMenuOpen(false)}>Architecture</a>
-        <a href="#personas" onClick={() => setMobileMenuOpen(false)}>Roles</a>
-        <a href="#coverage" onClick={() => setMobileMenuOpen(false)}>Coverage</a>
-        <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+        <a href="#how" onClick={() => setMobileMenuOpen(false)}>How it works</a>
+        <a href="#valuechain" onClick={() => setMobileMenuOpen(false)}>Where it leaks</a>
+        <a href="#product" onClick={() => setMobileMenuOpen(false)}>Product</a>
+        <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
         <a href="#security" onClick={() => setMobileMenuOpen(false)}>Security</a>
-        <a href="#compare" onClick={() => setMobileMenuOpen(false)}>Compare</a>
-        <a href="#proof" onClick={() => setMobileMenuOpen(false)}>Proof</a>
+        <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
         <a href="/login" className="mk5-nav-cta" onClick={() => setMobileMenuOpen(false)}>
           <span>Login</span>
         </a>
         <a href="#cta-s" className="mk5-nav-cta" onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false); document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" }); }}>
-          <span>Early Access</span>
+          <span>Get started</span>
         </a>
       </div>
 
       {/* HERO — the business value chain: where money leaks, what Atheon recovers */}
       <section className="mk5-hero">
-        <div className="mk5-hero-left">
-          <div className="mk5-hero-eyebrow">01 &mdash; The Business Value Chain</div>
-          <h1>
-            <span className="thin">Every step of your spend</span><br />
-            <span className="thin">cycle leaks money.</span> <i>We recover it.</i>
-          </h1>
-          <p className="mk5-hero-desc">
-            From purchase order to VAT return, value slips out of the chain&nbsp;&mdash; price creep,
-            short deliveries, duplicate invoices, erroneous payments, unclaimed credits. Atheon
-            connects to your ERP, prices every leak in Rand, and drives the approved fix that
-            brings the money back. You pay a share of what is verifiably recovered. Nothing upfront.
-          </p>
-          <div className="mk5-hero-actions">
+        {!reducedMotion && (
+          <Suspense fallback={null}>
+            <MarketingHero3D />
+          </Suspense>
+        )}
+        <motion.div className="mk5-hero-left" initial="hide" animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.12 } } }}>
+          <motion.div variants={heroRise} className="mk5-hero-eyebrow">Money recovery, on autopilot</motion.div>
+          <motion.h1 variants={heroRise}>
+            <span className="thin">Your business is</span><br />
+            <span className="thin">leaking money.</span> <i>We bring it back.</i>
+          </motion.h1>
+          <motion.p variants={heroRise} className="mk5-hero-desc">
+            Duplicate invoices. Price creep. Short deliveries. Unclaimed VAT. Atheon connects
+            to the systems you already run, finds every Rand that slipped out, and gets it
+            back&nbsp;&mdash; with a receipt. Nothing upfront: we only earn a share of what
+            you actually recover.
+          </motion.p>
+          <motion.div variants={heroRise} className="mk5-hero-actions">
             <button className="mk5-btn-main" onClick={() => document.getElementById("cta-s")?.scrollIntoView({ behavior: "smooth" })}>
-              Request Access
+              Find my leaks
             </button>
-            <button className="mk5-hero-textlink" onClick={() => document.getElementById("product")?.scrollIntoView({ behavior: "smooth" })}>
-              See it in action &#8599;
+            <button className="mk5-hero-textlink" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>
+              See how it works &#8599;
             </button>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        {/* VALUE CHAIN FLOW */}
+        {/* THE RIVER — the brand flow as the hero centrepiece, on a 3D stage */}
+        <RiverHero3D />
+
+        <div className="mk5-hero-scroll">
+          <div className="mk5-scroll-line" />
+          <span>Scroll</span>
+        </div>
+      </section>
+
+      {/* VALUE CHAIN — where money leaks along the spend cycle, what Atheon recovers */}
+      <section className="mk5-vchain" id="valuechain">
+        <div className="mk5-vchain-intro">
+          <div className="mk5-hero-eyebrow">02 &mdash; The Business Value Chain</div>
+          <h2>Money leaks at every step. Atheon catches it and sends it back.</h2>
+          <p>From purchase order to VAT return &mdash; price creep, short deliveries, duplicate
+          invoices, erroneous payments, unclaimed credits. Each stage is a place value slips out.</p>
+        </div>
         <div className="mk5-chain" aria-label="Business value chain: where money leaks and what Atheon recovers">
           <div className="mk5-chain-head">
             <span className="t">Procure &rarr; Receive &rarr; Invoice &rarr; Pay &rarr; Tax</span>
@@ -1471,15 +1634,6 @@ export function MarketingPage() {
             <span className="rflow" aria-hidden />
             <span>&larr; Recovered back to your P&amp;L</span>
           </div>
-          <MiniRiver
-            graph={JOURNEY}
-            label="The Atheon loop: connect, detect, fix, recover, report"
-          />
-        </div>
-
-        <div className="mk5-hero-scroll">
-          <div className="mk5-scroll-line" />
-          <span>Scroll</span>
         </div>
       </section>
 
@@ -1548,165 +1702,76 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* MANIFESTO */}
-      <section className="mk5-manifesto">
-        <p className="mk5-manifesto-text mk5-reveal">
-          An agent automates a task. A copilot assists a person. A <em>Catalyst</em> governs
-          an entire organisation&nbsp;&mdash; correlating every output, detecting every anomaly,
-          synthesising every signal into a single, living <strong>truth</strong>. This is the
-          next evolution.
-        </p>
+      {/* HOW IT WORKS */}
+      <section className="mk5-ethos" id="how">
+        <div className="mk5-layers-intro">
+          <div className="mk5-layers-intro-left">How it works</div>
+          <div className="mk5-layers-intro-right mk5-reveal">
+            <h2>Three steps between<br />you and your money.</h2>
+            <p>
+              No consultants, no six-month project, nothing installed on your side. A read-only
+              connection, a priced list of leaks, and a fix queue you approve.
+            </p>
+          </div>
+        </div>
       </section>
-
-      {/* EVOLUTION DEFINITION */}
       <div className="mk5-evo">
         <div className="mk5-evo-item past mk5-reveal">
-          <div className="mk5-evo-era past">Yesterday</div>
-          <div className="mk5-evo-name">Agent</div>
+          <div className="mk5-evo-era past">Step 01</div>
+          <div className="mk5-evo-name">Connect</div>
           <div className="mk5-evo-desc">
-            Automates a single task. Operates in a silo. No awareness of what other agents
-            are doing. No governance. No organisational context.
+            Plug in the systems you already run with read-only credentials&nbsp;&mdash; SAP, Oracle,
+            Dynamics, NetSuite, Odoo, Sage, Xero, QuickBooks and more. Your data stays where it is.
           </div>
         </div>
         <div className="mk5-evo-item present mk5-reveal mk5-rd1">
-          <div className="mk5-evo-era present">Today</div>
-          <div className="mk5-evo-name">Copilot</div>
+          <div className="mk5-evo-era present">Step 02</div>
+          <div className="mk5-evo-name">See every leak</div>
           <div className="mk5-evo-desc">
-            Assists one person at a time. Answers questions from a knowledge base. Cannot
-            correlate across departments or govern autonomous processes.
+            445+ automated checks sweep your invoices, payments, deliveries, payroll and tax.
+            Every leak is priced in Rand, with the exact record behind it attached as evidence.
           </div>
         </div>
         <div className="mk5-evo-item future mk5-reveal mk5-rd2">
-          <div className="mk5-evo-era future">The Evolution</div>
-          <div className="mk5-evo-name">Catalyst</div>
+          <div className="mk5-evo-era future">Step 03</div>
+          <div className="mk5-evo-name">Approve &amp; recover</div>
           <div className="mk5-evo-desc">
-            Governs a fleet of agents. Correlates outputs across every department. Synthesises
-            a living health score for the entire organisation. Thinks at executive, operational,
-            and execution level simultaneously.
+            Nothing moves without your sign-off. You approve each fix, the money comes back to
+            your P&amp;L, and every recovered Rand carries a receipt you can hand to your auditor.
           </div>
         </div>
       </div>
 
-      {/* THREE LAYERS */}
-      <section className="mk5-layers" id="layers">
-        <div className="mk5-layers-intro">
-          <div className="mk5-layers-intro-left">The Architecture</div>
-          <div className="mk5-layers-intro-right mk5-reveal">
-            <h2>Inside the Catalyst.<br />Three layers deep.</h2>
-            <p>
-              A Catalyst isn&rsquo;t a single tool&nbsp;&mdash; it&rsquo;s three layers of intelligence
-              working as one. Execution at the base. Operational correlation in the core.
-              Executive synthesis at the apex. This is the architecture the agent market never built.
-            </p>
-          </div>
-        </div>
-
-        <div className="mk5-layer-block">
-          <div className="mk5-layer-num">01</div>
-          <div>
-            <h3 className="mk5-layer-name">Executive Insight</h3>
-            <div className="mk5-layer-role bronze">The Apex&nbsp;&mdash; C-Suite &amp; Board</div>
-            <p className="mk5-layer-desc">
-              What makes a Catalyst fundamentally different from an agent. Natural language queries
-              across your entire business. One health score synthesising every department, every agent
-              output, every anomaly into executive clarity. An agent automates. A Catalyst delivers
-              organisational awareness.
-            </p>
-            <div className="mk5-layer-tags">
-              {["Health Score Engine", "NLP Chat Interface", "Predictive Alerts", "Auto Reports", "Board Summaries"].map((t) => (
-                <span key={t} className="mk5-layer-tag">{t}</span>
-              ))}
-            </div>
-          </div>
-          <div className="mk5-layer-visual">
-            <LayerPictogram tier={1} />
-          </div>
-        </div>
-
-        <div className="mk5-layer-block">
-          <div className="mk5-layer-num">02</div>
-          <div>
-            <h3 className="mk5-layer-name">Operational Intelligence</h3>
-            <div className="mk5-layer-role sky">The Core&nbsp;&mdash; Directors &amp; Managers</div>
-            <p className="mk5-layer-desc">
-              The layer that separates a Catalyst from everything that came before it. Real-time
-              departmental intelligence that correlates agent outputs across your entire operation,
-              detects anomalies before they escalate, and recommends actions with confidence scores.
-              No agent has this. No copilot has this. Only a Catalyst.
-            </p>
-            <div className="mk5-layer-tags">
-              {["Anomaly Detection", "Department Dashboards", "Process Mining", "Recommendation Engine", "Cross-Dept Correlation"].map((t) => (
-                <span key={t} className="mk5-layer-tag">{t}</span>
-              ))}
-            </div>
-          </div>
-          <div className="mk5-layer-visual">
-            <LayerPictogram tier={2} />
-          </div>
-        </div>
-
-        <div className="mk5-layer-block">
-          <div className="mk5-layer-num">03</div>
-          <div>
-            <h3 className="mk5-layer-name">Autonomous Catalysts</h3>
-            <div className="mk5-layer-role sage">The Foundation&nbsp;&mdash; Operations &amp; Execution</div>
-            <p className="mk5-layer-desc">
-              75 catalyst clusters and 445 sub-catalysts spanning finance, HR, sales, supply chain,
-              operations, tax, audit, treasury, ESG, data quality and more. Over 50 ship with real,
-              ERP-connected handlers&nbsp;&mdash; the rest are generic templates you can configure. Every
-              action is governed, every decision auditable, every escalation routed through the
-              intelligence layers above.
-            </p>
-            <div className="mk5-layer-tags">
-              {["445 Sub-Catalysts", "50+ Real Handlers", "Tag-Based Matching", "Governance Framework", "Full Audit Trail", "ERP-Native"].map((t) => (
-                <span key={t} className="mk5-layer-tag">{t}</span>
-              ))}
-            </div>
-          </div>
-          <div className="mk5-layer-visual">
-            <LayerPictogram tier={3} />
-          </div>
-        </div>
-      </section>
-
-      {/* BIG STATEMENT */}
-      <section className="mk5-big-stmt mk5-reveal">
-        <h2>
-          <span className="stroke">Agent. Copilot.</span><br />
-          <span className="glow">Catalyst.</span>
-        </h2>
-      </section>
-
       {/* STATS */}
       <div className="mk5-stats">
         <div className="mk5-stat-item mk5-reveal">
-          <div className="mk5-stat-num mk5-mono">75<span className="accent">+</span></div>
-          <div className="mk5-stat-label">Catalyst Clusters</div>
+          <div className="mk5-stat-num mk5-mono"><CountUp to={445} /><span className="accent">+</span></div>
+          <div className="mk5-stat-label">Checks running against your books</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd1">
-          <div className="mk5-stat-num mk5-mono">445<span className="accent">+</span></div>
-          <div className="mk5-stat-label">Sub-Catalysts</div>
+          <div className="mk5-stat-num mk5-mono"><CountUp to={75} /><span className="accent">+</span></div>
+          <div className="mk5-stat-label">Business areas covered</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd2">
-          <div className="mk5-stat-num mk5-mono">50<span className="accent">+</span></div>
-          <div className="mk5-stat-label">Real Handlers Shipping</div>
+          <div className="mk5-stat-num mk5-mono"><CountUp to={50} /><span className="accent">+</span></div>
+          <div className="mk5-stat-label">Checks wired straight into your ERP</div>
         </div>
         <div className="mk5-stat-item mk5-reveal mk5-rd3">
-          <div className="mk5-stat-num mk5-mono"><span className="accent">3</span></div>
-          <div className="mk5-stat-label">Intelligence Layers</div>
+          <div className="mk5-stat-num mk5-mono">R<span className="accent">0</span></div>
+          <div className="mk5-stat-label">Upfront cost</div>
         </div>
       </div>
 
       {/* PERSONAS — auditor + board surfaced */}
       <section className="mk5-personas" id="personas">
         <div className="mk5-personas-header">
-          <div className="left">Designed for</div>
+          <div className="left">Built for your team</div>
           <div className="mk5-reveal">
-            <h2>Roles that own the result.</h2>
+            <h2>One recovery. Everyone&rsquo;s view.</h2>
             <p>
-              Atheon isn&rsquo;t a horizontal copilot. Every layer is shaped around the people
-              who own the outcome &mdash; including the auditor and the board, who other platforms
-              treat as afterthoughts.
+              Your board sees health. Your CFO sees the ledger. Your AP team sees the duplicate
+              invoice before it gets paid. Ten roles, ten live consoles&nbsp;&mdash; all working
+              from the same recovered Rand, framed for the decision each person owns.
             </p>
           </div>
         </div>
@@ -1722,94 +1787,46 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* COMPARISON */}
-      <section className="mk5-comp" id="compare">
-        <div className="mk5-comp-header">
-          <h2 className="mk5-reveal">Agents and copilots<br />were chapter one.</h2>
+      {/* PRICING */}
+      <section className="mk5-ind" id="pricing">
+        <div className="mk5-ind-header">
+          <h2 className="mk5-reveal">No recovery,<br />no fee.</h2>
           <p className="mk5-reveal">
-            Every competitor built agents or copilots. None evolved beyond. Atheon is the
-            world&rsquo;s first Catalyst&nbsp;&mdash; the only platform with all three layers of enterprise intelligence,
-            ledgered against your ERP.
+            No licence, no per-seat pricing, nothing upfront. We take an agreed share of what
+            is verifiably recovered&nbsp;&mdash; and if we find nothing, you pay nothing and
+            keep the free audit of your spend cycle.
           </p>
         </div>
-        <div className="mk5-cg mk5-reveal">
-          <div className="mk5-ch rl">Capability</div>
-          <div className="mk5-ch">Copilot</div>
-          <div className="mk5-ch">Agentforce</div>
-          <div className="mk5-ch">Standalone</div>
-          <div className="mk5-ch ath">Atheon</div>
-
-          <div className="mk5-cc rl">Catalyst Execution</div>
-          <div className="mk5-cc cy">&#10003;</div>
-          <div className="mk5-cc cy">&#10003;</div>
-          <div className="mk5-cc cy">&#10003;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Operational Intelligence</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Executive Insight Layer</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Cross-Dept Correlation</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Shared-Savings Billing</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Agent Governance</div>
-          <div className="mk5-cc cp">Partial</div>
-          <div className="mk5-cc cp">Partial</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">Full</div>
-
-          <div className="mk5-cc rl">Multi-ERP Integration</div>
-          <div className="mk5-cc cp">M365</div>
-          <div className="mk5-cc cp">SFDC</div>
-          <div className="mk5-cc cp">Custom</div>
-          <div className="mk5-cc ca">SAP &middot; Oracle &middot; MS &middot; NetSuite &middot; Odoo &middot; Xero &middot; Workday +</div>
-
-          <div className="mk5-cc rl">Organisation Health Score</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Purpose-Trained LLM</div>
-          <div className="mk5-cc cp">Generic</div>
-          <div className="mk5-cc cp">Generic</div>
-          <div className="mk5-cc cp">Varies</div>
-          <div className="mk5-cc ca">Tuned</div>
-
-          <div className="mk5-cc rl">Multicompany (Group Entities)</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cp">Partial</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Enforced MFA + Signed Webhooks</div>
-          <div className="mk5-cc cp">Partial</div>
-          <div className="mk5-cc cp">Partial</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
-
-          <div className="mk5-cc rl">Per-Tenant LLM Budget + PII Redaction</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc cn">&mdash;</div>
-          <div className="mk5-cc ca">&#10003;</div>
+        <div className="mk5-ind-featured mk5-reveal">
+          <div className="mk5-ind-featured-main">
+            <div className="mk5-ind-featured-badge">Shared savings</div>
+            <div className="mk5-ind-featured-title">You keep the bigger share.<br />We earn on results.</div>
+            <p className="mk5-ind-featured-desc">
+              Every recovery lands on a shared ledger with three columns: identified, approved
+              by you, and realised back to your P&amp;L. Our invoice is calculated from the
+              realised column only&nbsp;&mdash; money already back in your account. Every claimed
+              Rand traces to the ERP record, the field calculation, and a confidence band.
+            </p>
+            <div className="mk5-ind-featured-caps">
+              {["R0 upfront", "No licence fees", "No per-seat pricing", "Paid on realised recoveries only", "Cancel anytime"].map((c) => (
+                <span key={c} className="mk5-ind-featured-cap">{c}</span>
+              ))}
+            </div>
+          </div>
+          <div className="mk5-ind-featured-stats">
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num mk5-mono">R0</div>
+              <div className="mk5-ind-stat-label">To get started&nbsp;&mdash; no setup<br />or subscription fees</div>
+            </div>
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num mk5-mono">100%</div>
+              <div className="mk5-ind-stat-label">Of claims traceable to an<br />ERP record and calculation</div>
+            </div>
+            <div className="mk5-ind-stat-row">
+              <div className="mk5-ind-stat-num mk5-mono">1</div>
+              <div className="mk5-ind-stat-label">Invoice, from the realised<br />column of your ledger</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1818,11 +1835,14 @@ export function MarketingPage() {
         <div className="mk5-proof-header">
           <div className="left">Proof Ledger</div>
           <div className="mk5-reveal">
-            <h2>Every claim, traceable to a record.</h2>
+            <h2>Every Rand has a receipt.</h2>
             <p>
-              Shared-savings means we get paid on what you keep. So every line on this ledger
-              maps to a specific ERP source, the field calculation that produced it, and the
-              confidence band the catalyst assigned. No black boxes.
+              We get paid on what you keep&nbsp;&mdash; so every line traces to the ERP record it
+              came from, the field calculation that produced it, and a confidence band. No black
+              boxes, no estimates dressed up as findings.
+            </p>
+            <p className="mk5-mono" style={{ fontSize: ".6875rem", letterSpacing: "0.1em", color: "var(--ink-3)", marginTop: ".85rem", textTransform: "uppercase" }}>
+              Illustrative example &middot; figures show the shape of the trace, not a client&rsquo;s numbers.
             </p>
           </div>
         </div>
@@ -1857,7 +1877,7 @@ export function MarketingPage() {
       {/* INTEGRATIONS */}
       <section className="mk5-int">
         <div className="mk5-int-header">
-          <h2 className="mk5-reveal">Connects to everything<br />that matters.</h2>
+          <h2 className="mk5-reveal">Works with what<br />you already run.</h2>
         </div>
         <div className="mk5-int-grid mk5-reveal">
           {integrations.map((item) => (
@@ -1870,203 +1890,13 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* COVERAGE (formerly INDUSTRIES) */}
-      <section className="mk5-ind" id="coverage">
-        <div className="mk5-ind-header">
-          <h2 className="mk5-reveal">Tag-matched across<br />every domain.</h2>
-          <p className="mk5-reveal">
-            Atheon&rsquo;s 75 catalyst clusters and 445 sub-catalysts aren&rsquo;t siloed by vertical&nbsp;&mdash;
-            they&rsquo;re matched to your tenant by function, maturity, and criticality tags. Turn on
-            Finance and Procurement for a mining operation; Sales, Inventory, and Trade Promotion
-            for FMCG. One catalog, one engine, your composition.
-          </p>
-        </div>
-
-        {/* FEATURED: REAL HANDLERS */}
-        <div className="mk5-ind-featured mk5-reveal">
-          <div className="mk5-ind-featured-main">
-            <div className="mk5-ind-featured-badge">50+ Real Handlers Shipping</div>
-            <div className="mk5-ind-featured-title">Real code, not just<br />prompt templates.</div>
-            <p className="mk5-ind-featured-desc">
-              Catalysts aren&rsquo;t scripted LLM prompts. Over fifty sub-catalysts ship with hand-written
-              handlers that pull data from your ERP, run domain logic, and persist governed output.
-              The rest are generic templates you can configure or replace. Every handler is typed,
-              tested, and auditable.
-            </p>
-            <div className="mk5-ind-featured-caps">
-              {["Cash Flow Forecast", "Budget vs Actual", "Standard Cost Variance", "3-Way Matching", "Supplier Risk", "Inventory Optimisation", "Pipeline Hygiene", "AR Aging", "Payroll Variance"].map((c) => (
-                <span key={c} className="mk5-ind-featured-cap">{c}</span>
-              ))}
-            </div>
-          </div>
-          <div className="mk5-ind-featured-stats">
-            <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num mk5-mono">75</div>
-              <div className="mk5-ind-stat-label">Catalyst clusters in the<br />shared catalog</div>
-            </div>
-            <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num mk5-mono">445</div>
-              <div className="mk5-ind-stat-label">Sub-catalysts, each with<br />its own schedule and tier</div>
-            </div>
-            <div className="mk5-ind-stat-row">
-              <div className="mk5-ind-stat-num mk5-mono">3</div>
-              <div className="mk5-ind-stat-label">Autonomy tiers from<br />read-only to transactional</div>
-            </div>
-          </div>
-        </div>
-
-        {/* DOMAIN COVERAGE */}
-        <div className="mk5-ind-grid mk5-reveal">
-          {coverageDomains.map((d) => (
-            <div key={d.name} className="mk5-ind-card">
-              <div className="mk5-ind-card-icon">{d.icon}</div>
-              <div className="mk5-ind-card-name">{d.name}</div>
-              <p className="mk5-ind-card-desc">{d.desc}</p>
-              <div className="mk5-ind-card-cats">{d.catalysts}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FEATURES DEEP-DIVE */}
-      <section className="mk5-feat" id="features">
-        <div className="mk5-feat-header mk5-reveal">
-          <h2>Every feature, built<br />for enterprise.</h2>
-          <p>
-            Atheon isn&rsquo;t a collection of point solutions. Every capability is integrated
-            into the three-layer architecture&nbsp;&mdash; governed, auditable, and correlated.
-          </p>
-        </div>
-        <div className="mk5-feat-grid">
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">ERP Integration</div>
-            <div className="mk5-feat-item-title">Native connectors for every major ERP, CRM and HCM</div>
-            <p className="mk5-feat-item-desc">
-              Pre-built adapters across SAP, Oracle, Microsoft, Salesforce, NetSuite, Workday,
-              Odoo, Xero, QuickBooks, Sage and SYSPRO. OAuth 2.0, JWT Bearer, and token-based
-              authentication. Bi-directional sync with configurable frequency. ERP credentials
-              are stored AES-encrypted, per-tenant.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>SAP S/4HANA (OData V4, 2025 FPS01)</li>
-              <li>Salesforce (REST v66.0, Spring &rsquo;26)</li>
-              <li>Oracle Fusion (REST 26A)</li>
-              <li>Dynamics 365 (OData v4, 10.0.42)</li>
-              <li>NetSuite (REST/SuiteTalk 2026.1)</li>
-              <li>Odoo 18 (JSON-RPC 2.0 + REST API)</li>
-              <li>QuickBooks, Xero, Sage, Workday, SYSPRO</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Catalyst Engine</div>
-            <div className="mk5-feat-item-title">75 clusters, 445 sub-catalysts, 50+ real handlers</div>
-            <p className="mk5-feat-item-desc">
-              A shared catalog of 75 catalyst clusters and 445 sub-catalysts, tag-matched to each
-              tenant by function and maturity. Over 50 sub-catalysts ship with real, ERP-connected
-              handlers&nbsp;&mdash; the rest are configurable generic templates. Deploy in minutes,
-              not months.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>75 clusters across Finance, Ops, Commercial, People, GRC, DQ, ESG and more</li>
-              <li>445 sub-catalysts with independent enable/disable and scheduling</li>
-              <li>50+ sub-catalysts with real, typed, tested handlers (not prompts)</li>
-              <li>Tag-based matching: function, vertical, maturity, criticality</li>
-              <li>Three autonomy tiers: read-only, assisted, transactional</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Executive Layer</div>
-            <div className="mk5-feat-item-title">Organisation health score</div>
-            <p className="mk5-feat-item-desc">
-              A single, living metric that synthesises signals from every department, every
-              catalyst, and every agent into executive clarity. Natural language queries,
-              predictive alerts, and auto-generated board summaries.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>Composite health score across all departments</li>
-              <li>NLP chat interface for natural language queries</li>
-              <li>Predictive risk alerts with confidence scoring</li>
-              <li>Auto-generated PDF board reports</li>
-              <li>Scenario modelling and what-if analysis</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Governance &amp; Trust</div>
-            <div className="mk5-feat-item-title">Enforced MFA, signed webhooks, encrypted exports</div>
-            <p className="mk5-feat-item-desc">
-              Every catalyst action is logged. MFA is enforced for privileged roles. Outbound
-              webhooks are HMAC-SHA256 signed. DSAR exports are AES-encrypted. LLM calls run
-              under per-tenant budgets with automatic PII redaction before any prompt leaves
-              the platform.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>Immutable audit log for every action and decision</li>
-              <li>RBAC with 8 role levels and short-TTL JWTs</li>
-              <li>Enforced MFA (TOTP) for admin and superadmin roles</li>
-              <li>HMAC-signed webhook delivery with per-subscription secrets</li>
-              <li>AES-encrypted DSAR exports and ERP credentials at rest</li>
-              <li>Multi-tenant isolation across every layer of the stack</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Operational Intelligence</div>
-            <div className="mk5-feat-item-title">Cross-department correlation</div>
-            <p className="mk5-feat-item-desc">
-              The layer that separates Atheon from agents and copilots. Real-time anomaly
-              detection, process mining, and recommendation engine that correlates signals
-              across every operational boundary.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>Real-time anomaly detection with root cause analysis</li>
-              <li>Department-level dashboards with drill-down</li>
-              <li>Process mining and bottleneck identification</li>
-              <li>Confidence-scored recommendations</li>
-              <li>Cross-department correlation engine</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Knowledge &amp; Memory</div>
-            <div className="mk5-feat-item-title">Enterprise knowledge graph</div>
-            <p className="mk5-feat-item-desc">
-              Every entity, relationship, and decision is mapped into a living knowledge graph.
-              Vector-powered semantic search, citation tracking, and context-aware retrieval
-              ensure every answer is grounded in your data.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>Entity-relationship knowledge graph</li>
-              <li>Vector-powered semantic search (Vectorize)</li>
-              <li>Citation tracking with source attribution</li>
-              <li>Contextual memory across chat sessions</li>
-              <li>RAG pipeline with enterprise data grounding</li>
-            </ul>
-          </div>
-          <div className="mk5-feat-item mk5-reveal">
-            <div className="mk5-feat-item-label">Multicompany</div>
-            <div className="mk5-feat-item-title">Group companies, one Catalyst</div>
-            <p className="mk5-feat-item-desc">
-              Run Atheon across a portfolio of legal entities from a single tenant. Connect
-              multiple ERP instances, consolidate health scores, and correlate signals across
-              subsidiaries&nbsp;&mdash; while each company keeps its own data boundary, schedules,
-              and autonomy tiers.
-            </p>
-            <ul className="mk5-feat-item-bullets">
-              <li>Multiple ERP connections per tenant, one per legal entity</li>
-              <li>Per-company integration health and sync status</li>
-              <li>Cross-company correlation at the Executive layer</li>
-              <li>Independent autonomy tiers and schedules per company</li>
-              <li>Role scoping by company for segregated reviewers</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
       {/* SECURITY POSTURE */}
-      <section className="mk5-feat" id="security" style={{ borderTop: 'none' }}>
+      <section className="mk5-feat" id="security">
         <div className="mk5-feat-header mk5-reveal">
-          <h2>Security, by default.<br />Not a checkbox.</h2>
+          <h2>Your data stays yours.</h2>
           <p>
-            Every Catalyst action touches regulated data. Atheon treats security as an architectural
-            layer, not a compliance afterthought. Here&rsquo;s what ships enabled on day one.
+            We read your books to find your money&nbsp;&mdash; so we protect them like they&rsquo;re
+            ours. Everything below ships enabled on day one, for every customer.
           </p>
         </div>
         <div className="mk5-feat-grid">
@@ -2135,60 +1965,68 @@ export function MarketingPage() {
         </div>
       </section>
 
-      {/* ETHOS */}
-      <section className="mk5-ethos" id="ethos">
-        <div className="mk5-layers-intro">
-          <div className="mk5-layers-intro-left">Ethos</div>
-          <div className="mk5-layers-intro-right mk5-reveal">
-            <h2>What we believe.</h2>
+      {/* FAQ */}
+      <section className="mk5-faq" id="faq">
+        <div className="mk5-faq-inner">
+          <h2 className="mk5-reveal">Questions, answered.</h2>
+          <details className="mk5-faq-item">
+            <summary>What does it cost?</summary>
             <p>
-              A Catalyst isn&rsquo;t built on features. It&rsquo;s built on principles. These are the
-              convictions that shape every layer of the Atheon platform.
+              Nothing upfront. No licence, no per-seat fees, no setup cost. We take an agreed
+              share of what is verifiably recovered, and we invoice only on recoveries that have
+              actually been realised back to your P&amp;L.
             </p>
-          </div>
-        </div>
-        <div className="mk5-ethos-grid">
-          <div className="mk5-ethos-card mk5-reveal">
-            <div className="mk5-ethos-num">01</div>
-            <h3 className="mk5-ethos-title">Truth over automation</h3>
-            <p className="mk5-ethos-desc">
-              Agents automate. Copilots assist. Neither delivers truth. A Catalyst synthesises
-              every signal across your entire organisation into a single, living health score&nbsp;&mdash;
-              so decisions are made from clarity, not dashboards.
+          </details>
+          <details className="mk5-faq-item">
+            <summary>Can Atheon change anything in my ERP?</summary>
+            <p>
+              Not without you. Atheon starts read-only. Nothing posts, reverses, or claims
+              without explicit approval from someone on your team, and every action&nbsp;&mdash;
+              approved or declined&nbsp;&mdash; is written to an immutable audit log.
             </p>
-            <div className="mk5-ethos-accent" />
-          </div>
-          <div className="mk5-ethos-card mk5-reveal mk5-rd1">
-            <div className="mk5-ethos-num">02</div>
-            <h3 className="mk5-ethos-title">Governance is non-negotiable</h3>
-            <p className="mk5-ethos-desc">
-              Every agent output is governed. Every decision is auditable. Every escalation is
-              routed through intelligence layers. A fleet of autonomous agents without governance
-              is a liability. A Catalyst makes it an asset.
+          </details>
+          <details className="mk5-faq-item">
+            <summary>Which systems does it work with?</summary>
+            <p>
+              SAP S/4HANA and Business One, Oracle Fusion, Microsoft Dynamics 365, NetSuite,
+              Odoo, Sage, SYSPRO, QuickBooks, Xero, Workday, and Salesforce&nbsp;&mdash; plus
+              REST APIs and webhooks for anything else.
             </p>
-            <div className="mk5-ethos-accent" />
-          </div>
-          <div className="mk5-ethos-card mk5-reveal mk5-rd2">
-            <div className="mk5-ethos-num">03</div>
-            <h3 className="mk5-ethos-title">Correlation, not silos</h3>
-            <p className="mk5-ethos-desc">
-              Departments don&rsquo;t operate in isolation. Neither should intelligence. Atheon
-              correlates outputs across finance, operations, HR, and supply chain&nbsp;&mdash; detecting
-              anomalies that no single agent could ever see.
+          </details>
+          <details className="mk5-faq-item">
+            <summary>What if you find nothing?</summary>
+            <p>
+              You pay nothing. You keep a free, evidenced audit of your spend cycle&nbsp;&mdash;
+              which is its own answer: your controls are working.
             </p>
-            <div className="mk5-ethos-accent" />
-          </div>
+          </details>
+          <details className="mk5-faq-item">
+            <summary>How do I know the numbers are real?</summary>
+            <p>
+              Every claimed Rand traces to the ERP record it came from, the field calculation
+              that produced it, and a confidence band. Where a source hasn&rsquo;t reported yet
+              you see a dash&nbsp;&mdash; never a number we filled in with an estimate.
+            </p>
+          </details>
+          <details className="mk5-faq-item">
+            <summary>Is my data safe?</summary>
+            <p>
+              Credentials are AES-encrypted per tenant, MFA is enforced on privileged roles,
+              every action lands in an immutable audit log, and personal data is redacted
+              before any AI call leaves the platform. No data ever crosses tenant boundaries.
+            </p>
+          </details>
         </div>
       </section>
 
       {/* CTA */}
       <section className="mk5-cta" id="cta-s">
         <div className="mk5-cta-content">
-          <div className="mk5-cta-ey mk5-reveal">The Next Evolution in Enterprise AI</div>
-          <h2 className="mk5-reveal">Meet the<br /><i>Catalyst.</i></h2>
+          <div className="mk5-cta-ey mk5-reveal">Get started</div>
+          <h2 className="mk5-reveal">Find out what<br /><i>you&rsquo;re owed.</i></h2>
           <p className="mk5-cta-sub mk5-reveal">
-            Three layers of intelligence, 75 clusters, 445 sub-catalysts, ERP-native. We&rsquo;re
-            onboarding founding partners now&nbsp;&mdash; start a trial or send us a note below.
+            Connect your ERP and see your leaks priced in Rand. Nothing upfront&nbsp;&mdash;
+            we only earn when money comes back.
           </p>
           <div className="mk5-cta-actions mk5-reveal">
             <a href="/trial" className="mk5-btn-main">Start Trial</a>
@@ -2218,5 +2056,6 @@ export function MarketingPage() {
         <div className="mk5-fr">&copy; 2026 Atheon. All rights reserved.</div>
       </footer>
     </div>
+    </MotionConfig>
   );
 }

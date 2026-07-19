@@ -31,6 +31,24 @@ export function UpdatePrompt() {
     },
   });
 
+  // Under autoUpdate a new SW calls skipWaiting and takes control mid-session.
+  // Without a reload the user keeps the old bundle until they refresh by hand —
+  // reload once so every deploy shows immediately. `hadController` skips the
+  // very first install (clientsClaim fires controllerchange there too), and the
+  // flag stops a loop if control changes again before the reload lands.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    const onChange = () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onChange);
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+  }, []);
+
   // Auto-dismiss the offline-ready hint after a short delay — it's a one-time
   // courtesy, not a call to action.
   useEffect(() => {

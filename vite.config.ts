@@ -73,9 +73,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        // Don't cache HTML — the auth gate must always see fresh markup so
-        // a logged-out shell isn't replayed to a logged-in user from cache.
+        // html deliberately absent: a precached index.html outlives a deploy and
+        // points at hashed assets the server has purged — blank page until the
+        // user clears site data. HTML must always come from the network.
+        globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
         navigateFallback: null,
         cleanupOutdatedCaches: true,
         runtimeCaching: [
