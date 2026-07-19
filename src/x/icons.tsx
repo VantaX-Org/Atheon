@@ -3,9 +3,16 @@
 export type IconName =
   | 'brief' | 'decisions' | 'ledger' | 'catalysts'
   | 'world' | 'ops' | 'gate' | 'seal' | 'jeff'
-  | 'company' | 'persona' | 'settings' | 'mfa' | 'support' | 'signout' | 'export';
+  | 'company' | 'persona' | 'settings' | 'mfa' | 'support' | 'signout' | 'export' | 'bell';
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  // bell whose rim is a flow curve
+  bell: (
+    <>
+      <path d="M10 3a4.5 4.5 0 0 1 4.5 4.5c0 2.6.7 3.8 1.5 4.7-2 .8-4 1.2-6 1.2s-4-.4-6-1.2c.8-.9 1.5-2.1 1.5-4.7A4.5 4.5 0 0 1 10 3Z" />
+      <path d="M8.4 16a1.7 1.7 0 0 0 3.2 0" />
+    </>
+  ),
   // page with a river line running through it
   brief: (
     <>

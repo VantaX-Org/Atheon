@@ -1,23 +1,51 @@
+// One frontend: every route that used to get the old Sidebar+Header chrome now
+// renders inside the rx SubPage shell — same look as /x/ops. This layout keeps
+// only the auth bootstrap; all chrome lives in Shell/SubPage.
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
-import { Sidebar } from "./Sidebar";
-import { Header } from "./Header";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { SubPage } from "@/x/SubPage";
 import { DemoEnvironmentBanner } from "./DemoEnvironmentBanner";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
-import { JourneyStageBar } from "@/components/journey/JourneyStageBar";
-import { HelpButton } from "@/components/common/HelpButton";
-import { JeffLauncher } from "@/components/common/JeffLauncher";
-import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/appStore";
 import { api, ApiError, getToken, setToken } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { clearChunkReloadGuard } from "@/lib/lazy-with-retry";
+
+// Longest-prefix wins (order matters: /support-tickets before /support).
+const TITLES: Array<[string, string]> = [
+  ['/admin/tenants', 'Tenants'],
+  ['/admin/incidents', 'Status incidents'],
+  ['/support-tickets', 'Support tickets'],
+  ['/support-triage', 'Support triage'],
+  ['/dashboard', 'Home'],
+  ['/onboarding', 'Onboarding'],
+  ['/board', 'Board digest'],
+  ['/mind', 'Mind'],
+  ['/memory', 'Memory'],
+  ['/console', 'Admin'],
+  ['/tenants', 'Tenants'],
+  ['/iam', 'IAM'],
+  ['/control-plane', 'Control plane'],
+  ['/integrations', 'Integrations'],
+  ['/action-layer', 'Action layer'],
+  ['/deployments', 'Deployments'],
+  ['/assessments', 'Assessments'],
+  ['/platform-health', 'Platform health'],
+  ['/support', 'Support'],
+  ['/impersonate', 'Impersonation'],
+  ['/bulk-users', 'Bulk users'],
+  ['/custom-roles', 'Custom roles'],
+  ['/revenue', 'Revenue & usage'],
+  ['/feature-flags', 'Feature flags'],
+  ['/system-alerts', 'System alerts'],
+  ['/webhooks', 'Webhooks'],
+];
 
 export function AppLayout() {
   const { user, setUser } = useAppStore();
   const loadCompanies = useAppStore((s) => s.loadCompanies);
   const loadCurrency = useAppStore((s) => s.loadCurrency);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -98,35 +126,14 @@ export function AppLayout() {
 
   if (!user) return null;
 
-  return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
-      {/* TASK-006: Skip to content link */}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-md focus:bg-[var(--accent)] focus:text-[var(--text-on-accent)] focus:text-sm">
-        Skip to main content
-      </a>
-      <DemoEnvironmentBanner />
-      <Sidebar />
-      <Header />
-      <main
-        className={cn(
-          'pt-12 min-h-screen transition-all duration-200',
-          // Sidebar is now 240px wide (Stitch 5-section IA, Phase P).
-          // Match the offset; mobile gets no padding since the sidebar is a drawer.
-          'pl-0 md:pl-sidebar-expanded',
-        )}
-      >
-        <div id="main-content" className="p-4 sm:p-5 lg:p-6">
-          <Breadcrumbs />
-          {/* Value-loop locator on every screen. Scoped read-only roles
-              (auditor, board_member) keep their narrow world — the loop links
-              would 403 for them (App.tsx gates connect/detect to STANDARD_ROLES). */}
-          {user.role !== 'auditor' && user.role !== 'board_member' && <JourneyStageBar />}
-          <Outlet />
-        </div>
-      </main>
+  const title = TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Atheon';
 
-      <HelpButton />
-      <JeffLauncher />
-    </div>
+  return (
+    <>
+      <DemoEnvironmentBanner />
+      <SubPage title={title}>
+        <Outlet />
+      </SubPage>
+    </>
   );
 }
