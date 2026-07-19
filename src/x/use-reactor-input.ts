@@ -15,9 +15,10 @@ const CAT_LABEL: Record<string, string> = {
 export const EMPTY_REACTOR_INPUT: ReactorInput = { ops: null, gate: null, recovered: null, sourceCount: null, macro: null, health: null, pulse: null };
 
 async function fetchReactorInput(): Promise<ReactorInput> {
-  const [assessList, actions, roi, conns, radar, health, briefing] = await Promise.allSettled([
+  const [assessList, actions, pending, roi, conns, radar, health, briefing] = await Promise.allSettled([
     api.assessments.list(),
     api.erp.actionsSummary(),
+    api.erp.listAllActions({ status: 'pending_approval', limit: 6 }),
     api.roi.get(),
     api.erp.connections(),
     api.radar.signals(undefined, 10),
@@ -57,9 +58,26 @@ async function fetchReactorInput(): Promise<ReactorInput> {
           reviewZar: actions.value.summary.previewed_value_zar,
           reversedCount: actions.value.summary.failed_count + actions.value.summary.rejected_count,
           reversedZar: actions.value.summary.failed_value_zar + actions.value.summary.rejected_value_zar,
+          rejectedCount: actions.value.summary.rejected_count,
+          rejectedZar: actions.value.summary.rejected_value_zar,
+          failedCount: actions.value.summary.failed_count,
+          failedZar: actions.value.summary.failed_value_zar,
+          // receipt lines for the gate drawer — the decisions behind the number
+          pending: pending.status === 'fulfilled'
+            ? pending.value.actions.map((a) => ({ label: a.catalyst_name, type: a.action_type, valueZar: a.value_zar }))
+            : undefined,
         }
       : null,
-    recovered: roi.status === 'fulfilled' ? { zar: roi.value.totalDiscrepancyValueRecovered, mult: roi.value.roiMultiple ?? null } : null,
+    recovered: roi.status === 'fulfilled'
+      ? {
+          zar: roi.value.totalDiscrepancyValueRecovered,
+          mult: roi.value.roiMultiple ?? null,
+          // per-source attribution of the recovered figure (v60 breakdown)
+          bySource: roi.value.breakdown?.byConnection?.length
+            ? roi.value.breakdown.byConnection.map((c) => ({ label: c.label, zar: c.recoveredValue, share: c.share, records: c.inputRecords }))
+            : undefined,
+        }
+      : null,
     // "live" means live: connected sources, not the all-time attribution list
     sourceCount: conns.status === 'fulfilled'
       ? conns.value.connections.filter((c) => ['connected', 'active'].includes(c.status.toLowerCase())).length

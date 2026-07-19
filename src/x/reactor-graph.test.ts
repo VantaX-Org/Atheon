@@ -11,8 +11,12 @@ const FULL_INPUT: ReactorInput = {
     ],
     totalZar: 5200000, totalCount: 18,
   },
-  gate: { pendingCount: 4, pendingZar: 800000, reviewCount: 2, reviewZar: 100000, reversedCount: 1, reversedZar: 50000 },
-  recovered: { zar: 1200000, mult: 4 },
+  gate: {
+    pendingCount: 4, pendingZar: 800000, reviewCount: 2, reviewZar: 100000, reversedCount: 1, reversedZar: 50000,
+    rejectedCount: 1, rejectedZar: 50000, failedCount: 0, failedZar: 0,
+    pending: [{ label: 'AP Invoice Validation', type: 'ap_invoice_validation', valueZar: 500000 }],
+  },
+  recovered: { zar: 1200000, mult: 4, bySource: [{ label: 'SAP', zar: 900000, share: 0.75, records: 160 }, { label: 'manual', zar: 300000, share: 0.25, records: 62 }] },
   sourceCount: 3,
   macro: { count: 2, signals: [{ id: 'sig-1', title: 'ZAR swings past R19', source: 'Reuters', sentiment: 'negative', relevance: 0.9 }] },
   health: {
@@ -80,6 +84,18 @@ describe('seal gating', () => {
     expect(g.nodes.find(n => n.id === 'leak')?.sealed).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'macro')?.sealed).toBeFalsy();
     expect(g.nodes.find(n => n.id === 'stage-procure')?.sealed).toBeFalsy();
+  });
+  it('sealed tiles carry receipt lines when the breakdown reported', () => {
+    const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');
+    const rec = g.nodes.find(n => n.id === 'recovered');
+    expect(rec?.rows?.map(r => r.label)).toEqual(['SAP', 'Manual uploads']);
+    expect(g.nodes.find(n => n.id === 'gate')?.rows?.[0].label).toBe('AP Invoice Validation');
+    expect(g.nodes.find(n => n.id === 'reversed')?.rows?.length).toBe(2);
+    // no breakdown → no rows, never a fabricated split
+    const bare = buildReactorGraph(NULL_INPUT, 'ZAR', 'all');
+    for (const id of ['recovered', 'gate', 'reversed']) {
+      expect(bare.nodes.find(n => n.id === id)?.rows, id).toBeUndefined();
+    }
   });
   it('every money node carries a provenance sentence', () => {
     const g = buildReactorGraph(FULL_INPUT, 'ZAR', 'all');

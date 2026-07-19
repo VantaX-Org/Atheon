@@ -18,8 +18,14 @@ export interface ReactorInput {
     estimated?: boolean; // raw-findings fallback — impacts are estimates, some unpriced
     unpricedCount?: number;
   } | null;
-  gate: { pendingCount: number; pendingZar: number; reviewCount: number; reviewZar: number; reversedCount: number; reversedZar: number } | null;
-  recovered: { zar: number; mult: number | null } | null;
+  gate: {
+    pendingCount: number; pendingZar: number; reviewCount: number; reviewZar: number; reversedCount: number; reversedZar: number;
+    // receipt lines: the split behind the merged reversed figure, and the
+    // actual decisions waiting at the gate (top slice, not the full queue)
+    rejectedCount?: number; rejectedZar?: number; failedCount?: number; failedZar?: number;
+    pending?: Array<{ label: string; type: string; valueZar: number }>;
+  } | null;
+  recovered: { zar: number; mult: number | null; bySource?: Array<{ label: string; zar: number; share: number; records: number }> } | null;
   sourceCount: number | null; // live/connected ERP source systems
   // External factors head node: live radar signals (macro, market, regulatory,
   // supplier pressure). Null when the radar has not reported — em-dash node.
@@ -227,6 +233,29 @@ export function buildReactorGraph(
       : undefined;
   };
 
+  // Sealed tiles get receipt lines: what the booked figure is made of.
+  // Absent breakdown → no rows, never a fabricated split.
+  const recRows = recovered?.bySource?.length
+    ? [...recovered.bySource].sort((a, b) => b.zar - a.zar).map((s) => ({
+        label: s.label === 'manual' ? 'Manual uploads' : s.label,
+        value: money(s.zar),
+        sub: `${Math.round(s.share * 100)}% of recovered · ${s.records} records read`,
+      }))
+    : undefined;
+  const gateRows = gate?.pending?.length
+    ? gate.pending.map((p) => ({
+        label: p.label,
+        value: p.valueZar > 0 ? money(p.valueZar) : '—',
+        sub: p.type.replace(/_/g, ' '),
+      }))
+    : undefined;
+  const reversedRows = gate?.rejectedCount != null
+    ? [
+        { label: 'Rejected at the gate', value: money(gate.rejectedZar ?? 0), sub: `${gate.rejectedCount} decision${gate.rejectedCount === 1 ? '' : 's'}` },
+        { label: 'Failed in execution', value: money(gate.failedZar ?? 0), sub: `${gate.failedCount ?? 0} action${gate.failedCount === 1 ? '' : 's'}` },
+      ]
+    : undefined;
+
   const nodes: RiverNode[] = [
     {
       id: 'macro', x: 0.085, y: 0.17, kicker: 'Macro & market',
@@ -253,10 +282,10 @@ export function buildReactorGraph(
       rows: stageRows(s), downstream: stageDownstream(i),
     })),
     { id: 'leak', x: 0.14, y: 0.50, kicker: est ? 'Estimated leakage' : 'Leakage detected', value: money(ops?.totalZar ?? null), tag: 'Internal', sub: leakSub, rows: leakRows.length ? leakRows : undefined, anchor: 'leaks', prov: PROV_FINDING },
-    { id: 'recovered', x: 0.86, y: 0.48, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
-    { id: 'gate', x: 0.5, y: 0.8, kicker: 'Awaiting signature', value: money(gate?.pendingZar ?? null), tag: canApprove ? 'Your call' : 'Internal', sub: gate ? `${gate.pendingCount} decision${gate.pendingCount === 1 ? '' : 's'} open · now` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
+    { id: 'recovered', x: 0.86, y: 0.48, kicker: 'Recovered', value: money(recovered?.zar ?? null), tone: recovered ? 'gold' : 'none', tag: 'External', sub: recSub, rows: recRows, anchor: 'ledger', sealed: true, prov: PROV_BOOKED },
+    { id: 'gate', x: 0.5, y: 0.8, kicker: 'Awaiting signature', value: money(gate?.pendingZar ?? null), tag: canApprove ? 'Your call' : 'Internal', sub: gate ? `${gate.pendingCount} decision${gate.pendingCount === 1 ? '' : 's'} open · now` : undefined, rows: gateRows, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
     { id: 'review', x: 0.82, y: 0.87, kicker: 'In review', value: money(gate?.reviewZar ?? null), tag: 'Internal', sub: gate ? `${gate.reviewCount} previewed, not dispatched` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
-    { id: 'reversed', x: 0.24, y: 0.87, kicker: 'Rejected or failed', value: money(gate?.reversedZar ?? null), tone: gate && gate.reversedZar > 0 ? 'bad' : 'none', tag: 'Mixed', sub: gate ? `${gate.reversedCount} rejected (yours) or failed · all-time` : undefined, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
+    { id: 'reversed', x: 0.24, y: 0.87, kicker: 'Rejected or failed', value: money(gate?.reversedZar ?? null), tone: gate && gate.reversedZar > 0 ? 'bad' : 'none', tag: 'Mixed', sub: gate ? `${gate.reversedCount} rejected (yours) or failed · all-time` : undefined, rows: reversedRows, anchor: 'decisions', sealed: true, prov: PROV_BOOKED },
   ];
 
   // Per-zone width normalization: a global max let the all-time recovered figure
