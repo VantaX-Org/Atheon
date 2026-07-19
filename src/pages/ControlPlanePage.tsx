@@ -226,14 +226,15 @@ export function ControlPlanePage() {
     async function load() {
       setLoading(true);
       await refresh();
-      // Load clusters for the deploy modal — non-critical, may 403 for non-admins.
+      // Page is renderable now — clusters only feed the deploy modal, so
+      // don't hold the skeleton on them (non-critical, may 403 for non-admins).
+      setLoading(false);
       try {
         const cl = await api.catalysts.clusters();
         setClusters(cl.clusters.map(c => ({ id: c.id, name: c.name })));
       } catch (err) {
         console.error('Failed to load clusters', err);
       }
-      setLoading(false);
     }
     load();
   }, [refresh]);

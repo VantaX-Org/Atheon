@@ -211,10 +211,17 @@ function ListView({ assessments, loading, error, onView, onDelete }: {
     return sum + (r?.catalyst_scores?.reduce((s: number, c: CatalystScore) => s + (c.estimated_annual_saving_zar || 0), 0) || 0);
   }, 0);
 
+  // Honesty: dash when no assessment has reported findings — a summed 0 over
+  // unreported rows is fabricated ('complete' runs can carry an empty {}
+  // results blob), and the rows below already render '—'.
+  const hasResults = assessments.some(a => {
+    const r = a.results as AssessmentResults | null;
+    return !!(r?.findings || r?.catalyst_scores);
+  });
   const hero: Array<{ label: string; value: string }> = [
     { label: 'Active Assessments', value: activeCount.toString() },
-    { label: 'Total Findings', value: totalFindings.toString() },
-    { label: 'Est. Annual Saving', value: formatCompactCurrency(riskExposure, currency) },
+    { label: 'Total Findings', value: hasResults ? totalFindings.toString() : '—' },
+    { label: 'Est. Annual Saving', value: riskExposure > 0 ? formatCompactCurrency(riskExposure, currency) : '—' },
   ];
 
   const q = query.trim().toLowerCase();
@@ -293,7 +300,7 @@ function ListView({ assessments, loading, error, onView, onDelete }: {
                       {new Date(a.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3.5 font-mono tnum" style={{ color: 'var(--text-secondary)' }}>
-                      {findingCount}
+                      {results?.findings || results?.catalyst_scores ? findingCount : '—'}
                     </td>
                     <td className="px-5 py-3.5 font-mono tnum font-medium" style={{ color: 'var(--text-primary)' }}>
                       {totalSaving > 0 ? formatCompactCurrency(totalSaving, currency) : '—'}
