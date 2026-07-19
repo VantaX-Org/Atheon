@@ -363,7 +363,7 @@
 .rx .rowline p { margin: 0; flex: 1; font-size: 0.8rem; color: var(--mut); }
 .rx .rowline p b { color: var(--ink); font-weight: 600; }
 .rx .rowline p .when { display: block; font-size: 0.68rem; color: var(--faint); margin-top: 0.1rem; }
-.rx .go { background: var(--brand-btn); color: #fff; font-weight: 600; font-size: 0.78rem; border-radius: 12px; padding: 0.5rem 1.1rem; white-space: nowrap; transition: background 0.15s; }
+.rx .go { background: var(--brand-btn); color: var(--text-on-accent, #fff); font-weight: 600; font-size: 0.78rem; border-radius: 12px; padding: 0.5rem 1.1rem; white-space: nowrap; transition: background 0.15s; }
 .rx .go:hover { background: var(--brand-dk); }
 .rx .ghost { background: var(--card2); color: var(--body); font-weight: 600; font-size: 0.78rem; border-radius: 12px; padding: 0.5rem 1.1rem; white-space: nowrap; }
 .rx .ghost:hover { background: var(--line); }

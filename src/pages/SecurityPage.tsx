@@ -56,7 +56,7 @@ export default function SecurityPage(): JSX.Element {
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       <div className="p-6 max-w-5xl mx-auto space-y-8">
         <div className="flex items-center gap-3 flex-wrap">
-          <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
+          <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1 py-1.5"><ArrowLeft size={12} /> Home</Link>
         </div>
 
         {/* Hero — editorial posture header */}

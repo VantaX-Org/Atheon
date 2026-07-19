@@ -110,9 +110,9 @@ export default function ConnectorsPage(): JSX.Element {
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
         <div className="flex items-center gap-3 flex-wrap">
-          <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
+          <Link to="/" className="t-muted hover:t-primary text-caption inline-flex items-center gap-1 py-1.5"><ArrowLeft size={12} /> Home</Link>
           <span className="t-muted text-caption">·</span>
-          <Link to="/legal/security" className="t-muted hover:t-primary text-caption">Security &amp; Privacy</Link>
+          <Link to="/legal/security" className="t-muted hover:t-primary text-caption inline-block py-1.5">Security &amp; Privacy</Link>
         </div>
 
         <PageHeader

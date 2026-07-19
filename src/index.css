@@ -221,7 +221,9 @@
     --text-primary: #eef1fb;
     --text-secondary: #a6aecb;
     --text-muted: #8b93b3;
-    --text-on-accent: #ffffff;
+    /* Dark mode brightens the accents (#7c9bff etc.) — white on them is 2.6:1.
+       Ink-dark text hits ≥6:1 on every bright accent/status fill. */
+    --text-on-accent: #0a0d17;
 
     /* Brand accent — royal blue, brightened for a dark field */
     --accent: #7c9bff;

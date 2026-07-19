@@ -89,7 +89,7 @@ const marketingCSS = `
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
-.mk5-body ::selection { background: var(--accent-c); color: #fff; }
+.mk5-body ::selection { background: var(--accent-c); color: var(--text-on-accent, #fff); }
 .mk5-body a { color: inherit; text-decoration: none; }
 .mk5-body h1, .mk5-body h2, .mk5-body h3, .mk5-body h4 {
   font-family: 'Schibsted Grotesk', 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -128,6 +128,7 @@ const marketingCSS = `
   font-size: .6875rem; font-weight: 400;
   letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink-2);
+  padding: .5rem 0; /* ≥24px hit area on an 11px label */
   transition: color 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .mk5-nav-links a:hover { color: var(--ink); }
@@ -148,9 +149,9 @@ const marketingCSS = `
 .mk5-nav-cta.primary {
   border-color: var(--accent-c);
   background: var(--accent-c);
-  color: #fff !important;
+  color: var(--text-on-accent, #fff) !important;
 }
-.mk5-nav-cta.primary:hover { background: var(--accent-hover-c); border-color: var(--accent-hover-c); color: #fff !important; }
+.mk5-nav-cta.primary:hover { background: var(--accent-hover-c); border-color: var(--accent-hover-c); color: var(--text-on-accent, #fff) !important; }
 .mk5-nav-cta.quiet {
   border-color: transparent;
   color: var(--ink-2) !important;
@@ -231,7 +232,7 @@ const marketingCSS = `
   background: transparent; border: 0; padding: 0; cursor: pointer;
   display: inline-flex; align-items: center; gap: .5rem;
   border-bottom: 1px solid var(--ink);
-  padding-bottom: .25rem;
+  padding-top: .35rem; padding-bottom: .25rem; /* ≥24px hit area */
   transition: color 120ms cubic-bezier(0.23, 1, 0.32, 1), border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .mk5-hero-textlink:hover { color: var(--accent-c); border-color: var(--accent-c); }
@@ -419,7 +420,7 @@ const marketingCSS = `
   letter-spacing: 0.14em; text-transform: uppercase;
   padding: .85rem 1.6rem;
   background: var(--accent-c);
-  color: #fff !important;
+  color: var(--text-on-accent, #fff) !important;
   border: 1px solid var(--accent-c);
   border-radius: 2px;
   cursor: pointer;
@@ -1197,7 +1198,7 @@ const marketingCSS = `
   font-size: .75rem; letter-spacing: 0.06em;
   color: var(--ink-2); line-height: 1.6;
 }
-.mk5-fc a { color: var(--ink-2); }
+.mk5-fc a { color: var(--ink-2); display: inline-block; padding: .35rem 0; } /* ≥24px hit area */
 .mk5-fc a:hover { color: var(--ink); }
 .mk5-fr {
   font-family: 'Space Mono', monospace;
