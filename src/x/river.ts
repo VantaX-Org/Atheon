@@ -194,7 +194,11 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
       arr.push({ n, d: tiles[i], w: tiles[i].offsetWidth });
       rows.set(key, arr);
     });
-    if (opts.stack && placed.length && W < NARROW) {
+    // stack when the semantic layout can't fit: phone-narrow, or any band's
+    // tiles wider than the panel even at the 4px gap floor
+    const cantFit = W < NARROW || [...rows.values()].some((row) =>
+      row.reduce((s, t) => s + t.w, 0) + 4 * (row.length - 1) + pad * 2 > W);
+    if (opts.stack && placed.length && cantFit) {
       narrow = true;
       // Stack all bands top-down: each band wraps into full-width lines, the
       // panel height follows the content. Tiles stay at readable size —
