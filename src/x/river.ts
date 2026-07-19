@@ -44,6 +44,7 @@ export interface RiverOpts {
   wScale?: number;
   poolT?: number;
   lanes?: { y: number; label: string }[]; // faint bands: outside vs inside the business
+  stack?: boolean; // narrow panels: wrap bands into stacked lines, grow height to fit
   onNodeClick?: (n: RiverNode) => void;
   onAskJeff?: (n: RiverNode) => void;
 }
@@ -141,9 +142,8 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
 
   let W = 0, H = 0;
   function layout() {
-    const r = el.getBoundingClientRect();
-    if (!r.width) { W = 0; return; }
-    W = r.width; H = r.height;
+    if (!el.clientWidth) { W = 0; return; }
+    W = el.clientWidth; H = el.clientHeight;
     const DPR = Math.min(devicePixelRatio || 1, 2);
     canvas!.width = W * DPR;
     canvas!.height = H * DPR;
@@ -159,6 +159,27 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
   // stable across resizes.
   const placed = nodes.filter((n) => n.kicker);
   const ox = new Map(placed.map((n) => [n.id, n.x]));
+  const oy = new Map(placed.map((n) => [n.id, n.y]));
+  // below this panel width the semantic x/y layout can't fit — the engine
+  // stacks each band's tiles into wrapped lines and grows the panel to match
+  const NARROW = 640;
+  let narrow = false;
+
+  // Pack one band's tiles into lines that fit the panel width, preserving
+  // caller order. Used only in the narrow layout.
+  type Tile = { n: RiverNode; d: HTMLElement; w: number };
+  function packLines(row: Tile[], usable: number, gap: number): Tile[][] {
+    const lines: Tile[][] = [];
+    let line: Tile[] = [], w = 0;
+    row.forEach((t) => {
+      const need = line.length ? w + gap + t.w : t.w;
+      if (line.length && need > usable) { lines.push(line); line = [t]; w = t.w; }
+      else { line.push(t); w = need; }
+    });
+    if (line.length) lines.push(line);
+    return lines;
+  }
+
   function autoSpace() {
     if (!W) return;
     const pad = 14, gap = 16;
@@ -168,11 +189,53 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     };
     const rows = new Map<number, Array<{ n: RiverNode; d: HTMLElement; w: number }>>();
     placed.forEach((n, i) => {
-      const key = Math.round(n.y * 12); // ~8% bands = one visual row
+      const key = Math.round(oy.get(n.id)! * 12); // ~8% bands = one visual row
       const arr = rows.get(key) ?? [];
       arr.push({ n, d: tiles[i], w: tiles[i].offsetWidth });
       rows.set(key, arr);
     });
+    if (opts.stack && placed.length && W < NARROW) {
+      narrow = true;
+      // Stack all bands top-down: each band wraps into full-width lines, the
+      // panel height follows the content. Tiles stay at readable size —
+      // never transform-scaled down.
+      const vgap = 20, top = 26;
+      const allLines: Tile[][] = [];
+      [...rows.keys()].sort((a, b) => a - b).forEach((k) => {
+        const row = rows.get(k)!.sort((a, b) => ox.get(a.n.id)! - ox.get(b.n.id)!);
+        allLines.push(...packLines(row, W - pad * 2, gap));
+      });
+      const lineH = (l: Tile[]) => Math.max(...l.map((t) => t.d.offsetHeight));
+      const total = allLines.reduce((s, l) => s + lineH(l) + vgap, top) + 6;
+      if (Math.abs(el.clientHeight - total) > 1) {
+        el.style.height = `${total}px`;
+        layout(); // re-measure H + canvas after the height change
+      }
+      let y = top;
+      allLines.forEach((l) => {
+        const h = lineH(l);
+        const widths = l.reduce((s, t) => s + t.w, 0);
+        let x = pad + Math.max(0, (W - pad * 2 - widths - gap * (l.length - 1)) / 2);
+        l.forEach((t) => {
+          t.n.y = (y + h / 2) / H;
+          t.d.style.top = t.n.y * 100 + '%';
+          setX(t.n, t.d, x + t.w / 2);
+          x += t.w + gap;
+        });
+        y += h + vgap;
+      });
+      return;
+    }
+    if (narrow) {
+      // back to wide: restore caller geometry and CSS-driven height
+      narrow = false;
+      el.style.height = '';
+      layout();
+      placed.forEach((n, i) => {
+        n.y = oy.get(n.id)!;
+        tiles[i].style.top = n.y * 100 + '%';
+      });
+    }
     rows.forEach((row) => {
       row.sort((a, b) => ox.get(a.n.id)! - ox.get(b.n.id)!);
       const usable = W - pad * 2;
@@ -231,7 +294,7 @@ export function mountRiver(el: HTMLElement, nodes: RiverNode[], edges: RiverEdge
     const dt = last ? Math.min((ts - last) / 1000, 0.05) : 0.016;
     last = ts;
     ctx!.clearRect(0, 0, W, H);
-    (opts.lanes ?? []).forEach((l) => {
+    (narrow ? [] : opts.lanes ?? []).forEach((l) => {
       const y = l.y * H;
       ctx!.strokeStyle = String(TOK.line);
       ctx!.globalAlpha = 0.7;

@@ -21,6 +21,7 @@ const SECTIONS: Array<{ id: SectionKey; label: string; icon: IconName }> = [
 // route itself stays the enforcement point.
 const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; roles?: string[] }> = [
   { to: '/x/ops', label: 'Operations', icon: 'ops' },
+  { to: '/assessments', label: 'Assessments', icon: 'brief', roles: ['superadmin', 'support_admin', 'admin', 'executive', 'board_member'] },
   { to: '/x/assurance', label: 'Assurance', icon: 'seal', roles: ['superadmin', 'support_admin', 'admin', 'auditor'] },
   { to: '/console', label: 'Admin', icon: 'gate', roles: ['superadmin', 'support_admin', 'admin'] },
 ];

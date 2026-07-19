@@ -185,6 +185,9 @@ const STANDARD_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'exe
 // COMPLIANCE_ROLES adds auditor on top of PLATFORM_ADMIN_ROLES so the route
 // gate accepts both populations.
 const COMPLIANCE_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'auditor'];
+// Assessments: platform staff manage them; tenant admin/executive/board read
+// their own (backend gates writes to superadmin, reads to these roles).
+const ASSESSMENT_ROLES: UserRole[] = ['superadmin', 'support_admin', 'admin', 'executive', 'board_member'];
 // Phase AU: `board_member` role — quarterly digest only. Audit committee +
 // board directors don't need (and procurement won't approve) executive-grade
 // operational access. BOARD_DIGEST_ROLES gates the digest landing page;
@@ -326,7 +329,7 @@ export default function App() {
             <Route path="/canonical-api" element={<Navigate to="/integrations" replace />} />
             <Route path="/erp-adapters" element={<Navigate to="/integrations" replace />} />
             <Route path="/deployments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><DeploymentsPage /></ProtectedRoute>} />
-            <Route path="/assessments" element={<ProtectedRoute allowedRoles={SUPERADMIN_ROLES}><AssessmentsPage /></ProtectedRoute>} />
+            <Route path="/assessments" element={<ProtectedRoute allowedRoles={ASSESSMENT_ROLES}><AssessmentsPage /></ProtectedRoute>} />
             {/* /executive was the retired ExecutiveMobilePage — now consolidated
                 into the responsive ApexPage (mobile KPI strip, pull-to-refresh,
                 and tight 3-card above-fold layout). Redirect preserves old links. */}

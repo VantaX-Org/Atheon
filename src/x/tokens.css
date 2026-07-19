@@ -187,7 +187,7 @@
 
 /* ---------- external signal ticker — the world scrolling over the river ---------- */
 .rx .ticker {
-  display: flex; align-items: center; gap: 0.8rem; width: 100%; min-width: 860px;
+  display: flex; align-items: center; gap: 0.8rem; width: 100%;
   margin-top: 1.3rem; padding: 0.4rem 0.9rem;
   background: linear-gradient(180deg, var(--card), var(--card2));
   border: 1px solid var(--line); border-radius: 12px;
@@ -216,14 +216,14 @@
   .rx .tk-live i { animation: none; }
 }
 .rx .flowpanel {
-  position: relative; height: clamp(400px, 44vw, 480px); min-width: 860px;
+  position: relative; height: clamp(400px, 44vw, 480px); margin-top: 1.3rem;
   background:
     radial-gradient(620px 320px at 72% 18%, rgba(124, 155, 255, 0.08), transparent 62%),
     radial-gradient(460px 280px at 88% 48%, rgba(4, 196, 126, 0.07), transparent 60%),
     radial-gradient(420px 260px at 12% 52%, rgba(245, 158, 11, 0.06), transparent 60%),
     linear-gradient(180deg, var(--card), var(--card2));
   border: 1px solid var(--line); border-radius: 22px;
-  box-shadow: var(--sh1); margin-top: 1.3rem;
+  box-shadow: var(--sh1);
 }
 .rx .flowpanel.short { height: clamp(180px, 20vw, 230px); }
 .rx .flowpanel.mid { height: clamp(320px, 36vw, 380px); }
@@ -312,11 +312,11 @@
 .rx .legend-chip { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .rx .legend-chip i { width: 14px; height: 6px; border-radius: 3px; border: 1px solid var(--line); display: inline-block; }
 
-/* PWA / narrow: the river keeps a gentle scroll but the tiles shrink so they are
-   proportionate to the screen rather than desktop-sized. autoSpace() re-fits the
-   chain to whatever width the panel resolves to. */
+/* PWA / narrow: below 640px panel width the river engine stacks the bands into
+   wrapped full-width lines and grows the panel height — tiles stay readable,
+   never scaled down. These rules just compact the chrome. */
 @media (max-width: 820px) {
-  .rx .ticker, .rx .flowpanel { min-width: 600px; }
+  .rx .ticker { min-width: 0; } /* tape masks its own overflow */
   .rx .fnode { min-width: 88px; padding: 0.4rem 0.6rem; border-radius: 12px; }
   .rx .fnode .fv { font-size: 0.98rem; }
   .rx .fnode .fk { font-size: 0.56rem; }
@@ -465,6 +465,15 @@
 .rx .rc-imp-h.up { color: var(--ok); }
 .rx .rc-imp-h.down { color: var(--bad); }
 .rx .rc-imp-exp { font-size: 0.78rem; font-weight: 600; color: var(--ink); margin: 0; }
+/* c-suite what-if controls in the macro drawer */
+.rx .rc-sim { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin: 0.15rem 0; }
+.rx .rc-sim select {
+  background: var(--card2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 10px; padding: 0.35rem 0.5rem; font-size: 0.74rem; font-weight: 600;
+}
+.rx .rc-sim-mag { display: flex; align-items: center; gap: 0.45rem; flex: 1; min-width: 150px; }
+.rx .rc-sim-mag input[type="range"] { flex: 1; accent-color: var(--brand); min-width: 90px; }
+.rx .rc-sim-mag .num { font-size: 0.76rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rx .rc-meta b { color: var(--ink); font-weight: 600; }
 
 /* per-sub-catalyst config rows in the drawer */
@@ -514,7 +523,8 @@
   .rx.tower .tower-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
   .rx.tower .mscroll { flex: none; overflow-x: visible; }
   .rx.tower .ticker { margin-top: 0; min-width: 0; }
-  .rx.tower .flowpanel, .rx.tower .flowpanel.short, .rx.tower .flowpanel.mid, .rx.tower .flowpanel.tall { min-width: 0; height: clamp(280px, 40vh, 460px); margin-top: 0.6rem; }
+  .rx.tower .flowpanel { margin-top: 0.6rem; }
+  .rx.tower .flowpanel, .rx.tower .flowpanel.short, .rx.tower .flowpanel.mid, .rx.tower .flowpanel.tall { min-width: 0; height: clamp(280px, 40vh, 460px); }
   .rx.tower .flow-note { margin: 0.45rem 0 0; }
 
   /* deck — one section at a time, internal scroll; siblings hidden */

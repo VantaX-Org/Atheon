@@ -10,7 +10,7 @@ import { ClipboardList, XCircle, BarChart3 } from 'lucide-react';
 import { AsyncPageContent, statusFrom } from '@/components/ui/async';
 import { catalystDeployUrl } from '@/lib/catalyst-recommendation';
 import { formatDays } from '@/lib/utils';
-import { useTenantCurrency } from '@/stores/appStore';
+import { useTenantCurrency, useAppStore } from '@/stores/appStore';
 import { formatCompactCurrency } from '@/lib/format-currency';
 import { downloadTemplate, parseCsv, INGEST_DOMAINS } from '@/lib/ingest-client';
 import { validateDomainRows } from '@/lib/ingest-validate';
@@ -32,6 +32,8 @@ export function AssessmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const toast = useToast();
+  // Create/delete/run are superadmin-only on the API; exec/board get read-only.
+  const canManage = useAppStore((s) => s.user?.role) === 'superadmin';
 
   const reportError = useCallback((title: string, err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
@@ -97,13 +99,15 @@ export function AssessmentsPage() {
           &larr; Back
         </button>
       )}
-      <button
-        onClick={() => setView('new')}
-        className="px-5 py-2 text-label rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
-        style={{ background: 'var(--accent)', color: 'var(--text-on-accent)', letterSpacing: '0.08em' }}
-      >
-        + New Assessment
-      </button>
+      {canManage && (
+        <button
+          onClick={() => setView('new')}
+          className="px-5 py-2 text-label rounded-md transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.97] hover:opacity-90"
+          style={{ background: 'var(--accent)', color: 'var(--text-on-accent)', letterSpacing: '0.08em' }}
+        >
+          + New Assessment
+        </button>
+      )}
     </div>
   );
 
@@ -129,7 +133,7 @@ export function AssessmentsPage() {
           loading={loading}
           error={listError}
           onView={openResults}
-          onDelete={deleteAssessment}
+          onDelete={canManage ? deleteAssessment : undefined}
         />
       )}
       {view === 'new' && (
@@ -158,7 +162,7 @@ function ListView({ assessments, loading, error, onView, onDelete }: {
   loading: boolean;
   error: string | null;
   onView: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const currency = useTenantCurrency();
   const [query, setQuery] = useState('');
@@ -317,13 +321,15 @@ function ListView({ assessments, loading, error, onView, onDelete }: {
                             </button>
                           </>
                         )}
-                        <button
-                          onClick={() => onDelete(a.id)}
-                          className="text-label px-2.5 py-1 rounded-sm hover:opacity-90 transition-opacity"
-                          style={{ background: 'rgb(var(--neg-rgb) / 0.08)', color: 'var(--neg)' }}
-                        >
-                          Del
-                        </button>
+                        {onDelete && (
+                          <button
+                            onClick={() => onDelete(a.id)}
+                            className="text-label px-2.5 py-1 rounded-sm hover:opacity-90 transition-opacity"
+                            style={{ background: 'rgb(var(--neg-rgb) / 0.08)', color: 'var(--neg)' }}
+                          >
+                            Del
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -912,6 +918,7 @@ function RunningView({ id, onComplete }: {
 // ── Results View (Value Assessment — 7 Sections) ─────────────────────────
 function ResultsView({ assessment }: { assessment: Assessment }) {
   const toast = useToast();
+  const canManage = useAppStore((s) => s.user?.role) === 'superadmin';
   const navigate = useNavigate();
   // 'findings' tab consumes assessment.results.findings (the new
   // assessment-findings engine output); 'value' is the older value-assessment
@@ -1076,18 +1083,22 @@ function ResultsView({ assessment }: { assessment: Assessment }) {
               <BarChart3 className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--accent)' }} aria-hidden="true" />
               <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Run Value Assessment</h3>
               <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-                Analyse the prospect&apos;s ERP data to discover specific issues, quantify financial impact, and generate an outcome-based pricing proposal.
+                {canManage
+                  ? 'Analyse the prospect’s ERP data to discover specific issues, quantify financial impact, and generate an outcome-based pricing proposal.'
+                  : 'No value assessment has been run yet. Your Atheon engagement team runs these; results appear here once complete.'}
               </p>
-              <div className="flex gap-3 justify-center">
-                <button onClick={() => runVA('quick')} disabled={runningVA}
-                  className="px-4 py-2 text-sm font-medium rounded-md"
-                  style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}
-                >{runningVA ? 'Running...' : 'Quick (DQ + Timing)'}</button>
-                <button onClick={() => runVA('full')} disabled={runningVA}
-                  className="px-4 py-2 text-sm font-medium rounded-md"
-                  style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
-                >{runningVA ? 'Running...' : 'Full Assessment'}</button>
-              </div>
+              {canManage && (
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => runVA('quick')} disabled={runningVA}
+                    className="px-4 py-2 text-sm font-medium rounded-md"
+                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-card)' }}
+                  >{runningVA ? 'Running...' : 'Quick (DQ + Timing)'}</button>
+                  <button onClick={() => runVA('full')} disabled={runningVA}
+                    className="px-4 py-2 text-sm font-medium rounded-md"
+                    style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
+                  >{runningVA ? 'Running...' : 'Full Assessment'}</button>
+                </div>
+              )}
             </div>
           )}
 

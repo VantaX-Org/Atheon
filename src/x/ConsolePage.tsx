@@ -145,6 +145,10 @@ export function ConsolePage() {
   // The role decides whether Approve renders enabled; the persona lens can only
   // grey further, never grant. The API stays the enforcement point.
   const canApprove = roleCanApprove(userRole) && (persona ? persona.canApprove : true);
+  // c-suite lens (or exec-level role when no persona) gets the what-if panel
+  const simulate = persona
+    ? ['board', 'ceo', 'cfo', 'coo', 'cpo', 'controller'].includes(persona.key)
+    : ['superadmin', 'admin', 'executive', 'board_member'].includes(userRole ?? '');
 
   return (
     <div className="rx tower">
@@ -220,7 +224,7 @@ export function ConsolePage() {
         </aside>
 
         <div className="tower-main">
-        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} onGoTo={goSection} />
+        <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} simulate={simulate} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} onGoTo={goSection} />
 
         <div className="deck">
           {sections.includes('brief') && <BriefSection persona={persona} onAskJeff={onAskJeff} />}
