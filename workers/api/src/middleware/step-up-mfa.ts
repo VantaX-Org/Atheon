@@ -35,6 +35,20 @@ export function stepUpMFA() {
       return c.json({ error: 'Unauthorized', message: 'Authenticated session required' }, 401);
     }
 
+    // Public demo account: no TOTP enrolment by design (demo-login mints the
+    // session directly), and the demo must be fully usable end-to-end. Waive
+    // step-up for it only — audit-logged so the trail shows the control was
+    // bypassed for the demo persona, never silently.
+    if (auth.email === 'demo@vantax.co.za') {
+      await c.env.DB.prepare(
+        'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        crypto.randomUUID(), auth.tenantId, auth.userId, 'step_up_mfa_waived_demo', 'auth', 'session',
+        JSON.stringify({ path: c.req.path }), 'success',
+      ).run();
+      return next();
+    }
+
     const kvKey = `${STEP_UP_KV_PREFIX}${auth.userId}`;
     const cached = await c.env.CACHE.get(kvKey);
     if (cached) {
