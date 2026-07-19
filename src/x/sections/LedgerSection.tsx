@@ -246,7 +246,7 @@ export function LedgerSection({ onAskJeff }: { persona: Persona | null; onAskJef
                 <div className="rc-sec">
                   <span className="kicker">Cryptographic seal</span>
                   <p className="rc-meta">This recovery is bound to chain entry <b>#{seal.seq}</b> — tamper any figure and the chain fails to re-derive.</p>
-                  <p className="rc-hash" title="Payload hash — SHA-256 of this recovery's sealed record">hash {seal.payload_hash.slice(0, 24)}…</p>
+                  {seal.payload_hash && <p className="rc-hash" title="Payload hash — SHA-256 of this recovery's sealed record">hash {seal.payload_hash.slice(0, 24)}…</p>}
                   {seal.signature && <p className="rc-hash" title="HMAC signature over the merkle root">sig {seal.signature.slice(0, 24)}…</p>}
                   <div className="acts" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
                     <button className="ghost" onClick={verifyChain} disabled={verify === 'running'}>{verify === 'running' ? 'Verifying…' : 'Verify this seal'}</button>

@@ -989,7 +989,14 @@ function calculateNextRunScheduled(
     return next.toISOString();
   }
 
-  return '';
+  // ponytail: misconfigured sub (weekly w/o day_of_week, monthly w/o day_of_month,
+  // or unknown frequency) — fall back to next-day at timeOfDay so next_run ALWAYS
+  // advances. Returning '' left next_run past-due and re-fired every tick, starving
+  // siblings — the exact class the claim-before-run guard was meant to close.
+  const next = new Date(now);
+  next.setUTCHours(hours, minutes, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
 }
 
 // Bound one awaited promise so a hung sub-catalyst execution can't consume the
