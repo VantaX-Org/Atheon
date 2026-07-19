@@ -4205,7 +4205,7 @@ seed.post('/seed-findings-demo', async (c) => {
     await ins(
       `INSERT OR REPLACE INTO erp_purchase_orders (id, tenant_id, po_number, supplier_name, order_date, total, currency, status, delivery_status)
        VALUES (?, ?, ?, ?, date('now', '-60 days'), ?, 'ZAR', 'closed', 'received')`,
-      [`${PREFIX}-po-conc-${i}`, tenantId, `PO-CONC-${i}`, `Critical Supplier ${i}`, 5_000_000, 'ZAR'],
+      [`${PREFIX}-po-conc-${i}`, tenantId, `PO-CONC-${i}`, `Critical Supplier ${i}`, 5_000_000],
     );
   }
   written.proc_supplier_concentration = 5;

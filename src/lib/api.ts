@@ -312,6 +312,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ email, password, ...(tenantSlug ? { tenant_slug: tenantSlug } : {}) }),
       }),
+    /** Public Vantax demo session — no credentials; backend self-provisions the demo user. */
+    demoLogin: () =>
+      request<{ token: string; refreshToken?: string; user: AuthUser }>('/api/auth/demo-login', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
     register: (email: string, password: string, name: string, tenantSlug?: string) =>
       request<{ token: string; user: AuthUser }>('/api/auth/register', {
         method: 'POST',

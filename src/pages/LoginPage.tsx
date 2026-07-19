@@ -196,6 +196,19 @@ export function LoginPage() {
     finally { setLoading(false); }
   };
 
+  const handleDemoLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.auth.demoLogin();
+      handleAuthResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo unavailable');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submitMfaChallenge = async () => {
     const parsed = parseMfaInput(mfaInput);
     if (!parsed) {
@@ -553,9 +566,25 @@ export function LoginPage() {
               </button>
             </div>
           )}
+          {/* Public Vantax demo — no credentials; backend mints a session on
+              the dedicated demo account. Same handleAuthResult path as login. */}
+          {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
+            <button
+              type="button"
+              onClick={() => void handleDemoLogin()}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-2.5 text-caption font-semibold uppercase tracking-[0.12em] transition-[background-color,color,transform,box-shadow] duration-[var(--dur-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] hover:bg-[var(--bg-secondary)]"
+              style={{ fontFamily: "'Space Mono', ui-monospace, monospace", background: 'var(--bg-input)', border: '1px solid var(--border-card)', borderRadius: '9999px', color: 'var(--accent)' }}
+              title="Explore Atheon with the Vantax demo workspace — read-only executive view, no sign-up"
+              data-testid="demo-login"
+            >
+              {loading ? <Loader2 size={13} className="animate-spin" /> : <ArrowRight size={13} style={{ color: 'var(--accent)' }} />}
+              Explore the live demo
+            </button>
+          )}
           {!tenantOptions && !mfaChallengeActive && mode === 'login' && (
             <div className="text-center mt-4">
-              <button type="button" onClick={() => { setError(null); setShowForgotPw(true); }} className="text-caption font-medium" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
+              <button type="button" onClick={() => { setError(null); setShowForgotPw(true); }} className="text-caption font-medium py-1.5" style={{ color: 'var(--accent)' }} data-testid="forgot-password">Forgot password?</button>
             </div>
           )}
           {/* Set-new-password modal — uses the canonical Modal primitive.
@@ -660,19 +689,19 @@ export function LoginPage() {
               POPIA-aligned · Encrypted · Tenant-isolated
             </p>
             <p className="text-caption t-muted text-center mt-3">
-              {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium" style={{ color: 'var(--accent)' }}>Sign in</button></>}
+              {mode === 'login' ? <>Don&apos;t have an account? <button onClick={() => { setMode('register'); setError(null); }} className="font-medium py-1.5" style={{ color: 'var(--accent)' }}>Create one</button></> : <>Already have an account? <button onClick={() => { setMode('login'); setError(null); }} className="font-medium py-1.5" style={{ color: 'var(--accent)' }}>Sign in</button></>}
             </p>
             <p className="text-caption t-muted text-center mt-2">
               &copy; {new Date().getFullYear()} Atheon Technologies. All rights reserved.
             </p>
             <p className="text-caption t-muted text-center mt-2">
-              <a href="/status" className="hover:t-primary">Status</a>
+              <a href="/status" className="hover:t-primary inline-block py-1.5">Status</a>
               <span className="mx-2">·</span>
-              <a href="/legal/security" className="hover:t-primary">Security &amp; Privacy</a>
+              <a href="/legal/security" className="hover:t-primary inline-block py-1.5">Security &amp; Privacy</a>
               <span className="mx-2">·</span>
-              <a href="/legal/connectors" className="hover:t-primary">Connectors</a>
+              <a href="/legal/connectors" className="hover:t-primary inline-block py-1.5">Connectors</a>
               <span className="mx-2">·</span>
-              <a href="/legal/performance" className="hover:t-primary">Performance</a>
+              <a href="/legal/performance" className="hover:t-primary inline-block py-1.5">Performance</a>
             </p>
           </div>
         </div>

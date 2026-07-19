@@ -521,47 +521,99 @@ auth.post('/refresh', async (c) => {
   return c.json({ token: newToken, refreshToken: newRefreshToken, expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 });
 
-// POST /api/auth/demo-login (for demo access without password)
-// Bug #2: Gate behind DEMO_LOGIN_SECRET rather than trusting env var alone
+// POST /api/auth/demo-login
+// Two paths:
+// 1. Secret path (X-Demo-Secret, non-production only): pick any tenant/role — a deploy-time tool.
+// 2. Public path (no secret, works in production): mints a session ONLY for the dedicated
+//    Vantax demo account (demo@vantax.co.za, role executive, password_hash NULL so the
+//    password form can never reach it). Self-provisions the account if missing (additive,
+//    idempotent). Backs the "Explore the live demo" button on /login.
+const DEMO_USER_EMAIL = 'demo@vantax.co.za';
+
 auth.post('/demo-login', async (c) => {
-  if (c.env.ENVIRONMENT === 'production') {
-    return c.json({ error: 'Not found' }, 404);
-  }
-  // Double-gate: require a secret header even in non-production to prevent accidental exposure
   const demoSecret = c.req.header('X-Demo-Secret');
-  if (!demoSecret || demoSecret !== c.env.DEMO_LOGIN_SECRET) {
-    return c.json({ error: 'Not found' }, 404);
+  const secretOk = !!c.env.DEMO_LOGIN_SECRET && !!demoSecret && demoSecret === c.env.DEMO_LOGIN_SECRET;
+
+  if (secretOk && c.env.ENVIRONMENT !== 'production') {
+    const { data: body, errors } = await getValidatedJsonBody<{ tenant_slug?: string; role?: string }>(c, [
+      { field: 'tenant_slug', type: 'string', required: false, maxLength: 64 },
+      { field: 'role', type: 'string', required: false, maxLength: 32 },
+    ]);
+    if (!body || errors.length > 0) {
+      return c.json({ error: 'Invalid input', details: errors }, 400);
+    }
+    const slug = body.tenant_slug || 'vantax';
+    const requestedRole = body.role || 'admin';
+
+    const tenant = await c.env.DB.prepare('SELECT * FROM tenants WHERE slug = ?').bind(slug).first();
+    if (!tenant) {
+      return c.json({ error: 'Tenant not found' }, 404);
+    }
+    let user = await c.env.DB.prepare(
+      'SELECT * FROM users WHERE tenant_id = ? AND role = ? LIMIT 1'
+    ).bind(tenant.id, requestedRole).first();
+    if (!user) {
+      user = await c.env.DB.prepare(
+        'SELECT * FROM users WHERE tenant_id = ? LIMIT 1'
+      ).bind(tenant.id).first();
+    }
+    if (!user) {
+      return c.json({ error: 'No users found for tenant' }, 404);
+    }
+    const token = await generateToken({
+      sub: user.id as string,
+      email: user.email as string,
+      name: user.name as string,
+      role: user.role as string,
+      tenant_id: user.tenant_id as string,
+      permissions: JSON.parse(user.permissions as string || '[]'),
+    }, c.env.JWT_SECRET);
+    return c.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tenantId: user.tenant_id,
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
+        tenantIndustry: 'general',
+        permissions: JSON.parse(user.permissions as string || '[]'),
+      },
+    });
   }
 
-  const { data: body, errors } = await getValidatedJsonBody<{ tenant_slug?: string; role?: string }>(c, [
-    { field: 'tenant_slug', type: 'string', required: false, maxLength: 64 },
-    { field: 'role', type: 'string', required: false, maxLength: 32 },
-  ]);
-
-  if (!body || errors.length > 0) {
-    return c.json({ error: 'Invalid input', details: errors }, 400);
+  // Public path — fixed demo account only. Rate-limited per IP with the same
+  // lockout counter as password login (counts successes too, which is the point:
+  // it caps token minting, not failures).
+  const ip = c.req.header('CF-Connecting-IP') || 'unknown';
+  const lockout = await checkAndIncrementLoginAttempts(c.env.CACHE, `demo-login:${ip}`);
+  if (lockout.locked) {
+    return c.json({ error: 'Too many demo sessions from this address. Try again in 15 minutes.' }, 429);
   }
-  const slug = body.tenant_slug || 'vantax';
-  const requestedRole = body.role || 'admin';
 
-  const tenant = await c.env.DB.prepare('SELECT * FROM tenants WHERE slug = ?').bind(slug).first();
+  const tenant = await c.env.DB.prepare("SELECT * FROM tenants WHERE slug = 'vantax'").first();
   if (!tenant) {
-    return c.json({ error: 'Tenant not found' }, 404);
+    return c.json({ error: 'Demo unavailable' }, 404);
   }
 
-  // Find or use first user for this tenant
   let user = await c.env.DB.prepare(
-    'SELECT * FROM users WHERE tenant_id = ? AND role = ? LIMIT 1'
-  ).bind(tenant.id, requestedRole).first();
+    "SELECT * FROM users WHERE tenant_id = ? AND email = ? AND status = 'active'"
+  ).bind(tenant.id, DEMO_USER_EMAIL).first();
 
   if (!user) {
+    // Self-provision: executive-tier read view of the demo tenant, no password
+    // hash (password login rejects NULL hashes), MFA never enabled here.
+    await c.env.DB.prepare(
+      "INSERT INTO users (id, tenant_id, email, name, role, password_hash, permissions, status) VALUES (?, ?, ?, ?, 'executive', NULL, '[]', 'active')"
+    ).bind(crypto.randomUUID(), tenant.id, DEMO_USER_EMAIL, 'Vantax Demo').run();
     user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE tenant_id = ? LIMIT 1'
-    ).bind(tenant.id).first();
+      'SELECT * FROM users WHERE tenant_id = ? AND email = ?'
+    ).bind(tenant.id, DEMO_USER_EMAIL).first();
   }
-
   if (!user) {
-    return c.json({ error: 'No users found for tenant' }, 404);
+    return c.json({ error: 'Demo unavailable' }, 500);
   }
 
   const token = await generateToken({
@@ -573,8 +625,19 @@ auth.post('/demo-login', async (c) => {
     permissions: JSON.parse(user.permissions as string || '[]'),
   }, c.env.JWT_SECRET);
 
+  const refreshToken = crypto.randomUUID();
+  await c.env.CACHE.put(`refresh_token:${refreshToken}`, JSON.stringify({
+    userId: user.id, tenantId: user.tenant_id, email: user.email,
+    name: user.name, role: user.role, permissions: JSON.parse(user.permissions as string || '[]'),
+  }), { expirationTtl: 7 * 24 * 3600 });
+
+  await c.env.DB.prepare(
+    'INSERT INTO audit_log (id, tenant_id, user_id, action, layer, resource, details, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(crypto.randomUUID(), user.tenant_id, user.id, 'demo_login', 'auth', 'session', JSON.stringify({ ip }), 'success').run();
+
   return c.json({
     token,
+    refreshToken,
     user: {
       id: user.id,
       email: user.email,
@@ -583,7 +646,6 @@ auth.post('/demo-login', async (c) => {
       tenantId: user.tenant_id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
-      // industry column removed from tenants; fall back to 'general'.
       tenantIndustry: 'general',
       permissions: JSON.parse(user.permissions as string || '[]'),
     },

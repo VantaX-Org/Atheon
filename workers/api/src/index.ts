@@ -541,12 +541,12 @@ for (const prefix of platformAdminRoutePrefixes) {
   app.use(`/api/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
   app.use(`/api/v1/${prefix}/*`, requireRole('superadmin', 'support_admin', 'admin'));
 }
-// erp namespace is admin-gated, EXCEPT two read-only source-health GETs that
-// managers/executives need for the self-service data-flow surface (Operations
-// Overview + Integration health). Everything else under /erp — sync, connection
-// tests, circuit state, credential writes — stays admin-only. Loosening reads
-// must not loosen erp mutations.
-const ERP_MANAGER_READS = new Set(['connections', 'connections/health']);
+// erp namespace is admin-gated, EXCEPT read-only GETs that managers/executives
+// need for the self-service surfaces (Operations Overview, Integration health,
+// and the /x recovery ledger: actions, actions/summary, companies). Everything
+// else under /erp — sync, connection tests, circuit state, credential writes —
+// stays admin-only. Loosening reads must not loosen erp mutations.
+const ERP_MANAGER_READS = new Set(['connections', 'connections/health', 'actions', 'actions/summary', 'companies']);
 export function erpRolesFor(method: string, path: string): string[] {
   const sub = path.replace(/^\/api\/(v1\/)?erp\//, '').replace(/\/+$/, '');
   const managerRead = method === 'GET' && ERP_MANAGER_READS.has(sub);
@@ -563,8 +563,17 @@ app.use('/api/v1/erp/*', erpRoleGate);
 // namespace gate only admits them past the door; the read handlers still gate
 // on the `audit.read` permission and the mutating POST /log re-checks admin, so
 // an auditor can read/verify but never forge an audit entry.
+// Provenance GETs additionally admit executive/board_member — the /x brief
+// shows the tenant's merkle root as a trust signal. Reads only; POST /log and
+// the rest of /audit stay admin/auditor.
 for (const p of ['/api/audit/*', '/api/v1/audit/*']) {
-  app.use(p, requireRole('superadmin', 'support_admin', 'admin', 'auditor'));
+  app.use(p, async (c: Context<AppBindings>, next: Next) => {
+    const provenanceRead = c.req.method === 'GET' && /^\/api\/(v1\/)?audit\/provenance\//.test(c.req.path);
+    const roles = provenanceRead
+      ? ['superadmin', 'support_admin', 'admin', 'auditor', 'executive', 'board_member']
+      : ['superadmin', 'support_admin', 'admin', 'auditor'];
+    return requireRole(...roles)(c, next);
+  });
 }
 
 // §9.6 Permission model for V3 routes

@@ -77,7 +77,7 @@ export const authRateLimiter = rateLimiter({
 // Demo-login rate limit (extra strict)
 export const demoAuthRateLimiter = rateLimiter({
   windowMs: 3600000, // 1 hour
-  maxRequests: 3,    // 3 per hour
+  maxRequests: 10,   // 10 per hour — demo user is read-only; 3 locked out NAT'd offices
   keyPrefix: 'rl:demo',
 });
 

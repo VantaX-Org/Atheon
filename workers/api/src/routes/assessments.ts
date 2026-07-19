@@ -37,7 +37,7 @@ function isPlatformStaff(auth: AuthContext | undefined): boolean {
 async function assessmentReadGate(c: Context<AppBindings>): Promise<Response | null> {
   const auth = c.get('auth') as AuthContext | undefined;
   if (isPlatformStaff(auth)) return null;
-  if (auth?.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
+  if (!['admin', 'executive', 'board_member'].includes(auth?.role || '')) return c.json({ error: 'Forbidden' }, 403);
   const row = await c.env.DB.prepare('SELECT tenant_id FROM assessments WHERE id = ?')
     .bind(c.req.param('id')).first<{ tenant_id: string }>();
   if (!row || row.tenant_id !== auth.tenantId) return c.json({ error: 'Not found' }, 404);
@@ -47,11 +47,14 @@ async function assessmentReadGate(c: Context<AppBindings>): Promise<Response | n
 // ── GET /api/assessments — list all assessments ───────────────────────────
 assessments.get('/', async (c) => {
   const auth = c.get('auth') as AuthContext | undefined;
-  if (!isPlatformStaff(auth) && auth?.role !== 'admin') {
+  // Tenant-scoped read: executives/board consume assessment results in /x;
+  // writes below stay superadmin-only.
+  const TENANT_READ_ROLES = new Set(['admin', 'executive', 'board_member']);
+  if (!isPlatformStaff(auth) && !TENANT_READ_ROLES.has(auth?.role || '')) {
     return c.json({ error: 'Forbidden' }, 403);
   }
 
-  // Tenant admins see only their own tenant's assessments.
+  // Tenant roles see only their own tenant's assessments.
   const scoped = !isPlatformStaff(auth);
   const stmt = c.env.DB.prepare(`
     SELECT a.*, t.name as tenant_name
