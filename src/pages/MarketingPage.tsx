@@ -1295,12 +1295,33 @@ const marketingCSS = `
 
 /* ---- SVG Components ---- */
 
+/* The river mark: a glass A stands in the river — main flow through the
+   counter, green recovery stream rising out right, amber leak falling away.
+   Same geometry and glass treatment as /atheon-icon.svg. */
 const AtheonLogo = ({ size = 28 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-    <path d="M16 4L27 27H5L16 4Z" fill="none" stroke="var(--accent, #2456d6)" strokeWidth="1.5" />
-    <line x1="9" y1="20" x2="23" y2="20" stroke="var(--accent, #2456d6)" strokeWidth=".8" opacity=".6" />
-    <line x1="11.5" y1="14.5" x2="20.5" y2="14.5" stroke="var(--accent, #2456d6)" strokeWidth=".8" opacity=".45" />
-    <circle cx="16" cy="9" r="1.5" fill="var(--accent, #2456d6)" />
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden strokeLinecap="round">
+    <defs>
+      <linearGradient id="alogo-glass" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#ffffff" stopOpacity=".4" />
+        <stop offset="1" stopColor="#8fb0ff" stopOpacity=".14" />
+      </linearGradient>
+      <linearGradient id="alogo-edge" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#ffffff" stopOpacity=".95" />
+        <stop offset="1" stopColor="#6d8dff" />
+      </linearGradient>
+      <filter id="alogo-halo" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="1.1" />
+      </filter>
+    </defs>
+    <g filter="url(#alogo-halo)" opacity=".65">
+      <path d="M2 20 C 8 20 11 16.8 16 16.8 S 25 20 30 20" stroke="#7d9dff" strokeWidth="2" />
+      <path d="M2 22.5 C 9 22.5 13 20.8 17 19 S 27 13.5 30 12" stroke="#10f5a3" strokeWidth="1.8" />
+      <path d="M2 21.2 C 9 21.2 15 22.2 20 24 S 28 27 30 27.8" stroke="#ffc23a" strokeWidth="1.4" />
+    </g>
+    <path d="M2 20 C 8 20 11 16.8 16 16.8 S 25 20 30 20" stroke="#7d9dff" strokeWidth="1" opacity=".9" />
+    <path d="M2 22.5 C 9 22.5 13 20.8 17 19 S 27 13.5 30 12" stroke="#10f5a3" strokeWidth="1" />
+    <path d="M2 21.2 C 9 21.2 15 22.2 20 24 S 28 27 30 27.8" stroke="#ffc23a" strokeWidth=".8" opacity=".85" />
+    <path d="M16 4L27 27H5L16 4Z" fill="url(#alogo-glass)" stroke="url(#alogo-edge)" strokeWidth="1.2" strokeLinejoin="round" />
   </svg>
 );
 

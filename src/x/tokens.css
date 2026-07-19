@@ -76,7 +76,7 @@
   display: flex; align-items: center; gap: 0.9rem; padding: 0.6rem 1.1rem; flex-wrap: wrap;
 }
 .rx .logo { font-family: "Schibsted Grotesk"; font-weight: 800; font-size: 1rem; color: var(--ink); display: flex; align-items: center; gap: 0.5rem; }
-.rx .logo i { width: 24px; height: 24px; border-radius: 7px; font-style: normal; display: grid; place-items: center; font-size: 0.72rem; background: linear-gradient(135deg, #5b76f7, #7c5bf7); color: #fff; }
+.rx .logo img { width: 24px; height: 24px; display: block; }
 .rx .tabs { display: flex; gap: 0.15rem; overflow-x: auto; min-width: 0; }
 .rx .tabs button { font-size: 0.8rem; font-weight: 600; color: var(--mut); padding: 0.42rem 0.9rem; border-radius: 12px; white-space: nowrap; }
 .rx .tabs button:hover { color: var(--ink); background: var(--card2); }

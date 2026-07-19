@@ -73,7 +73,7 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
   return (
     <div className="shell-wrap">
       <div className="shell">
-        <span className="logo"><i>A</i>Atheon</span>
+        <span className="logo"><img src="/atheon-icon.svg?v=7" alt="" width={24} height={24} />Atheon</span>
         <nav className="tabs" aria-label="Sections">
           {SECTIONS.filter((s) => !persona || persona.sections.includes(s.id)).map((s) => (
             <button
