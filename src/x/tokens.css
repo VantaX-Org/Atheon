@@ -74,10 +74,12 @@
 /* Scroll scrim: content passing the floating chrome blurs out rather than
    sliding visibly around it. Functional (legibility), not decorative glass. */
 .rx .shell-wrap::before {
-  content: ''; position: absolute; inset: -0.7rem 0 -1.4rem; z-index: -1; pointer-events: none;
+  content: ''; position: absolute; inset: -0.7rem 0 -2rem; z-index: -1; pointer-events: none;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  mask-image: linear-gradient(180deg, #000 0 64%, transparent);
-  -webkit-mask-image: linear-gradient(180deg, #000 0 64%, transparent);
+  /* solid past the chrome's own bottom edge — a fade that starts inside it leaves
+     a sharp half-line of content peeking out, which reads as a bug */
+  mask-image: linear-gradient(180deg, #000 0 90%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 0 90%, transparent);
 }
 .rx .shell {
   background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh1);
@@ -231,7 +233,7 @@
 }
 .rx .tk-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); animation: rx-pulse 1.6s ease-in-out infinite; }
 @keyframes rx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-.rx .tk-tape { flex: 1; display: flex; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); }
+.rx .tk-tape { flex: 1; display: flex; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
 .rx .tk-run { display: inline-flex; flex: none; animation: rx-tick 36s linear infinite; }
 .rx .ticker:hover .tk-run { animation-play-state: paused; }
 @keyframes rx-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
@@ -568,7 +570,10 @@
 .rx .readout > div { min-height: 0; overflow: hidden; }
 .rx .readout.on { grid-template-rows: 1fr; }
 .rx .readout .ro {
+  /* hugs its figures — a full-width bar with three numbers at the left reads as
+     an empty container, not a condensed line */
   display: flex; align-items: baseline; gap: 0.5rem 1.5rem; flex-wrap: wrap;
+  width: max-content; max-width: 100%;
   margin-top: 0.45rem; padding: 0.45rem 1.1rem;
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   opacity: 0; transform: translateY(-8px);
