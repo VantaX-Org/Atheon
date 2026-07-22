@@ -1,6 +1,6 @@
 // Recovery Console shell: wordmark, four section pills (scroll, don't route),
 // persona lens (demo tenant only), Jeff inline, avatar → identity menu.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, setToken, setTenantOverride } from '@/lib/api';
 import type { NotificationItem, Tenant } from '@/lib/api';
@@ -42,7 +42,7 @@ const BREAKOUTS: Array<{ to: string; label: string; icon: IconName; roles?: stri
   { to: '/console', label: 'Admin', icon: 'gate', roles: ['superadmin', 'support_admin', 'admin'] },
 ];
 
-export function Shell({ active, persona, onPersona, onSection, decisionsCount, jeffContext, jeffOpenKey }: {
+export function Shell({ active, persona, onPersona, onSection, decisionsCount, jeffContext, jeffOpenKey, readout, readoutOn }: {
   active?: SectionKey;
   persona: Persona | null;
   onPersona: (k: PersonaKey) => void;
@@ -50,6 +50,9 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
   decisionsCount: number | null;
   jeffContext?: string;
   jeffOpenKey?: number;
+  // figures the sticky bar carries once the page's masthead has scrolled away
+  readout?: ReactNode;
+  readoutOn?: boolean;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -314,6 +317,12 @@ export function Shell({ active, persona, onPersona, onSection, decisionsCount, j
           </div>
         </div>
       </div>
+
+      {readout && (
+        <div className={`readout${readoutOn ? ' on' : ''}`} aria-hidden={!readoutOn}>
+          <div><div className="ro">{readout}</div></div>
+        </div>
+      )}
     </div>
   );
 }

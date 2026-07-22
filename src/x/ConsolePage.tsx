@@ -6,7 +6,7 @@ import './tokens.css';
 // Shell pills scroll, never route; the scrollspy drives the pills and the
 // reactor's focus lens. Everything else on the platform breaks out from the
 // shell.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '@/stores/appStore';
 import { api } from '@/lib/api';
@@ -66,7 +66,7 @@ function JeffBrief({ personaKey, personaLabel }: { personaKey: string; personaLa
   );
 }
 
-// Anchors that live inside a section map to their owner so the tower deck
+// Anchors that live inside a section map to their owner so the deck
 // can switch before scrolling (fallback layout just scrolls the page).
 const ANCHOR_SECTION: Record<string, SectionKey> = {
   brief: 'brief', leaks: 'brief', decisions: 'decisions', ledger: 'ledger', catalysts: 'catalysts',
@@ -81,6 +81,8 @@ export function ConsolePage() {
   const { input, loading } = useReactorInput();
   const [active, setActive] = useState<SectionKey>('brief');
   const [jeff, setJeff] = useState<{ ctx: string; key: number }>({ ctx: '', key: 0 });
+  const heroRef = useRef<HTMLDivElement>(null);
+  const [heroGone, setHeroGone] = useState(false);
 
   // Decisions badge in the shell — same booked summary the reactor renders,
   // so the badge and the gate node can never disagree.
@@ -105,9 +107,8 @@ export function ConsolePage() {
     setJeff((j) => ({ ctx: `surface:/x node:${ctx}`, key: j.key + 1 }));
   }, []);
 
-  // One navigation path for pills, hero figures, and drawer buttons: switch
-  // the deck (tower) then scroll — the deck scrolls internally in tower mode,
-  // the page scrolls in the stacked fallback.
+  // One navigation path for pills, hero figures, and drawer buttons: mark the
+  // section active, then scroll the page to it.
   const goSection = useCallback((anchor: string) => {
     const sec = ANCHOR_SECTION[anchor];
     if (sec) setActive(sec);
@@ -133,6 +134,16 @@ export function ConsolePage() {
     return () => io.disconnect();
   }, [sections]);
 
+  // Once the masthead leaves the top of the screen, the sticky readout picks the
+  // figures up. One observer, no scroll listener.
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setHeroGone(!e.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   // #hash deep link: open the owning deck, then scroll once sections exist.
   useEffect(() => {
     const id = window.location.hash.slice(1);
@@ -151,7 +162,7 @@ export function ConsolePage() {
     : ['superadmin', 'admin', 'executive', 'board_member'].includes(userRole ?? '');
 
   return (
-    <div className="rx tower">
+    <div className="rx">
       <Shell
         active={active}
         persona={persona}
@@ -160,13 +171,23 @@ export function ConsolePage() {
         decisionsCount={decisionsCount}
         jeffContext={jeff.ctx ? `${persona ? `The reader is the ${persona.label} — answer through their lens (${persona.lens}). ` : ''}${jeff.ctx}` : undefined}
         jeffOpenKey={jeff.key}
+        readout={
+          <>
+            <b className="num">{formatZarFull(input.recovered?.zar)}</b><span>recovered</span>
+            <b className="num">{formatZarFull(input.ops?.totalZar)}</b><span>leakage</span>
+            <b className="num">{formatZarFull(input.gate?.pendingZar)}</b><span>{canApprove ? 'awaiting your signature' : 'awaiting sign-off'}</span>
+          </>
+        }
+        readoutOn={heroGone && !loading}
       />
 
       <main className="page" data-active={active}>
         <aside className="mast">
-        <div className="hero in">
+        <div className="hero in" ref={heroRef}>
           <div>
-            <div className="kicker">{persona ? `Recovered · ${persona.lens}` : 'Recovered for your business'}</div>
+            {/* the persona's lens is a full sentence — it picks the sections, it
+                is not a label for the number */}
+            <div className="kicker">Recovered to date</div>
             <div className="hero-big num">{loading ? '…' : formatZarFull(input.recovered?.zar)}</div>
             {input.sourceCount != null && (
               <span className="chip-up num">{input.sourceCount} source{input.sourceCount === 1 ? '' : 's'} connected · every figure from booked fields</span>
@@ -209,7 +230,9 @@ export function ConsolePage() {
                 <small>return on the programme · reported</small>
               </div>
             )}
-            <div className="s act">
+            {/* the brand accent means "something is waiting on you" — a
+                highlighted zero would be emphasis on nothing */}
+            <div className={input.gate?.pendingZar ? 's act' : 's'}>
               <button
                 className="num"
                 onClick={() => goSection('decisions')}
@@ -223,7 +246,7 @@ export function ConsolePage() {
         <JeffBrief personaKey={persona?.key ?? 'user'} personaLabel={persona?.label ?? 'executive team'} />
         </aside>
 
-        <div className="tower-main">
+        <div className="stream">
         <Reactor input={input} focus={active} opsFirst={persona?.opsFirst} canApprove={canApprove} simulate={simulate} loading={loading} chain={persona?.chain} onAskJeff={onAskJeff} onGoTo={goSection} />
 
         <div className="deck">

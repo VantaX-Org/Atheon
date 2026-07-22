@@ -71,6 +71,14 @@
 
 /* ---------- shell ---------- */
 .rx .shell-wrap { max-width: 1180px; width: 100%; margin: 0 auto; padding: 1rem 1.5rem 0; position: sticky; top: 0.6rem; z-index: 30; min-width: 0; }
+/* Scroll scrim: content passing the floating chrome blurs out rather than
+   sliding visibly around it. Functional (legibility), not decorative glass. */
+.rx .shell-wrap::before {
+  content: ''; position: absolute; inset: -0.7rem 0 -1.4rem; z-index: -1; pointer-events: none;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  mask-image: linear-gradient(180deg, #000 0 64%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, #000 0 64%, transparent);
+}
 .rx .shell {
   background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh1);
   display: flex; align-items: center; gap: 0.9rem; padding: 0.6rem 1.1rem; flex-wrap: wrap;
@@ -236,8 +244,10 @@
   .rx .tk-live i { animation: none; }
 }
 .rx .flowpanel {
-  position: relative; height: clamp(400px, 44vw, 480px); margin-top: 1.3rem;
-  /* tiles size to the PANEL, not the viewport — tower layout can make the
+  /* viewport-aware: on a 800px-tall board laptop the river must leave room for
+     the note below it, or nothing signals that the page continues. */
+  position: relative; height: clamp(340px, min(42vw, 54vh), 500px); margin-top: 1.3rem;
+  /* tiles size to the PANEL, not the viewport — a narrow column can make the
      panel far narrower than the screen. cqi clamps below scale off this. */
   container-type: inline-size;
   background:
@@ -513,48 +523,62 @@
 @keyframes rx-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .rx .in { animation: none !important; } .rx .drawer, .rx .scrim { transition: none !important; } }
 
-/* ---------- control tower: fixed-viewport command center ----------
-   One vantage: mast (instruments) left, radar (river) + deck (active
-   section) right. Below the breakpoint the stacked scroll layout above
-   applies untouched — the tower is additive, pure CSS. */
-@media (min-width: 1100px) and (min-height: 620px) {
-  .rx.tower { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
-  .rx.tower .shell-wrap { position: static; max-width: none; padding-top: 0.7rem; }
-  .rx.tower .page {
-    flex: 1; min-height: 0; max-width: none;
-    display: grid; grid-template-columns: minmax(270px, 330px) 1fr;
-    gap: 1.2rem; padding: 0.8rem 1.5rem 1rem;
-  }
+/* ---------- console masthead ----------
+   The lede figure with its supporting rail on one baseline. Scoped to .mast so
+   BriefSection's smaller hero keeps the base treatment. Replaces the fixed-
+   viewport tower: one page, one scroll — the readout rail (in the sticky shell)
+   carries the figures once the masthead leaves. */
+.rx .mast .hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end;
+  gap: 1.6rem 3rem; padding: 2.4rem 0 1.5rem; border-bottom: 1px solid var(--line);
+}
+.rx .mast .hero-big { font-size: clamp(2.8rem, 5.4vw, 4.6rem); }
+/* provenance reads as a line of prose, not a status pill — the dot carries the state */
+.rx .mast .chip-up {
+  background: none; border-radius: 0; padding: 0; margin-top: 0.75rem;
+  color: var(--mut); font-weight: 500; font-size: 0.78rem;
+}
+.rx .mast .chip-up::before {
+  content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft);
+}
+.rx .mast .pulse-strip { margin-top: 0.5rem; }
+/* supporting figures share the lede's baseline, hairline-separated — not cards */
+/* zero bottom padding so the rail's last line sits on the same floor as the
+   lede's meta lines — a near-miss reads as a mistake, a flush edge reads as set */
+.rx .mast .hero-side { gap: 0; padding: 0; flex-wrap: nowrap; }
+.rx .mast .hero-side .s { padding: 0 1.8rem; }
+.rx .mast .hero-side .s:last-child { padding-right: 0; }
+.rx .mast .hero-side .s + .s { border-left: 1px solid var(--line); }
+.rx .mast .hero-side .s button { font-size: 1.75rem; letter-spacing: -0.02em; }
+.rx .mast .hero-side .s small { display: block; margin-top: 0.2rem; }
+.rx .mast .jeff-brief { margin-top: 1.1rem; }
+@media (max-width: 980px) {
+  .rx .mast .hero { grid-template-columns: 1fr; }
+  .rx .mast .hero-side { flex-wrap: wrap; }
+  .rx .mast .hero-side .s:first-child { padding-left: 0; }
+}
 
-  /* mast — the instrument stack */
-  .rx.tower .mast { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; }
-  .rx.tower .hero { padding-top: 0.3rem; display: block; }
-  .rx.tower .hero-big { font-size: clamp(1.9rem, 2.4vw, 2.7rem); }
-  .rx.tower .pulse-strip { flex-direction: column; align-items: flex-start; gap: 0.35rem; margin-top: 0.9rem; padding: 0.7rem 0.9rem; background: var(--card); border: 1px solid var(--line); border-radius: 14px; width: 100%; }
-  .rx.tower .pulse-strip:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
-  .rx.tower .hero-side { flex-direction: column; gap: 0.7rem; padding: 0.9rem 0 0; flex-wrap: nowrap; }
-  .rx.tower .hero-side .s { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0.65rem 0.9rem; }
-  .rx.tower .hero-side .s:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
-  .rx.tower .hero-side .s.act { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 7%, var(--card)), var(--card)); }
-  .rx.tower .hero-side .s button { font-size: 1.45rem; }
-  .rx.tower .jeff-brief { margin-top: 0.9rem; flex-direction: column; gap: 0.5rem; }
+/* anchored scroll must clear the floating chrome, not hide under it */
+.rx section[id], .rx .deck [id] { scroll-margin-top: 6.5rem; }
 
-  /* radar + deck column */
-  .rx.tower .tower-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-  .rx.tower .mscroll { flex: none; overflow-x: visible; }
-  .rx.tower .ticker { margin-top: 0; min-width: 0; }
-  .rx.tower .flowpanel { margin-top: 0.6rem; }
-  .rx.tower .flowpanel, .rx.tower .flowpanel.short, .rx.tower .flowpanel.mid, .rx.tower .flowpanel.tall { min-width: 0; height: clamp(280px, 40vh, 460px); }
-  .rx.tower .flow-note { margin: 0.45rem 0 0; }
-
-  /* deck — one section at a time, internal scroll; siblings hidden */
-  .rx.tower .deck { flex: 1; min-height: 0; overflow-y: auto; margin-top: 0.7rem; border-top: 1px solid var(--line); scrollbar-width: thin; }
-  .rx.tower .deck .head { padding-top: 0.9rem; }
-  .rx.tower .footnote { margin: 1rem 0 1.2rem; }
-  .rx.tower .page[data-active="brief"] .deck section:not(#brief) { display: none; }
-  .rx.tower .page[data-active="decisions"] .deck section:not(#decisions) { display: none; }
-  .rx.tower .page[data-active="ledger"] .deck section:not(#ledger) { display: none; }
-  .rx.tower .page[data-active="catalysts"] .deck section:not(#catalysts) { display: none; }
+/* condensing readout — the masthead figures follow the reader down the page.
+   Collapses to zero height (grid 0fr) so it costs nothing at the top. */
+.rx .readout { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.42s cubic-bezier(0.16, 1, 0.3, 1); }
+.rx .readout > div { min-height: 0; overflow: hidden; }
+.rx .readout.on { grid-template-rows: 1fr; }
+.rx .readout .ro {
+  display: flex; align-items: baseline; gap: 0.5rem 1.5rem; flex-wrap: wrap;
+  margin-top: 0.45rem; padding: 0.45rem 1.1rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  opacity: 0; transform: translateY(-8px);
+  transition: opacity 0.28s ease, transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rx .readout.on .ro { opacity: 1; transform: none; }
+.rx .readout .ro b { font-family: "Schibsted Grotesk"; font-weight: 700; font-size: 0.95rem; color: var(--ink); margin-right: -0.9rem; }
+.rx .readout .ro span { font-size: 0.72rem; color: var(--faint); }
+@media (prefers-reduced-motion: reduce) {
+  .rx .readout, .rx .readout .ro { transition: none; }
 }
 
 /* ---------- subpage — deep surfaces under the same shell ---------- */
@@ -580,7 +604,7 @@
   background:
     linear-gradient(135deg, var(--brand-soft), transparent 60%),
     var(--card);
-  border: 1px solid var(--line); border-left: 3px solid var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--line));
   border-radius: 18px; box-shadow: var(--sh1); margin-bottom: 1.1rem; overflow: hidden;
 }
 .rx .overnight-receipt .or-main {
